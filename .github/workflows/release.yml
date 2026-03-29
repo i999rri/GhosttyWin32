@@ -33,8 +33,8 @@ jobs:
           cd ghostty
           zig build -Doptimize=ReleaseSafe
           cp zig-out/lib/ghostty.dll ../ghostty/
-          # Find and copy the import library (small one ~60KB)
-          find .zig-cache -name "ghostty.lib" -size -100k -newer zig-out/lib/ghostty.dll -exec cp {} ../ghostty/ \;
+          # Find import library in zig cache (path varies by environment)
+          find . "$ZIG_LOCAL_CACHE_DIR" "$ZIG_GLOBAL_CACHE_DIR" -name "ghostty.lib" -size -100k 2>/dev/null | head -1 | xargs -I{} cp {} ../ghostty/
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
