@@ -218,6 +218,9 @@ LRESULT CALLBACK GhosttyBridge::glWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
             case VK_INSERT: case VK_F1: case VK_F2: case VK_F3: case VK_F4:
             case VK_F5: case VK_F6: case VK_F7: case VK_F8: case VK_F9:
             case VK_F10: case VK_F11: case VK_F12:
+            case VK_CONTROL: case VK_LCONTROL: case VK_RCONTROL:
+            case VK_SHIFT: case VK_LSHIFT: case VK_RSHIFT:
+            case VK_MENU: case VK_LMENU: case VK_RMENU:
                 isSpecialKey = true;
                 break;
         }
@@ -294,6 +297,18 @@ LRESULT CALLBACK GhosttyBridge::glWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
         if (GetKeyState(VK_MENU) & 0x8000) keyEvent.mods = (ghostty_input_mods_e)(keyEvent.mods | GHOSTTY_MODS_ALT);
 
         ghostty_surface_key(bridge.m_surface, keyEvent);
+
+        // When modifier keys change, re-send mouse position so ghostty
+        // can update link detection (e.g. Ctrl+hover to highlight URLs)
+        if (wParam == VK_CONTROL || wParam == VK_LCONTROL || wParam == VK_RCONTROL ||
+            wParam == VK_SHIFT || wParam == VK_LSHIFT || wParam == VK_RSHIFT ||
+            wParam == VK_MENU || wParam == VK_LMENU || wParam == VK_RMENU) {
+            POINT pt;
+            if (GetCursorPos(&pt) && ScreenToClient(hwnd, &pt)) {
+                ghostty_surface_mouse_pos(bridge.m_surface, (double)pt.x, (double)pt.y, keyEvent.mods);
+            }
+        }
+
         ghostty_surface_refresh(bridge.m_surface);
         return 0;
     }
