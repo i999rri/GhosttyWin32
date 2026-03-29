@@ -33,6 +33,7 @@ jobs:
           cd ghostty
           zig build -Doptimize=ReleaseSafe
           Copy-Item zig-out/lib/ghostty.dll ../ghostty/
+          Copy-Item include/ghostty.h ../ghostty/
           # Find import library (small ~60KB)
           $lib = Get-ChildItem -Path ., $env:ZIG_LOCAL_CACHE_DIR -Recurse -Filter "ghostty.lib" -ErrorAction SilentlyContinue |
                  Where-Object { $_.Length -lt 100KB -and $_.Length -gt 10KB } |
