@@ -274,7 +274,7 @@ LRESULT CALLBACK GhosttyBridge::glWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
         int len = WideCharToMultiByte(CP_UTF8, 0, utf16, utf16Len, utf8, sizeof(utf8), nullptr, nullptr);
         if (len > 0) {
             ghostty_surface_text(bridge.m_surface, utf8, len);
-
+            ghostty_surface_refresh(bridge.m_surface);
         }
         return 0;
     }
@@ -391,17 +391,12 @@ LRESULT CALLBACK GhosttyBridge::glWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
         PostQuitMessage(0);
         return 0;
     case WM_SIZE: {
-        // Defer to WM_EXITSIZEMOVE for interactive resize
-        return 0;
-    }
-    case WM_EXITSIZEMOVE: {
         if (bridge.m_surface) {
-            RECT rc;
-            GetClientRect(hwnd, &rc);
-            UINT width = rc.right - rc.left;
-            UINT height = rc.bottom - rc.top;
+            UINT width = LOWORD(lParam);
+            UINT height = HIWORD(lParam);
             if (width > 0 && height > 0) {
                 ghostty_surface_set_size(bridge.m_surface, width, height);
+                ghostty_surface_refresh(bridge.m_surface);
             }
         }
         return 0;

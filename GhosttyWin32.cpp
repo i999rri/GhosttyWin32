@@ -41,19 +41,8 @@ int APIENTRY wWinMain(
             }
         }
 
-        // background-opacity
-        double opacity = 1.0;
-        ghostty_config_get(bridge.config(), &opacity, "background-opacity", 18);
-        if (opacity < 1.0) {
-            // Make window layered for transparency
-            DWORD exStyle = GetWindowLongW(hwnd, GWL_EXSTYLE);
-            SetWindowLongW(hwnd, GWL_EXSTYLE, exStyle | WS_EX_LAYERED);
-            SetLayeredWindowAttributes(hwnd, 0, (BYTE)(opacity * 255), LWA_ALPHA);
-
-            // Also extend frame into client area for DWM composition
-            MARGINS margins = { -1, -1, -1, -1 };
-            DwmExtendFrameIntoClientArea(hwnd, &margins);
-        }
+        // background-opacity is handled by ghostty's renderer internally.
+        // No Win32-level transparency needed (DWM compositing is expensive).
     }
 
     // Message loop
