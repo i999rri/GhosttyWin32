@@ -1,17 +1,37 @@
 #include "framework.h"
 #include <cstdio>
+#include <string>
+#include <vector>
+#include <windowsx.h>  // GET_X_LPARAM, GET_Y_LPARAM
 #include <shellapi.h>
 #include <imm.h>
 #pragma comment(lib, "imm32.lib")
 #include "GhosttyBridge.h"
 
 #ifdef _DEBUG
-#define DBG_LOG(msg) DBG_LOG(msg)
+#define DBG_LOG(msg) OutputDebugStringA(msg)
 #else
 #define DBG_LOG(msg) ((void)0)
 #endif
 #pragma comment(lib, "opengl32.lib")
 #pragma comment(lib, "gdi32.lib")
+
+// Helper: copy UTF-8 text to Windows clipboard
+static bool copyToClipboard(HWND hwnd, const char* utf8, size_t utf8Len) {
+    int wlen = MultiByteToWideChar(CP_UTF8, 0, utf8, (int)utf8Len, nullptr, 0);
+    if (wlen <= 0 || !OpenClipboard(hwnd)) return false;
+    EmptyClipboard();
+    HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, (wlen + 1) * sizeof(wchar_t));
+    if (hMem) {
+        wchar_t* wBuf = static_cast<wchar_t*>(GlobalLock(hMem));
+        MultiByteToWideChar(CP_UTF8, 0, utf8, (int)utf8Len, wBuf, wlen);
+        wBuf[wlen] = 0;
+        GlobalUnlock(hMem);
+        SetClipboardData(CF_UNICODETEXT, hMem);
+    }
+    CloseClipboard();
+    return hMem != nullptr;
+}
 
 bool GhosttyBridge::initialize() {
     if (m_initialized) return true;
@@ -193,15 +213,29 @@ LRESULT CALLBACK GhosttyBridge::glWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
 
     switch (msg) {
     case WM_CHAR: {
-        // Convert UTF-16 wParam to UTF-8 and send to ghostty
-        if (bridge.m_surface && wParam >= 0x20) {
-            wchar_t utf16[2] = { (wchar_t)wParam, 0 };
-            char utf8[8] = {};
-            int len = WideCharToMultiByte(CP_UTF8, 0, utf16, 1, utf8, sizeof(utf8), nullptr, nullptr);
-            if (len > 0) {
-                ghostty_surface_text(bridge.m_surface, utf8, len);
-                ghostty_surface_refresh(bridge.m_surface);
-            }
+        if (!bridge.m_surface || wParam < 0x20) return 0;
+        // Handle UTF-16 surrogate pairs (emoji etc.)
+        static wchar_t highSurrogate = 0;
+        if (IS_HIGH_SURROGATE(wParam)) {
+            highSurrogate = (wchar_t)wParam;
+            return 0;
+        }
+        wchar_t utf16[3] = {};
+        int utf16Len = 1;
+        if (IS_LOW_SURROGATE(wParam) && highSurrogate) {
+            utf16[0] = highSurrogate;
+            utf16[1] = (wchar_t)wParam;
+            utf16Len = 2;
+            highSurrogate = 0;
+        } else {
+            highSurrogate = 0;
+            utf16[0] = (wchar_t)wParam;
+        }
+        char utf8[8] = {};
+        int len = WideCharToMultiByte(CP_UTF8, 0, utf16, utf16Len, utf8, sizeof(utf8), nullptr, nullptr);
+        if (len > 0) {
+            ghostty_surface_text(bridge.m_surface, utf8, len);
+            ghostty_surface_refresh(bridge.m_surface);
         }
         return 0;
     }
@@ -229,21 +263,9 @@ LRESULT CALLBACK GhosttyBridge::glWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
             if (bridge.m_surface && ghostty_surface_has_selection(bridge.m_surface)) {
                 ghostty_text_s text = {};
                 if (ghostty_surface_read_selection(bridge.m_surface, &text) && text.text && text.text_len > 0) {
-                    int wlen = MultiByteToWideChar(CP_UTF8, 0, text.text, (int)text.text_len, nullptr, 0);
-                    if (wlen > 0 && OpenClipboard(hwnd)) {
-                        EmptyClipboard();
-                        HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, (wlen + 1) * sizeof(wchar_t));
-                        if (hMem) {
-                            wchar_t* wBuf = static_cast<wchar_t*>(GlobalLock(hMem));
-                            MultiByteToWideChar(CP_UTF8, 0, text.text, (int)text.text_len, wBuf, wlen);
-                            wBuf[wlen] = 0;
-                            GlobalUnlock(hMem);
-                            SetClipboardData(CF_UNICODETEXT, hMem);
-                        }
-                        CloseClipboard();
-                    }
+                    copyToClipboard(hwnd, text.text, text.text_len);
                 }
-                // Clear selection by sending a left click at current position
+                // Clear selection
                 ghostty_surface_mouse_button(bridge.m_surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, GHOSTTY_MODS_NONE);
                 ghostty_surface_mouse_button(bridge.m_surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, GHOSTTY_MODS_NONE);
                 ghostty_surface_refresh(bridge.m_surface);
@@ -260,10 +282,9 @@ LRESULT CALLBACK GhosttyBridge::glWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
                     if (wText) {
                         int utf8Len = WideCharToMultiByte(CP_UTF8, 0, wText, -1, nullptr, 0, nullptr, nullptr);
                         if (utf8Len > 0) {
-                            char* utf8 = new char[utf8Len];
-                            WideCharToMultiByte(CP_UTF8, 0, wText, -1, utf8, utf8Len, nullptr, nullptr);
-                            ghostty_surface_text(bridge.m_surface, utf8, utf8Len - 1); // -1 for null terminator
-                            delete[] utf8;
+                            std::vector<char> utf8(utf8Len);
+                            WideCharToMultiByte(CP_UTF8, 0, wText, -1, utf8.data(), utf8Len, nullptr, nullptr);
+                            ghostty_surface_text(bridge.m_surface, utf8.data(), utf8Len - 1);
                         }
                         GlobalUnlock(hData);
                     }
@@ -336,8 +357,8 @@ LRESULT CALLBACK GhosttyBridge::glWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
     }
     case WM_MOUSEMOVE: {
         if (bridge.m_surface) {
-            double x = (double)LOWORD(lParam);
-            double y = (double)HIWORD(lParam);
+            double x = (double)GET_X_LPARAM(lParam);
+            double y = (double)GET_Y_LPARAM(lParam);
             ghostty_input_mods_e mods = GHOSTTY_MODS_NONE;
             if (wParam & MK_SHIFT) mods = (ghostty_input_mods_e)(mods | GHOSTTY_MODS_SHIFT);
             if (wParam & MK_CONTROL) mods = (ghostty_input_mods_e)(mods | GHOSTTY_MODS_CTRL);
@@ -363,19 +384,7 @@ LRESULT CALLBACK GhosttyBridge::glWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
             if (ghostty_surface_has_selection(bridge.m_surface)) {
                 ghostty_text_s text = {};
                 if (ghostty_surface_read_selection(bridge.m_surface, &text) && text.text && text.text_len > 0) {
-                    int wlen = MultiByteToWideChar(CP_UTF8, 0, text.text, (int)text.text_len, nullptr, 0);
-                    if (wlen > 0 && OpenClipboard(hwnd)) {
-                        EmptyClipboard();
-                        HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, (wlen + 1) * sizeof(wchar_t));
-                        if (hMem) {
-                            wchar_t* wBuf = static_cast<wchar_t*>(GlobalLock(hMem));
-                            MultiByteToWideChar(CP_UTF8, 0, text.text, (int)text.text_len, wBuf, wlen);
-                            wBuf[wlen] = 0;
-                            GlobalUnlock(hMem);
-                            SetClipboardData(CF_UNICODETEXT, hMem);
-                        }
-                        CloseClipboard();
-                    }
+                    copyToClipboard(hwnd, text.text, text.text_len);
                 }
                 // Clear selection
                 ghostty_surface_mouse_button(bridge.m_surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, GHOSTTY_MODS_NONE);
@@ -455,18 +464,15 @@ LRESULT CALLBACK GhosttyBridge::glWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
             if (hImc) {
                 int len = ImmGetCompositionStringW(hImc, GCS_COMPSTR, nullptr, 0);
                 if (len > 0) {
-                    wchar_t* comp = new wchar_t[len / sizeof(wchar_t) + 1];
-                    ImmGetCompositionStringW(hImc, GCS_COMPSTR, comp, len);
+                    std::vector<wchar_t> comp(len / sizeof(wchar_t) + 1);
+                    ImmGetCompositionStringW(hImc, GCS_COMPSTR, comp.data(), len);
                     comp[len / sizeof(wchar_t)] = 0;
-                    // Convert to UTF-8 for preedit
-                    int utf8Len = WideCharToMultiByte(CP_UTF8, 0, comp, -1, nullptr, 0, nullptr, nullptr);
+                    int utf8Len = WideCharToMultiByte(CP_UTF8, 0, comp.data(), -1, nullptr, 0, nullptr, nullptr);
                     if (utf8Len > 0) {
-                        char* utf8 = new char[utf8Len];
-                        WideCharToMultiByte(CP_UTF8, 0, comp, -1, utf8, utf8Len, nullptr, nullptr);
-                        ghostty_surface_preedit(bridge.m_surface, utf8, utf8Len - 1);
-                        delete[] utf8;
+                        std::vector<char> utf8(utf8Len);
+                        WideCharToMultiByte(CP_UTF8, 0, comp.data(), -1, utf8.data(), utf8Len, nullptr, nullptr);
+                        ghostty_surface_preedit(bridge.m_surface, utf8.data(), utf8Len - 1);
                     }
-                    delete[] comp;
                 } else {
                     // Empty composition = cleared
                     ghostty_surface_preedit(bridge.m_surface, nullptr, 0);
@@ -631,10 +637,9 @@ bool GhosttyBridge::onAction(ghostty_app_t app, ghostty_target_s target, ghostty
         if (action.action.set_title.title && bridge.m_glWindow) {
             int wlen = MultiByteToWideChar(CP_UTF8, 0, action.action.set_title.title, -1, nullptr, 0);
             if (wlen > 0) {
-                wchar_t* wTitle = new wchar_t[wlen];
-                MultiByteToWideChar(CP_UTF8, 0, action.action.set_title.title, -1, wTitle, wlen);
-                SetWindowTextW(bridge.m_glWindow, wTitle);
-                delete[] wTitle;
+                std::vector<wchar_t> wTitle(wlen);
+                MultiByteToWideChar(CP_UTF8, 0, action.action.set_title.title, -1, wTitle.data(), wlen);
+                SetWindowTextW(bridge.m_glWindow, wTitle.data());
             }
         }
         return true;
@@ -676,18 +681,15 @@ bool GhosttyBridge::onAction(ghostty_app_t app, ghostty_target_s target, ghostty
         return true;
 
     case GHOSTTY_ACTION_OPEN_URL:
-        OutputDebugStringA("ghostty: OPEN_URL action received\n");
-        if (action.action.open_url.url) {
-            // Convert URL to wide string and open
+        if (action.action.open_url.url && action.action.open_url.len > 0) {
             int wlen = MultiByteToWideChar(CP_UTF8, 0, action.action.open_url.url,
                 (int)action.action.open_url.len, nullptr, 0);
             if (wlen > 0) {
-                wchar_t* wUrl = new wchar_t[wlen + 1];
+                std::vector<wchar_t> wUrl(wlen + 1);
                 MultiByteToWideChar(CP_UTF8, 0, action.action.open_url.url,
-                    (int)action.action.open_url.len, wUrl, wlen);
+                    (int)action.action.open_url.len, wUrl.data(), wlen);
                 wUrl[wlen] = 0;
-                ShellExecuteW(nullptr, L"open", wUrl, nullptr, nullptr, SW_SHOWNORMAL);
-                delete[] wUrl;
+                ShellExecuteW(nullptr, L"open", wUrl.data(), nullptr, nullptr, SW_SHOWNORMAL);
             }
         }
         return true;
@@ -729,10 +731,9 @@ bool GhosttyBridge::onReadClipboard(void* userdata, ghostty_clipboard_e clipboar
     // Convert UTF-16 to UTF-8
     int utf8Len = WideCharToMultiByte(CP_UTF8, 0, wText, -1, nullptr, 0, nullptr, nullptr);
     if (utf8Len > 0) {
-        char* utf8 = new char[utf8Len];
-        WideCharToMultiByte(CP_UTF8, 0, wText, -1, utf8, utf8Len, nullptr, nullptr);
-        ghostty_surface_complete_clipboard_request(self->m_surface, utf8, state, false);
-        delete[] utf8;
+        std::vector<char> utf8(utf8Len);
+        WideCharToMultiByte(CP_UTF8, 0, wText, -1, utf8.data(), utf8Len, nullptr, nullptr);
+        ghostty_surface_complete_clipboard_request(self->m_surface, utf8.data(), state, false);
     }
 
     GlobalUnlock(hData);
