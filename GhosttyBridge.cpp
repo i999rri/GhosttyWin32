@@ -5,7 +5,9 @@
 #include <windowsx.h>  // GET_X_LPARAM, GET_Y_LPARAM
 #include <shellapi.h>
 #include <imm.h>
+#include <dwmapi.h>
 #pragma comment(lib, "imm32.lib")
+#pragma comment(lib, "dwmapi.lib")
 #include "GhosttyBridge.h"
 
 #ifdef _DEBUG
@@ -791,6 +793,21 @@ bool GhosttyBridge::onAction(ghostty_app_t app, ghostty_target_s target, ghostty
                 SWP_NOMOVE | SWP_NOZORDER);
         }
         return true;
+
+    case GHOSTTY_ACTION_COLOR_CHANGE: {
+        auto& cc = action.action.color_change;
+        if (cc.kind == GHOSTTY_ACTION_COLOR_KIND_BACKGROUND && bridge.m_glWindow) {
+            // Set title bar color to match terminal background (Windows 10/11)
+            COLORREF color = RGB(cc.r, cc.g, cc.b);
+            DwmSetWindowAttribute(bridge.m_glWindow, DWMWA_CAPTION_COLOR, &color, sizeof(color));
+
+            // Also set title bar text color: light text on dark bg, dark text on light bg
+            float luminance = 0.299f * cc.r + 0.587f * cc.g + 0.114f * cc.b;
+            COLORREF textColor = (luminance < 128) ? RGB(255, 255, 255) : RGB(0, 0, 0);
+            DwmSetWindowAttribute(bridge.m_glWindow, DWMWA_TEXT_COLOR, &textColor, sizeof(textColor));
+        }
+        return true;
+    }
 
     case GHOSTTY_ACTION_DESKTOP_NOTIFICATION:
         if (action.action.desktop_notification.title) {
