@@ -47,6 +47,10 @@ int APIENTRY wWinMain(
             }
         }
 
+        // Windows 11 rounded corners
+        INT cornerPref = 2; // DWMWCP_ROUND
+        DwmSetWindowAttribute(hwnd, 33 /*DWMWA_WINDOW_CORNER_PREFERENCE*/, &cornerPref, sizeof(cornerPref));
+
         // background-opacity is handled by ghostty's renderer internally.
         // No Win32-level transparency needed (DWM compositing is expensive).
     }
