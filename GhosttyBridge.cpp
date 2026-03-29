@@ -46,7 +46,33 @@ bool GhosttyBridge::initialize() {
         DBG_LOG("ghostty: config creation failed\n");
         return false;
     }
+    // Load config from %LOCALAPPDATA%\ghostty\config
+    char configPath[MAX_PATH] = {};
+    if (GetEnvironmentVariableA("LOCALAPPDATA", configPath, MAX_PATH)) {
+        strcat_s(configPath, "\\ghostty\\config");
+        // Verify file exists
+        DWORD attr = GetFileAttributesA(configPath);
+        if (attr != INVALID_FILE_ATTRIBUTES) {
+            ghostty_config_load_file(m_config, configPath);
+        }
+    }
     ghostty_config_finalize(m_config);
+
+    // Check config diagnostics
+    uint32_t diagCount = ghostty_config_diagnostics_count(m_config);
+    if (diagCount > 0) {
+        char buf[128];
+        sprintf_s(buf, "ghostty: config has %u diagnostics\n", diagCount);
+        OutputDebugStringA(buf);
+        for (uint32_t i = 0; i < diagCount; i++) {
+            ghostty_diagnostic_s diag = ghostty_config_get_diagnostic(m_config, i);
+            if (diag.message) {
+                OutputDebugStringA("ghostty: config diag: ");
+                OutputDebugStringA(diag.message);
+                OutputDebugStringA("\n");
+            }
+        }
+    }
     DBG_LOG("ghostty: config finalized\n");
 
     // App (runtime config with callbacks)
@@ -257,6 +283,8 @@ LRESULT CALLBACK GhosttyBridge::glWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
         ghostty_surface_refresh(bridge.m_surface);
         return 0;
     }
+    case WM_ERASEBKGND:
+        return 1; // Skip background erase to prevent flicker
     case WM_CLOSE:
         // Clean up ghostty before destroying the window
         if (bridge.m_surface) {
@@ -272,6 +300,7 @@ LRESULT CALLBACK GhosttyBridge::glWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
             UINT height = HIWORD(lParam);
             if (width > 0 && height > 0) {
                 ghostty_surface_set_size(bridge.m_surface, width, height);
+                ghostty_surface_refresh(bridge.m_surface);
             }
         }
         return 0;
@@ -339,6 +368,21 @@ LRESULT CALLBACK GhosttyBridge::glWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
             double delta = (double)GET_WHEEL_DELTA_WPARAM(wParam) / WHEEL_DELTA;
             ghostty_input_scroll_mods_t mods = GHOSTTY_MODS_NONE;
             ghostty_surface_mouse_scroll(bridge.m_surface, 0, delta, mods);
+        }
+        return 0;
+    }
+    case WM_DPICHANGED: {
+        if (bridge.m_surface) {
+            UINT dpi = HIWORD(wParam);
+            double scale = (double)dpi / 96.0;
+            ghostty_surface_set_content_scale(bridge.m_surface, scale, scale);
+            // Resize window to suggested rect
+            RECT* suggested = (RECT*)lParam;
+            SetWindowPos(hwnd, nullptr,
+                suggested->left, suggested->top,
+                suggested->right - suggested->left,
+                suggested->bottom - suggested->top,
+                SWP_NOZORDER | SWP_NOACTIVATE);
         }
         return 0;
     }
@@ -444,7 +488,9 @@ ghostty_surface_t GhosttyBridge::createSurface(HWND parentHwnd) {
             surfConfig.platform.windows.hwnd = a->hwnd;
             surfConfig.platform.windows.hdc = a->self->m_hdc;
             surfConfig.platform.windows.hglrc = a->self->m_hglrc;
-            surfConfig.scale_factor = 1.0;
+            // Get DPI scale factor
+            UINT dpi = GetDpiForWindow(a->self->m_glWindow);
+            surfConfig.scale_factor = (double)dpi / 96.0;
 
             a->result = ghostty_surface_new(a->self->m_app, &surfConfig);
 

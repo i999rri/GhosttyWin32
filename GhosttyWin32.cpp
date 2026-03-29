@@ -11,6 +11,9 @@ int APIENTRY wWinMain(
     UNREFERENCED_PARAMETER(lpCmdLine);
     UNREFERENCED_PARAMETER(nCmdShow);
 
+    // Enable Per-Monitor DPI awareness
+    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+
     // Initialize libghostty
     auto& bridge = GhosttyBridge::instance();
     if (!bridge.initialize()) {
