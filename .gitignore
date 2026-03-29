@@ -1,0 +1,18 @@
+# Build output
+x64/
+Debug/
+Release/
+*.obj
+*.pdb
+*.exe
+*.log
+*.tlog
+
+# Visual Studio
+.vs/
+*.vcxproj.user
+
+# Ghostty DLL and import library (build from source)
+ghostty/ghostty.dll
+ghostty/ghostty.lib
+ghostty/ghostty.pdb
