@@ -2,6 +2,7 @@
 #include "ghostty/ghostty.h"
 #include <Windows.h>
 #include <GL/gl.h>
+#include <cstdint>
 
 // Bridge between libghostty and Win32
 // Equivalent to the Swift AppDelegate on macOS
@@ -53,7 +54,15 @@ private:
     HWND m_glWindow = nullptr;
     HDC m_hdc = nullptr;
     HGLRC m_hglrc = nullptr;
-    bool m_vsync = false;  // V-Sync off by default for low latency
+    bool m_vsync = false;
     bool m_initialized = false;
+
+    // Window state for fullscreen/decorations toggle
+    bool m_fullscreen = false;
+    bool m_decorations = true;
+    RECT m_savedRect = {};        // Window rect before fullscreen
+    DWORD m_savedStyle = 0;       // Window style before fullscreen
+    uint32_t m_minWidth = 0, m_minHeight = 0;
+    uint32_t m_maxWidth = 0, m_maxHeight = 0;
 
 };

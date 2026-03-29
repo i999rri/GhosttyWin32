@@ -335,6 +335,14 @@ LRESULT CALLBACK GhosttyBridge::glWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
     }
     case WM_ERASEBKGND:
         return 1; // Skip background erase to prevent flicker
+    case WM_GETMINMAXINFO: {
+        auto* mmi = reinterpret_cast<MINMAXINFO*>(lParam);
+        if (bridge.m_minWidth > 0) mmi->ptMinTrackSize.x = bridge.m_minWidth;
+        if (bridge.m_minHeight > 0) mmi->ptMinTrackSize.y = bridge.m_minHeight;
+        if (bridge.m_maxWidth > 0) mmi->ptMaxTrackSize.x = bridge.m_maxWidth;
+        if (bridge.m_maxHeight > 0) mmi->ptMaxTrackSize.y = bridge.m_maxHeight;
+        return 0;
+    }
     case WM_CLOSE:
         // Clean up ghostty before destroying the window
         if (bridge.m_surface) {
@@ -703,6 +711,94 @@ bool GhosttyBridge::onAction(ghostty_app_t app, ghostty_target_s target, ghostty
     case GHOSTTY_ACTION_QUIT:
         if (bridge.m_glWindow)
             PostMessageW(bridge.m_glWindow, WM_CLOSE, 0, 0);
+        return true;
+
+    case GHOSTTY_ACTION_TOGGLE_FULLSCREEN: {
+        if (!bridge.m_glWindow) return true;
+        bridge.m_fullscreen = !bridge.m_fullscreen;
+        if (bridge.m_fullscreen) {
+            // Save current state
+            bridge.m_savedStyle = GetWindowLongW(bridge.m_glWindow, GWL_STYLE);
+            GetWindowRect(bridge.m_glWindow, &bridge.m_savedRect);
+            // Go fullscreen
+            SetWindowLongW(bridge.m_glWindow, GWL_STYLE, bridge.m_savedStyle & ~(WS_OVERLAPPEDWINDOW));
+            MONITORINFO mi = { sizeof(mi) };
+            GetMonitorInfoW(MonitorFromWindow(bridge.m_glWindow, MONITOR_DEFAULTTONEAREST), &mi);
+            SetWindowPos(bridge.m_glWindow, HWND_TOP,
+                mi.rcMonitor.left, mi.rcMonitor.top,
+                mi.rcMonitor.right - mi.rcMonitor.left,
+                mi.rcMonitor.bottom - mi.rcMonitor.top,
+                SWP_FRAMECHANGED);
+        } else {
+            // Restore
+            SetWindowLongW(bridge.m_glWindow, GWL_STYLE, bridge.m_savedStyle);
+            SetWindowPos(bridge.m_glWindow, nullptr,
+                bridge.m_savedRect.left, bridge.m_savedRect.top,
+                bridge.m_savedRect.right - bridge.m_savedRect.left,
+                bridge.m_savedRect.bottom - bridge.m_savedRect.top,
+                SWP_FRAMECHANGED | SWP_NOZORDER);
+        }
+        return true;
+    }
+
+    case GHOSTTY_ACTION_TOGGLE_MAXIMIZE:
+        if (bridge.m_glWindow) {
+            if (IsZoomed(bridge.m_glWindow))
+                ShowWindow(bridge.m_glWindow, SW_RESTORE);
+            else
+                ShowWindow(bridge.m_glWindow, SW_MAXIMIZE);
+        }
+        return true;
+
+    case GHOSTTY_ACTION_TOGGLE_WINDOW_DECORATIONS:
+        if (bridge.m_glWindow) {
+            bridge.m_decorations = !bridge.m_decorations;
+            DWORD style = GetWindowLongW(bridge.m_glWindow, GWL_STYLE);
+            if (bridge.m_decorations)
+                style |= WS_OVERLAPPEDWINDOW;
+            else
+                style &= ~(WS_CAPTION | WS_THICKFRAME | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX);
+            SetWindowLongW(bridge.m_glWindow, GWL_STYLE, style);
+            SetWindowPos(bridge.m_glWindow, nullptr, 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+        }
+        return true;
+
+    case GHOSTTY_ACTION_SIZE_LIMIT: {
+        bridge.m_minWidth = action.action.size_limit.min_width;
+        bridge.m_minHeight = action.action.size_limit.min_height;
+        bridge.m_maxWidth = action.action.size_limit.max_width;
+        bridge.m_maxHeight = action.action.size_limit.max_height;
+        char buf[128];
+        sprintf_s(buf, "ghostty: SIZE_LIMIT min=%ux%u max=%ux%u\n",
+            bridge.m_minWidth, bridge.m_minHeight, bridge.m_maxWidth, bridge.m_maxHeight);
+        OutputDebugStringA(buf);
+        return true;
+    }
+
+    case GHOSTTY_ACTION_INITIAL_SIZE:
+        if (bridge.m_glWindow && action.action.initial_size.width > 0 && action.action.initial_size.height > 0) {
+            SetWindowPos(bridge.m_glWindow, nullptr, 0, 0,
+                action.action.initial_size.width,
+                action.action.initial_size.height,
+                SWP_NOMOVE | SWP_NOZORDER);
+        }
+        return true;
+
+    case GHOSTTY_ACTION_RESET_WINDOW_SIZE:
+        if (bridge.m_glWindow) {
+            SetWindowPos(bridge.m_glWindow, nullptr, 0, 0, 960, 640,
+                SWP_NOMOVE | SWP_NOZORDER);
+        }
+        return true;
+
+    case GHOSTTY_ACTION_DESKTOP_NOTIFICATION:
+        if (action.action.desktop_notification.title) {
+            // Simple notification via balloon tooltip or message box
+            // TODO: use proper Windows toast notifications
+            MessageBeep(MB_ICONINFORMATION);
+            FlashWindow(bridge.m_glWindow, TRUE);
+        }
         return true;
 
     default:
