@@ -1,5 +1,8 @@
 #include "framework.h"
 #include <cstdio>
+#include <shellapi.h>
+#include <imm.h>
+#pragma comment(lib, "imm32.lib")
 #include "GhosttyBridge.h"
 
 #ifdef _DEBUG
@@ -406,6 +409,70 @@ LRESULT CALLBACK GhosttyBridge::glWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
         }
         return 0;
     }
+    case WM_IME_STARTCOMPOSITION: {
+        // Position the IME candidate window near the cursor
+        if (bridge.m_surface) {
+            double x = 0, y = 0, w = 0, h = 0;
+            ghostty_surface_ime_point(bridge.m_surface, &x, &y, &w, &h);
+            HIMC hImc = ImmGetContext(hwnd);
+            if (hImc) {
+                // Position the composition window
+                COMPOSITIONFORM cf = {};
+                cf.dwStyle = CFS_FORCE_POSITION;
+                cf.ptCurrentPos = { (LONG)x, (LONG)(y + h) };
+                ImmSetCompositionWindow(hImc, &cf);
+
+                // Position the candidate window below the composition
+                CANDIDATEFORM cand = {};
+                cand.dwIndex = 0;
+                cand.dwStyle = CFS_CANDIDATEPOS;
+                cand.ptCurrentPos = { (LONG)x, (LONG)(y + h) };
+                ImmSetCandidateWindow(hImc, &cand);
+
+                ImmReleaseContext(hwnd, hImc);
+            }
+        }
+        break;
+    }
+    case WM_IME_COMPOSITION: {
+        if (bridge.m_surface && (lParam & GCS_COMPSTR)) {
+            HIMC hImc = ImmGetContext(hwnd);
+            if (hImc) {
+                int len = ImmGetCompositionStringW(hImc, GCS_COMPSTR, nullptr, 0);
+                if (len > 0) {
+                    wchar_t* comp = new wchar_t[len / sizeof(wchar_t) + 1];
+                    ImmGetCompositionStringW(hImc, GCS_COMPSTR, comp, len);
+                    comp[len / sizeof(wchar_t)] = 0;
+                    // Convert to UTF-8 for preedit
+                    int utf8Len = WideCharToMultiByte(CP_UTF8, 0, comp, -1, nullptr, 0, nullptr, nullptr);
+                    if (utf8Len > 0) {
+                        char* utf8 = new char[utf8Len];
+                        WideCharToMultiByte(CP_UTF8, 0, comp, -1, utf8, utf8Len, nullptr, nullptr);
+                        ghostty_surface_preedit(bridge.m_surface, utf8, utf8Len - 1);
+                        delete[] utf8;
+                    }
+                    delete[] comp;
+                } else {
+                    // Empty composition = cleared
+                    ghostty_surface_preedit(bridge.m_surface, nullptr, 0);
+                }
+                ImmReleaseContext(hwnd, hImc);
+            }
+        }
+        if (lParam & GCS_RESULTSTR) {
+            // Let WM_CHAR handle the committed text
+            break;
+        }
+        if (lParam & GCS_COMPSTR) {
+            return 0; // We handled the composition
+        }
+        break;
+    }
+    case WM_IME_ENDCOMPOSITION:
+        if (bridge.m_surface) {
+            ghostty_surface_preedit(bridge.m_surface, nullptr, 0);
+        }
+        break;
     case WM_SETFOCUS:
         if (bridge.m_surface) ghostty_surface_set_focus(bridge.m_surface, true);
         return 0;
@@ -568,6 +635,70 @@ bool GhosttyBridge::onAction(ghostty_app_t app, ghostty_target_s target, ghostty
             }
         }
         return true;
+
+    case GHOSTTY_ACTION_MOUSE_SHAPE: {
+        LPCWSTR cursor = IDC_IBEAM; // default for terminal
+        switch (action.action.mouse_shape) {
+            case GHOSTTY_MOUSE_SHAPE_DEFAULT:   cursor = IDC_ARROW; break;
+            case GHOSTTY_MOUSE_SHAPE_TEXT:       cursor = IDC_IBEAM; break;
+            case GHOSTTY_MOUSE_SHAPE_POINTER:    cursor = IDC_HAND; break;
+            case GHOSTTY_MOUSE_SHAPE_CROSSHAIR:  cursor = IDC_CROSS; break;
+            case GHOSTTY_MOUSE_SHAPE_MOVE:
+            case GHOSTTY_MOUSE_SHAPE_ALL_SCROLL:  cursor = IDC_SIZEALL; break;
+            case GHOSTTY_MOUSE_SHAPE_EW_RESIZE:
+            case GHOSTTY_MOUSE_SHAPE_COL_RESIZE:  cursor = IDC_SIZEWE; break;
+            case GHOSTTY_MOUSE_SHAPE_NS_RESIZE:
+            case GHOSTTY_MOUSE_SHAPE_ROW_RESIZE:  cursor = IDC_SIZENS; break;
+            case GHOSTTY_MOUSE_SHAPE_NESW_RESIZE: cursor = IDC_SIZENESW; break;
+            case GHOSTTY_MOUSE_SHAPE_NWSE_RESIZE: cursor = IDC_SIZENWSE; break;
+            case GHOSTTY_MOUSE_SHAPE_NOT_ALLOWED:
+            case GHOSTTY_MOUSE_SHAPE_NO_DROP:     cursor = IDC_NO; break;
+            case GHOSTTY_MOUSE_SHAPE_WAIT:        cursor = IDC_WAIT; break;
+            case GHOSTTY_MOUSE_SHAPE_PROGRESS:    cursor = IDC_APPSTARTING; break;
+            case GHOSTTY_MOUSE_SHAPE_HELP:
+            case GHOSTTY_MOUSE_SHAPE_CONTEXT_MENU: cursor = IDC_HELP; break;
+            default: cursor = IDC_IBEAM; break;
+        }
+        SetCursor(LoadCursorW(nullptr, cursor));
+        return true;
+    }
+
+    case GHOSTTY_ACTION_MOUSE_VISIBILITY:
+        // TODO: ShowCursor uses a counter and is tricky to balance.
+        // For now, just change the cursor instead of hiding it.
+        if (action.action.mouse_visibility == GHOSTTY_MOUSE_HIDDEN)
+            SetCursor(nullptr);
+        else
+            SetCursor(LoadCursorW(nullptr, IDC_IBEAM));
+        return true;
+
+    case GHOSTTY_ACTION_OPEN_URL:
+        if (action.action.open_url.url) {
+            // Convert URL to wide string and open
+            int wlen = MultiByteToWideChar(CP_UTF8, 0, action.action.open_url.url,
+                (int)action.action.open_url.len, nullptr, 0);
+            if (wlen > 0) {
+                wchar_t* wUrl = new wchar_t[wlen + 1];
+                MultiByteToWideChar(CP_UTF8, 0, action.action.open_url.url,
+                    (int)action.action.open_url.len, wUrl, wlen);
+                wUrl[wlen] = 0;
+                ShellExecuteW(nullptr, L"open", wUrl, nullptr, nullptr, SW_SHOWNORMAL);
+                delete[] wUrl;
+            }
+        }
+        return true;
+
+    case GHOSTTY_ACTION_RING_BELL:
+        if (bridge.m_glWindow)
+            FlashWindow(bridge.m_glWindow, TRUE);
+        MessageBeep(MB_OK);
+        return true;
+
+    case GHOSTTY_ACTION_QUIT:
+        if (bridge.m_glWindow)
+            PostMessageW(bridge.m_glWindow, WM_CLOSE, 0, 0);
+        return true;
+
     default:
         return false;
     }
