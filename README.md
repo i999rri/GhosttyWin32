@@ -80,7 +80,25 @@ Mesa Zink (opengl32.dll + libgallium_wgl.dll)
   └── Translates OpenGL 4.6 → Vulkan (GPU native driver)
 ```
 
-## Building
+## Install
+
+### Scoop (Recommended)
+
+```powershell
+scoop bucket add ghostty https://github.com/i999rri/scoop-bucket
+scoop install ghosttywin32
+```
+
+Then run from terminal or start menu:
+```powershell
+GhosttyWin32
+```
+
+### Manual
+
+Download the latest ZIP from [Releases](https://github.com/i999rri/GhosttyWin32/releases), extract, and run `GhosttyWin32.exe`.
+
+## Building from Source
 
 ### Prerequisites
 
