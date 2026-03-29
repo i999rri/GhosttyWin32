@@ -13,18 +13,37 @@
 bool GhosttyBridge::initialize() {
     if (m_initialized) return true;
 
-    // ghostty_init on 4MB stack thread (max_path_bytes stack overflow workaround)
+    // Run ghostty_init + config on 4MB stack thread (max_path_bytes stack overflow workaround)
     char arg0[] = "ghostty";
     char* argv[] = { arg0 };
 
-    struct InitArgs { int argc; char** argv; int result; };
-    InitArgs initArgs = { 1, argv, -1 };
+    struct InitArgs {
+        int argc; char** argv;
+        int result;
+        ghostty_config_t config;
+    };
+    InitArgs initArgs = { 1, argv, -1, nullptr };
 
     HANDLE hThread = CreateThread(
         nullptr, 4 * 1024 * 1024,
         [](LPVOID param) -> DWORD {
             auto* args = static_cast<InitArgs*>(param);
             args->result = ghostty_init(args->argc, args->argv);
+            if (args->result != 0) return 0;
+
+            // Config (also needs large stack for file operations)
+            args->config = ghostty_config_new();
+            if (!args->config) return 0;
+
+            char configPath[MAX_PATH] = {};
+            if (GetEnvironmentVariableA("LOCALAPPDATA", configPath, MAX_PATH)) {
+                strcat_s(configPath, "\\ghostty\\config");
+                DWORD attr = GetFileAttributesA(configPath);
+                if (attr != INVALID_FILE_ATTRIBUTES) {
+                    ghostty_config_load_file(args->config, configPath);
+                }
+            }
+            ghostty_config_finalize(args->config);
             return 0;
         },
         &initArgs, 0, nullptr);
@@ -40,23 +59,11 @@ bool GhosttyBridge::initialize() {
     }
     DBG_LOG("ghostty: init succeeded\n");
 
-    // Config
-    m_config = ghostty_config_new();
+    m_config = initArgs.config;
     if (!m_config) {
         DBG_LOG("ghostty: config creation failed\n");
         return false;
     }
-    // Load config from %LOCALAPPDATA%\ghostty\config
-    char configPath[MAX_PATH] = {};
-    if (GetEnvironmentVariableA("LOCALAPPDATA", configPath, MAX_PATH)) {
-        strcat_s(configPath, "\\ghostty\\config");
-        // Verify file exists
-        DWORD attr = GetFileAttributesA(configPath);
-        if (attr != INVALID_FILE_ATTRIBUTES) {
-            ghostty_config_load_file(m_config, configPath);
-        }
-    }
-    ghostty_config_finalize(m_config);
 
     // Check config diagnostics
     uint32_t diagCount = ghostty_config_diagnostics_count(m_config);
