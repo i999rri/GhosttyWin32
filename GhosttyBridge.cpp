@@ -770,8 +770,7 @@ void GhosttyBridge::onWriteClipboard(void* userdata, ghostty_clipboard_e clipboa
 }
 
 void GhosttyBridge::onCloseSurface(void* userdata, bool process_exited) {
-    auto* self = static_cast<GhosttyBridge*>(userdata);
-    if (process_exited && self && self->m_glWindow) {
-        PostMessageW(self->m_glWindow, WM_CLOSE, 0, 0);
-    }
+    // TODO: exit does not close window yet - needs investigation
+    // onCloseSurface is called but PostMessage/DestroyWindow doesn't work
+    // from the callback thread. May need a different approach.
 }
