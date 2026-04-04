@@ -83,15 +83,3 @@ jobs:
         with:
           files: GhosttyWin32-${{ github.ref_name }}-x64.zip
           generate_release_notes: true
-
-      - name: Trigger scoop update
-        shell: bash
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          HASH=$(sha256sum GhosttyWin32-${GITHUB_REF_NAME}-x64.zip | cut -d' ' -f1)
-          gh api repos/i999rri/scoop-release-ci/dispatches \
-            -f event_type=release \
-            -f "client_payload[version]=${VERSION}" \
-            -f "client_payload[hash]=${HASH}"
-        env:
-          GH_TOKEN: ${{ secrets.SCOOP_TOKEN }}
