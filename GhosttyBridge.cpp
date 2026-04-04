@@ -629,10 +629,10 @@ ghostty_surface_t GhosttyBridge::createSurface(HWND parentHwnd) {
         [](LPVOID param) -> DWORD {
             auto* a = static_cast<Args*>(param);
 
-            // Check if using DirectX renderer (skip OpenGL init)
+            // Default to DirectX, use GHOSTTY_RENDERER=opengl to override
             char rendererBuf[32] = {};
             GetEnvironmentVariableA("GHOSTTY_RENDERER", rendererBuf, sizeof(rendererBuf));
-            bool useDirectX = (strcmp(rendererBuf, "directx") == 0);
+            bool useDirectX = (strcmp(rendererBuf, "opengl") != 0);
             {
                 char logBuf[128];
                 sprintf_s(logBuf, "ghostty: GHOSTTY_RENDERER=%s useDirectX=%d\n", rendererBuf, useDirectX);
