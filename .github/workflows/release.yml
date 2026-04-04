@@ -83,3 +83,36 @@ jobs:
         with:
           files: GhosttyWin32-${{ github.ref_name }}-x64.zip
           generate_release_notes: true
+
+      - name: Update scoop-bucket
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          HASH=$(sha256sum GhosttyWin32-${GITHUB_REF_NAME}-x64.zip | cut -d' ' -f1)
+
+          git clone https://x-access-token:${SCOOP_TOKEN}@github.com/i999rri/scoop-bucket.git scoop-bucket
+          cd scoop-bucket
+
+          # Update manifest using jq
+          jq --arg ver "$VERSION" \
+             --arg hash "$HASH" \
+             --arg url "https://github.com/i999rri/GhosttyWin32/releases/download/v${VERSION}/GhosttyWin32-v${VERSION}-x64.zip" \
+             '.version = $ver | .architecture."64bit".url = $url | .architecture."64bit".hash = $hash' \
+             ghosttywin32.json > tmp.json && mv tmp.json ghosttywin32.json
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b update-v${VERSION}
+          git add ghosttywin32.json
+          git commit -m "Update to v${VERSION}"
+          git push origin update-v${VERSION}
+
+          gh pr create \
+            --repo i999rri/scoop-bucket \
+            --title "Update to v${VERSION}" \
+            --body "Automated update from GhosttyWin32 release ${GITHUB_REF_NAME}" \
+            --base main \
+            --head update-v${VERSION}
+        env:
+          SCOOP_TOKEN: ${{ secrets.SCOOP_TOKEN }}
+          GH_TOKEN: ${{ secrets.SCOOP_TOKEN }}
