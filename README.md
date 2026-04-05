@@ -2,7 +2,7 @@
 
 Windows host application for [Ghostty](https://github.com/ghostty-org/ghostty) terminal emulator.
 
-Uses the libghostty C API (DLL) with a Win32 window + OpenGL rendering via [Mesa Zink](https://docs.mesa3d.org/drivers/zink.html) (GL-to-Vulkan translation).
+Uses the libghostty C API (DLL) with a Win32 window. Supports **DirectX 11** (default) and **OpenGL** (via [Mesa Zink](https://docs.mesa3d.org/drivers/zink.html)) rendering backends.
 
 ## Features
 
@@ -38,10 +38,10 @@ Uses the libghostty C API (DLL) with a Win32 window + OpenGL rendering via [Mesa
 - Cursor color customization
 
 ### Rendering
-- OpenGL 4.3+ via Mesa Zink (GL-to-Vulkan)
-- No flickering (Vulkan presentation engine)
+- **DirectX 11** (default) — native D3D11, no external dependencies, FLIP_DISCARD swap chain
+- **OpenGL 4.3+** (fallback) — via Mesa Zink (GL-to-Vulkan translation)
+- High-resolution waitable timer for frame pacing (Windows 10 1803+)
 - V-Sync OFF for low input latency
-- Immediate app_tick after text input
 
 ### Callbacks
 - `SET_TITLE`: window title from terminal
@@ -62,7 +62,6 @@ Uses the libghostty C API (DLL) with a Win32 window + OpenGL rendering via [Mesa
 GhosttyWin32.exe (C++/Win32)
   └── GhosttyBridge (singleton)
       ├── Win32 window (WS_POPUP or WS_OVERLAPPEDWINDOW)
-      ├── WGL OpenGL context → Mesa Zink → Vulkan → GPU
       ├── Input handling (keyboard, mouse, IME)
       ├── Clipboard (Win32 API)
       ├── Config reading (ghostty_config_get API)
@@ -71,13 +70,14 @@ GhosttyWin32.exe (C++/Win32)
 
 ghostty.dll (Zig, from i999rri/ghostty windows-port branch)
   ├── Terminal emulator core (VT parser, Screen)
-  ├── OpenGL 4.3 renderer (GLSL 430 shaders)
+  ├── DirectX 11 renderer (HLSL SM5.0 shaders, d3d11_impl.c COM wrapper)
+  ├── OpenGL 4.3 renderer (GLSL 430 shaders, Mesa Zink fallback)
   ├── Font rendering (Freetype + Harfbuzz)
   ├── ConPTY subprocess management
-  └── Windows font discovery (registry lookup)
+  └── Windows font discovery (registry lookup, %WINDIR%\Fonts)
 
-Mesa Zink (opengl32.dll + libgallium_wgl.dll)
-  └── Translates OpenGL 4.6 → Vulkan (GPU native driver)
+[Optional] Mesa Zink (opengl32.dll + libgallium_wgl.dll)
+  └��─ Translates OpenGL 4.6 → Vulkan (only needed for OpenGL fallback)
 ```
 
 ## Install
@@ -114,7 +114,7 @@ This requires a forked version of Ghostty with Windows support patches:
 git clone https://github.com/i999rri/ghostty.git
 cd ghostty
 git switch windows-port
-zig build -Doptimize=ReleaseSafe   # ReleaseSafe for PDB symbols
+zig build -Doptimize=ReleaseSafe -Drenderer=directx
 ```
 
 Copy the following files to `GhosttyWin32/ghostty/`:
@@ -126,21 +126,34 @@ Copy the following files to `GhosttyWin32/ghostty/`:
 
 Open `GhosttyWin32.slnx` in Visual Studio, set to **Release | x64**, and build.
 
-### Mesa Zink Setup (Required)
+### Mesa Zink Setup (Optional, for OpenGL fallback)
+
+Only needed if using the OpenGL renderer instead of DirectX.
 
 Download [mesa-dist-win](https://github.com/pal1000/mesa-dist-win/releases) (MSVC release) and copy to the exe directory:
 - `x64/opengl32.dll`
 - `x64/libgallium_wgl.dll`
-
-Mesa Zink is used by default for flicker-free rendering (GL-to-Vulkan translation). The app sets `GALLIUM_DRIVER=zink` automatically at startup.
-
-To use native OpenGL instead (lower latency but may flicker), set `GALLIUM_DRIVER=` (empty) or remove the Mesa DLLs.
 
 ### Run
 
 ```bash
 GhosttyWin32.exe
 ```
+
+## Renderer Selection
+
+DirectX 11 is the default renderer. To use OpenGL instead:
+
+```powershell
+$env:GHOSTTY_RENDERER = "opengl"
+$env:GALLIUM_DRIVER = "zink"
+GhosttyWin32.exe
+```
+
+| Environment Variable | Default | Description |
+|---------------------|---------|-------------|
+| `GHOSTTY_RENDERER` | (DirectX) | Set to `opengl` for OpenGL/Zink fallback |
+| `GALLIUM_DRIVER` | — | Set to `zink` when using OpenGL renderer |
 
 ## Configuration
 
@@ -165,8 +178,7 @@ Theme files go in `%LOCALAPPDATA%\ghostty\themes\`. See [Ghostty documentation](
 - `exit` does not close window ([#8](https://github.com/i999rri/GhosttyWin32/issues/8))
 - Ctrl+click URL causes process exit ([#12](https://github.com/i999rri/GhosttyWin32/issues/12)) — ghostty-side issue
 - Mesa Zink DLLs trigger Windows Defender false positive ([#11](https://github.com/i999rri/GhosttyWin32/issues/11))
-- Input latency with Mesa Zink (GL-to-Vulkan translation overhead)
-- Native OpenGL (without Mesa Zink) has flickering due to WGL+DWM issue
+- OpenGL renderer: native WGL (without Mesa Zink) has flickering due to WGL+DWM issue
 
 ## Status
 
