@@ -138,6 +138,7 @@ if exist "$(OutDir)AppX" copy /Y "$(ProjectDir)ghostty\ghostty.dll" "$(OutDir)Ap
       <DependentUpon>MainWindow.xaml</DependentUpon>
     </ClInclude>
     <ClInclude Include="GhosttyApp.h" />
+    <ClInclude Include="TsfInput.h" />
     <ClInclude Include="ghostty\ghostty.h" />
   </ItemGroup>
   <ItemGroup>
@@ -157,6 +158,9 @@ if exist "$(OutDir)AppX" copy /Y "$(ProjectDir)ghostty\ghostty.dll" "$(OutDir)Ap
     <ClCompile Include="$(GeneratedFilesDir)module.g.cpp" />
     <ClCompile Include="GhosttyApp.cpp">
       <PrecompiledHeader>Use</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="TsfInput.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

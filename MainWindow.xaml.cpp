@@ -38,6 +38,12 @@ namespace winrt::GhosttyWin32::implementation
 
     MainWindow::~MainWindow()
     {
+        if (m_tsfInput) {
+            m_tsfInput->Unfocus();
+            m_tsfInput->Uninitialize();
+            m_tsfInput->Release();
+            m_tsfInput = nullptr;
+        }
         if (m_surface) {
             m_ghosttyApp.destroySurface(m_surface);
             m_surface = nullptr;
@@ -158,11 +164,55 @@ namespace winrt::GhosttyWin32::implementation
             }
         }
 
-        // Register input events
-        // Key events on the Window (SwapChainPanel may not receive keyboard input directly)
+        // Initialize TSF for IME input (IME switching not yet working on WinUI 3)
+        m_tsfInput = new TsfInput();
+        {
+            auto surface = m_surface;
+            auto app = m_ghosttyApp.app();
+            TsfInput::Callbacks tsfCallbacks;
+            tsfCallbacks.getHwnd = [mainHwnd]() { return mainHwnd; };
+            tsfCallbacks.getViewportRect = [mainHwnd]() -> RECT {
+                RECT rc; GetWindowRect(mainHwnd, &rc); return rc;
+            };
+            tsfCallbacks.getCursorRect = [mainHwnd, surface]() -> RECT {
+                double x = 0, y = 0, w = 0, h = 0;
+                if (surface) ghostty_surface_ime_point(surface, &x, &y, &w, &h);
+                POINT pt = { (LONG)x, (LONG)(y + h) };
+                ClientToScreen(mainHwnd, &pt);
+                return { pt.x, pt.y, pt.x + (LONG)w, pt.y + (LONG)h };
+            };
+            tsfCallbacks.handleOutput = [surface, app](std::wstring_view text) {
+                if (!surface || text.empty()) return;
+                char utf8[256] = {};
+                int len = WideCharToMultiByte(CP_UTF8, 0, text.data(), (int)text.size(),
+                    utf8, sizeof(utf8), nullptr, nullptr);
+                if (len > 0) {
+                    ghostty_surface_text(surface, utf8, len);
+                    if (app) ghostty_app_tick(app);
+                    ghostty_surface_refresh(surface);
+                }
+            };
+            tsfCallbacks.handleComposition = [surface](std::wstring_view text) {
+                if (!surface) return;
+                if (text.empty()) {
+                    ghostty_surface_preedit(surface, nullptr, 0);
+                } else {
+                    char utf8[256] = {};
+                    int len = WideCharToMultiByte(CP_UTF8, 0, text.data(), (int)text.size(),
+                        utf8, sizeof(utf8), nullptr, nullptr);
+                    if (len > 0) ghostty_surface_preedit(surface, utf8, len);
+                }
+            };
+            if (!m_tsfInput->Initialize(std::move(tsfCallbacks))) {
+                OutputDebugStringA("ghostty: TSF initialization failed\n");
+            } else {
+                m_tsfInput->Focus();
+            }
+        }
+
+        // Register input events — key events on window content level
         auto panel = TerminalPanel();
         this->Content().KeyDown({ this, &MainWindow::OnTerminalKeyDown });
-        this->Content().CharacterReceived({ this, &MainWindow::OnTerminalCharacterReceived });
 
         // Pointer events on the SwapChainPanel
         panel.PointerMoved({ this, &MainWindow::OnTerminalPointerMoved });
@@ -192,29 +242,7 @@ namespace winrt::GhosttyWin32::implementation
         return mods;
     }
 
-    void MainWindow::OnTerminalCharacterReceived(
-        winrt::Microsoft::UI::Xaml::UIElement const&,
-        winrt::Microsoft::UI::Xaml::Input::CharacterReceivedRoutedEventArgs const& e)
-    {
-        if (!m_surface) return;
-        wchar_t ch = e.Character();
-        {
-            char buf[64];
-            sprintf_s(buf, "ghostty: CharacterReceived ch=%u (0x%X)\n", (unsigned)ch, (unsigned)ch);
-            OutputDebugStringA(buf);
-        }
-        if (ch < 0x20) return;
-
-        wchar_t utf16[2] = { ch, 0 };
-        char utf8[8] = {};
-        int len = WideCharToMultiByte(CP_UTF8, 0, utf16, 1, utf8, sizeof(utf8), nullptr, nullptr);
-        if (len > 0) {
-            ghostty_surface_text(m_surface, utf8, len);
-            if (m_ghosttyApp.app()) ghostty_app_tick(m_ghosttyApp.app());
-            ghostty_surface_refresh(m_surface);
-        }
-        e.Handled(true);
-    }
+    // CharacterReceived replaced by TSF input + ToUnicode in KeyDown
 
     void MainWindow::OnTerminalKeyDown(
         winrt::Windows::Foundation::IInspectable const&,
@@ -408,6 +436,8 @@ namespace winrt::GhosttyWin32::implementation
             ghostty_surface_refresh(m_surface);
         }
     }
+
+    // CharacterReceived / TextBox IME removed — using TSF + ToUnicode
 
     bool MainWindow::HandleAction(ghostty_target_s /*target*/, ghostty_action_s action)
     {

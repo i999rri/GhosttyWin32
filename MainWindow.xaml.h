@@ -2,6 +2,7 @@
 
 #include "MainWindow.g.h"
 #include "GhosttyApp.h"
+#include "TsfInput.h"
 
 namespace winrt::GhosttyWin32::implementation
 {
@@ -21,8 +22,7 @@ namespace winrt::GhosttyWin32::implementation
         // Input forwarding — SwapChainPanel receives pointer/key events via XAML
         void OnTerminalKeyDown(winrt::Windows::Foundation::IInspectable const& sender,
             winrt::Microsoft::UI::Xaml::Input::KeyRoutedEventArgs const& e);
-        void OnTerminalCharacterReceived(winrt::Microsoft::UI::Xaml::UIElement const& sender,
-            winrt::Microsoft::UI::Xaml::Input::CharacterReceivedRoutedEventArgs const& e);
+        // CharacterReceived replaced by TSF input
         void OnTerminalPointerMoved(winrt::Windows::Foundation::IInspectable const& sender,
             winrt::Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& e);
         void OnTerminalPointerPressed(winrt::Windows::Foundation::IInspectable const& sender,
@@ -43,6 +43,7 @@ namespace winrt::GhosttyWin32::implementation
         GhosttyApp m_ghosttyApp;
         ghostty_surface_t m_surface = nullptr;
         IUnknown* m_panelNative = nullptr; // ISwapChainPanelNative*
+        TsfInput* m_tsfInput = nullptr;
     };
 }
 

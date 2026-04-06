@@ -10,9 +10,6 @@
     Title="Ghostty">
 
     <Grid x:Name="RootGrid">
-        <SwapChainPanel x:Name="TerminalPanel"
-                        IsTabStop="True"
-                        AllowFocusOnInteraction="True"
-                        IsHitTestVisible="True" />
+        <SwapChainPanel x:Name="TerminalPanel" />
     </Grid>
 </Window>
