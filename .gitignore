@@ -5,8 +5,15 @@ Release/
 *.obj
 *.pdb
 *.exe
+*.ilk
 *.log
 *.tlog
+
+# Generated files (WinUI XAML codegen)
+Generated Files/
+
+# NuGet packages
+packages/
 
 # Visual Studio
 .vs/

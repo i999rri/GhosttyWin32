@@ -1,7 +1,10 @@
 <Solution>
   <Configurations>
+    <Platform Name="ARM64" />
     <Platform Name="x64" />
     <Platform Name="x86" />
   </Configurations>
-  <Project Path="GhosttyWin32.vcxproj" Id="2ddac1b4-fd05-4c80-a088-08bb115a4ec2" />
+  <Project Path="GhosttyWin32.vcxproj" Id="eebf3400-b116-43f9-9047-3d062669b803">
+    <Deploy />
+  </Project>
 </Solution>
