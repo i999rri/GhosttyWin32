@@ -73,11 +73,14 @@ bool TsfInput::Initialize(Callbacks callbacks) {
     }
 
     // Create context with this as ITfContextOwnerCompositionSink
+    TfEditCookie ecTextStore = 0;
     hr = m_documentMgr->CreateContext(m_clientId, 0,
         static_cast<ITfContextOwnerCompositionSink*>(this),
-        &m_context, nullptr);
+        &m_context, &ecTextStore);
     if (FAILED(hr) || !m_context) {
-        DBG_LOG("TSF: CreateContext failed\n");
+        char buf[128];
+        sprintf_s(buf, "TSF: CreateContext failed hr=0x%08X\n", (unsigned)hr);
+        OutputDebugStringA(buf);
         return false;
     }
 
