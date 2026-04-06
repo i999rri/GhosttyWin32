@@ -13,30 +13,36 @@ namespace winrt::GhosttyWin32::implementation
         void InitializeTerminal();
 
     private:
-        // Get the HWND of this WinUI window
         HWND GetWindowHandle();
 
-        // Create a Win32 child window for ghostty rendering
-        HWND CreateTerminalWindow(HWND parent);
-        static LRESULT CALLBACK TerminalWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+        // Get ISwapChainPanelNative from the XAML SwapChainPanel
+        void* GetSwapChainPanelNative();
+
+        // Input forwarding — SwapChainPanel receives pointer/key events via XAML
+        void OnTerminalKeyDown(winrt::Windows::Foundation::IInspectable const& sender,
+            winrt::Microsoft::UI::Xaml::Input::KeyRoutedEventArgs const& e);
+        void OnTerminalCharacterReceived(winrt::Microsoft::UI::Xaml::UIElement const& sender,
+            winrt::Microsoft::UI::Xaml::Input::CharacterReceivedRoutedEventArgs const& e);
+        void OnTerminalPointerMoved(winrt::Windows::Foundation::IInspectable const& sender,
+            winrt::Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& e);
+        void OnTerminalPointerPressed(winrt::Windows::Foundation::IInspectable const& sender,
+            winrt::Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& e);
+        void OnTerminalPointerReleased(winrt::Windows::Foundation::IInspectable const& sender,
+            winrt::Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& e);
+        void OnTerminalPointerWheelChanged(winrt::Windows::Foundation::IInspectable const& sender,
+            winrt::Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& e);
+        void OnTerminalSizeChanged(winrt::Windows::Foundation::IInspectable const& sender,
+            winrt::Microsoft::UI::Xaml::SizeChangedEventArgs const& e);
 
         // Action handler
         bool HandleAction(ghostty_target_s target, ghostty_action_s action);
 
-        // Sync popup terminal window position/size with WinUI window
-        void UpdateTerminalPosition();
+        // Ghostty mods from XAML key state
+        ghostty_input_mods_e GetMods();
 
         GhosttyApp m_ghosttyApp;
         ghostty_surface_t m_surface = nullptr;
-        HWND m_terminalHwnd = nullptr;
-
-        // Subclass WinUI HWND to catch WM_MOVE
-        static LRESULT CALLBACK MainWndSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR subclassId, DWORD_PTR refData);
-
-        // Window state
-        bool m_fullscreen = false;
-        RECT m_savedRect = {};
-        DWORD m_savedStyle = 0;
+        IUnknown* m_panelNative = nullptr; // ISwapChainPanelNative*
     };
 }
 

@@ -9,8 +9,10 @@
     mc:Ignorable="d"
     Title="Ghostty">
 
-    <Grid x:Name="RootGrid" Background="Transparent">
-        <!-- Terminal content area — ghostty child window will be hosted here -->
-        <Grid x:Name="TerminalArea" Background="Transparent" />
+    <Grid x:Name="RootGrid">
+        <SwapChainPanel x:Name="TerminalPanel"
+                        IsTabStop="True"
+                        AllowFocusOnInteraction="True"
+                        IsHitTestVisible="True" />
     </Grid>
 </Window>

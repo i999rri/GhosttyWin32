@@ -436,6 +436,7 @@ typedef struct {
   void* hwnd;
   void* hdc;
   void* hglrc;
+  void* swap_chain_panel; // ISwapChainPanelNative* for WinUI 3 (optional, NULL for HWND mode)
 } ghostty_platform_windows_s;
 
 typedef union {
