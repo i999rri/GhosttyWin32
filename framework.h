@@ -14,6 +14,11 @@
 #include <memory.h>
 #include <tchar.h>
 
-// C++/WinRT — base projection. WinUI 2 / XAML Islands projections will be
-// added in subsequent steps.
+// C++/WinRT — XAML Islands hosts WinUI 2 controls inside our Win32 window.
 #include <winrt/Windows.Foundation.h>
+#include <winrt/Windows.Foundation.Collections.h>
+#include <winrt/Windows.UI.Xaml.h>
+#include <winrt/Windows.UI.Xaml.Hosting.h>
+#include <winrt/Windows.UI.Xaml.Controls.h>
+#include <winrt/Windows.UI.Xaml.Markup.h>
+#include <winrt/Microsoft.Toolkit.Win32.UI.XamlHost.h>

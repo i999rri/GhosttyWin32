@@ -2,6 +2,9 @@
 #include <dwmapi.h>
 #include "GhosttyBridge.h"
 
+using namespace winrt;
+using namespace winrt::Windows::UI::Xaml::Hosting;
+
 int APIENTRY wWinMain(
     _In_ HINSTANCE hInstance,
     _In_opt_ HINSTANCE hPrevInstance,
@@ -14,6 +17,25 @@ int APIENTRY wWinMain(
 
     // Enable Per-Monitor DPI awareness
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+
+    // Initialize C++/WinRT and the XAML hosting framework. The XamlApplication
+    // base class from Microsoft.Toolkit.Win32.UI.XamlApplication provides the
+    // metadata providers WinUI 2 controls need. Failing to initialize is not
+    // fatal — the app falls back to a plain Win32 host.
+    winrt::init_apartment(winrt::apartment_type::single_threaded);
+    WindowsXamlManager xamlManager{ nullptr };
+    winrt::Microsoft::Toolkit::Win32::UI::XamlHost::XamlApplication xamlApp{ nullptr };
+    try {
+        // Empty metadata providers list — WinUI 2 controls register themselves.
+        auto providers = winrt::single_threaded_vector<winrt::Windows::UI::Xaml::Markup::IXamlMetadataProvider>();
+        xamlApp = winrt::Microsoft::Toolkit::Win32::UI::XamlHost::XamlApplication{ providers };
+        xamlManager = WindowsXamlManager::InitializeForCurrentThread();
+        OutputDebugStringA("ghostty: XAML hosting initialized\n");
+    } catch (winrt::hresult_error const& e) {
+        char buf[256];
+        sprintf_s(buf, "ghostty: XAML init failed hr=0x%08x\n", (unsigned)e.code());
+        OutputDebugStringA(buf);
+    }
 
     // Default to Mesa Zink (GL→Vulkan) for flicker-free rendering.
     // Set before any OpenGL calls. Users can override with GALLIUM_DRIVER env var.
