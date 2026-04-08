@@ -38,12 +38,6 @@ namespace winrt::GhosttyWin32::implementation
 
     MainWindow::~MainWindow()
     {
-        if (m_tsfInput) {
-            m_tsfInput->Unfocus();
-            m_tsfInput->Uninitialize();
-            m_tsfInput->Release();
-            m_tsfInput = nullptr;
-        }
         if (m_surface) {
             m_ghosttyApp.destroySurface(m_surface);
             m_surface = nullptr;
@@ -164,51 +158,9 @@ namespace winrt::GhosttyWin32::implementation
             }
         }
 
-        // Initialize TSF for IME input (IME switching not yet working on WinUI 3)
-        m_tsfInput = new TsfInput();
-        {
-            auto surface = m_surface;
-            auto app = m_ghosttyApp.app();
-            TsfInput::Callbacks tsfCallbacks;
-            tsfCallbacks.getHwnd = [mainHwnd]() { return mainHwnd; };
-            tsfCallbacks.getViewportRect = [mainHwnd]() -> RECT {
-                RECT rc; GetWindowRect(mainHwnd, &rc); return rc;
-            };
-            tsfCallbacks.getCursorRect = [mainHwnd, surface]() -> RECT {
-                double x = 0, y = 0, w = 0, h = 0;
-                if (surface) ghostty_surface_ime_point(surface, &x, &y, &w, &h);
-                POINT pt = { (LONG)x, (LONG)(y + h) };
-                ClientToScreen(mainHwnd, &pt);
-                return { pt.x, pt.y, pt.x + (LONG)w, pt.y + (LONG)h };
-            };
-            tsfCallbacks.handleOutput = [surface, app](std::wstring_view text) {
-                if (!surface || text.empty()) return;
-                char utf8[256] = {};
-                int len = WideCharToMultiByte(CP_UTF8, 0, text.data(), (int)text.size(),
-                    utf8, sizeof(utf8), nullptr, nullptr);
-                if (len > 0) {
-                    ghostty_surface_text(surface, utf8, len);
-                    if (app) ghostty_app_tick(app);
-                    ghostty_surface_refresh(surface);
-                }
-            };
-            tsfCallbacks.handleComposition = [surface](std::wstring_view text) {
-                if (!surface) return;
-                if (text.empty()) {
-                    ghostty_surface_preedit(surface, nullptr, 0);
-                } else {
-                    char utf8[256] = {};
-                    int len = WideCharToMultiByte(CP_UTF8, 0, text.data(), (int)text.size(),
-                        utf8, sizeof(utf8), nullptr, nullptr);
-                    if (len > 0) ghostty_surface_preedit(surface, utf8, len);
-                }
-            };
-            if (!m_tsfInput->Initialize(std::move(tsfCallbacks))) {
-                OutputDebugStringA("ghostty: TSF initialization failed\n");
-            } else {
-                m_tsfInput->Focus();
-            }
-        }
+        // Note: IME input not supported on WinUI 3 desktop apps with custom drawing.
+        // English input via ToUnicode in OnTerminalKeyDown works.
+        // See GhosttyWin32 #16 for the full investigation.
 
         // Register input events — key events on window content level
         auto panel = TerminalPanel();

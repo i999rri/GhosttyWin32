@@ -2,7 +2,6 @@
 
 #include "MainWindow.g.h"
 #include "GhosttyApp.h"
-#include "TsfInput.h"
 
 namespace winrt::GhosttyWin32::implementation
 {
@@ -43,7 +42,6 @@ namespace winrt::GhosttyWin32::implementation
         GhosttyApp m_ghosttyApp;
         ghostty_surface_t m_surface = nullptr;
         IUnknown* m_panelNative = nullptr; // ISwapChainPanelNative*
-        TsfInput* m_tsfInput = nullptr;
     };
 }
 
