@@ -557,7 +557,7 @@ LRESULT CALLBACK GhosttyBridge::mainWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
         GetClientRect(hwnd, &rc);
         POINT pt = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
         ScreenToClient(hwnd, &pt);
-        const int border = 6;
+        const int border = 4;  // thin resize border (sides + bottom)
         bool left = pt.x < border;
         bool right = pt.x >= rc.right - border;
         bool top = pt.y < border;
@@ -568,9 +568,10 @@ LRESULT CALLBACK GhosttyBridge::mainWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
         if (bottom && right) return HTBOTTOMRIGHT;
         if (left) return HTLEFT;
         if (right) return HTRIGHT;
+        // Top 4px = resize, 4-8px = drag caption (above XAML Island)
         if (top) return HTTOP;
         if (bottom) return HTBOTTOM;
-        if (pt.y < sess->headerHeight) return HTCAPTION;
+        if (pt.y < 8) return HTCAPTION;
         return HTCLIENT;
     }
 
@@ -591,12 +592,16 @@ LRESULT CALLBACK GhosttyBridge::mainWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
         int top = sess->headerHeight;
         int childHeight = height - top;
         if (childHeight < 1) childHeight = 1;
-        // Resize the XAML host and its island child to fill the header area.
-        if (sess->xamlHostWnd && top > 0) {
-            SetWindowPos(sess->xamlHostWnd, nullptr, 0, 0, width, top,
+        // Resize the XAML host below a thin drag strip at the very top.
+        // The top 6px remain as the parent's HTCAPTION area for window drag.
+        const int dragStrip = 8;
+        int xamlTop = (top > dragStrip) ? dragStrip : 0;
+        int xamlHeight = top - xamlTop;
+        if (sess->xamlHostWnd && xamlHeight > 0) {
+            SetWindowPos(sess->xamlHostWnd, nullptr, 0, xamlTop, width, xamlHeight,
                 SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW);
             if (sess->xamlIslandHwnd) {
-                SetWindowPos(sess->xamlIslandHwnd, nullptr, 0, 0, width, top,
+                SetWindowPos(sess->xamlIslandHwnd, nullptr, 0, 0, width, xamlHeight,
                     SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW);
             }
         }
@@ -666,7 +671,7 @@ HWND GhosttyBridge::createMainWindow(TerminalSession* session) {
         wc.hInstance = GetModuleHandleW(nullptr);
         wc.lpszClassName = L"GhosttyMainWindow";
         wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-        wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+        wc.hbrBackground = CreateSolidBrush(RGB(30, 30, 30));
         RegisterClassW(&wc);
         registered = true;
     }

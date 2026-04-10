@@ -130,10 +130,11 @@ int APIENTRY wWinMain(
                 }
                 RECT rc;
                 GetClientRect(hwnd, &rc);
+                const int dragStrip = 8;
                 HWND xamlHostWnd = CreateWindowExW(
                     0, L"GhosttyXamlHost", nullptr,
                     WS_CHILD | WS_VISIBLE,
-                    0, 0, rc.right - rc.left, session->headerHeight,
+                    0, dragStrip, rc.right - rc.left, session->headerHeight - dragStrip,
                     hwnd, nullptr, GetModuleHandleW(nullptr), nullptr);
 
                 session->xamlHostWnd = xamlHostWnd;
@@ -148,32 +149,98 @@ int APIENTRY wWinMain(
 
                 // Fill the host window.
                 SetWindowPos(islandHwnd, nullptr, 0, 0,
-                    rc.right - rc.left, session->headerHeight,
+                    rc.right - rc.left, session->headerHeight - dragStrip,
                     SWP_SHOWWINDOW);
 
                 // WinUI 2 TabView — activated via SxS manifest entries
                 namespace muxc = winrt::Microsoft::UI::Xaml::Controls;
                 namespace xaml = winrt::Windows::UI::Xaml;
 
+                namespace controls = xaml::Controls;
+                namespace media = xaml::Media;
+
+                // Root layout: TabView on the left, system buttons on the right
+                auto root = controls::Grid();
+                root.RequestedTheme(xaml::ElementTheme::Dark);
+                root.HorizontalAlignment(xaml::HorizontalAlignment::Stretch);
+                root.VerticalAlignment(xaml::VerticalAlignment::Stretch);
+
+                // Two columns: TabView (star) + system buttons (auto)
+                auto col1 = controls::ColumnDefinition();
+                col1.Width(xaml::GridLengthHelper::FromValueAndType(1, xaml::GridUnitType::Star));
+                root.ColumnDefinitions().Append(col1);
+                auto col2 = controls::ColumnDefinition();
+                col2.Width(xaml::GridLengthHelper::Auto());
+                root.ColumnDefinitions().Append(col2);
+
+                // TabView
                 auto tabView = muxc::TabView();
                 tabView.HorizontalAlignment(xaml::HorizontalAlignment::Stretch);
                 tabView.VerticalAlignment(xaml::VerticalAlignment::Stretch);
                 tabView.IsAddTabButtonVisible(true);
                 tabView.TabWidthMode(muxc::TabViewWidthMode::Equal);
-                tabView.RequestedTheme(xaml::ElementTheme::Dark);
+                controls::Grid::SetColumn(tabView, 0);
 
-                // First tab — associate with the initial session via Tag
                 auto tab1 = muxc::TabViewItem();
                 tab1.Header(winrt::box_value(L"Terminal"));
                 tab1.IsClosable(false);
                 tab1.Tag(winrt::box_value(reinterpret_cast<uint64_t>(session->hwnd)));
                 tabView.TabItems().Append(tab1);
                 tabView.SelectedItem(tab1);
+                root.Children().Append(tabView);
 
-                xamlSource.Content(tabView);
+                HWND mainWnd = session->parentHwnd;
+
+                // System buttons (─ □ ×)
+                auto sysButtons = controls::StackPanel();
+                sysButtons.Orientation(controls::Orientation::Horizontal);
+                sysButtons.VerticalAlignment(xaml::VerticalAlignment::Top);
+                controls::Grid::SetColumn(sysButtons, 1);
+
+                auto makeBtn = [&](const wchar_t* text, double w) {
+                    auto btn = controls::Button();
+                    auto txt = controls::TextBlock();
+                    txt.Text(text);
+                    txt.FontSize(10);
+                    txt.Foreground(media::SolidColorBrush(
+                        winrt::Windows::UI::ColorHelper::FromArgb(255, 200, 200, 200)));
+                    btn.Content(txt);
+                    btn.Background(media::SolidColorBrush(
+                        winrt::Windows::UI::ColorHelper::FromArgb(0, 0, 0, 0)));
+                    btn.Width(w);
+                    btn.Height(32);
+                    btn.Padding(xaml::ThicknessHelper::FromUniformLength(0));
+                    btn.BorderThickness(xaml::ThicknessHelper::FromUniformLength(0));
+                    btn.VerticalAlignment(xaml::VerticalAlignment::Top);
+                    return btn;
+                };
+
+                auto minBtn = makeBtn(L"\xE949", 46);  // Minimize icon
+                minBtn.FontFamily(media::FontFamily(L"Segoe MDL2 Assets"));
+                minBtn.Click([mainWnd](auto&&, auto&&) {
+                    ShowWindow(mainWnd, SW_MINIMIZE);
+                });
+
+                auto maxBtn = makeBtn(L"\xE739", 46);  // Maximize icon
+                maxBtn.FontFamily(media::FontFamily(L"Segoe MDL2 Assets"));
+                maxBtn.Click([mainWnd](auto&&, auto&&) {
+                    ShowWindow(mainWnd, IsZoomed(mainWnd) ? SW_RESTORE : SW_MAXIMIZE);
+                });
+
+                auto closeBtn = makeBtn(L"\xE106", 46);  // Close icon
+                closeBtn.Click([mainWnd](auto&&, auto&&) {
+                    PostMessageW(mainWnd, WM_CLOSE, 0, 0);
+                });
+
+                sysButtons.Children().Append(minBtn);
+                sysButtons.Children().Append(maxBtn);
+                sysButtons.Children().Append(closeBtn);
+                root.Children().Append(sysButtons);
+
+                xamlSource.Content(root);
 
                 // --- Tab event handlers ---
-                HWND parentHwnd = session->parentHwnd;
+                HWND parentHwnd = mainWnd;
 
                 // [+] button: create a new terminal session + tab
                 tabView.AddTabButtonClick(
