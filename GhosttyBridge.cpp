@@ -574,14 +574,19 @@ LRESULT CALLBACK GhosttyBridge::mainWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
         return 0;
 
     case WM_SIZE: {
-        // Resize the rendering child to fill our client area below the header.
-        // The child's WM_SIZE handler notifies the renderer + ghostty surface.
-        if (sess && sess->hwnd) {
-            int width = LOWORD(lParam);
-            int height = HIWORD(lParam);
-            int top = sess->headerHeight;
-            int childHeight = height - top;
-            if (childHeight < 1) childHeight = 1;
+        if (!sess) return 0;
+        int width = LOWORD(lParam);
+        int height = HIWORD(lParam);
+        int top = sess->headerHeight;
+        int childHeight = height - top;
+        if (childHeight < 1) childHeight = 1;
+        // Resize the XAML Island to fill the header area.
+        if (sess->xamlIslandHwnd && top > 0) {
+            SetWindowPos(sess->xamlIslandHwnd, nullptr, 0, 0, width, top,
+                SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+        }
+        // Resize the rendering child below the header.
+        if (sess->hwnd) {
             SetWindowPos(sess->hwnd, nullptr, 0, top, width, childHeight,
                 SWP_NOZORDER | SWP_NOACTIVATE);
         }

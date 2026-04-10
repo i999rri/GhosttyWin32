@@ -35,6 +35,10 @@ struct TerminalSession {
     // when window-decoration=false to give the chromeless terminal-only look.
     int headerHeight = 32;
 
+    // XAML Islands: the child HWND created by DesktopWindowXamlSource.
+    // Positioned in the header area, hosts WinUI 2 controls (TabView).
+    HWND xamlIslandHwnd = nullptr;
+
     // Size limits from ghostty config (enforced on parentHwnd via WM_GETMINMAXINFO)
     uint32_t minWidth = 0, minHeight = 0;
     uint32_t maxWidth = 0, maxHeight = 0;

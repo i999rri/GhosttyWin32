@@ -150,6 +150,9 @@
     <ResourceCompile Include="GhosttyWin32.rc" />
   </ItemGroup>
   <ItemGroup>
+    <Manifest Include="app.manifest" />
+  </ItemGroup>
+  <ItemGroup>
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
