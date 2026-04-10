@@ -1,4 +1,4 @@
-﻿// header.h : 標準のシステム インクルード ファイルのインクルード ファイル、
+// header.h : 標準のシステム インクルード ファイルのインクルード ファイル、
 // またはプロジェクト専用のインクルード ファイル
 //
 
@@ -14,7 +14,9 @@
 #include <memory.h>
 #include <tchar.h>
 
-// C++/WinRT — XAML Islands hosts WinUI 2 controls inside our Win32 window.
+// C++/WinRT — WinUI 2 XAML Islands hosts controls inside our Win32 window.
+// Only the tab bar lives in XAML; Ghostty's rendering and input stay in a
+// plain Win32 child window.
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.Foundation.Collections.h>
 #include <winrt/Windows.UI.Xaml.h>

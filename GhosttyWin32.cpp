@@ -18,19 +18,16 @@ int APIENTRY wWinMain(
     // Enable Per-Monitor DPI awareness
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 
-    // Initialize C++/WinRT and the XAML hosting framework. The XamlApplication
-    // base class from Microsoft.Toolkit.Win32.UI.XamlApplication provides the
-    // metadata providers WinUI 2 controls need. Failing to initialize is not
-    // fatal — the app falls back to a plain Win32 host.
+    // Initialize C++/WinRT and WinUI 2 XAML Islands. The UWP XAML runtime
+    // is built into Windows — no bootstrap, resources.pri, or package
+    // identity needed (unlike WinUI 3, see issue #18).
     winrt::init_apartment(winrt::apartment_type::single_threaded);
     WindowsXamlManager xamlManager{ nullptr };
-    winrt::Microsoft::Toolkit::Win32::UI::XamlHost::XamlApplication xamlApp{ nullptr };
     try {
-        // Empty metadata providers list — WinUI 2 controls register themselves.
         auto providers = winrt::single_threaded_vector<winrt::Windows::UI::Xaml::Markup::IXamlMetadataProvider>();
-        xamlApp = winrt::Microsoft::Toolkit::Win32::UI::XamlHost::XamlApplication{ providers };
+        winrt::Microsoft::Toolkit::Win32::UI::XamlHost::XamlApplication xamlApp{ providers };
         xamlManager = WindowsXamlManager::InitializeForCurrentThread();
-        OutputDebugStringA("ghostty: XAML hosting initialized\n");
+        OutputDebugStringA("ghostty: WinUI 2 XAML hosting initialized\n");
     } catch (winrt::hresult_error const& e) {
         char buf[256];
         sprintf_s(buf, "ghostty: XAML init failed hr=0x%08x\n", (unsigned)e.code());
