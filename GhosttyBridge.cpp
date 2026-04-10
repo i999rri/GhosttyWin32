@@ -568,10 +568,13 @@ LRESULT CALLBACK GhosttyBridge::mainWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
         if (bottom && right) return HTBOTTOMRIGHT;
         if (left) return HTLEFT;
         if (right) return HTRIGHT;
-        // Top 4px = resize, 4-8px = drag caption (above XAML Island)
         if (top) return HTTOP;
         if (bottom) return HTBOTTOM;
-        if (pt.y < 8) return HTCAPTION;
+        // Header area: HTCAPTION for drag. Currently the XAML Island
+        // absorbs mouse events so drag only works outside the island.
+        // Proper tab-bar drag requires DwmExtendFrameIntoClientArea
+        // integration — tracked as a future improvement.
+        if (sess->headerHeight > 0 && pt.y < sess->headerHeight) return HTCAPTION;
         return HTCLIENT;
     }
 
@@ -592,16 +595,12 @@ LRESULT CALLBACK GhosttyBridge::mainWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
         int top = sess->headerHeight;
         int childHeight = height - top;
         if (childHeight < 1) childHeight = 1;
-        // Resize the XAML host below a thin drag strip at the very top.
-        // The top 6px remain as the parent's HTCAPTION area for window drag.
-        const int dragStrip = 8;
-        int xamlTop = (top > dragStrip) ? dragStrip : 0;
-        int xamlHeight = top - xamlTop;
-        if (sess->xamlHostWnd && xamlHeight > 0) {
-            SetWindowPos(sess->xamlHostWnd, nullptr, 0, xamlTop, width, xamlHeight,
+        // Resize the XAML host to fill the header area.
+        if (sess->xamlHostWnd && top > 0) {
+            SetWindowPos(sess->xamlHostWnd, nullptr, 0, 0, width, top,
                 SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW);
             if (sess->xamlIslandHwnd) {
-                SetWindowPos(sess->xamlIslandHwnd, nullptr, 0, 0, width, xamlHeight,
+                SetWindowPos(sess->xamlIslandHwnd, nullptr, 0, 0, width, top,
                     SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW);
             }
         }

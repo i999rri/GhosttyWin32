@@ -36,6 +36,50 @@ struct GhosttyApp : winrt::Windows::UI::Xaml::ApplicationT<GhosttyApp,
     }
 };
 
+// Subclass proc for the XAML Island's own HWND (child of xamlHostWnd).
+// Intercepts WM_NCHITTEST to check if the mouse is over interactive XAML
+// content. If not → HTTRANSPARENT so the parent can return HTCAPTION.
+#include <commctrl.h>
+#pragma comment(lib, "comctl32.lib")
+
+static winrt::Windows::UI::Xaml::Hosting::DesktopWindowXamlSource* g_xamlSourceForHitTest = nullptr;
+
+static LRESULT CALLBACK islandSubclassProc(
+    HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam,
+    UINT_PTR /*subclassId*/, DWORD_PTR /*refData*/)
+{
+    if (msg == WM_NCHITTEST && g_xamlSourceForHitTest && *g_xamlSourceForHitTest) {
+        auto content = g_xamlSourceForHitTest->Content();
+        if (content) {
+            POINT pt;
+            pt.x = (short)LOWORD(lParam);
+            pt.y = (short)HIWORD(lParam);
+            ScreenToClient(hwnd, &pt);
+            namespace xaml = winrt::Windows::UI::Xaml;
+            auto point = winrt::Windows::Foundation::Point(
+                static_cast<float>(pt.x), static_cast<float>(pt.y));
+            auto elements = xaml::Media::VisualTreeHelper::FindElementsInHostCoordinates(
+                point, content);
+            for (auto const& elem : elements) {
+                auto name = winrt::get_class_name(elem);
+                std::wstring_view sv{ name };
+                if (sv.find(L"Button") != std::wstring_view::npos ||
+                    sv.find(L"TabViewItem") != std::wstring_view::npos ||
+                    sv.find(L"ListViewItem") != std::wstring_view::npos) {
+                    return DefSubclassProc(hwnd, msg, wParam, lParam);
+                }
+            }
+            return HTTRANSPARENT;
+        }
+    }
+    return DefSubclassProc(hwnd, msg, wParam, lParam);
+}
+
+static LRESULT CALLBACK xamlHostWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    if (msg == WM_NCHITTEST) return HTTRANSPARENT;
+    return DefWindowProcW(hwnd, msg, wParam, lParam);
+}
+
 int APIENTRY wWinMain(
     _In_ HINSTANCE hInstance,
     _In_opt_ HINSTANCE hPrevInstance,
@@ -122,7 +166,7 @@ int APIENTRY wWinMain(
                 static bool xamlHostRegistered = false;
                 if (!xamlHostRegistered) {
                     WNDCLASSW wc = {};
-                    wc.lpfnWndProc = DefWindowProcW;
+                    wc.lpfnWndProc = xamlHostWndProc;
                     wc.hInstance = GetModuleHandleW(nullptr);
                     wc.lpszClassName = L"GhosttyXamlHost";
                     RegisterClassW(&wc);
@@ -130,11 +174,10 @@ int APIENTRY wWinMain(
                 }
                 RECT rc;
                 GetClientRect(hwnd, &rc);
-                const int dragStrip = 8;
                 HWND xamlHostWnd = CreateWindowExW(
                     0, L"GhosttyXamlHost", nullptr,
                     WS_CHILD | WS_VISIBLE,
-                    0, dragStrip, rc.right - rc.left, session->headerHeight - dragStrip,
+                    0, 0, rc.right - rc.left, session->headerHeight,
                     hwnd, nullptr, GetModuleHandleW(nullptr), nullptr);
 
                 session->xamlHostWnd = xamlHostWnd;
@@ -147,9 +190,14 @@ int APIENTRY wWinMain(
                 winrt::check_hresult(interop->get_WindowHandle(&islandHwnd));
                 session->xamlIslandHwnd = islandHwnd;
 
+                // Subclass the island HWND so we can intercept WM_NCHITTEST
+                // and return HTTRANSPARENT for empty tab bar areas (drag).
+                g_xamlSourceForHitTest = &xamlSource;
+                SetWindowSubclass(islandHwnd, islandSubclassProc, 0, 0);
+
                 // Fill the host window.
                 SetWindowPos(islandHwnd, nullptr, 0, 0,
-                    rc.right - rc.left, session->headerHeight - dragStrip,
+                    rc.right - rc.left, session->headerHeight,
                     SWP_SHOWWINDOW);
 
                 // WinUI 2 TabView — activated via SxS manifest entries
