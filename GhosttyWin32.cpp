@@ -57,21 +57,15 @@ int APIENTRY wWinMain(
     DesktopWindowXamlSource xamlSource{ nullptr }; // Must outlive the message loop
     bool xamlReady = false;
     try {
-        OutputDebugStringA("ghostty: step 1 — creating custom App...\n");
+        // 1. Custom App with IXamlMetadataProvider
         auto app = winrt::make<GhosttyApp>();
-        OutputDebugStringA("ghostty: step 2 — App created, calling InitializeForCurrentThread...\n");
+        // 2. Initialize XAML framework (reuses our App)
         xamlManager = WindowsXamlManager::InitializeForCurrentThread();
-        // Step 3: try merging WinUI 2 theme resources (optional — TabView
-        // may work unstyled even if this fails).
-        try {
-            auto muxResources = winrt::Microsoft::UI::Xaml::Controls::XamlControlsResources();
-            winrt::Windows::UI::Xaml::Application::Current().Resources().MergedDictionaries().Append(muxResources);
-            OutputDebugStringA("ghostty: step 3 — WinUI 2 resources merged\n");
-        } catch (...) {
-            OutputDebugStringA("ghostty: step 3 — WinUI 2 resources skipped (non-fatal)\n");
-        }
+        // 3. Merge WinUI 2 theme resources (Fluent styles for TabView etc.)
+        auto muxResources = winrt::Microsoft::UI::Xaml::Controls::XamlControlsResources();
+        winrt::Windows::UI::Xaml::Application::Current().Resources().MergedDictionaries().Append(muxResources);
         xamlReady = true;
-        OutputDebugStringA("ghostty: XAML initialized OK\n");
+        OutputDebugStringA("ghostty: XAML + WinUI 2 initialized\n");
     } catch (winrt::hresult_error const& e) {
         char buf[256];
         sprintf_s(buf, "ghostty: XAML init failed at hr=0x%08x\n", (unsigned)e.code());
@@ -157,23 +151,23 @@ int APIENTRY wWinMain(
                     rc.right - rc.left, session->headerHeight,
                     SWP_SHOWWINDOW);
 
-                // Create TabView via XAML markup so the type is resolved
-                // through our IXamlMetadataProvider (GhosttyApp), not via
-                // direct RoGetActivationFactory (which fails for WinUI 2).
-                auto tabViewXaml = winrt::Windows::UI::Xaml::Markup::XamlReader::Load(
-                    LR"(<muxc:TabView
-                        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                        xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
-                        HorizontalAlignment="Stretch"
-                        VerticalAlignment="Stretch"
-                        IsAddTabButtonVisible="True"
-                        TabWidthMode="Equal">
-                        <muxc:TabView.TabItems>
-                            <muxc:TabViewItem Header="Terminal" IsClosable="False"/>
-                        </muxc:TabView.TabItems>
-                    </muxc:TabView>)");
+                // WinUI 2 TabView — activated via SxS manifest entries
+                namespace muxc = winrt::Microsoft::UI::Xaml::Controls;
+                namespace xaml = winrt::Windows::UI::Xaml;
 
-                xamlSource.Content(tabViewXaml.as<winrt::Windows::UI::Xaml::UIElement>());
+                auto tabView = muxc::TabView();
+                tabView.HorizontalAlignment(xaml::HorizontalAlignment::Stretch);
+                tabView.VerticalAlignment(xaml::VerticalAlignment::Stretch);
+                tabView.IsAddTabButtonVisible(true);
+                tabView.TabWidthMode(muxc::TabViewWidthMode::Equal);
+
+                auto tab1 = muxc::TabViewItem();
+                tab1.Header(winrt::box_value(L"Terminal"));
+                tab1.IsClosable(false);
+                tabView.TabItems().Append(tab1);
+                tabView.SelectedItem(tab1);
+
+                xamlSource.Content(tabView);
 
                 OutputDebugStringA("ghostty: XAML Island attached to header\n");
             } catch (winrt::hresult_error const& e) {
