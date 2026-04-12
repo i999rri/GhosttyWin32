@@ -6,6 +6,12 @@
 #include <vector>
 #include <memory>
 
+#ifdef _DEBUG
+#define DBG_LOG(msg) OutputDebugStringA(msg)
+#else
+#define DBG_LOG(msg) ((void)0)
+#endif
+
 // Bridge between libghostty and Win32
 // Equivalent to the Swift AppDelegate on macOS
 

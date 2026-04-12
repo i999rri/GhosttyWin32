@@ -73,11 +73,10 @@ int APIENTRY wWinMain(
         auto muxResources = winrt::Microsoft::UI::Xaml::Controls::XamlControlsResources();
         winrt::Windows::UI::Xaml::Application::Current().Resources().MergedDictionaries().Append(muxResources);
         xamlReady = true;
-        OutputDebugStringA("ghostty: XAML + WinUI 2 initialized\n");
+        DBG_LOG("ghostty: XAML + WinUI 2 initialized\n");
     } catch (winrt::hresult_error const& e) {
-        char buf[256];
-        sprintf_s(buf, "ghostty: XAML init failed at hr=0x%08x\n", (unsigned)e.code());
-        OutputDebugStringA(buf);
+        (void)e;
+        DBG_LOG("ghostty: XAML init failed\n");
     }
 
     // Default to Mesa Zink (GL→Vulkan) for flicker-free rendering.
@@ -445,11 +444,10 @@ int APIENTRY wWinMain(
                     }
                 };
 
-                OutputDebugStringA("ghostty: XAML Island + drag bar attached\n");
+                DBG_LOG("ghostty: XAML Island attached\n");
             } catch (winrt::hresult_error const& e) {
-                char buf[256];
-                sprintf_s(buf, "ghostty: XAML Island failed hr=0x%08x\n", (unsigned)e.code());
-                OutputDebugStringA(buf);
+                (void)e;
+                DBG_LOG("ghostty: XAML Island failed\n");
             }
         }
     }

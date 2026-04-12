@@ -10,11 +10,6 @@
 #pragma comment(lib, "dwmapi.lib")
 #include "GhosttyBridge.h"
 
-#ifdef _DEBUG
-#define DBG_LOG(msg) OutputDebugStringA(msg)
-#else
-#define DBG_LOG(msg) ((void)0)
-#endif
 #pragma comment(lib, "opengl32.lib")
 #pragma comment(lib, "gdi32.lib")
 
@@ -105,16 +100,10 @@ bool GhosttyBridge::initialize() {
     // Check config diagnostics
     uint32_t diagCount = ghostty_config_diagnostics_count(m_config);
     if (diagCount > 0) {
-        char buf[128];
-        sprintf_s(buf, "ghostty: config has %u diagnostics\n", diagCount);
-        OutputDebugStringA(buf);
+        DBG_LOG("ghostty: config has diagnostics\n");
         for (uint32_t i = 0; i < diagCount; i++) {
             ghostty_diagnostic_s diag = ghostty_config_get_diagnostic(m_config, i);
-            if (diag.message) {
-                OutputDebugStringA("ghostty: config diag: ");
-                OutputDebugStringA(diag.message);
-                OutputDebugStringA("\n");
-            }
+            if (diag.message) DBG_LOG(diag.message);
         }
     }
     DBG_LOG("ghostty: config finalized\n");
@@ -852,11 +841,6 @@ TerminalSession* GhosttyBridge::createSurface(HWND parentHwnd) {
             char rendererBuf[32] = {};
             GetEnvironmentVariableA("GHOSTTY_RENDERER", rendererBuf, sizeof(rendererBuf));
             bool useDirectX = (strcmp(rendererBuf, "opengl") != 0);
-            {
-                char logBuf[128];
-                sprintf_s(logBuf, "ghostty: GHOSTTY_RENDERER=%s useDirectX=%d\n", rendererBuf, useDirectX);
-                OutputDebugStringA(logBuf);
-            }
 
             if (!useDirectX) {
                 // Create and activate OpenGL context on this thread
@@ -878,22 +862,7 @@ TerminalSession* GhosttyBridge::createSurface(HWND parentHwnd) {
             UINT dpi = GetDpiForWindow(sess->hwnd);
             surfConfig.scale_factor = (double)dpi / 96.0;
 
-            {
-                char buf[256];
-                sprintf_s(buf, "ghostty: calling ghostty_surface_new app=%p hwnd=%p sessions=%zu\n",
-                    a->self->m_app, sess->hwnd, a->self->m_sessions.size());
-                OutputDebugStringA(buf);
-            }
-
-            __try {
-                sess->surface = ghostty_surface_new(a->self->m_app, &surfConfig);
-            } __except(EXCEPTION_EXECUTE_HANDLER) {
-                char buf[128];
-                sprintf_s(buf, "ghostty: CRASH in ghostty_surface_new! code=0x%08X\n",
-                    GetExceptionCode());
-                OutputDebugStringA(buf);
-                sess->surface = nullptr;
-            }
+            sess->surface = ghostty_surface_new(a->self->m_app, &surfConfig);
 
             // Release GL context BEFORE thread exits so renderer thread can acquire it
             if (!useDirectX) wglMakeCurrent(nullptr, nullptr);
@@ -1100,10 +1069,6 @@ bool GhosttyBridge::onAction(ghostty_app_t app, ghostty_target_s target, ghostty
             sess->minHeight = action.action.size_limit.min_height;
             sess->maxWidth = action.action.size_limit.max_width;
             sess->maxHeight = action.action.size_limit.max_height;
-            char buf[128];
-            sprintf_s(buf, "ghostty: SIZE_LIMIT min=%ux%u max=%ux%u\n",
-                sess->minWidth, sess->minHeight, sess->maxWidth, sess->maxHeight);
-            OutputDebugStringA(buf);
         }
         return true;
     }
