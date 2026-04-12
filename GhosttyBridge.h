@@ -112,5 +112,9 @@ public:
     // onWakeup uses this instead of m_sessions to avoid data races.
     HWND m_wakeupHwnd = nullptr;
 
+    // XAML Island HWNDs — shared across all tabs, created once.
+    HWND m_xamlHostWnd = nullptr;
+    HWND m_xamlIslandHwnd = nullptr;
+
     std::vector<std::unique_ptr<TerminalSession>> m_sessions;
 };

@@ -637,18 +637,12 @@ LRESULT CALLBACK GhosttyBridge::mainWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
         int top = sess ? sess->headerHeight : TerminalSession::kDefaultHeaderHeight;
         int childHeight = height - top;
         if (childHeight < 1) childHeight = 1;
-        // Resize XAML host (use sess if available, otherwise find from sessions)
-        HWND xamlHost = sess ? sess->xamlHostWnd : nullptr;
-        HWND xamlIsland = sess ? sess->xamlIslandHwnd : nullptr;
-        if (!xamlHost && !bridge.m_sessions.empty()) {
-            xamlHost = bridge.m_sessions.front()->xamlHostWnd;
-            xamlIsland = bridge.m_sessions.front()->xamlIslandHwnd;
-        }
-        if (xamlHost && top > 0) {
-            SetWindowPos(xamlHost, nullptr, 0, 0, width, top,
+        // Resize XAML host (stored on bridge, persists across tab closes)
+        if (bridge.m_xamlHostWnd && top > 0) {
+            SetWindowPos(bridge.m_xamlHostWnd, nullptr, 0, 0, width, top,
                 SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW);
-            if (xamlIsland) {
-                SetWindowPos(xamlIsland, nullptr, 0, 0, width, top,
+            if (bridge.m_xamlIslandHwnd) {
+                SetWindowPos(bridge.m_xamlIslandHwnd, nullptr, 0, 0, width, top,
                     SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW);
             }
         }
