@@ -12,6 +12,10 @@ Release/
 .vs/
 *.vcxproj.user
 
+# NuGet
+packages/
+Generated Files/
+
 # Ghostty DLL and import library (build from source)
 ghostty/ghostty.dll
 ghostty/ghostty.lib

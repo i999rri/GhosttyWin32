@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0"
+          xmlns:asmv3="urn:schemas-microsoft-com:asm.v3">
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <!-- Windows 10 1903+ (required for XAML Islands) -->
+      <maxversiontested Id="10.0.26100.0"/>
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}"/>
+    </application>
+  </compatibility>
+
+  <!-- Registration-free WinRT: activate WinUI 2 classes from the local DLL
+       without MSIX packaging or registry COM entries. The DLL is copied from
+       the Microsoft.UI.Xaml.2.8 framework package at build time. -->
+  <file name="Microsoft.UI.Xaml.dll">
+    <activatableClass
+      name="Microsoft.UI.Xaml.Controls.TabView"
+      threadingModel="both"
+      xmlns="urn:schemas-microsoft-com:winrt.v1" />
+    <activatableClass
+      name="Microsoft.UI.Xaml.Controls.TabViewItem"
+      threadingModel="both"
+      xmlns="urn:schemas-microsoft-com:winrt.v1" />
+    <activatableClass
+      name="Microsoft.UI.Xaml.Controls.TabViewItemTemplateSettings"
+      threadingModel="both"
+      xmlns="urn:schemas-microsoft-com:winrt.v1" />
+    <activatableClass
+      name="Microsoft.UI.Xaml.Controls.Primitives.TabViewListView"
+      threadingModel="both"
+      xmlns="urn:schemas-microsoft-com:winrt.v1" />
+    <activatableClass
+      name="Microsoft.UI.Xaml.Controls.XamlControlsResources"
+      threadingModel="both"
+      xmlns="urn:schemas-microsoft-com:winrt.v1" />
+    <activatableClass
+      name="Microsoft.UI.Xaml.XamlTypeInfo.XamlControlsXamlMetaDataProvider"
+      threadingModel="both"
+      xmlns="urn:schemas-microsoft-com:winrt.v1" />
+    <activatableClass
+      name="Microsoft.UI.Xaml.Automation.Peers.TabViewAutomationPeer"
+      threadingModel="both"
+      xmlns="urn:schemas-microsoft-com:winrt.v1" />
+    <activatableClass
+      name="Microsoft.UI.Xaml.Automation.Peers.TabViewItemAutomationPeer"
+      threadingModel="both"
+      xmlns="urn:schemas-microsoft-com:winrt.v1" />
+  </file>
+</assembly>
