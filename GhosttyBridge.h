@@ -33,7 +33,8 @@ struct TerminalSession {
     // Reserved area at the top of the main window for the XAML tab bar (which
     // also serves as the drag region, since there is no native caption). Zero
     // when window-decoration=false to give the chromeless terminal-only look.
-    int headerHeight = 40;
+    static constexpr int kDefaultHeaderHeight = 40;
+    int headerHeight = kDefaultHeaderHeight;
 
     // XAML Islands: a dedicated host child window and the island HWND inside it.
     HWND xamlHostWnd = nullptr;    // our child of parentHwnd, hosts the island
