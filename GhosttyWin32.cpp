@@ -348,7 +348,8 @@ int APIENTRY wWinMain(
                         }
                         SetWindowPos(selHwnd, HWND_TOP, 0, 0, 0, 0,
                             SWP_NOMOVE | SWP_NOSIZE);
-                        SetFocus(selHwnd);
+                        // Defer focus — XAML may steal it during event dispatch
+                        PostMessageW(parentHwnd, WM_APP, 0, 0);
                     });
 
                 // Tab close requested: destroy the session

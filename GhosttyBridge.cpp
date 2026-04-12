@@ -684,16 +684,22 @@ LRESULT CALLBACK GhosttyBridge::mainWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
         }
         return 0;
 
-    case WM_APP:
+    case WM_APP: {
         // Posted by XAML Island's GotFocus / SelectionChanged — return focus
-        // to whichever terminal session is currently visible.
-        for (auto& s : bridge.m_sessions) {
-            if (s->hwnd && IsWindowVisible(s->hwnd)) {
-                SetFocus(s->hwnd);
-                break;
+        // to the topmost (active) terminal session child window.
+        HWND topChild = GetTopWindow(hwnd);
+        // Walk down to find the first session child (skip XAML host etc.)
+        while (topChild) {
+            for (auto& s : bridge.m_sessions) {
+                if (s->hwnd == topChild) {
+                    SetFocus(topChild);
+                    return 0;
+                }
             }
+            topChild = GetNextWindow(topChild, GW_HWNDNEXT);
         }
         return 0;
+    }
 
     case WM_USER + 1:
         // Wakeup from ghostty — process pending events on main thread.
