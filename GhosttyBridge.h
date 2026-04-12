@@ -91,8 +91,11 @@ private:
     static LRESULT CALLBACK mainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
     HWND createMainWindow(TerminalSession* session);
 
-    // Win32 child window for OpenGL/DirectX rendering
-    static LRESULT CALLBACK glWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+    // Win32 child window for rendering (dispatches to GL or DirectX)
+    static LRESULT CALLBACK renderWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+    static void ensureRenderClassRegistered();
+    HWND createRendererWindow(HWND parent, TerminalSession* session);
+    HWND createDirectXWindow(HWND parent, TerminalSession* session);
     HWND createGLWindow(HWND parent, TerminalSession* session);
 
     // OpenGL context for WGL (per-session)

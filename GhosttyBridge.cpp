@@ -225,7 +225,7 @@ TerminalSession* GhosttyBridge::sessionFromSurface(ghostty_surface_t surface) {
     return static_cast<TerminalSession*>(ghostty_surface_userdata(surface));
 }
 
-LRESULT CALLBACK GhosttyBridge::glWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+LRESULT CALLBACK GhosttyBridge::renderWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     // Stash the TerminalSession* passed via CreateWindowEx lpParam
     if (msg == WM_NCCREATE) {
         auto* cs = reinterpret_cast<CREATESTRUCTW*>(lParam);
@@ -764,43 +764,53 @@ HWND GhosttyBridge::createMainWindow(TerminalSession* session) {
         nullptr, nullptr, GetModuleHandleW(nullptr), session);
 }
 
-HWND GhosttyBridge::createGLWindow(HWND parent, TerminalSession* session) {
+void GhosttyBridge::ensureRenderClassRegistered() {
     static bool registered = false;
-    if (!registered) {
-        WNDCLASSW wc = {};
-        wc.lpfnWndProc = glWndProc;
-        wc.hInstance = GetModuleHandleW(nullptr);
-        wc.lpszClassName = L"GhosttyGLWindow";
-        wc.style = CS_OWNDC;
-        wc.hCursor = LoadCursorW(nullptr, IDC_IBEAM);
-        RegisterClassW(&wc);
-        registered = true;
-    }
+    if (registered) return;
+    WNDCLASSW wc = {};
+    wc.lpfnWndProc = renderWndProc;
+    wc.hInstance = GetModuleHandleW(nullptr);
+    wc.lpszClassName = L"GhosttyRenderWindow";
+    wc.style = CS_OWNDC;
+    wc.hCursor = LoadCursorW(nullptr, IDC_IBEAM);
+    RegisterClassW(&wc);
+    registered = true;
+}
 
-    RECT rc;
-    GetClientRect(parent, &rc);
-    int top = session ? session->headerHeight : 0;
-    // WS_EX_NOREDIRECTIONBITMAP is required for DirectComposition rendering
-    // but incompatible with OpenGL (which needs the GDI redirection surface).
+HWND GhosttyBridge::createRendererWindow(HWND parent, TerminalSession* session) {
     char rendererBuf[32] = {};
     GetEnvironmentVariableA("GHOSTTY_RENDERER", rendererBuf, sizeof(rendererBuf));
     bool useDirectX = (strcmp(rendererBuf, "opengl") != 0);
-    DWORD exStyle = useDirectX ? WS_EX_NOREDIRECTIONBITMAP : 0;
-    HWND hwnd = CreateWindowExW(
-        exStyle, L"GhosttyGLWindow", nullptr,
+    return useDirectX
+        ? createDirectXWindow(parent, session)
+        : createGLWindow(parent, session);
+}
+
+HWND GhosttyBridge::createDirectXWindow(HWND parent, TerminalSession* session) {
+    ensureRenderClassRegistered();
+    // DirectComposition needs WS_EX_NOREDIRECTIONBITMAP — no GDI surface,
+    // composition visuals show through directly.
+    RECT rc;
+    GetClientRect(parent, &rc);
+    int top = session ? session->headerHeight : 0;
+    return CreateWindowExW(
+        WS_EX_NOREDIRECTIONBITMAP, L"GhosttyRenderWindow", nullptr,
         WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN,
         0, top, rc.right - rc.left, (rc.bottom - rc.top) - top,
         parent, nullptr, GetModuleHandleW(nullptr), session);
+}
 
-    if (hwnd) {
-        char buf[128];
-        sprintf_s(buf, "ghostty: GL window created: %p\n", hwnd);
-        DBG_LOG(buf);
-    } else {
-        DBG_LOG("ghostty: failed to create GL window\n");
-    }
-
-    return hwnd;
+HWND GhosttyBridge::createGLWindow(HWND parent, TerminalSession* session) {
+    ensureRenderClassRegistered();
+    // OpenGL needs a standard GDI surface — no WS_EX_NOREDIRECTIONBITMAP.
+    RECT rc;
+    GetClientRect(parent, &rc);
+    int top = session ? session->headerHeight : 0;
+    return CreateWindowExW(
+        0, L"GhosttyRenderWindow", nullptr,
+        WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN,
+        0, top, rc.right - rc.left, (rc.bottom - rc.top) - top,
+        parent, nullptr, GetModuleHandleW(nullptr), session);
 }
 
 TerminalSession* GhosttyBridge::createSurface(HWND parentHwnd) {
@@ -830,7 +840,7 @@ TerminalSession* GhosttyBridge::createSurface(HWND parentHwnd) {
     }
 
     // Create the rendering child — session pointer is plumbed through WM_NCCREATE
-    session->hwnd = createGLWindow(parentHwnd, session);
+    session->hwnd = createRendererWindow(parentHwnd, session);
     if (!session->hwnd) {
         if (session->parentHwnd) DestroyWindow(session->parentHwnd);
         return nullptr;
