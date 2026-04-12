@@ -612,15 +612,20 @@ LRESULT CALLBACK GhosttyBridge::mainWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
         return HTCLIENT;
     }
 
-    case WM_GETMINMAXINFO:
-        if (sess) {
+    case WM_GETMINMAXINFO: {
+        // Use sess if available, otherwise find any active session for size limits
+        TerminalSession* limSess = sess;
+        if (!limSess && !bridge.m_sessions.empty())
+            limSess = bridge.m_sessions.front().get();
+        if (limSess) {
             auto* mmi = reinterpret_cast<MINMAXINFO*>(lParam);
-            if (sess->minWidth > 0) mmi->ptMinTrackSize.x = sess->minWidth;
-            if (sess->minHeight > 0) mmi->ptMinTrackSize.y = sess->minHeight;
-            if (sess->maxWidth > 0) mmi->ptMaxTrackSize.x = sess->maxWidth;
-            if (sess->maxHeight > 0) mmi->ptMaxTrackSize.y = sess->maxHeight;
+            if (limSess->minWidth > 0) mmi->ptMinTrackSize.x = limSess->minWidth;
+            if (limSess->minHeight > 0) mmi->ptMinTrackSize.y = limSess->minHeight;
+            if (limSess->maxWidth > 0) mmi->ptMaxTrackSize.x = limSess->maxWidth;
+            if (limSess->maxHeight > 0) mmi->ptMaxTrackSize.y = limSess->maxHeight;
         }
         return 0;
+    }
 
     case WM_SIZE: {
         int width = LOWORD(lParam);
@@ -673,31 +678,32 @@ LRESULT CALLBACK GhosttyBridge::mainWndProc(HWND hwnd, UINT msg, WPARAM wParam, 
     }
 
     case WM_SETFOCUS:
-        // Forward focus to the rendering child so it receives keyboard input.
-        if (sess && sess->hwnd) SetFocus(sess->hwnd);
+        // Forward focus to the topmost rendering child.
+        PostMessageW(hwnd, WM_APP, 0, 0);
         return 0;
 
     case WM_ACTIVATE:
-        // When the window is activated (clicked, alt-tabbed to), force focus
-        // to the Ghostty child. The XAML Island's internal windows tend to
-        // capture focus otherwise, preventing terminal keyboard input.
-        if (LOWORD(wParam) != WA_INACTIVE && sess && sess->hwnd) {
-            SetFocus(sess->hwnd);
+        // When the window is activated, return focus to the active tab.
+        if (LOWORD(wParam) != WA_INACTIVE) {
+            PostMessageW(hwnd, WM_APP, 0, 0);
         }
         return 0;
 
-    case WM_DPICHANGED:
-        if (sess && sess->surface) {
-            UINT dpi = HIWORD(wParam);
-            double scale = (double)dpi / 96.0;
-            ghostty_surface_set_content_scale(sess->surface, scale, scale);
-            RECT* suggested = (RECT*)lParam;
-            SetWindowPos(hwnd, nullptr,
-                suggested->left, suggested->top,
-                suggested->right - suggested->left,
-                suggested->bottom - suggested->top,
-                SWP_NOZORDER | SWP_NOACTIVATE);
+    case WM_DPICHANGED: {
+        UINT dpi = HIWORD(wParam);
+        double scale = (double)dpi / 96.0;
+        // Apply DPI to all surfaces
+        for (auto& s : bridge.m_sessions) {
+            if (s->surface)
+                ghostty_surface_set_content_scale(s->surface, scale, scale);
         }
+        RECT* suggested = (RECT*)lParam;
+        SetWindowPos(hwnd, nullptr,
+            suggested->left, suggested->top,
+            suggested->right - suggested->left,
+            suggested->bottom - suggested->top,
+            SWP_NOZORDER | SWP_NOACTIVATE);
+    }
         return 0;
 
     case WM_APP: {
