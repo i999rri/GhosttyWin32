@@ -780,8 +780,14 @@ HWND GhosttyBridge::createGLWindow(HWND parent, TerminalSession* session) {
     RECT rc;
     GetClientRect(parent, &rc);
     int top = session ? session->headerHeight : 0;
+    // WS_EX_NOREDIRECTIONBITMAP is required for DirectComposition rendering
+    // but incompatible with OpenGL (which needs the GDI redirection surface).
+    char rendererBuf[32] = {};
+    GetEnvironmentVariableA("GHOSTTY_RENDERER", rendererBuf, sizeof(rendererBuf));
+    bool useDirectX = (strcmp(rendererBuf, "opengl") != 0);
+    DWORD exStyle = useDirectX ? WS_EX_NOREDIRECTIONBITMAP : 0;
     HWND hwnd = CreateWindowExW(
-        WS_EX_NOREDIRECTIONBITMAP, L"GhosttyGLWindow", nullptr,
+        exStyle, L"GhosttyGLWindow", nullptr,
         WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN,
         0, top, rc.right - rc.left, (rc.bottom - rc.top) - top,
         parent, nullptr, GetModuleHandleW(nullptr), session);
