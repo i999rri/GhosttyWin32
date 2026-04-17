@@ -3,9 +3,6 @@
 #include <windowsx.h>
 #include "GhosttyBridge.h"
 
-extern "C" void dx_set_surface_visible(void* dev, bool visible);
-extern "C" void* ghostty_surface_dx_device(void* surface);
-
 using namespace winrt;
 using namespace winrt::Windows::UI::Xaml::Hosting;
 
@@ -75,13 +72,14 @@ int APIENTRY wWinMain(
         xamlReady = true;
         DBG_LOG("ghostty: XAML + WinUI 2 initialized\n");
     } catch (winrt::hresult_error const& e) {
-        (void)e;
-        DBG_LOG("ghostty: XAML init failed\n");
+        char buf[128];
+        sprintf_s(buf, "ghostty: XAML init failed hr=0x%08X\n",
+            static_cast<unsigned int>(e.code()));
+        DBG_LOG(buf);
     }
-
-    // Default to Mesa Zink (GL→Vulkan) for flicker-free rendering.
-    // Set before any OpenGL calls. Users can override with GALLIUM_DRIVER env var.
-    if (!GetEnvironmentVariableA("GALLIUM_DRIVER", nullptr, 0)) {
+    // Default to Mesa Zink (GL→Vulkan) for flicker-free OpenGL rendering.
+    // Only set when using the OpenGL renderer; DirectX doesn't use Mesa.
+    if (!shouldUseDirectX() && !GetEnvironmentVariableA("GALLIUM_DRIVER", nullptr, 0)) {
         SetEnvironmentVariableA("GALLIUM_DRIVER", "zink");
     }
 
@@ -347,8 +345,7 @@ int APIENTRY wWinMain(
                         // Show/hide via DirectComposition (safe while renderers are active)
                         for (auto& s : bridge.sessions()) {
                             if (s->hwnd && s->surface) {
-                                void* dxDev = ghostty_surface_dx_device(s->surface);
-                                if (dxDev) dx_set_surface_visible(dxDev, s->hwnd == selHwnd);
+                                ghostty_surface_set_occlusion(s->surface, s->hwnd == selHwnd);
                             }
                         }
                         SetWindowPos(selHwnd, HWND_TOP, 0, 0, 0, 0,
@@ -391,8 +388,7 @@ int APIENTRY wWinMain(
                             HWND selHwnd = reinterpret_cast<HWND>(selTag);
                             for (auto& s : bridge.sessions()) {
                                 if (s->hwnd && s->surface) {
-                                    void* dxDev = ghostty_surface_dx_device(s->surface);
-                                    if (dxDev) dx_set_surface_visible(dxDev, s->hwnd == selHwnd);
+                                    ghostty_surface_set_occlusion(s->surface, s->hwnd == selHwnd);
                                 }
                             }
                             SetWindowPos(selHwnd, HWND_TOP, 0, 0, 0, 0,

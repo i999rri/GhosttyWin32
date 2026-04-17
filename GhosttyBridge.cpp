@@ -13,13 +13,6 @@
 #pragma comment(lib, "opengl32.lib")
 #pragma comment(lib, "gdi32.lib")
 
-// DirectX renderer: notify resize from main thread (exported from ghostty.dll)
-extern "C" void dx_notify_resize(void* dev, uint32_t w, uint32_t h);
-// Get the DxDevice pointer from a ghostty surface (returns the per-surface device)
-extern "C" void* ghostty_surface_dx_device(void* surface);
-// DirectComposition visibility control (safe while renderer is active)
-extern "C" void dx_set_surface_visible(void* dev, bool visible);
-
 GhosttyBridge::TitleChangedFn GhosttyBridge::s_titleChangedFn = nullptr;
 void* GhosttyBridge::s_titleChangedCtx = nullptr;
 GhosttyBridge::BgColorChangedFn GhosttyBridge::s_bgColorChangedFn = nullptr;
@@ -225,7 +218,7 @@ TerminalSession* GhosttyBridge::sessionFromSurface(ghostty_surface_t surface) {
     return static_cast<TerminalSession*>(ghostty_surface_userdata(surface));
 }
 
-LRESULT CALLBACK GhosttyBridge::glWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+LRESULT CALLBACK GhosttyBridge::renderWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     // Stash the TerminalSession* passed via CreateWindowEx lpParam
     if (msg == WM_NCCREATE) {
         auto* cs = reinterpret_cast<CREATESTRUCTW*>(lParam);
@@ -385,16 +378,11 @@ LRESULT CALLBACK GhosttyBridge::glWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
     case WM_SIZE: {
         UINT width = LOWORD(lParam);
         UINT height = HIWORD(lParam);
-        if (width > 0 && height > 0) {
-            // Notify the per-surface DirectX device of the new size
-            if (hasSurface) {
-                void* dxDev = ghostty_surface_dx_device(sess->surface);
-                dx_notify_resize(dxDev, width, height);
-            }
-            if (hasSurface) {
-                ghostty_surface_set_size(sess->surface, width, height);
-                ghostty_surface_refresh(sess->surface);
-            }
+        if (width > 0 && height > 0 && hasSurface) {
+            // Renderer-agnostic resize notification. For DirectX this routes
+            // to a renderer-thread hook that updates the swap chain size.
+            ghostty_surface_set_size(sess->surface, width, height);
+            ghostty_surface_refresh(sess->surface);
         }
         return 0;
     }
@@ -764,37 +752,50 @@ HWND GhosttyBridge::createMainWindow(TerminalSession* session) {
         nullptr, nullptr, GetModuleHandleW(nullptr), session);
 }
 
-HWND GhosttyBridge::createGLWindow(HWND parent, TerminalSession* session) {
+void GhosttyBridge::ensureRenderClassRegistered() {
     static bool registered = false;
-    if (!registered) {
-        WNDCLASSW wc = {};
-        wc.lpfnWndProc = glWndProc;
-        wc.hInstance = GetModuleHandleW(nullptr);
-        wc.lpszClassName = L"GhosttyGLWindow";
-        wc.style = CS_OWNDC;
-        wc.hCursor = LoadCursorW(nullptr, IDC_IBEAM);
-        RegisterClassW(&wc);
-        registered = true;
-    }
+    if (registered) return;
+    WNDCLASSW wc = {};
+    wc.lpfnWndProc = renderWndProc;
+    wc.hInstance = GetModuleHandleW(nullptr);
+    wc.lpszClassName = L"GhosttyRenderWindow";
+    wc.style = CS_OWNDC;
+    wc.hCursor = LoadCursorW(nullptr, IDC_IBEAM);
+    RegisterClassW(&wc);
+    registered = true;
+}
 
+HWND GhosttyBridge::createRendererWindow(HWND parent, TerminalSession* session) {
+    return shouldUseDirectX()
+        ? createDirectXWindow(parent, session)
+        : createGLWindow(parent, session);
+}
+
+HWND GhosttyBridge::createDirectXWindow(HWND parent, TerminalSession* session) {
+    ensureRenderClassRegistered();
+    // DirectComposition needs WS_EX_NOREDIRECTIONBITMAP — no GDI surface,
+    // composition visuals show through directly.
     RECT rc;
     GetClientRect(parent, &rc);
     int top = session ? session->headerHeight : 0;
-    HWND hwnd = CreateWindowExW(
-        WS_EX_NOREDIRECTIONBITMAP, L"GhosttyGLWindow", nullptr,
+    return CreateWindowExW(
+        WS_EX_NOREDIRECTIONBITMAP, L"GhosttyRenderWindow", nullptr,
         WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN,
         0, top, rc.right - rc.left, (rc.bottom - rc.top) - top,
         parent, nullptr, GetModuleHandleW(nullptr), session);
+}
 
-    if (hwnd) {
-        char buf[128];
-        sprintf_s(buf, "ghostty: GL window created: %p\n", hwnd);
-        DBG_LOG(buf);
-    } else {
-        DBG_LOG("ghostty: failed to create GL window\n");
-    }
-
-    return hwnd;
+HWND GhosttyBridge::createGLWindow(HWND parent, TerminalSession* session) {
+    ensureRenderClassRegistered();
+    // OpenGL needs a standard GDI surface — no WS_EX_NOREDIRECTIONBITMAP.
+    RECT rc;
+    GetClientRect(parent, &rc);
+    int top = session ? session->headerHeight : 0;
+    return CreateWindowExW(
+        0, L"GhosttyRenderWindow", nullptr,
+        WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN,
+        0, top, rc.right - rc.left, (rc.bottom - rc.top) - top,
+        parent, nullptr, GetModuleHandleW(nullptr), session);
 }
 
 TerminalSession* GhosttyBridge::createSurface(HWND parentHwnd) {
@@ -824,7 +825,7 @@ TerminalSession* GhosttyBridge::createSurface(HWND parentHwnd) {
     }
 
     // Create the rendering child — session pointer is plumbed through WM_NCCREATE
-    session->hwnd = createGLWindow(parentHwnd, session);
+    session->hwnd = createRendererWindow(parentHwnd, session);
     if (!session->hwnd) {
         if (session->parentHwnd) DestroyWindow(session->parentHwnd);
         return nullptr;
@@ -843,10 +844,7 @@ TerminalSession* GhosttyBridge::createSurface(HWND parentHwnd) {
             auto* a = static_cast<Args*>(param);
             TerminalSession* sess = a->session;
 
-            // Default to DirectX, use GHOSTTY_RENDERER=opengl to override
-            char rendererBuf[32] = {};
-            GetEnvironmentVariableA("GHOSTTY_RENDERER", rendererBuf, sizeof(rendererBuf));
-            bool useDirectX = (strcmp(rendererBuf, "opengl") != 0);
+            bool useDirectX = shouldUseDirectX();
 
             if (!useDirectX) {
                 // Create and activate OpenGL context on this thread

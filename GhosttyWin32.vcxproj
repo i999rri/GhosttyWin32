@@ -164,8 +164,19 @@
     <Image Include="small.ico" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
-  <Target Name="CopyGhosttyDll" AfterTargets="Build">
+  <PropertyGroup>
+    <MuxPkgDir>$(ProjectDir)packages\Microsoft.UI.Xaml.2.8.6\</MuxPkgDir>
+    <MuxAppxPath>$(MuxPkgDir)tools\AppX\x64\Release\Microsoft.UI.Xaml.2.8.appx</MuxAppxPath>
+    <MuxExtractDir>$(IntDir)MicrosoftUIXaml\</MuxExtractDir>
+  </PropertyGroup>
+  <Target Name="ExtractWinUI" BeforeTargets="Build" Condition="!Exists('$(MuxExtractDir)Microsoft.UI.Xaml.dll')">
+    <MakeDir Directories="$(MuxExtractDir)" />
+    <Unzip SourceFiles="$(MuxAppxPath)" DestinationFolder="$(MuxExtractDir)" OverwriteReadOnlyFiles="true" />
+  </Target>
+  <Target Name="CopyRuntimeDeps" AfterTargets="Build">
     <Copy SourceFiles="$(ProjectDir)ghostty\ghostty.dll" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(MuxExtractDir)Microsoft.UI.Xaml.dll" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(MuxExtractDir)resources.pri" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
   </Target>
   <ImportGroup Label="ExtensionTargets">
     <Import Project="$(ProjectDir)packages\Microsoft.Windows.CppWinRT.2.0.250303.1\build\native\Microsoft.Windows.CppWinRT.targets" Condition="Exists('$(ProjectDir)packages\Microsoft.Windows.CppWinRT.2.0.250303.1\build\native\Microsoft.Windows.CppWinRT.targets')" />

@@ -12,6 +12,18 @@
 #define DBG_LOG(msg) ((void)0)
 #endif
 
+// Returns true if DirectX should be used, false for OpenGL.
+// Accepts "opengl" or "directx"; anything else falls back to DirectX.
+inline bool shouldUseDirectX() {
+    char buf[32] = {};
+    GetEnvironmentVariableA("GHOSTTY_RENDERER", buf, sizeof(buf));
+    if (_stricmp(buf, "opengl") == 0) return false;
+    if (buf[0] != '\0' && _stricmp(buf, "directx") != 0) {
+        DBG_LOG("ghostty: unknown GHOSTTY_RENDERER value, defaulting to DirectX\n");
+    }
+    return true;
+}
+
 // Bridge between libghostty and Win32
 // Equivalent to the Swift AppDelegate on macOS
 
@@ -91,8 +103,11 @@ private:
     static LRESULT CALLBACK mainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
     HWND createMainWindow(TerminalSession* session);
 
-    // Win32 child window for OpenGL/DirectX rendering
-    static LRESULT CALLBACK glWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+    // Win32 child window for rendering (dispatches to GL or DirectX)
+    static LRESULT CALLBACK renderWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+    static void ensureRenderClassRegistered();
+    HWND createRendererWindow(HWND parent, TerminalSession* session);
+    HWND createDirectXWindow(HWND parent, TerminalSession* session);
     HWND createGLWindow(HWND parent, TerminalSession* session);
 
     // OpenGL context for WGL (per-session)
