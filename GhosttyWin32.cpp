@@ -1,41 +1,11 @@
 #include "framework.h"
 #include <dwmapi.h>
 #include <windowsx.h>
+#include <MddBootstrap.h>
 #include "GhosttyBridge.h"
 
 using namespace winrt;
-using namespace winrt::Windows::UI::Xaml::Hosting;
-
-// Custom Application subclass that provides WinUI 2 metadata.
-// WindowsXamlManager needs an Application with IXamlMetadataProvider
-// so it can resolve WinUI 2 types (TabView etc.) at runtime.
-// The actual metadata provider (XamlControlsXamlMetaDataProvider) is
-// created lazily to avoid the circular dependency: the Application
-// must exist before the provider can be instantiated.
-struct GhosttyApp : winrt::Windows::UI::Xaml::ApplicationT<GhosttyApp,
-    winrt::Windows::UI::Xaml::Markup::IXamlMetadataProvider>
-{
-    winrt::Microsoft::UI::Xaml::XamlTypeInfo::XamlControlsXamlMetaDataProvider m_provider{ nullptr };
-
-    winrt::Windows::UI::Xaml::Markup::IXamlType GetXamlType(
-        winrt::Windows::UI::Xaml::Interop::TypeName const& type)
-    {
-        if (!m_provider) m_provider = winrt::Microsoft::UI::Xaml::XamlTypeInfo::XamlControlsXamlMetaDataProvider();
-        return m_provider.GetXamlType(type);
-    }
-
-    winrt::Windows::UI::Xaml::Markup::IXamlType GetXamlType(winrt::hstring const& fullName)
-    {
-        if (!m_provider) m_provider = winrt::Microsoft::UI::Xaml::XamlTypeInfo::XamlControlsXamlMetaDataProvider();
-        return m_provider.GetXamlType(fullName);
-    }
-
-    winrt::com_array<winrt::Windows::UI::Xaml::Markup::XmlnsDefinition> GetXmlnsDefinitions()
-    {
-        if (!m_provider) m_provider = winrt::Microsoft::UI::Xaml::XamlTypeInfo::XamlControlsXamlMetaDataProvider();
-        return m_provider.GetXmlnsDefinitions();
-    }
-};
+using namespace winrt::Microsoft::UI::Xaml::Hosting;
 
 // Transparent drag bar overlay — sits ON TOP of the XAML Island in z-order.
 // Intercepts WM_NCHITTEST: if the mouse is over interactive XAML content
@@ -54,23 +24,37 @@ int APIENTRY wWinMain(
     // Enable Per-Monitor DPI awareness
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 
-    // Initialize C++/WinRT and WinUI 2 XAML Islands. The UWP XAML runtime
-    // is built into Windows — no bootstrap, resources.pri, or package
-    // identity needed (unlike WinUI 3, see issue #18).
+    // Initialize Windows App SDK bootstrap (required for unpackaged apps)
     winrt::init_apartment(winrt::apartment_type::single_threaded);
+    PACKAGE_VERSION minVer{};
+    minVer.Major = 1;
+    minVer.Minor = 8;
+    HRESULT bootstrapHr = MddBootstrapInitialize(0x00010008, nullptr, minVer);
+    if (FAILED(bootstrapHr)) {
+        char buf[128];
+        sprintf_s(buf, "ghostty: MddBootstrap failed hr=0x%08X\n",
+            static_cast<unsigned int>(bootstrapHr));
+        DBG_LOG(buf);
+        MessageBoxW(nullptr, L"Windows App Runtime not found.\nPlease install it from https://aka.ms/windowsappsdk", L"Error", MB_OK);
+        return 1;
+    }
+
+    // WinUI 3 requires a DispatcherQueue on the thread before XAML init
+    auto dispatcherController = winrt::Microsoft::UI::Dispatching::DispatcherQueueController::CreateOnCurrentThread();
+
+    // Initialize WinUI 3 XAML Islands
     WindowsXamlManager xamlManager{ nullptr };
-    DesktopWindowXamlSource xamlSource{ nullptr }; // Must outlive the message loop
+    DesktopWindowXamlSource xamlSource{ nullptr };
     bool xamlReady = false;
     try {
-        // 1. Custom App with IXamlMetadataProvider
-        auto app = winrt::make<GhosttyApp>();
-        // 2. Initialize XAML framework (reuses our App)
         xamlManager = WindowsXamlManager::InitializeForCurrentThread();
-        // 3. Merge WinUI 2 theme resources (Fluent styles for TabView etc.)
-        auto muxResources = winrt::Microsoft::UI::Xaml::Controls::XamlControlsResources();
-        winrt::Windows::UI::Xaml::Application::Current().Resources().MergedDictionaries().Append(muxResources);
+        // Set WinUI 3 theme resources as the application-level dictionary.
+        // XamlControlsResources IS a ResourceDictionary that includes all
+        // Fluent system brushes (Acrylic, etc.) and control styles.
+        auto app = winrt::Microsoft::UI::Xaml::Application::Current();
+        app.Resources(winrt::Microsoft::UI::Xaml::Controls::XamlControlsResources());
         xamlReady = true;
-        DBG_LOG("ghostty: XAML + WinUI 2 initialized\n");
+        DBG_LOG("ghostty: WinUI 3 XAML initialized\n");
     } catch (winrt::hresult_error const& e) {
         char buf[128];
         sprintf_s(buf, "ghostty: XAML init failed hr=0x%08X\n",
@@ -163,22 +147,22 @@ int APIENTRY wWinMain(
                 bridge.m_xamlHostWnd = xamlHostWnd;
 
                 xamlSource = DesktopWindowXamlSource();
-                auto interop = xamlSource.as<IDesktopWindowXamlSourceNative>();
-                winrt::check_hresult(interop->AttachToWindow(xamlHostWnd));
+                auto hostWindowId = winrt::Microsoft::UI::GetWindowIdFromWindow(xamlHostWnd);
+                xamlSource.Initialize(hostWindowId);
 
-                HWND islandHwnd = nullptr;
-                winrt::check_hresult(interop->get_WindowHandle(&islandHwnd));
+                auto siteBridge = xamlSource.SiteBridge();
+                HWND islandHwnd = winrt::Microsoft::UI::GetWindowFromWindowId(
+                    siteBridge.WindowId());
                 session->xamlIslandHwnd = islandHwnd;
                 bridge.m_xamlIslandHwnd = islandHwnd;
 
-                // Fill the host window.
-                SetWindowPos(islandHwnd, nullptr, 0, 0,
-                    rc.right - rc.left, session->headerHeight,
-                    SWP_SHOWWINDOW);
+                siteBridge.ResizePolicy(
+                    winrt::Microsoft::UI::Content::ContentSizePolicy::ResizeContentToParentWindow);
+                siteBridge.Show();
 
                 // WinUI 2 TabView — activated via SxS manifest entries
                 namespace muxc = winrt::Microsoft::UI::Xaml::Controls;
-                namespace xaml = winrt::Windows::UI::Xaml;
+                namespace xaml = winrt::Microsoft::UI::Xaml;
 
                 namespace controls = xaml::Controls;
                 namespace media = xaml::Media;
@@ -187,7 +171,7 @@ int APIENTRY wWinMain(
                 auto root = controls::Grid();
                 root.RequestedTheme(xaml::ElementTheme::Dark);
                 root.Background(media::SolidColorBrush(
-                    winrt::Windows::UI::ColorHelper::FromArgb(255,
+                    winrt::Microsoft::UI::ColorHelper::FromArgb(255,
                         GetRValue(bridge.m_bgColor),
                         GetGValue(bridge.m_bgColor),
                         GetBValue(bridge.m_bgColor))));
@@ -234,7 +218,7 @@ int APIENTRY wWinMain(
                 // Has a background so it's hittable, PointerPressed starts drag.
                 auto dragArea = controls::Border();
                 dragArea.Background(media::SolidColorBrush(
-                    winrt::Windows::UI::ColorHelper::FromArgb(1, 30, 30, 30))); // nearly transparent but hittable
+                    winrt::Microsoft::UI::ColorHelper::FromArgb(1, 30, 30, 30))); // nearly transparent but hittable
                 dragArea.HorizontalAlignment(xaml::HorizontalAlignment::Stretch);
                 dragArea.VerticalAlignment(xaml::VerticalAlignment::Stretch);
                 controls::Grid::SetColumn(dragArea, 1);
@@ -279,10 +263,10 @@ int APIENTRY wWinMain(
                     txt.Text(text);
                     txt.FontSize(10);
                     txt.Foreground(media::SolidColorBrush(
-                        winrt::Windows::UI::ColorHelper::FromArgb(255, 200, 200, 200)));
+                        winrt::Microsoft::UI::ColorHelper::FromArgb(255, 200, 200, 200)));
                     btn.Content(txt);
                     btn.Background(media::SolidColorBrush(
-                        winrt::Windows::UI::ColorHelper::FromArgb(0, 0, 0, 0)));
+                        winrt::Microsoft::UI::ColorHelper::FromArgb(0, 0, 0, 0)));
                     btn.Width(w);
                     btn.Height(TerminalSession::kDefaultHeaderHeight);
                     btn.Padding(xaml::ThicknessHelper::FromUniformLength(0));
@@ -409,23 +393,23 @@ int APIENTRY wWinMain(
                 // asynchronously return focus to the terminal.
                 xamlSource.GotFocus(
                     [parentHwnd](DesktopWindowXamlSource const&,
-                                 winrt::Windows::UI::Xaml::Hosting::DesktopWindowXamlSourceGotFocusEventArgs const&) {
+                                 winrt::Microsoft::UI::Xaml::Hosting::DesktopWindowXamlSourceGotFocusEventArgs const&) {
                         PostMessageW(parentHwnd, WM_APP, 0, 0);
                     });
 
                 // Title sync: when ghostty sets a surface title, update the
                 // matching TabViewItem header.
                 static winrt::Microsoft::UI::Xaml::Controls::TabView s_tabView{ nullptr };
-                static winrt::Windows::UI::Xaml::Controls::Grid s_rootGrid{ nullptr };
+                static winrt::Microsoft::UI::Xaml::Controls::Grid s_rootGrid{ nullptr };
                 s_tabView = tabView;
                 s_rootGrid = root;
 
                 // Update tab bar background when terminal bg color changes
                 GhosttyBridge::s_bgColorChangedFn = [](void*, uint8_t r, uint8_t g, uint8_t b) {
                     if (!s_rootGrid) return;
-                    namespace media = winrt::Windows::UI::Xaml::Media;
+                    namespace media = winrt::Microsoft::UI::Xaml::Media;
                     s_rootGrid.Background(media::SolidColorBrush(
-                        winrt::Windows::UI::ColorHelper::FromArgb(255, r, g, b)));
+                        winrt::Microsoft::UI::ColorHelper::FromArgb(255, r, g, b)));
                 };
                 GhosttyBridge::s_titleChangedFn = [](void*, HWND sessHwnd, const wchar_t* title) {
                     if (!s_tabView) return;
@@ -461,5 +445,6 @@ int APIENTRY wWinMain(
         DispatchMessageW(&msg);
     }
 
+    MddBootstrapShutdown();
     return (int)msg.wParam;
 }

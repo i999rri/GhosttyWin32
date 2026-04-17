@@ -1,9 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <Import Project="$(ProjectDir)packages\Microsoft.Windows.CppWinRT.2.0.250303.1\build\native\Microsoft.Windows.CppWinRT.props" Condition="Exists('$(ProjectDir)packages\Microsoft.Windows.CppWinRT.2.0.250303.1\build\native\Microsoft.Windows.CppWinRT.props')" />
-  <Import Project="$(ProjectDir)packages\Microsoft.UI.Xaml.2.8.6\build\native\Microsoft.UI.Xaml.props" Condition="Exists('$(ProjectDir)packages\Microsoft.UI.Xaml.2.8.6\build\native\Microsoft.UI.Xaml.props')" />
-  <Import Project="$(ProjectDir)packages\Microsoft.Toolkit.Win32.UI.XamlApplication.6.1.3\build\native\Microsoft.Toolkit.Win32.UI.XamlApplication.props" Condition="Exists('$(ProjectDir)packages\Microsoft.Toolkit.Win32.UI.XamlApplication.6.1.3\build\native\Microsoft.Toolkit.Win32.UI.XamlApplication.props')" />
-  <Import Project="$(ProjectDir)packages\Microsoft.Web.WebView2.1.0.1264.42\build\native\Microsoft.Web.WebView2.targets" Condition="Exists('$(ProjectDir)packages\Microsoft.Web.WebView2.1.0.1264.42\build\native\Microsoft.Web.WebView2.targets')" />
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
       <Configuration>Debug</Configuration>
@@ -114,7 +110,7 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>$(ProjectDir)ghostty;$(ProjectDir)packages\Microsoft.Web.WebView2.1.0.1264.42\build\native\x64</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(ProjectDir)ghostty</AdditionalLibraryDirectories>
       <AdditionalDependencies>ghostty.lib;opengl32.lib;gdi32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <StackReserveSize>4194304</StackReserveSize>
     </Link>
@@ -134,7 +130,7 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>$(ProjectDir)ghostty;$(ProjectDir)packages\Microsoft.Web.WebView2.1.0.1264.42\build\native\x64</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>$(ProjectDir)ghostty</AdditionalLibraryDirectories>
       <AdditionalDependencies>ghostty.lib;opengl32.lib;gdi32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <StackReserveSize>4194304</StackReserveSize>
     </Link>
@@ -157,38 +153,15 @@
     <Manifest Include="app.manifest" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="packages.config" />
-  </ItemGroup>
-  <ItemGroup>
     <Image Include="GhosttyWin32.ico" />
     <Image Include="small.ico" />
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Windows.CppWinRT" Version="2.0.250303.1" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260317003" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
-  <PropertyGroup>
-    <MuxPkgDir>$(ProjectDir)packages\Microsoft.UI.Xaml.2.8.6\</MuxPkgDir>
-    <MuxAppxPath>$(MuxPkgDir)tools\AppX\x64\Release\Microsoft.UI.Xaml.2.8.appx</MuxAppxPath>
-    <MuxExtractDir>$(IntDir)MicrosoftUIXaml\</MuxExtractDir>
-  </PropertyGroup>
-  <Target Name="ExtractWinUI" BeforeTargets="Build" Condition="!Exists('$(MuxExtractDir)Microsoft.UI.Xaml.dll')">
-    <MakeDir Directories="$(MuxExtractDir)" />
-    <Unzip SourceFiles="$(MuxAppxPath)" DestinationFolder="$(MuxExtractDir)" OverwriteReadOnlyFiles="true" />
-  </Target>
-  <Target Name="CopyRuntimeDeps" AfterTargets="Build">
+  <Target Name="CopyGhosttyDll" AfterTargets="Build">
     <Copy SourceFiles="$(ProjectDir)ghostty\ghostty.dll" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="$(MuxExtractDir)Microsoft.UI.Xaml.dll" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="$(MuxExtractDir)resources.pri" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
-  </Target>
-  <ImportGroup Label="ExtensionTargets">
-    <Import Project="$(ProjectDir)packages\Microsoft.Windows.CppWinRT.2.0.250303.1\build\native\Microsoft.Windows.CppWinRT.targets" Condition="Exists('$(ProjectDir)packages\Microsoft.Windows.CppWinRT.2.0.250303.1\build\native\Microsoft.Windows.CppWinRT.targets')" />
-    <Import Project="$(ProjectDir)packages\Microsoft.UI.Xaml.2.8.6\build\native\Microsoft.UI.Xaml.targets" Condition="Exists('$(ProjectDir)packages\Microsoft.UI.Xaml.2.8.6\build\native\Microsoft.UI.Xaml.targets')" />
-    <Import Project="$(ProjectDir)packages\Microsoft.Toolkit.Win32.UI.XamlApplication.6.1.3\build\native\Microsoft.Toolkit.Win32.UI.XamlApplication.targets" Condition="Exists('$(ProjectDir)packages\Microsoft.Toolkit.Win32.UI.XamlApplication.6.1.3\build\native\Microsoft.Toolkit.Win32.UI.XamlApplication.targets')" />
-  </ImportGroup>
-  <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
-    <PropertyGroup>
-      <ErrorText>This project references NuGet package(s) that are missing on this computer. Use NuGet Package Restore to download them. For more information, see http://go.microsoft.com/fwlink/?LinkID=322105. The missing file is {0}.</ErrorText>
-    </PropertyGroup>
-    <Error Condition="!Exists('$(ProjectDir)packages\Microsoft.Windows.CppWinRT.2.0.250303.1\build\native\Microsoft.Windows.CppWinRT.props')" Text="$([System.String]::Format('$(ErrorText)', '$(ProjectDir)packages\Microsoft.Windows.CppWinRT.2.0.250303.1\build\native\Microsoft.Windows.CppWinRT.props'))" />
-    <Error Condition="!Exists('$(ProjectDir)packages\Microsoft.UI.Xaml.2.8.6\build\native\Microsoft.UI.Xaml.props')" Text="$([System.String]::Format('$(ErrorText)', '$(ProjectDir)packages\Microsoft.UI.Xaml.2.8.6\build\native\Microsoft.UI.Xaml.props'))" />
-    <Error Condition="!Exists('$(ProjectDir)packages\Microsoft.Toolkit.Win32.UI.XamlApplication.6.1.3\build\native\Microsoft.Toolkit.Win32.UI.XamlApplication.props')" Text="$([System.String]::Format('$(ErrorText)', '$(ProjectDir)packages\Microsoft.Toolkit.Win32.UI.XamlApplication.6.1.3\build\native\Microsoft.Toolkit.Win32.UI.XamlApplication.props'))" />
   </Target>
 </Project>
