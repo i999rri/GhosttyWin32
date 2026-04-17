@@ -15,128 +15,147 @@ struct GhosttyApp : winrt::Microsoft::UI::Xaml::ApplicationT<GhosttyApp>
         namespace xaml = winrt::Microsoft::UI::Xaml;
         namespace media = xaml::Media;
 
-        // Define TabView resources manually since XamlControlsResources
-        // fails with AcrylicBackgroundFillColorDefaultBrush in unpackaged apps.
+        // Define all TabView theme resources manually since XamlControlsResources
+        // cannot be loaded in unpackaged apps (AcrylicBackgroundFillColorDefaultBrush fails).
         auto res = xaml::ResourceDictionary();
-        auto transparent = media::SolidColorBrush(winrt::Microsoft::UI::Colors::Transparent());
-        auto subtle = media::SolidColorBrush(winrt::Microsoft::UI::ColorHelper::FromArgb(0x0F, 0xFF, 0xFF, 0xFF));
-        auto pressed = media::SolidColorBrush(winrt::Microsoft::UI::ColorHelper::FromArgb(0x06, 0xFF, 0xFF, 0xFF));
-        auto tabBg = media::SolidColorBrush(winrt::Microsoft::UI::ColorHelper::FromArgb(255, 32, 32, 32));
-        auto tabBgHover = media::SolidColorBrush(winrt::Microsoft::UI::ColorHelper::FromArgb(255, 45, 45, 45));
-        auto tabBgSelected = media::SolidColorBrush(winrt::Microsoft::UI::ColorHelper::FromArgb(255, 50, 50, 50));
-        auto textBrush = media::SolidColorBrush(winrt::Microsoft::UI::ColorHelper::FromArgb(255, 200, 200, 200));
+        auto K = [](const wchar_t* k) { return winrt::box_value(k); };
+        auto C = [](uint8_t a, uint8_t r, uint8_t g, uint8_t b) {
+            return media::SolidColorBrush(winrt::Microsoft::UI::ColorHelper::FromArgb(a, r, g, b));
+        };
+        auto T = [](double l, double t, double r, double b) {
+            return winrt::box_value(xaml::ThicknessHelper::FromLengths(l, t, r, b));
+        };
+        auto TU = [](double v) { return winrt::box_value(xaml::ThicknessHelper::FromUniformLength(v)); };
+        auto CR = [](double tl, double tr, double br, double bl) {
+            return winrt::box_value(xaml::CornerRadiusHelper::FromRadii(tl, tr, br, bl));
+        };
+        auto D = [](double v) { return winrt::box_value(v); };
 
-        // TabView button resources
-        res.Insert(winrt::box_value(L"TabViewScrollButtonBackground"), transparent);
-        res.Insert(winrt::box_value(L"TabViewButtonBackground"), transparent);
-        res.Insert(winrt::box_value(L"TabViewButtonBackgroundPointerOver"), subtle);
-        res.Insert(winrt::box_value(L"TabViewButtonBackgroundPressed"), pressed);
-        res.Insert(winrt::box_value(L"TabViewButtonForeground"), textBrush);
+        auto transparent = C(0, 0, 0, 0);
+        auto subtle      = C(0x0F, 0xFF, 0xFF, 0xFF);
+        auto pressed     = C(0x06, 0xFF, 0xFF, 0xFF);
+        auto tabBg       = C(255, 32, 32, 32);
+        auto tabBgHover  = C(255, 45, 45, 45);
+        auto tabBgSel    = C(255, 50, 50, 50);
+        auto fg          = C(255, 200, 200, 200);
+        auto fgDim       = C(100, 200, 200, 200);
 
-        // TabView item resources
-        res.Insert(winrt::box_value(L"TabViewItemHeaderBackground"), tabBg);
-        res.Insert(winrt::box_value(L"TabViewItemHeaderBackgroundPointerOver"), tabBgHover);
-        res.Insert(winrt::box_value(L"TabViewItemHeaderBackgroundSelected"), tabBgSelected);
-        res.Insert(winrt::box_value(L"TabViewItemHeaderBackgroundPressed"), tabBg);
-        res.Insert(winrt::box_value(L"TabViewItemHeaderForeground"), textBrush);
-        res.Insert(winrt::box_value(L"TabViewItemHeaderForegroundSelected"), textBrush);
-        res.Insert(winrt::box_value(L"TabViewItemHeaderCloseButtonForeground"), textBrush);
+        // === Brush resources (65) ===
+        res.Insert(K(L"TabViewBackground"), tabBg);
+        res.Insert(K(L"TabViewItemHeaderBackground"), tabBg);
+        res.Insert(K(L"TabViewItemHeaderBackgroundSelected"), tabBgSel);
+        res.Insert(K(L"TabViewItemHeaderDragBackground"), tabBgHover);
+        res.Insert(K(L"TabViewItemHeaderBackgroundPointerOver"), tabBgHover);
+        res.Insert(K(L"TabViewItemHeaderBackgroundPressed"), tabBg);
+        res.Insert(K(L"TabViewItemHeaderBackgroundDisabled"), tabBg);
+        res.Insert(K(L"TabViewItemHeaderForeground"), fg);
+        res.Insert(K(L"TabViewItemHeaderForegroundPressed"), fg);
+        res.Insert(K(L"TabViewItemHeaderForegroundSelected"), fg);
+        res.Insert(K(L"TabViewItemHeaderForegroundPointerOver"), fg);
+        res.Insert(K(L"TabViewItemHeaderForegroundDisabled"), fgDim);
+        res.Insert(K(L"TabViewItemIconForeground"), fg);
+        res.Insert(K(L"TabViewItemIconForegroundPressed"), fg);
+        res.Insert(K(L"TabViewItemIconForegroundSelected"), fg);
+        res.Insert(K(L"TabViewItemIconForegroundPointerOver"), fg);
+        res.Insert(K(L"TabViewItemIconForegroundDisabled"), fgDim);
+        res.Insert(K(L"TabViewButtonBackground"), transparent);
+        res.Insert(K(L"TabViewButtonBackgroundPressed"), pressed);
+        res.Insert(K(L"TabViewButtonBackgroundPointerOver"), subtle);
+        res.Insert(K(L"TabViewButtonBackgroundDisabled"), transparent);
+        res.Insert(K(L"TabViewButtonForeground"), fg);
+        res.Insert(K(L"TabViewButtonForegroundPressed"), fg);
+        res.Insert(K(L"TabViewButtonForegroundPointerOver"), fg);
+        res.Insert(K(L"TabViewButtonForegroundDisabled"), fgDim);
+        res.Insert(K(L"TabViewButtonBorderBrush"), transparent);
+        res.Insert(K(L"TabViewButtonBorderBrushPressed"), transparent);
+        res.Insert(K(L"TabViewButtonBorderBrushPointerOver"), transparent);
+        res.Insert(K(L"TabViewButtonBorderBrushDisabled"), transparent);
+        res.Insert(K(L"TabViewScrollButtonBackground"), transparent);
+        res.Insert(K(L"TabViewScrollButtonBackgroundPressed"), pressed);
+        res.Insert(K(L"TabViewScrollButtonBackgroundPointerOver"), subtle);
+        res.Insert(K(L"TabViewScrollButtonBackgroundDisabled"), transparent);
+        res.Insert(K(L"TabViewScrollButtonForeground"), fg);
+        res.Insert(K(L"TabViewScrollButtonForegroundPressed"), fg);
+        res.Insert(K(L"TabViewScrollButtonForegroundPointerOver"), fg);
+        res.Insert(K(L"TabViewScrollButtonForegroundDisabled"), fgDim);
+        res.Insert(K(L"TabViewScrollButtonBorderBrush"), transparent);
+        res.Insert(K(L"TabViewScrollButtonBorderBrushPressed"), transparent);
+        res.Insert(K(L"TabViewScrollButtonBorderBrushPointerOver"), transparent);
+        res.Insert(K(L"TabViewScrollButtonBorderBrushDisabled"), transparent);
+        res.Insert(K(L"TabViewItemSeparator"), subtle);
+        res.Insert(K(L"TabViewItemHeaderCloseButtonBackground"), transparent);
+        res.Insert(K(L"TabViewItemHeaderCloseButtonBackgroundPressed"), pressed);
+        res.Insert(K(L"TabViewItemHeaderCloseButtonBackgroundPointerOver"), subtle);
+        res.Insert(K(L"TabViewItemHeaderPressedCloseButtonBackground"), transparent);
+        res.Insert(K(L"TabViewItemHeaderPointerOverCloseButtonBackground"), transparent);
+        res.Insert(K(L"TabViewItemHeaderSelectedCloseButtonBackground"), transparent);
+        res.Insert(K(L"TabViewItemHeaderDisabledCloseButtonBackground"), transparent);
+        res.Insert(K(L"TabViewItemHeaderCloseButtonForeground"), fg);
+        res.Insert(K(L"TabViewItemHeaderCloseButtonForegroundPressed"), fg);
+        res.Insert(K(L"TabViewItemHeaderCloseButtonForegroundPointerOver"), fg);
+        res.Insert(K(L"TabViewItemHeaderPressedCloseButtonForeground"), fg);
+        res.Insert(K(L"TabViewItemHeaderPointerOverCloseButtonForeground"), fg);
+        res.Insert(K(L"TabViewItemHeaderSelectedCloseButtonForeground"), fg);
+        res.Insert(K(L"TabViewItemHeaderDisabledCloseButtonForeground"), fgDim);
+        res.Insert(K(L"TabViewItemHeaderCloseButtonBorderBrush"), transparent);
+        res.Insert(K(L"TabViewItemHeaderCloseButtonBorderBrushPointerOver"), transparent);
+        res.Insert(K(L"TabViewItemHeaderCloseButtonBorderBrushPressed"), transparent);
+        res.Insert(K(L"TabViewItemHeaderCloseButtonBorderBrushSelected"), transparent);
+        res.Insert(K(L"TabViewItemHeaderCloseButtonBorderBrushDisabled"), transparent);
+        res.Insert(K(L"TabViewButtonBackgroundActiveTab"), transparent);
+        res.Insert(K(L"TabViewButtonForegroundActiveTab"), fg);
+        res.Insert(K(L"TabViewBorderBrush"), transparent);
+        res.Insert(K(L"TabViewItemBorderBrush"), transparent);
+        res.Insert(K(L"TabViewSelectedItemBorderBrush"), transparent);
+        // Acrylic fallbacks
+        res.Insert(K(L"AcrylicBackgroundFillColorDefaultBrush"), tabBg);
+        res.Insert(K(L"AcrylicBackgroundFillColorBaseBrush"), tabBg);
 
-        // Acrylic fallbacks (referenced by TabView's generic.xaml)
-        res.Insert(winrt::box_value(L"AcrylicBackgroundFillColorDefaultBrush"), tabBg);
-        res.Insert(winrt::box_value(L"AcrylicBackgroundFillColorBaseBrush"), tabBg);
+        // === Thickness resources (17) ===
+        res.Insert(K(L"TabViewHeaderPadding"), T(8, 0, 0, 0));
+        res.Insert(K(L"TabViewItemHeaderPadding"), T(12, 0, 10, 0));
+        res.Insert(K(L"TabViewSelectedItemHeaderPadding"), T(12, 0, 10, 0));
+        res.Insert(K(L"TabViewButtonBorderThickness"), TU(0));
+        res.Insert(K(L"TabViewItemHeaderCloseButtonBorderThickness"), TU(0));
+        res.Insert(K(L"TabViewItemHeaderIconMargin"), T(0, 0, 8, 0));
+        res.Insert(K(L"TabViewItemHeaderCloseMargin"), T(4, 0, 0, 0));
+        res.Insert(K(L"TabViewItemHeaderPaddingWithCloseButton"), T(12, 0, 4, 0));
+        res.Insert(K(L"TabViewItemHeaderPaddingWithoutCloseButton"), T(12, 0, 10, 0));
+        res.Insert(K(L"TabViewItemScrollButtonPadding"), TU(0));
+        res.Insert(K(L"TabViewItemLeftScrollButtonContainerPadding"), TU(0));
+        res.Insert(K(L"TabViewItemRightScrollButtonContainerPadding"), TU(0));
+        res.Insert(K(L"TabViewItemAddButtonContainerPadding"), TU(0));
+        res.Insert(K(L"TabViewItemSeparatorMargin"), T(0, 6, 0, 6));
+        res.Insert(K(L"TabViewItemBorderThickness"), TU(1));
+        res.Insert(K(L"TabViewSelectedItemBorderThickness"), TU(1));
+        res.Insert(K(L"TabViewSelectedItemHeaderMargin"), T(0, 0, 0, 0));
+        res.Insert(K(L"TabViewBorderThickness"), TU(0));
+        res.Insert(K(L"TabViewItemHeaderMargin"), T(0, 4, 0, 0));
 
-        // TabView background
-        res.Insert(winrt::box_value(L"TabViewBackground"), tabBg);
+        // === Double resources (16) ===
+        res.Insert(K(L"TabViewItemMinHeight"), D(28));
+        res.Insert(K(L"TabViewItemMaxWidth"), D(240));
+        res.Insert(K(L"TabViewItemMinWidth"), D(100));
+        res.Insert(K(L"TabViewItemHeaderFontSize"), D(12));
+        res.Insert(K(L"TabViewItemHeaderIconSize"), D(16));
+        res.Insert(K(L"TabViewItemHeaderCloseButtonHeight"), D(16));
+        res.Insert(K(L"TabViewItemHeaderCloseButtonWidth"), D(16));
+        res.Insert(K(L"TabViewItemHeaderCloseButtonSize"), D(16));
+        res.Insert(K(L"TabViewItemHeaderCloseFontSize"), D(10));
+        res.Insert(K(L"TabViewItemScrollButtonWidth"), D(28));
+        res.Insert(K(L"TabViewItemScrollButtonHeight"), D(28));
+        res.Insert(K(L"TabViewItemScrollButonFontSize"), D(12));
+        res.Insert(K(L"TabViewItemAddButtonWidth"), D(28));
+        res.Insert(K(L"TabViewItemAddButtonHeight"), D(28));
+        res.Insert(K(L"TabViewItemAddButtonFontSize"), D(12));
+        res.Insert(K(L"TabViewShadowDepth"), D(16));
+        res.Insert(K(L"TabViewItemSeparatorWidth"), D(1));
 
-        // Scroll button foreground
-        res.Insert(winrt::box_value(L"TabViewScrollButtonForeground"), textBrush);
-
-        // Corner radius (used by many WinUI controls)
-        res.Insert(winrt::box_value(L"ControlCornerRadius"),
-            winrt::box_value(xaml::CornerRadiusHelper::FromRadii(4, 4, 4, 4)));
-        res.Insert(winrt::box_value(L"OverlayCornerRadius"),
-            winrt::box_value(xaml::CornerRadiusHelper::FromRadii(8, 8, 8, 8)));
-
-        // Font sizes
-        res.Insert(winrt::box_value(L"TabViewItemScrollButonFontSize"), winrt::box_value(12.0));
-        res.Insert(winrt::box_value(L"TabViewItemAddButtonFontSize"), winrt::box_value(12.0));
-        res.Insert(winrt::box_value(L"TabViewItemHeaderFontSize"), winrt::box_value(12.0));
-        res.Insert(winrt::box_value(L"TabViewItemCloseButtonFontSize"), winrt::box_value(10.0));
-
-        // Dimensions
-        res.Insert(winrt::box_value(L"TabViewItemScrollButtonWidth"), winrt::box_value(28.0));
-        res.Insert(winrt::box_value(L"TabViewItemScrollButtonHeight"), winrt::box_value(28.0));
-        res.Insert(winrt::box_value(L"TabViewItemAddButtonWidth"), winrt::box_value(28.0));
-        res.Insert(winrt::box_value(L"TabViewItemAddButtonHeight"), winrt::box_value(28.0));
-        res.Insert(winrt::box_value(L"TabViewItemHeaderMinWidth"), winrt::box_value(100.0));
-        res.Insert(winrt::box_value(L"TabViewItemHeaderMaxWidth"), winrt::box_value(240.0));
-        res.Insert(winrt::box_value(L"TabViewItemHeaderMinHeight"), winrt::box_value(28.0));
-        res.Insert(winrt::box_value(L"TabViewItemHeaderMaxHeight"), winrt::box_value(36.0));
-        res.Insert(winrt::box_value(L"TabViewItemCloseButtonSize"), winrt::box_value(16.0));
-        res.Insert(winrt::box_value(L"TabViewItemScrollButtonPadding"),
-            winrt::box_value(xaml::ThicknessHelper::FromUniformLength(0)));
-        res.Insert(winrt::box_value(L"TabViewItemAddButtonMargin"),
-            winrt::box_value(xaml::ThicknessHelper::FromUniformLength(0)));
-        res.Insert(winrt::box_value(L"TabViewHeaderPadding"),
-            winrt::box_value(xaml::ThicknessHelper::FromLengths(8, 0, 0, 0)));
-        res.Insert(winrt::box_value(L"TabViewItemHeaderPadding"),
-            winrt::box_value(xaml::ThicknessHelper::FromLengths(12, 0, 10, 0)));
-        res.Insert(winrt::box_value(L"TabViewItemHeaderMargin"),
-            winrt::box_value(xaml::ThicknessHelper::FromLengths(0, 4, 0, 0)));
-        res.Insert(winrt::box_value(L"TabViewItemSeparatorMargin"),
-            winrt::box_value(xaml::ThicknessHelper::FromLengths(0, 6, 0, 6)));
-        res.Insert(winrt::box_value(L"TabViewItemHeaderCloseButtonMargin"),
-            winrt::box_value(xaml::ThicknessHelper::FromLengths(4, 0, 0, 0)));
-        res.Insert(winrt::box_value(L"TabViewBorderThickness"),
-            winrt::box_value(xaml::ThicknessHelper::FromUniformLength(0)));
-
-        // More button/scroll resources
-        res.Insert(winrt::box_value(L"TabViewScrollButtonBackgroundPointerOver"), subtle);
-        res.Insert(winrt::box_value(L"TabViewScrollButtonBackgroundPressed"), pressed);
-        res.Insert(winrt::box_value(L"TabViewScrollButtonForegroundPointerOver"), textBrush);
-        res.Insert(winrt::box_value(L"TabViewScrollButtonForegroundPressed"), textBrush);
-        res.Insert(winrt::box_value(L"TabViewButtonForegroundPointerOver"), textBrush);
-        res.Insert(winrt::box_value(L"TabViewButtonForegroundPressed"), textBrush);
-        res.Insert(winrt::box_value(L"TabViewButtonForegroundDisabled"), transparent);
-
-        // Separator
-        res.Insert(winrt::box_value(L"TabViewItemSeparator"), subtle);
-        res.Insert(winrt::box_value(L"TabViewItemSeparatorWidth"), winrt::box_value(1.0));
-
-        // Item close button states
-        res.Insert(winrt::box_value(L"TabViewItemHeaderCloseButtonBackground"), transparent);
-        res.Insert(winrt::box_value(L"TabViewItemHeaderCloseButtonBackgroundPointerOver"), subtle);
-        res.Insert(winrt::box_value(L"TabViewItemHeaderCloseButtonBackgroundPressed"), pressed);
-        res.Insert(winrt::box_value(L"TabViewItemHeaderCloseButtonForegroundPointerOver"), textBrush);
-        res.Insert(winrt::box_value(L"TabViewItemHeaderCloseButtonForegroundPressed"), textBrush);
-
-        // Item header states (more)
-        res.Insert(winrt::box_value(L"TabViewItemHeaderForegroundPointerOver"), textBrush);
-        res.Insert(winrt::box_value(L"TabViewItemHeaderForegroundPressed"), textBrush);
-        res.Insert(winrt::box_value(L"TabViewItemHeaderForegroundDisabled"),
-            media::SolidColorBrush(winrt::Microsoft::UI::ColorHelper::FromArgb(100, 200, 200, 200)));
-        res.Insert(winrt::box_value(L"TabViewItemHeaderBackgroundDisabled"), tabBg);
-
-        // Item corner radius
-        res.Insert(winrt::box_value(L"TabViewItemHeaderCornerRadius"),
-            winrt::box_value(xaml::CornerRadiusHelper::FromRadii(8, 8, 0, 0)));
-
-        // Border
-        res.Insert(winrt::box_value(L"TabViewBorderBrush"), transparent);
-        res.Insert(winrt::box_value(L"TabViewItemHeaderBorderBrush"), transparent);
-        res.Insert(winrt::box_value(L"TabViewItemHeaderBorderThickness"),
-            winrt::box_value(xaml::ThicknessHelper::FromUniformLength(0)));
-
-        // Button border
-        res.Insert(winrt::box_value(L"TabViewButtonBorderThickness"),
-            winrt::box_value(xaml::ThicknessHelper::FromUniformLength(0)));
-        res.Insert(winrt::box_value(L"TabViewButtonBorderBrush"), transparent);
-        res.Insert(winrt::box_value(L"TabViewButtonCornerRadius"),
-            winrt::box_value(xaml::CornerRadiusHelper::FromRadii(4, 4, 4, 4)));
-
-        // Shadow / elevation
-        res.Insert(winrt::box_value(L"TabViewShadow"), winrt::box_value(L""));
+        // === CornerRadius resources ===
+        res.Insert(K(L"ControlCornerRadius"), CR(4, 4, 4, 4));
+        res.Insert(K(L"OverlayCornerRadius"), CR(8, 8, 8, 8));
+        res.Insert(K(L"TabViewItemHeaderCornerRadius"), CR(8, 8, 0, 0));
+        res.Insert(K(L"TabViewButtonCornerRadius"), CR(4, 4, 4, 4));
 
         Resources(res);
 
