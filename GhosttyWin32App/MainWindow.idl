@@ -4,6 +4,5 @@ namespace GhosttyWin32
     runtimeclass MainWindow : Microsoft.UI.Xaml.Window
     {
         MainWindow();
-        Int32 MyProperty;
     }
 }

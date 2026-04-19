@@ -6,19 +6,36 @@
 
 using namespace winrt;
 using namespace Microsoft::UI::Xaml;
-
-// To learn more about WinUI, the WinUI project structure,
-// and more about our project templates, see: http://aka.ms/winui-project-info.
+namespace muxc = Microsoft::UI::Xaml::Controls;
 
 namespace winrt::GhosttyWin32::implementation
 {
-    int32_t MainWindow::MyProperty()
+    MainWindow::MainWindow()
     {
-        throw hresult_not_implemented();
-    }
+        Activated([this](auto&&, auto&&) {
+            static bool initialized = false;
+            if (initialized) return;
+            initialized = true;
 
-    void MainWindow::MyProperty(int32_t /* value */)
-    {
-        throw hresult_not_implemented();
+            auto tv = TabView();
+            tv.AddTabButtonClick([](muxc::TabView const& sender, auto&&) {
+                auto newTab = muxc::TabViewItem();
+                newTab.Header(box_value(L"Terminal"));
+                newTab.IsClosable(true);
+                newTab.Content(muxc::SwapChainPanel());
+                sender.TabItems().Append(newTab);
+                sender.SelectedItem(newTab);
+            });
+
+            tv.TabCloseRequested([this](muxc::TabView const& sender, muxc::TabViewTabCloseRequestedEventArgs const& args) {
+                uint32_t idx = 0;
+                if (sender.TabItems().IndexOf(args.Tab(), idx)) {
+                    sender.TabItems().RemoveAt(idx);
+                }
+                if (sender.TabItems().Size() == 0) {
+                    this->Close();
+                }
+            });
+        });
     }
 }
