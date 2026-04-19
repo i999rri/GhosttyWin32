@@ -14,6 +14,11 @@
                  IsAddTabButtonVisible="True"
                  TabWidthMode="Equal"
                  VerticalAlignment="Stretch"
-                 HorizontalAlignment="Stretch" />
+                 HorizontalAlignment="Stretch">
+            <TabView.TabStripFooter>
+                <Border x:Name="DragRegion" Background="Transparent"
+                        HorizontalAlignment="Stretch" MinWidth="48" />
+            </TabView.TabStripFooter>
+        </TabView>
     </Grid>
 </Window>
