@@ -436,6 +436,8 @@ typedef struct {
   void* hwnd;
   void* hdc;
   void* hglrc;
+  void* d3d_device;
+  void* swap_chain;
 } ghostty_platform_windows_s;
 
 typedef union {
