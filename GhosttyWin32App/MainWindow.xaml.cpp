@@ -6,6 +6,8 @@
 #include <microsoft.ui.xaml.window.h>
 #include <d3d11.h>
 #include <dxgi1_2.h>
+#include <dwmapi.h>
+#pragma comment(lib, "dwmapi.lib")
 
 using namespace winrt;
 using namespace Microsoft::UI::Xaml;
@@ -29,8 +31,23 @@ namespace winrt::GhosttyWin32::implementation
             if (windowNative) windowNative->get_WindowHandle(&m_hwnd);
             if (m_hwnd) ShowWindow(m_hwnd, SW_HIDE);
 
+            // Follow OS theme + Mica backdrop
+            {
+                auto settings = winrt::Windows::UI::ViewManagement::UISettings();
+                auto fg = settings.GetColorValue(winrt::Windows::UI::ViewManagement::UIColorType::Foreground);
+                bool isDark = (fg.R > 128); // Light foreground = dark mode
+                Content().as<winrt::Microsoft::UI::Xaml::FrameworkElement>().RequestedTheme(
+                    isDark ? winrt::Microsoft::UI::Xaml::ElementTheme::Dark
+                           : winrt::Microsoft::UI::Xaml::ElementTheme::Light);
+                auto backdrop = winrt::Microsoft::UI::Xaml::Media::MicaBackdrop();
+                this->SystemBackdrop(backdrop);
+            }
+
             auto tv = TabView();
             SetTitleBar(DragRegion());
+
+
+
 
             // Window-level input handling (same approach as Windows Terminal)
             auto root = Content().as<winrt::Microsoft::UI::Xaml::UIElement>();
@@ -317,6 +334,30 @@ namespace winrt::GhosttyWin32::implementation
                             }
                         }
                     }
+
+                    // Title bar and tab strip color matches terminal background
+                    if (action.tag == GHOSTTY_ACTION_COLOR_CHANGE && g_mainWindow && g_mainWindow->m_hwnd) {
+                        auto& cc = action.action.color_change;
+                        if (cc.kind == GHOSTTY_ACTION_COLOR_KIND_BACKGROUND) {
+                            HWND hwnd = g_mainWindow->m_hwnd;
+                            COLORREF color = RGB(cc.r, cc.g, cc.b);
+                            DwmSetWindowAttribute(hwnd, DWMWA_CAPTION_COLOR, &color, sizeof(color));
+                            float luminance = 0.299f * cc.r + 0.587f * cc.g + 0.114f * cc.b;
+                            COLORREF textColor = (luminance < 128) ? RGB(255, 255, 255) : RGB(0, 0, 0);
+                            DwmSetWindowAttribute(hwnd, DWMWA_TEXT_COLOR, &textColor, sizeof(textColor));
+
+                            // Update XAML background to match
+                            auto mw = g_mainWindow;
+                            uint8_t r = cc.r, g = cc.g, b = cc.b;
+                            mw->DispatcherQueue().TryEnqueue([mw, r, g, b]() {
+                                auto brush = winrt::Microsoft::UI::Xaml::Media::SolidColorBrush(
+                                    winrt::Windows::UI::Color{ 255, r, g, b });
+                                mw->Content().as<winrt::Microsoft::UI::Xaml::Controls::Panel>().Background(brush);
+                            });
+                        }
+                        return true;
+                    }
+
                     return false;
                 };
                 rtConfig.read_clipboard_cb = [](void*, ghostty_clipboard_e, void* state) -> bool {
@@ -396,7 +437,7 @@ namespace winrt::GhosttyWin32::implementation
         m_sessions.push_back(std::move(session));
 
         auto tab = muxc::TabViewItem();
-        tab.Header(box_value(L"Terminal"));
+        tab.Header(box_value(L""));
         tab.IsClosable(true);
         tab.Content(panel);
         tv.TabItems().Append(tab);
