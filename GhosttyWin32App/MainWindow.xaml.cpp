@@ -142,9 +142,10 @@ namespace winrt::GhosttyWin32::implementation
                 if (!sess || !sess->surface) return;
                 winrt::Microsoft::UI::Input::PointerPoint point = args.GetCurrentPoint(sess->panel);
                 winrt::Microsoft::UI::Input::PointerPointProperties props = point.Properties();
-                ghostty_input_mouse_button_e btn = GHOSTTY_MOUSE_LEFT;
-                if (props.IsRightButtonPressed()) btn = GHOSTTY_MOUSE_RIGHT;
-                else if (props.IsMiddleButtonPressed()) btn = GHOSTTY_MOUSE_MIDDLE;
+                ghostty_input_mouse_button_e btn;
+                if (props.IsLeftButtonPressed()) btn = GHOSTTY_MOUSE_LEFT;
+                else if (props.IsRightButtonPressed()) btn = GHOSTTY_MOUSE_RIGHT;
+                else return; // Ignore middle-click (X11 paste) and others
                 ghostty_input_mods_e mods = (ghostty_input_mods_e)0;
                 if (GetKeyState(VK_SHIFT) & 0x8000) mods = (ghostty_input_mods_e)(mods | GHOSTTY_MODS_SHIFT);
                 if (GetKeyState(VK_CONTROL) & 0x8000) mods = (ghostty_input_mods_e)(mods | GHOSTTY_MODS_CTRL);
@@ -193,13 +194,10 @@ namespace winrt::GhosttyWin32::implementation
 
             tv.TabCloseRequested([this](muxc::TabView const& sender, muxc::TabViewTabCloseRequestedEventArgs const& args) {
                 uint32_t idx = 0;
-                if (sender.TabItems().IndexOf(args.Tab(), idx)) {
-                    if (idx < m_sessions.size() && m_sessions[idx]->surface) {
-                        ghostty_surface_free(m_sessions[idx]->surface);
-                    }
-                    if (idx < m_sessions.size() && m_sessions[idx]->swapChain) {
-                        m_sessions[idx]->swapChain->Release();
-                    }
+                if (sender.TabItems().IndexOf(args.Tab(), idx) && idx < m_sessions.size()) {
+                    if (m_sessions[idx]->surface) ghostty_surface_free(m_sessions[idx]->surface);
+                    if (m_sessions[idx]->swapChain) m_sessions[idx]->swapChain->Release();
+                    if (m_sessions[idx]->device) m_sessions[idx]->device->Release();
                     m_sessions.erase(m_sessions.begin() + idx);
                     sender.TabItems().RemoveAt(idx);
                 }
@@ -218,10 +216,10 @@ namespace winrt::GhosttyWin32::implementation
         for (auto& s : m_sessions) {
             if (s->surface) ghostty_surface_free(s->surface);
             if (s->swapChain) s->swapChain->Release();
+            if (s->device) s->device->Release();
         }
         if (m_app) ghostty_app_free(m_app);
         if (m_config) ghostty_config_free(m_config);
-        if (m_d3dDevice) { m_d3dDevice->Release(); m_d3dDevice = nullptr; }
     }
 
     TabSession* MainWindow::ActiveSession()
@@ -238,13 +236,6 @@ namespace winrt::GhosttyWin32::implementation
 
     void MainWindow::InitGhostty()
     {
-        UINT flags = 0;
-#ifndef NDEBUG
-        flags |= D3D11_CREATE_DEVICE_DEBUG;
-#endif
-        D3D_FEATURE_LEVEL levels[] = { D3D_FEATURE_LEVEL_11_0 };
-        D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, flags,
-            levels, 1, D3D11_SDK_VERSION, &m_d3dDevice, nullptr, nullptr);
 
         struct Args { MainWindow* self; };
         Args args{ this };
@@ -281,38 +272,29 @@ namespace winrt::GhosttyWin32::implementation
                     }
                     return false;
                 };
-                rtConfig.read_clipboard_cb = [](void* ud, ghostty_clipboard_e type, void* state) -> bool {
+                rtConfig.read_clipboard_cb = [](void*, ghostty_clipboard_e, void* state) -> bool {
                     if (!g_mainWindow) return false;
-                    // Read clipboard on UI thread synchronously
-                    if (OpenClipboard(g_mainWindow->m_hwnd)) {
-                        HANDLE hData = GetClipboardData(CF_UNICODETEXT);
-                        if (hData) {
-                            wchar_t* wstr = static_cast<wchar_t*>(GlobalLock(hData));
-                            if (wstr) {
-                                int len = WideCharToMultiByte(CP_UTF8, 0, wstr, -1, nullptr, 0, nullptr, nullptr);
-                                if (len > 0) {
-                                    std::string utf8(len - 1, '\0');
-                                    WideCharToMultiByte(CP_UTF8, 0, wstr, -1, utf8.data(), len, nullptr, nullptr);
-                                    GlobalUnlock(hData);
-                                    CloseClipboard();
-                                    // Find the surface that requested this
-                                    for (auto& s : g_mainWindow->m_sessions) {
-                                        if (s->surface) {
-                                            ghostty_surface_complete_clipboard_request(
-                                                s->surface, utf8.c_str(), state, true);
-                                            break;
-                                        }
-                                    }
-                                    return true;
-                                }
-                                GlobalUnlock(hData);
-                            }
-                        }
+                    auto* sess = g_mainWindow->ActiveSession();
+                    if (!sess || !sess->surface) return false;
+                    if (!OpenClipboard(g_mainWindow->m_hwnd)) return false;
+                    HANDLE hData = GetClipboardData(CF_UNICODETEXT);
+                    if (!hData) { CloseClipboard(); return false; }
+                    wchar_t* wstr = static_cast<wchar_t*>(GlobalLock(hData));
+                    if (!wstr) { CloseClipboard(); return false; }
+                    int len = WideCharToMultiByte(CP_UTF8, 0, wstr, -1, nullptr, 0, nullptr, nullptr);
+                    if (len > 0) {
+                        std::string utf8(len - 1, '\0');
+                        WideCharToMultiByte(CP_UTF8, 0, wstr, -1, utf8.data(), len, nullptr, nullptr);
+                        GlobalUnlock(hData);
                         CloseClipboard();
+                        ghostty_surface_complete_clipboard_request(sess->surface, utf8.c_str(), state, false);
+                        return true;
                     }
+                    GlobalUnlock(hData);
+                    CloseClipboard();
                     return false;
                 };
-                rtConfig.confirm_read_clipboard_cb = [](void* ud, const char* content, void* state, ghostty_clipboard_request_e req) {
+                rtConfig.confirm_read_clipboard_cb = [](void*, const char* content, void* state, ghostty_clipboard_request_e) {
                     // Auto-confirm clipboard reads
                     if (g_mainWindow) {
                         auto* sess = g_mainWindow->ActiveSession();
@@ -321,7 +303,7 @@ namespace winrt::GhosttyWin32::implementation
                         }
                     }
                 };
-                rtConfig.write_clipboard_cb = [](void* ud, ghostty_clipboard_e type, const ghostty_clipboard_content_s* content, size_t count, bool) {
+                rtConfig.write_clipboard_cb = [](void*, ghostty_clipboard_e, const ghostty_clipboard_content_s* content, size_t count, bool) {
                     if (!content || count == 0) return;
                     const char* text = content[0].data;
                     if (!text) return;
@@ -352,7 +334,7 @@ namespace winrt::GhosttyWin32::implementation
 
     void MainWindow::CreateTab()
     {
-        if (!m_app || !m_d3dDevice || !m_hwnd) return;
+        if (!m_app || !m_hwnd) return;
         auto tv = TabView();
 
         auto panel = muxc::SwapChainPanel();
@@ -371,14 +353,14 @@ namespace winrt::GhosttyWin32::implementation
         tab.Content(panel);
         tv.TabItems().Append(tab);
         tv.SelectedItem(tab);
+        // Hide panel until surface is ready to avoid black flash
+        if (sessionIdx > 0) panel.Opacity(0);
 
-        // Defer surface creation until panel is in the visual tree
         auto app = m_app;
-        auto device = m_d3dDevice;
         auto hwnd = m_hwnd;
         auto weakThis = get_weak();
 
-        panel.Loaded([sessionIdx, app, device, hwnd, weakThis](auto&& sender, auto&&) {
+        panel.Loaded([sessionIdx, app, hwnd, weakThis](auto&& sender, auto&&) {
 
             auto self = weakThis.get();
             if (!self) return;
@@ -393,7 +375,20 @@ namespace winrt::GhosttyWin32::implementation
             UINT width = std::max<UINT>(rc.right - rc.left, 1);
             UINT height = std::max<UINT>(rc.bottom - rc.top, 1);
 
-            // Create swap chain and link to panel on UI thread
+            // Create a D3D11 device per tab — each surface needs its own
+            // device+context to avoid multithreading conflicts
+            ID3D11Device* device = nullptr;
+            UINT flags = 0;
+#ifndef NDEBUG
+            flags |= D3D11_CREATE_DEVICE_DEBUG;
+#endif
+            D3D_FEATURE_LEVEL levels[] = { D3D_FEATURE_LEVEL_11_0 };
+            D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, flags,
+                levels, 1, D3D11_SDK_VERSION, &device, nullptr, nullptr);
+            if (!device) return;
+            sess->device = device;
+
+            // Create swap chain and link to panel
             IDXGIDevice* dxgiDev = nullptr;
             IDXGIAdapter* adapter = nullptr;
             IDXGIFactory2* factory = nullptr;
@@ -417,59 +412,61 @@ namespace winrt::GhosttyWin32::implementation
             factory->Release(); adapter->Release(); dxgiDev->Release();
             if (!swapChain) return;
 
-            p.as<ISwapChainPanelNative>()->SetSwapChain(swapChain);
+            p.template as<ISwapChainPanelNative>()->SetSwapChain(swapChain);
             sess->swapChain = swapChain;
 
 
-            // Delay surface creation by 100ms to let composition engine
-            // fully register the swap chain with the NVIDIA driver
-            auto timer = winrt::Microsoft::UI::Dispatching::DispatcherQueue::GetForCurrentThread().CreateTimer();
-            timer.Interval(std::chrono::milliseconds(100));
-            timer.IsRepeating(false);
-            timer.Tick([sess, app, device, swapChain, hwnd, timer](auto&&, auto&&) {
+            // Async surface creation — don't block UI thread
+            struct SurfContext {
+                TabSession* sess;
+                ghostty_app_t app;
+                ID3D11Device* device;
+                IDXGISwapChain1* swapChain;
+                HWND hwnd;
+                ghostty_surface_t surface;
+            };
+            auto ctx = new SurfContext{ sess, app, device, swapChain, hwnd, nullptr };
 
-                struct SurfArgs {
-                    ghostty_app_t app; HWND hwnd;
-                    ID3D11Device* device; IDXGISwapChain1* sc;
-                    ghostty_surface_t surface;
-                };
-                SurfArgs sargs{ app, hwnd, device, swapChain, nullptr };
+            CreateThread(nullptr, 4 * 1024 * 1024,
+                [](LPVOID param) -> DWORD {
+                    auto* c = static_cast<SurfContext*>(param);
+                    ghostty_surface_config_s cfg = ghostty_surface_config_new();
+                    cfg.platform_tag = GHOSTTY_PLATFORM_WINDOWS;
+                    cfg.platform.windows.hwnd = c->hwnd;
+                    cfg.platform.windows.d3d_device = c->device;
+                    cfg.platform.windows.swap_chain = c->swapChain;
+                    UINT dpi = GetDpiForWindow(c->hwnd);
+                    cfg.scale_factor = (double)dpi / 96.0;
+                    c->surface = ghostty_surface_new(c->app, &cfg);
+                    return 0;
+                }, ctx, 0, nullptr);
 
-                HANDLE hThread = CreateThread(nullptr, 4 * 1024 * 1024,
-                    [](LPVOID param) -> DWORD {
-                        auto* a = static_cast<SurfArgs*>(param);
-                        ghostty_surface_config_s cfg = ghostty_surface_config_new();
-                        cfg.platform_tag = GHOSTTY_PLATFORM_WINDOWS;
-                        cfg.platform.windows.hwnd = a->hwnd;
-                        cfg.platform.windows.d3d_device = a->device;
-                        cfg.platform.windows.swap_chain = a->sc;
-                        UINT dpi = GetDpiForWindow(a->hwnd);
-                        cfg.scale_factor = (double)dpi / 96.0;
-                        a->surface = ghostty_surface_new(a->app, &cfg);
-                        return 0;
-                    }, &sargs, 0, nullptr);
-                if (hThread) { WaitForSingleObject(hThread, INFINITE); CloseHandle(hThread); }
+            // Poll for surface creation completion without blocking UI
+            auto pollTimer = winrt::Microsoft::UI::Dispatching::DispatcherQueue::GetForCurrentThread().CreateTimer();
+            pollTimer.Interval(std::chrono::milliseconds(16));
+            pollTimer.IsRepeating(true);
+            pollTimer.Tick([ctx, pollTimer, hwnd](auto&&, auto&&) {
+                if (!ctx->surface) return;
+                pollTimer.Stop();
 
-                if (sargs.surface) {
-                    sess->surface = sargs.surface;
-                    ShowWindow(hwnd, SW_SHOW);
+                ctx->sess->surface = ctx->surface;
+                ShowWindow(hwnd, SW_SHOW);
+                ctx->sess->panel.Opacity(1);
 
+                auto surface = ctx->surface;
+                auto panel = ctx->sess->panel;
+                panel.SizeChanged([surface](auto&&, winrt::Microsoft::UI::Xaml::SizeChangedEventArgs const& args) {
+                    auto newSize = args.NewSize();
+                    uint32_t w = static_cast<uint32_t>(newSize.Width);
+                    uint32_t h = static_cast<uint32_t>(newSize.Height);
+                    if (w > 0 && h > 0) {
+                        ghostty_surface_set_size(surface, w, h);
+                    }
+                });
 
-                    // Resize handler on the SwapChainPanel
-                    auto surface = sargs.surface;
-                    auto panel = sess->panel;
-                    panel.SizeChanged([surface](auto&&, winrt::Microsoft::UI::Xaml::SizeChangedEventArgs const& args) {
-                        auto newSize = args.NewSize();
-                        uint32_t w = static_cast<uint32_t>(newSize.Width);
-                        uint32_t h = static_cast<uint32_t>(newSize.Height);
-                        if (w > 0 && h > 0) {
-                            ghostty_surface_set_size(surface, w, h);
-                        }
-                    });
-                } else {
-                }
+                delete ctx;
             });
-            timer.Start();
+            pollTimer.Start();
         });
     }
 }
