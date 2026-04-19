@@ -10,6 +10,7 @@ namespace winrt::GhosttyWin32::implementation
 {
     struct TabSession {
         ghostty_surface_t surface = nullptr;
+        ID3D11Device* device = nullptr;
         IDXGISwapChain1* swapChain = nullptr;
         Microsoft::UI::Xaml::Controls::SwapChainPanel panel{ nullptr };
     };
@@ -26,7 +27,6 @@ namespace winrt::GhosttyWin32::implementation
 
         ghostty_app_t m_app = nullptr;
         ghostty_config_t m_config = nullptr;
-        ID3D11Device* m_d3dDevice = nullptr;
         HWND m_hwnd = nullptr;
         std::vector<std::unique_ptr<TabSession>> m_sessions;
     };
