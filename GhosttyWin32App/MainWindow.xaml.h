@@ -2,6 +2,7 @@
 
 #include "MainWindow.g.h"
 #include "ghostty.h"
+#include <d3d11.h>
 
 namespace winrt::GhosttyWin32::implementation
 {
@@ -16,6 +17,7 @@ namespace winrt::GhosttyWin32::implementation
 
         ghostty_app_t m_app = nullptr;
         ghostty_config_t m_config = nullptr;
+        ID3D11Device* m_d3dDevice = nullptr;
     };
 }
 
