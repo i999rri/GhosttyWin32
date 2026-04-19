@@ -14,12 +14,6 @@
                  IsAddTabButtonVisible="True"
                  TabWidthMode="Equal"
                  VerticalAlignment="Stretch"
-                 HorizontalAlignment="Stretch">
-            <TabView.TabItems>
-                <TabViewItem Header="Terminal" IsClosable="True">
-                    <SwapChainPanel x:Name="TerminalPanel" />
-                </TabViewItem>
-            </TabView.TabItems>
-        </TabView>
+                 HorizontalAlignment="Stretch" />
     </Grid>
 </Window>
