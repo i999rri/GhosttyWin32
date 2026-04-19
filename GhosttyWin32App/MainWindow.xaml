@@ -7,9 +7,15 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
-    Title="GhosttyWin32">
+    Title="Ghostty">
 
-    <Grid>
-
-    </Grid>
+    <TabView x:Name="TabView"
+             IsAddTabButtonVisible="True"
+             TabWidthMode="Equal">
+        <TabView.TabItems>
+            <TabViewItem Header="Terminal" IsClosable="True">
+                <SwapChainPanel x:Name="TerminalPanel" />
+            </TabViewItem>
+        </TabView.TabItems>
+    </TabView>
 </Window>
