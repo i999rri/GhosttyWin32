@@ -9,13 +9,17 @@
     mc:Ignorable="d"
     Title="Ghostty">
 
-    <TabView x:Name="TabView"
-             IsAddTabButtonVisible="True"
-             TabWidthMode="Equal">
-        <TabView.TabItems>
-            <TabViewItem Header="Terminal" IsClosable="True">
-                <SwapChainPanel x:Name="TerminalPanel" />
-            </TabViewItem>
-        </TabView.TabItems>
-    </TabView>
+    <Grid>
+        <TabView x:Name="TabView"
+                 IsAddTabButtonVisible="True"
+                 TabWidthMode="Equal"
+                 VerticalAlignment="Stretch"
+                 HorizontalAlignment="Stretch">
+            <TabView.TabItems>
+                <TabViewItem Header="Terminal" IsClosable="True">
+                    <SwapChainPanel x:Name="TerminalPanel" />
+                </TabViewItem>
+            </TabView.TabItems>
+        </TabView>
+    </Grid>
 </Window>
