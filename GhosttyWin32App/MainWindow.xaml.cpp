@@ -144,8 +144,34 @@ namespace winrt::GhosttyWin32::implementation
                 winrt::Microsoft::UI::Input::PointerPointProperties props = point.Properties();
                 ghostty_input_mouse_button_e btn;
                 if (props.IsLeftButtonPressed()) btn = GHOSTTY_MOUSE_LEFT;
-                else if (props.IsRightButtonPressed()) btn = GHOSTTY_MOUSE_RIGHT;
-                else return; // Ignore middle-click (X11 paste) and others
+                else if (props.IsRightButtonPressed()) {
+                    // Right-click: copy selection if exists
+                    if (ghostty_surface_has_selection(sess->surface)) {
+                        ghostty_text_s text = {};
+                        if (ghostty_surface_read_selection(sess->surface, &text) && text.text && text.text_len > 0) {
+                            int wlen = MultiByteToWideChar(CP_UTF8, 0, text.text, (int)text.text_len, nullptr, 0);
+                            if (wlen > 0 && OpenClipboard(m_hwnd)) {
+                                EmptyClipboard();
+                                HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, (wlen + 1) * sizeof(wchar_t));
+                                if (hMem) {
+                                    wchar_t* dest = static_cast<wchar_t*>(GlobalLock(hMem));
+                                    MultiByteToWideChar(CP_UTF8, 0, text.text, (int)text.text_len, dest, wlen);
+                                    dest[wlen] = L'\0';
+                                    GlobalUnlock(hMem);
+                                    SetClipboardData(CF_UNICODETEXT, hMem);
+                                }
+                                CloseClipboard();
+                            }
+                            ghostty_surface_free_text(sess->surface, &text);
+                        }
+                        // Clear selection
+                        ghostty_surface_mouse_button(sess->surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, (ghostty_input_mods_e)0);
+                        ghostty_surface_mouse_button(sess->surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, (ghostty_input_mods_e)0);
+                        return;
+                    }
+                    btn = GHOSTTY_MOUSE_RIGHT;
+                }
+                else return; // Ignore middle-click and others
                 ghostty_input_mods_e mods = (ghostty_input_mods_e)0;
                 if (GetKeyState(VK_SHIFT) & 0x8000) mods = (ghostty_input_mods_e)(mods | GHOSTTY_MODS_SHIFT);
                 if (GetKeyState(VK_CONTROL) & 0x8000) mods = (ghostty_input_mods_e)(mods | GHOSTTY_MODS_CTRL);
@@ -245,7 +271,14 @@ namespace winrt::GhosttyWin32::implementation
                 ghostty_init(0, nullptr);
                 ghostty_runtime_config_s rtConfig{};
                 rtConfig.userdata = a->self;
-                rtConfig.wakeup_cb = [](void*) {};
+                rtConfig.wakeup_cb = [](void*) {
+                    if (!g_mainWindow || !g_mainWindow->m_app) return;
+                    g_mainWindow->DispatcherQueue().TryEnqueue([]() {
+                        if (g_mainWindow && g_mainWindow->m_app) {
+                            ghostty_app_tick(g_mainWindow->m_app);
+                        }
+                    });
+                };
                 rtConfig.action_cb = [](ghostty_app_t, ghostty_target_s target, ghostty_action_s action) -> bool {
                     if ((action.tag == GHOSTTY_ACTION_SET_TITLE || action.tag == GHOSTTY_ACTION_SET_TAB_TITLE)
                         && target.tag == GHOSTTY_TARGET_SURFACE) {
@@ -322,6 +355,7 @@ namespace winrt::GhosttyWin32::implementation
                         CloseClipboard();
                     }
                 };
+                // TODO: ghostty doesn't call close_surface_cb on shell exit (see ghostty#34)
                 rtConfig.close_surface_cb = [](void*, bool) {};
                 a->self->m_config = ghostty_config_new();
                 ghostty_config_load_default_files(a->self->m_config);
