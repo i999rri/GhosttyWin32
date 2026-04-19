@@ -1,7 +1,6 @@
 #include "framework.h"
 #include <dwmapi.h>
 #include <windowsx.h>
-#include <MddBootstrap.h>
 #include <microsoft.ui.xaml.window.h>
 #include "GhosttyBridge.h"
 
@@ -19,18 +18,8 @@ struct GhosttyApp : winrt::Microsoft::UI::Xaml::ApplicationT<GhosttyApp>
         // XamlControlsResources internally references these system brushes which
         // are unavailable in unpackaged apps. By setting them on Application.Resources
         // first, XamlControlsResources finds them during its own initialization.
-        // Set Acrylic fallbacks on Application.Resources BEFORE constructing
-        // XamlControlsResources, so its internal init can find them.
-        auto darkBg = media::SolidColorBrush(
-            winrt::Microsoft::UI::ColorHelper::FromArgb(255, 32, 32, 32));
-        auto res = xaml::ResourceDictionary();
-        res.Insert(winrt::box_value(L"AcrylicBackgroundFillColorDefaultBrush"), darkBg);
-        res.Insert(winrt::box_value(L"AcrylicBackgroundFillColorBaseBrush"), darkBg);
-        res.Insert(winrt::box_value(L"AcrylicInAppFillColorDefaultBrush"), darkBg);
-        Resources(res);
-
-        // NOW construct XamlControlsResources — it should find Acrylic in app resources
-        res.MergedDictionaries().Append(muxc::XamlControlsResources());
+        // WinUI 3 theme resources — requires MSIX packaging for Acrylic support
+        Resources(muxc::XamlControlsResources());
 
         m_window = xaml::Window();
 
@@ -79,13 +68,8 @@ int APIENTRY wWinMain(
 
     winrt::init_apartment(winrt::apartment_type::single_threaded);
 
-    PACKAGE_VERSION minVer{};
-    minVer.Major = 1;
-    minVer.Minor = 8;
-    if (FAILED(MddBootstrapInitialize(0x00010008, nullptr, minVer))) {
-        MessageBoxW(nullptr, L"Windows App Runtime not found.\nInstall from https://aka.ms/windowsappsdk", L"Error", MB_OK);
-        return 1;
-    }
+    // MSIX packaged app — Windows App Runtime is a package dependency,
+    // no MddBootstrapInitialize needed.
 
     try {
         winrt::Microsoft::UI::Xaml::Application::Start([](auto&&) {
@@ -98,6 +82,5 @@ int APIENTRY wWinMain(
         MessageBoxW(nullptr, buf, L"Error", MB_OK);
     }
 
-    MddBootstrapShutdown();
     return 0;
 }
