@@ -25,8 +25,9 @@ namespace winrt::GhosttyWin32::implementation
             if (IsDebuggerPresent())
             {
                 auto errorMessage = e.Message();
-                __debugbreak();
+                OutputDebugStringW((L"[Ghostty] Unhandled: " + errorMessage + L"\n").c_str());
             }
+            e.Handled(true);
         });
 #endif
     }

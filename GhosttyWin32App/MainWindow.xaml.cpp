@@ -35,7 +35,7 @@ namespace winrt::GhosttyWin32::implementation
             {
                 auto settings = winrt::Windows::UI::ViewManagement::UISettings();
                 auto fg = settings.GetColorValue(winrt::Windows::UI::ViewManagement::UIColorType::Foreground);
-                bool isDark = (fg.R > 128); // Light foreground = dark mode
+                bool isDark = (fg.R > 128);
                 Content().as<winrt::Microsoft::UI::Xaml::FrameworkElement>().RequestedTheme(
                     isDark ? winrt::Microsoft::UI::Xaml::ElementTheme::Dark
                            : winrt::Microsoft::UI::Xaml::ElementTheme::Light);
@@ -437,7 +437,8 @@ namespace winrt::GhosttyWin32::implementation
         m_sessions.push_back(std::move(session));
 
         auto tab = muxc::TabViewItem();
-        tab.Header(box_value(L""));
+        static constexpr wchar_t kDefaultTabTitle[] = L" ";
+        tab.Header(box_value(kDefaultTabTitle));
         tab.IsClosable(true);
         tab.Content(panel);
         tv.TabItems().Append(tab);
@@ -541,6 +542,7 @@ namespace winrt::GhosttyWin32::implementation
                 ctx->sess->surface = ctx->surface;
                 ShowWindow(hwnd, SW_SHOW);
                 ctx->sess->panel.Opacity(1);
+
 
                 auto surface = ctx->surface;
                 auto panel = ctx->sess->panel;
