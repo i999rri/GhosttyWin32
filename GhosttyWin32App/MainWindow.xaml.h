@@ -4,7 +4,6 @@
 #include "ghostty.h"
 #include <d3d11.h>
 #include <dxgi1_2.h>
-#include <commctrl.h>
 #include <vector>
 
 namespace winrt::GhosttyWin32::implementation
@@ -24,9 +23,6 @@ namespace winrt::GhosttyWin32::implementation
         void InitGhostty();
         void CreateTab();
         TabSession* ActiveSession();
-
-        static LRESULT CALLBACK InputSubclass(HWND hwnd, UINT msg, WPARAM wParam,
-            LPARAM lParam, UINT_PTR id, DWORD_PTR refData);
 
         ghostty_app_t m_app = nullptr;
         ghostty_config_t m_config = nullptr;
