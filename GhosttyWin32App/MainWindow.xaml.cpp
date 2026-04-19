@@ -214,6 +214,20 @@ namespace winrt::GhosttyWin32::implementation
                 ghostty_surface_key(sess->surface, keyEvent);
             });
 
+            // DPI change handling (deferred until XamlRoot is available)
+            Content().as<winrt::Microsoft::UI::Xaml::FrameworkElement>().Loaded([this](auto&&, auto&&) {
+                Content().XamlRoot().Changed([this](auto&&, winrt::Microsoft::UI::Xaml::XamlRootChangedEventArgs const&) {
+                    if (!m_hwnd) return;
+                    UINT dpi = GetDpiForWindow(m_hwnd);
+                    double scale = (double)dpi / 96.0;
+                    for (auto& s : m_sessions) {
+                        if (s->surface) {
+                            ghostty_surface_set_content_scale(s->surface, scale, scale);
+                        }
+                    }
+                });
+            });
+
             tv.AddTabButtonClick([this](muxc::TabView const&, auto&&) {
                 CreateTab();
             });
