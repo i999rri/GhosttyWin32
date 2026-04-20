@@ -545,8 +545,6 @@ namespace winrt::GhosttyWin32::implementation
         tab.Content(panel);
         tv.TabItems().Append(tab);
         tv.SelectedItem(tab);
-        // Hide panel until surface is ready to avoid black flash
-        if (sessionIdx > 0) panel.Opacity(0);
 
         auto app = m_app;
         auto hwnd = m_hwnd;
@@ -640,7 +638,6 @@ namespace winrt::GhosttyWin32::implementation
 
                 ctx->sess->surface = ctx->surface;
                 ShowWindow(hwnd, SW_SHOW);
-                ctx->sess->panel.Opacity(1);
 
                 if (g_mainWindow && g_mainWindow->m_editContext)
                     g_mainWindow->m_editContext.NotifyFocusEnter();
