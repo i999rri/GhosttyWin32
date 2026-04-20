@@ -559,64 +559,57 @@ namespace winrt::GhosttyWin32::implementation
             if (sess->surface) return;
 
             auto p = sender.as<muxc::SwapChainPanel>();
-
-            RECT rc;
-            GetClientRect(hwnd, &rc);
-            UINT width = std::max<UINT>(rc.right - rc.left, 1);
-            UINT height = std::max<UINT>(rc.bottom - rc.top, 1);
-
-            // Create D3D11 device using cached adapter (skip adapter enumeration)
             auto* dxgiAdapter = self->m_dxgiAdapter;
             auto* dxgiFactory = self->m_dxgiFactory;
             if (!dxgiAdapter || !dxgiFactory) return;
 
-            ID3D11Device* device = nullptr;
-            UINT flags = D3D11_CREATE_DEVICE_SINGLETHREADED
-                       | D3D11_CREATE_DEVICE_BGRA_SUPPORT
-                       | D3D11_CREATE_DEVICE_PREVENT_INTERNAL_THREADING_OPTIMIZATIONS;
-#ifndef NDEBUG
-            flags |= D3D11_CREATE_DEVICE_DEBUG;
-#endif
-            D3D_FEATURE_LEVEL levels[] = { D3D_FEATURE_LEVEL_11_0 };
-            D3D11CreateDevice(dxgiAdapter, D3D_DRIVER_TYPE_UNKNOWN, nullptr, flags,
-                levels, 1, D3D11_SDK_VERSION, &device, nullptr, nullptr);
-            if (!device) return;
-            sess->device = device;
-
-            // Create swap chain using cached factory
-            DXGI_SWAP_CHAIN_DESC1 scd = {};
-            scd.Width = width;
-            scd.Height = height;
-            scd.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-            scd.SampleDesc.Count = 1;
-            scd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-            scd.BufferCount = 2;
-            scd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
-            scd.Scaling = DXGI_SCALING_STRETCH;
-            scd.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
-
-            IDXGISwapChain1* swapChain = nullptr;
-            dxgiFactory->CreateSwapChainForComposition(device, &scd, nullptr, &swapChain);
-            if (!swapChain) return;
-
-            p.template as<ISwapChainPanelNative>()->SetSwapChain(swapChain);
-            sess->swapChain = swapChain;
-
-
-            // Async surface creation — don't block UI thread
+            // All heavy work on worker thread to avoid blocking UI
             struct SurfContext {
                 TabSession* sess;
+                muxc::SwapChainPanel panel;
                 ghostty_app_t app;
+                IDXGIAdapter* adapter;
+                IDXGIFactory2* factory;
+                HWND hwnd;
                 ID3D11Device* device;
                 IDXGISwapChain1* swapChain;
-                HWND hwnd;
                 ghostty_surface_t surface;
             };
-            auto ctx = new SurfContext{ sess, app, device, swapChain, hwnd, nullptr };
+            auto ctx = new SurfContext{ sess, p, app, dxgiAdapter, dxgiFactory, hwnd, nullptr, nullptr, nullptr };
 
             CreateThread(nullptr, 4 * 1024 * 1024,
                 [](LPVOID param) -> DWORD {
                     auto* c = static_cast<SurfContext*>(param);
+
+                    // Create device (heavy — ~50-100ms)
+                    UINT flags = D3D11_CREATE_DEVICE_SINGLETHREADED
+                               | D3D11_CREATE_DEVICE_BGRA_SUPPORT
+                               | D3D11_CREATE_DEVICE_PREVENT_INTERNAL_THREADING_OPTIMIZATIONS;
+#ifndef NDEBUG
+                    flags |= D3D11_CREATE_DEVICE_DEBUG;
+#endif
+                    D3D_FEATURE_LEVEL levels[] = { D3D_FEATURE_LEVEL_11_0 };
+                    D3D11CreateDevice(c->adapter, D3D_DRIVER_TYPE_UNKNOWN, nullptr, flags,
+                        levels, 1, D3D11_SDK_VERSION, &c->device, nullptr, nullptr);
+                    if (!c->device) return 1;
+
+                    // Create swap chain
+                    RECT rc;
+                    GetClientRect(c->hwnd, &rc);
+                    DXGI_SWAP_CHAIN_DESC1 scd = {};
+                    scd.Width = std::max<UINT>(rc.right - rc.left, 1);
+                    scd.Height = std::max<UINT>(rc.bottom - rc.top, 1);
+                    scd.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+                    scd.SampleDesc.Count = 1;
+                    scd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+                    scd.BufferCount = 2;
+                    scd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+                    scd.Scaling = DXGI_SCALING_STRETCH;
+                    scd.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
+                    c->factory->CreateSwapChainForComposition(c->device, &scd, nullptr, &c->swapChain);
+                    if (!c->swapChain) return 1;
+
+                    // Create ghostty surface
                     ghostty_surface_config_s cfg = ghostty_surface_config_new();
                     cfg.platform_tag = GHOSTTY_PLATFORM_WINDOWS;
                     cfg.platform.windows.hwnd = c->hwnd;
@@ -637,6 +630,14 @@ namespace winrt::GhosttyWin32::implementation
                 pollTimer.Stop();
 
                 ctx->sess->surface = ctx->surface;
+                ctx->sess->device = ctx->device;
+                ctx->sess->swapChain = ctx->swapChain;
+
+                // Link swap chain to panel (must be on UI thread, before Present)
+                if (ctx->swapChain) {
+                    ctx->panel.as<ISwapChainPanelNative>()->SetSwapChain(ctx->swapChain);
+                }
+
                 ShowWindow(hwnd, SW_SHOW);
 
                 if (g_mainWindow && g_mainWindow->m_editContext)
