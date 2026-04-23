@@ -607,9 +607,6 @@ namespace winrt::GhosttyWin32::implementation
             CreateThread(nullptr, 4 * 1024 * 1024,
                 [](LPVOID param) -> DWORD {
                     auto* c = static_cast<SurfContext*>(param);
-                    LARGE_INTEGER freq, t0, t1, t2, t3;
-                    QueryPerformanceFrequency(&freq);
-                    QueryPerformanceCounter(&t0);
 
                     // Create device
                     UINT flags = D3D11_CREATE_DEVICE_SINGLETHREADED
@@ -621,7 +618,6 @@ namespace winrt::GhosttyWin32::implementation
                     D3D_FEATURE_LEVEL levels[] = { D3D_FEATURE_LEVEL_11_0 };
                     D3D11CreateDevice(c->adapter, D3D_DRIVER_TYPE_UNKNOWN, nullptr, flags,
                         levels, 1, D3D11_SDK_VERSION, &c->device, nullptr, nullptr);
-                    QueryPerformanceCounter(&t1);
                     if (!c->device) return 1;
 
                     // Create swap chain
@@ -638,7 +634,6 @@ namespace winrt::GhosttyWin32::implementation
                     scd.Scaling = DXGI_SCALING_STRETCH;
                     scd.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
                     c->factory->CreateSwapChainForComposition(c->device, &scd, nullptr, &c->swapChain);
-                    QueryPerformanceCounter(&t2);
                     if (!c->swapChain) return 1;
 
                     // Create ghostty surface
@@ -650,15 +645,6 @@ namespace winrt::GhosttyWin32::implementation
                     UINT dpi = GetDpiForWindow(c->hwnd);
                     cfg.scale_factor = (double)dpi / 96.0;
                     c->surface = ghostty_surface_new(c->app, &cfg);
-                    QueryPerformanceCounter(&t3);
-
-                    char buf[256];
-                    sprintf_s(buf, "[Ghostty] Timing: device=%lldms swapchain=%lldms surface=%lldms total=%lldms\n",
-                        (t1.QuadPart - t0.QuadPart) * 1000 / freq.QuadPart,
-                        (t2.QuadPart - t1.QuadPart) * 1000 / freq.QuadPart,
-                        (t3.QuadPart - t2.QuadPart) * 1000 / freq.QuadPart,
-                        (t3.QuadPart - t0.QuadPart) * 1000 / freq.QuadPart);
-                    OutputDebugStringA(buf);
                     return 0;
                 }, ctx, 0, nullptr);
 
