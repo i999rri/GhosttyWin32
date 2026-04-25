@@ -7,10 +7,13 @@
 #include "MainWindow.g.cpp"
 #endif
 #include <microsoft.ui.xaml.window.h>
+#include <microsoft.ui.xaml.media.dxinterop.h>
 #include <d3d11.h>
 #include <dxgi1_3.h>
+#include <dcomp.h>
 #include <dwmapi.h>
 #pragma comment(lib, "dwmapi.lib")
+#pragma comment(lib, "dcomp.lib")
 
 using namespace winrt;
 using namespace Microsoft::UI::Xaml;
@@ -290,14 +293,79 @@ namespace winrt::GhosttyWin32::implementation
 
                 for (auto it = m_sessions.begin(); it != m_sessions.end(); ++it) {
                     if (content && (*it)->panel == content.as<muxc::SwapChainPanel>()) {
-                        if ((*it)->surface) ghostty_surface_free((*it)->surface);
+                        // If surface isn't ready yet, just hide the tab visually.
+                        // The poll timer will see closing=true and clean up safely
+                        // once the surface is fully created.
+                        if (!(*it)->surface) {
+                            (*it)->closing = true;
+                            auto tabItem = tab.try_as<muxc::TabViewItem>();
+                            if (tabItem) {
+                                tabItem.Visibility(winrt::Microsoft::UI::Xaml::Visibility::Collapsed);
+                                // Switch focus to another tab if this one was selected
+                                if (sender.SelectedItem() == tab) {
+                                    for (uint32_t i = 0; i < sender.TabItems().Size(); i++) {
+                                        auto other = sender.TabItems().GetAt(i).try_as<muxc::TabViewItem>();
+                                        if (other && other != tabItem && other.Visibility() == winrt::Microsoft::UI::Xaml::Visibility::Visible) {
+                                            sender.SelectedItem(other);
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            break;
+                        }
+
+                        // Surface is ready. Standard cleanup path.
+                        sender.TabItems().RemoveAt(tabIdx);
+
+                        if ((*it)->panel)
+                            (*it)->panel.as<ISwapChainPanelNative>()->SetSwapChain(nullptr);
+                        (*it)->panel = nullptr;
+
+                        // Wait for DWM/DComp to release its reference to the swap chain.
+                        // SetSwapChain(nullptr) is async — DComp releases on next composition.
+                        DwmFlush();
+
+                        // ghostty_surface_free joins renderer + IO threads
+                        ghostty_surface_free((*it)->surface);
+
+                        if ((*it)->creationThread) {
+                            CloseHandle((*it)->creationThread);
+                            (*it)->creationThread = nullptr;
+                        }
+
+                        // Wait for GPU to complete all queued commands before releasing.
+                        // ghostty's renderer threads are joined, but GPU may still have
+                        // queued work that references the swap chain backbuffer.
+                        if ((*it)->device) {
+                            ID3D11DeviceContext* ctx = nullptr;
+                            (*it)->device->GetImmediateContext(&ctx);
+                            if (ctx) {
+                                ctx->ClearState();
+                                ctx->Flush();
+                                ID3D11Query* query = nullptr;
+                                D3D11_QUERY_DESC qd = { D3D11_QUERY_EVENT, 0 };
+                                if (SUCCEEDED((*it)->device->CreateQuery(&qd, &query))) {
+                                    ctx->End(query);
+                                    BOOL done = FALSE;
+                                    int spins = 0;
+                                    while (!done && ctx->GetData(query, &done, sizeof(done), 0) != S_OK && spins < 1000) {
+                                        Sleep(1);
+                                        spins++;
+                                    }
+                                    query->Release();
+                                }
+                                ctx->Release();
+                            }
+                        }
+
                         if ((*it)->swapChain) (*it)->swapChain->Release();
                         if ((*it)->device) (*it)->device->Release();
+                        if ((*it)->surfaceHandle) CloseHandle((*it)->surfaceHandle);
                         m_sessions.erase(it);
                         break;
                     }
                 }
-                sender.TabItems().RemoveAt(tabIdx);
                 if (sender.TabItems().Size() == 0) {
                     this->Close();
                 }
@@ -311,9 +379,12 @@ namespace winrt::GhosttyWin32::implementation
     MainWindow::~MainWindow()
     {
         for (auto& s : m_sessions) {
+            // Detach swap chain handle from panel before freeing
+            if (s->panel) s->panel.as<ISwapChainPanelNative>()->SetSwapChain(nullptr);
             if (s->surface) ghostty_surface_free(s->surface);
             if (s->swapChain) s->swapChain->Release();
             if (s->device) s->device->Release();
+            if (s->surfaceHandle) CloseHandle(s->surfaceHandle);
         }
         if (m_app) ghostty_app_free(m_app);
         if (m_config) ghostty_config_free(m_config);
@@ -495,11 +566,12 @@ namespace winrt::GhosttyWin32::implementation
                 HWND hwnd;
                 ID3D11Device* device;
                 IDXGISwapChain1* swapChain;
+                HANDLE surfaceHandle;
                 ghostty_surface_t surface;
             };
-            auto ctx = new SurfContext{ sess, p, app, dxgiAdapter, dxgiFactory, hwnd, nullptr, nullptr, nullptr };
+            auto ctx = new SurfContext{ sess, p, app, dxgiAdapter, dxgiFactory, hwnd, nullptr, nullptr, nullptr, nullptr };
 
-            CreateThread(nullptr, 4 * 1024 * 1024,
+            HANDLE hThread = CreateThread(nullptr, 4 * 1024 * 1024,
                 [](LPVOID param) -> DWORD {
                     auto* c = static_cast<SurfContext*>(param);
 
@@ -515,21 +587,46 @@ namespace winrt::GhosttyWin32::implementation
                         levels, 1, D3D11_SDK_VERSION, &c->device, nullptr, nullptr);
                     if (!c->device) return 1;
 
-                    // Create swap chain
+                    // Create swap chain via composition surface handle (Windows Terminal pattern)
                     RECT rc;
                     GetClientRect(c->hwnd, &rc);
                     DXGI_SWAP_CHAIN_DESC1 scd = {};
                     scd.Width = std::max<UINT>(rc.right - rc.left, 1);
                     scd.Height = std::max<UINT>(rc.bottom - rc.top, 1);
-                    scd.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+                    scd.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
                     scd.SampleDesc.Count = 1;
                     scd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-                    scd.BufferCount = 2;
-                    scd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+                    scd.BufferCount = 3;
+                    scd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
                     scd.Scaling = DXGI_SCALING_STRETCH;
                     scd.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
-                    c->factory->CreateSwapChainForComposition(c->device, &scd, nullptr, &c->swapChain);
-                    if (!c->swapChain) return 1;
+
+                    IDXGIFactoryMedia* factoryMedia = nullptr;
+                    if (FAILED(c->factory->QueryInterface(__uuidof(IDXGIFactoryMedia), (void**)&factoryMedia))) {
+                        OutputDebugStringA("D3D11: QueryInterface for IDXGIFactoryMedia failed\n");
+                        return 1;
+                    }
+
+                    HANDLE surfaceHandle = nullptr;
+                    constexpr DWORD COMPOSITIONSURFACE_ALL_ACCESS = 0x0003L;
+                    if (FAILED(DCompositionCreateSurfaceHandle(COMPOSITIONSURFACE_ALL_ACCESS, nullptr, &surfaceHandle))) {
+                        OutputDebugStringA("D3D11: DCompositionCreateSurfaceHandle failed\n");
+                        factoryMedia->Release();
+                        return 1;
+                    }
+
+                    HRESULT hr = factoryMedia->CreateSwapChainForCompositionSurfaceHandle(
+                        c->device, surfaceHandle, &scd, nullptr, &c->swapChain);
+                    factoryMedia->Release();
+                    if (FAILED(hr) || !c->swapChain) {
+                        char buf[128];
+                        sprintf_s(buf, "D3D11: CreateSwapChainForCompositionSurfaceHandle failed: hr=0x%08X\n", (unsigned)hr);
+                        OutputDebugStringA(buf);
+                        if (surfaceHandle) CloseHandle(surfaceHandle);
+                        return 1;
+                    }
+                    c->surfaceHandle = surfaceHandle;
+                    OutputDebugStringA("D3D11: Swap chain created via surface handle\n");
 
                     // Create ghostty surface
                     ghostty_surface_config_s cfg = ghostty_surface_config_new();
@@ -539,26 +636,118 @@ namespace winrt::GhosttyWin32::implementation
                     cfg.platform.windows.swap_chain = c->swapChain;
                     UINT dpi = GetDpiForWindow(c->hwnd);
                     cfg.scale_factor = (double)dpi / 96.0;
+                    // Check if tab was closed while we were creating resources
+                    if (c->sess->closing) {
+                        if (c->swapChain) { c->swapChain->Release(); c->swapChain = nullptr; }
+                        if (c->device) { c->device->Release(); c->device = nullptr; }
+                        if (c->surfaceHandle) { CloseHandle(c->surfaceHandle); c->surfaceHandle = nullptr; }
+                        return 1;
+                    }
                     c->surface = ghostty_surface_new(c->app, &cfg);
                     return 0;
                 }, ctx, 0, nullptr);
+            sess->creationThread = hThread;
 
             // Poll for surface creation completion without blocking UI
             auto pollTimer = winrt::Microsoft::UI::Dispatching::DispatcherQueue::GetForCurrentThread().CreateTimer();
             pollTimer.Interval(std::chrono::milliseconds(16));
             pollTimer.IsRepeating(true);
-            pollTimer.Tick([ctx, pollTimer, hwnd](auto&&, auto&&) {
+            pollTimer.Tick([weakThis, ctx, pollTimer, hwnd](auto&&, auto&&) {
                 if (!ctx->surface) return;
                 pollTimer.Stop();
+
+                auto self = weakThis.get();
+                if (!self) { delete ctx; return; }
+
+                // Worker thread is done — clean up handle
+                if (ctx->sess->creationThread) {
+                    CloseHandle(ctx->sess->creationThread);
+                    ctx->sess->creationThread = nullptr;
+                }
+
+                // If tab was closed (hidden) while we were creating, tear down here
+                if (ctx->sess->closing) {
+                    // Detach swap chain from the (hidden) panel and wait for DComp release
+                    if (ctx->panel)
+                        ctx->panel.as<ISwapChainPanelNative>()->SetSwapChain(nullptr);
+                    DwmFlush();
+
+                    if (ctx->surface) ghostty_surface_free(ctx->surface);
+
+                    // Wait for GPU to complete pending work
+                    if (ctx->device) {
+                        ID3D11DeviceContext* dctx = nullptr;
+                        ctx->device->GetImmediateContext(&dctx);
+                        if (dctx) {
+                            dctx->ClearState();
+                            dctx->Flush();
+                            ID3D11Query* query = nullptr;
+                            D3D11_QUERY_DESC qd = { D3D11_QUERY_EVENT, 0 };
+                            if (SUCCEEDED(ctx->device->CreateQuery(&qd, &query))) {
+                                dctx->End(query);
+                                BOOL done = FALSE;
+                                int spins = 0;
+                                while (!done && dctx->GetData(query, &done, sizeof(done), 0) != S_OK && spins < 1000) {
+                                    Sleep(1);
+                                    spins++;
+                                }
+                                query->Release();
+                            }
+                            dctx->Release();
+                        }
+                    }
+
+                    if (ctx->swapChain) ctx->swapChain->Release();
+                    if (ctx->device) ctx->device->Release();
+                    if (ctx->surfaceHandle) CloseHandle(ctx->surfaceHandle);
+
+                    // Remove the (hidden) tab from UI
+                    auto tv = self->TabView();
+                    for (uint32_t i = 0; i < tv.TabItems().Size(); i++) {
+                        auto t = tv.TabItems().GetAt(i).as<muxc::TabViewItem>();
+                        if (t.Content().try_as<muxc::SwapChainPanel>() == ctx->panel) {
+                            tv.TabItems().RemoveAt(i);
+                            break;
+                        }
+                    }
+
+                    // Remove the session
+                    for (auto it = self->m_sessions.begin(); it != self->m_sessions.end(); ++it) {
+                        if (it->get() == ctx->sess) {
+                            self->m_sessions.erase(it);
+                            break;
+                        }
+                    }
+                    delete ctx;
+                    return;
+                }
 
                 ctx->sess->surface = ctx->surface;
                 ctx->sess->device = ctx->device;
                 ctx->sess->swapChain = ctx->swapChain;
+                ctx->sess->surfaceHandle = ctx->surfaceHandle;
 
-                // Link swap chain to panel (must be on UI thread, before Present)
-                if (ctx->swapChain) {
-                    ctx->panel.as<ISwapChainPanelNative>()->SetSwapChain(ctx->swapChain);
+                // Attach via surface handle (Windows Terminal pattern)
+                if (ctx->surfaceHandle) {
+                    auto native2 = ctx->panel.try_as<ISwapChainPanelNative2>();
+                    if (native2) {
+                        HRESULT hrAttach = native2->SetSwapChainHandle(ctx->surfaceHandle);
+                        char buf[128];
+                        sprintf_s(buf, "D3D11: SetSwapChainHandle hr=0x%08X handle=%p\n", (unsigned)hrAttach, ctx->surfaceHandle);
+                        OutputDebugStringA(buf);
+                    } else {
+                        OutputDebugStringA("D3D11: ISwapChainPanelNative2 not supported, falling back to SetSwapChain\n");
+                        ctx->panel.as<ISwapChainPanelNative>()->SetSwapChain(ctx->swapChain);
+                    }
                 }
+
+                // Defer focus to the next dispatcher tick so the panel's swap
+                // chain attachment fully settles before we try to focus it.
+                auto panelForFocus = ctx->panel;
+                self->DispatcherQueue().TryEnqueue([panelForFocus]() {
+                    panelForFocus.Focus(winrt::Microsoft::UI::Xaml::FocusState::Programmatic);
+                });
+
 
                 ShowWindow(hwnd, SW_SHOW);
 

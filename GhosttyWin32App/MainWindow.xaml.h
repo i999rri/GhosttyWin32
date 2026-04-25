@@ -13,7 +13,10 @@ namespace winrt::GhosttyWin32::implementation
         ghostty_surface_t surface = nullptr;
         ID3D11Device* device = nullptr;
         IDXGISwapChain1* swapChain = nullptr;
+        HANDLE surfaceHandle = nullptr;   // DComp surface handle (owned)
         Microsoft::UI::Xaml::Controls::SwapChainPanel panel{ nullptr };
+        HANDLE creationThread = nullptr;  // worker thread handle for cancellation
+        bool closing = false;             // set when tab close is requested
     };
 
     struct MainWindow : MainWindowT<MainWindow>
