@@ -319,17 +319,12 @@ namespace winrt::GhosttyWin32::implementation
 
             tv.TabCloseRequested([this](muxc::TabView const& sender, muxc::TabViewTabCloseRequestedEventArgs const& args) {
                 auto item = args.Tab();
-                for (auto it = m_tabs.begin(); it != m_tabs.end(); ++it) {
-                    if ((*it)->Item() == item) {
-                        uint32_t idx = 0;
-                        if (sender.TabItems().IndexOf(item, idx)) {
-                            sender.TabItems().RemoveAt(idx);
-                        }
-                        DwmFlush();              // wait for compositor to release
-                        m_tabs.erase(it);        // Tab destructor handles teardown
-                        break;
-                    }
+                uint32_t idx = 0;
+                if (sender.TabItems().IndexOf(item, idx)) {
+                    sender.TabItems().RemoveAt(idx);
                 }
+                DwmFlush();              // wait for compositor to release
+                m_tabs.Remove(item);     // Tab destructor handles teardown
                 if (sender.TabItems().Size() == 0) {
                     this->Close();
                 }
@@ -342,7 +337,7 @@ namespace winrt::GhosttyWin32::implementation
 
     MainWindow::~MainWindow()
     {
-        m_tabs.clear();  // Tab destructors handle cleanup
+        m_tabs.Clear();  // Tab destructors handle cleanup
         if (m_app) ghostty_app_free(m_app);
         if (m_config) ghostty_config_free(m_config);
         // Clean shutdown reached — clear the crash flag so the next launch
@@ -353,51 +348,34 @@ namespace winrt::GhosttyWin32::implementation
 
     long __stdcall MainWindow::OnUnhandledException(struct _EXCEPTION_POINTERS* /*info*/) noexcept
     {
+        // Best-effort cleanup before the OS kills the process. Each call here
+        // is a Win32 / kernel API that's safe even with a corrupted heap;
+        // ShowWindow / CloseHandle / MessageBoxW don't touch user-mode
+        // structures that might be wrecked. If any of them does crash anyway,
+        // the unhandled-exception filter "fails" recursively and WER takes
+        // over with its standard dialog — same end result, just less polished.
+        // That's an acceptable trade for keeping this code readable.
         OutputDebugStringA("GhosttyWin32: unhandled exception, attempting cleanup\n");
         if (g_mainWindow) {
-            // Hide the main window first — XAML/D3D state may be broken,
-            // continuing to show it looks bad (white / partial render) and
-            // the message box should be the only visible UI on the way out.
-            __try {
-                if (g_mainWindow->m_hwnd) ShowWindow(g_mainWindow->m_hwnd, SW_HIDE);
-            } __except (EXCEPTION_EXECUTE_HANDLER) {}
-
+            if (g_mainWindow->m_hwnd) ShowWindow(g_mainWindow->m_hwnd, SW_HIDE);
             for (auto& tab : g_mainWindow->m_tabs) {
                 if (!tab) continue;
-                // Only do operations safe in a corrupted-process state:
-                // CloseHandle is a kernel call, doesn't touch in-process
-                // structures that might be wrecked. Skip XAML / D3D calls.
-                __try {
-                    HANDLE h = tab->SurfaceHandle();
-                    if (h) CloseHandle(h);
-                } __except (EXCEPTION_EXECUTE_HANDLER) {}
+                HANDLE h = tab->SurfaceHandle();
+                if (h) CloseHandle(h);
             }
         }
-        // Tell the user why we're going down, before WER's generic dialog.
-        // MB_TASKMODAL doesn't require a valid HWND owner, which matters
-        // because the UI thread state may be broken at this point.
-        __try {
-            MessageBoxW(nullptr,
-                L"GhosttyWin32 hit a fatal error and must exit.\n\n"
-                L"Restarting the app usually recovers.",
-                L"GhosttyWin32",
-                MB_OK | MB_ICONERROR | MB_TASKMODAL);
-        } __except (EXCEPTION_EXECUTE_HANDLER) {}
-
+        MessageBoxW(nullptr,
+            L"GhosttyWin32 hit a fatal error and must exit.\n\n"
+            L"Restarting the app usually recovers.",
+            L"GhosttyWin32",
+            MB_OK | MB_ICONERROR | MB_TASKMODAL);
         // Don't swallow the exception — let WER / debugger see it as usual.
         return EXCEPTION_CONTINUE_SEARCH;
     }
 
     Tab* MainWindow::ActiveTab()
     {
-        auto sel = TabView().SelectedItem();
-        if (!sel) return nullptr;
-        auto item = sel.try_as<muxc::TabViewItem>();
-        if (!item) return nullptr;
-        for (auto& t : m_tabs) {
-            if (t->Item() == item) return t.get();
-        }
-        return nullptr;
+        return m_tabs.Active(TabView());
     }
 
     void MainWindow::InitGhostty()
@@ -428,11 +406,8 @@ namespace winrt::GhosttyWin32::implementation
                             if (!wstr->empty()) {
                                 auto mw = g_mainWindow;
                                 mw->DispatcherQueue().TryEnqueue([mw, wstr, surface]() {
-                                    for (auto& t : mw->m_tabs) {
-                                        if (t->Surface() == surface) {
-                                            t->Item().Header(box_value(winrt::hstring(*wstr)));
-                                            break;
-                                        }
+                                    if (auto* t = mw->m_tabs.FindBySurface(surface)) {
+                                        t->Item().Header(box_value(winrt::hstring(*wstr)));
                                     }
                                 });
                             }
@@ -528,9 +503,7 @@ namespace winrt::GhosttyWin32::implementation
             if (!self) return;
 
             // Loaded can fire again on layout updates — bail if already constructed.
-            for (auto& t : self->m_tabs) {
-                if (t->Item() == itemStrong) return;
-            }
+            if (self->m_tabs.FindByItem(itemStrong)) return;
 
             // Wrap Tab::Create in SEH guard so a hardware exception in the
             // NVIDIA driver during ghostty_surface_new (e.g. dx_create_texture
@@ -590,7 +563,7 @@ namespace winrt::GhosttyWin32::implementation
                 self->m_editContext.NotifyFocusEnter();
             }
 
-            self->m_tabs.push_back(std::move(tab));
+            self->m_tabs.Add(std::move(tab));
         });
     }
 }
