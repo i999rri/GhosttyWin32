@@ -23,6 +23,22 @@ namespace {
         if (len == 0) return L"GhosttyWin32_running.flag";
         return std::filesystem::path(buf) / L"GhosttyWin32_running.flag";
     }
+
+    // SEH "trampoline": isolates a callable invocation behind __try/__except.
+    // MSVC's /EHsc refuses __try in any function that has C++ unwinding
+    // (i.e. anything dealing with C++ objects). This helper has only raw
+    // C types in its frame, so it compiles. The C++ work lives in the
+    // callback we invoke through a function pointer — if that callback
+    // raises a hardware exception, we swallow it here.
+    extern "C" int RunSEHGuarded(void (*fn)(void*), void* ctx) noexcept {
+        __try {
+            fn(ctx);
+            return 1;
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
+            OutputDebugStringA("SEH caught hardware exception inside guarded call\n");
+            return 0;
+        }
+    }
 }
 
 using namespace winrt;
@@ -42,21 +58,11 @@ namespace winrt::GhosttyWin32::implementation
             if (initialized) return;
             initialized = true;
 
-            // Crash recovery: if the flag file is still present, the previous
-            // run terminated abnormally. Wait briefly so NVIDIA's driver can
-            // self-recover before we touch D3D11 again.
-            {
-                std::error_code ec;
-                auto flag = crashFlagPath();
-                if (std::filesystem::exists(flag, ec)) {
-                    OutputDebugStringA("GhosttyWin32: previous run crashed; pausing 2s for driver recovery\n");
-                    Sleep(2000);
-                }
-                std::ofstream(flag).close();
-            }
-
             // Best-effort cleanup if we crash later — tells DComp to release
-            // surfaces so the next launch starts cleaner.
+            // surfaces so the next launch starts cleaner. The crash flag
+            // itself is set / checked / cleared in App::OnLaunched so the
+            // recovery delay happens before any window is mapped (avoids a
+            // visible white flash).
             SetUnhandledExceptionFilter(&MainWindow::OnUnhandledException);
 
             g_mainWindow = this;
@@ -349,6 +355,13 @@ namespace winrt::GhosttyWin32::implementation
     {
         OutputDebugStringA("GhosttyWin32: unhandled exception, attempting cleanup\n");
         if (g_mainWindow) {
+            // Hide the main window first — XAML/D3D state may be broken,
+            // continuing to show it looks bad (white / partial render) and
+            // the message box should be the only visible UI on the way out.
+            __try {
+                if (g_mainWindow->m_hwnd) ShowWindow(g_mainWindow->m_hwnd, SW_HIDE);
+            } __except (EXCEPTION_EXECUTE_HANDLER) {}
+
             for (auto& tab : g_mainWindow->m_tabs) {
                 if (!tab) continue;
                 // Only do operations safe in a corrupted-process state:
@@ -360,6 +373,17 @@ namespace winrt::GhosttyWin32::implementation
                 } __except (EXCEPTION_EXECUTE_HANDLER) {}
             }
         }
+        // Tell the user why we're going down, before WER's generic dialog.
+        // MB_TASKMODAL doesn't require a valid HWND owner, which matters
+        // because the UI thread state may be broken at this point.
+        __try {
+            MessageBoxW(nullptr,
+                L"GhosttyWin32 hit a fatal error and must exit.\n\n"
+                L"Restarting the app usually recovers.",
+                L"GhosttyWin32",
+                MB_OK | MB_ICONERROR | MB_TASKMODAL);
+        } __except (EXCEPTION_EXECUTE_HANDLER) {}
+
         // Don't swallow the exception — let WER / debugger see it as usual.
         return EXCEPTION_CONTINUE_SEARCH;
     }
@@ -508,10 +532,51 @@ namespace winrt::GhosttyWin32::implementation
                 if (t->Item() == itemStrong) return;
             }
 
-            auto tab = Tab::Create(panelStrong, itemStrong, app, hwnd);
+            // Wrap Tab::Create in SEH guard so a hardware exception in the
+            // NVIDIA driver during ghostty_surface_new (e.g. dx_create_texture
+            // crash) doesn't kill the whole app and take every other tab
+            // with it. The C++ work happens inside the callback below.
+            struct CreateCtx {
+                muxc::SwapChainPanel const* panel;
+                muxc::TabViewItem const* item;
+                ghostty_app_t app;
+                HWND hwnd;
+                std::unique_ptr<Tab> result;
+            };
+            CreateCtx ctx{ &panelStrong, &itemStrong, app, hwnd, nullptr };
+            int ok = RunSEHGuarded([](void* arg) noexcept {
+                auto* c = static_cast<CreateCtx*>(arg);
+                c->result = Tab::Create(*c->panel, *c->item, c->app, c->hwnd);
+            }, &ctx);
+
+            std::unique_ptr<Tab> tab = std::move(ctx.result);
+            if (!ok) {
+                // SEH caught a hardware exception inside Tab::Create — almost
+                // always the NVIDIA driver memcpy crash. Process state is
+                // unreliable from here (heap locks may be stuck, driver
+                // kernel state corrupted, etc.) so don't try to continue.
+                //
+                // Hide the main window first — its XAML/D3D state may be
+                // partially broken and showing it next to the message box
+                // looks alarming. The dialog is parented to nullptr so it
+                // stays visible after we hide the window.
+                if (self->m_hwnd) ShowWindow(self->m_hwnd, SW_HIDE);
+                MessageBoxW(nullptr,
+                    L"A graphics driver error occurred while creating the new tab.\n"
+                    L"GhosttyWin32 will exit safely.\n\n"
+                    L"Restarting the app usually recovers — the next launch\n"
+                    L"will automatically wait 2 seconds for the driver.",
+                    L"GhosttyWin32",
+                    MB_OK | MB_ICONERROR | MB_TASKMODAL);
+                if (self->m_hwnd) {
+                    PostMessageW(self->m_hwnd, WM_CLOSE, 0, 0);
+                }
+                return;
+            }
             if (!tab) {
-                // Tab::Create cleans up its own intermediate resources;
-                // we just remove the orphaned item from the TabView.
+                // Tab::Create returned null cleanly (handle / attach / surface
+                // creation failed but no hardware exception). Heap state is
+                // intact, so just drop the orphan tab item and continue.
                 auto items = self->TabView().TabItems();
                 uint32_t idx = 0;
                 if (items.IndexOf(itemStrong, idx)) items.RemoveAt(idx);
