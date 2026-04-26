@@ -466,6 +466,12 @@ typedef struct {
   // thread, bound to this surface. The caller must already have called
   // ISwapChainPanelNative2::SetSwapChainHandle(handle) on the UI thread.
   void* composition_surface_handle;
+  // Initial swap chain dimensions in pixels. Used when set (non-zero) so the
+  // swap chain is created at the correct size from the start, avoiding an
+  // immediate ResizeBuffers on the first frame. When zero, ghostty falls back
+  // to GetClientRect on hwnd.
+  uint32_t initial_width;
+  uint32_t initial_height;
 } ghostty_platform_windows_s;
 
 typedef union {

@@ -76,6 +76,11 @@ public:
         cfg.platform_tag = GHOSTTY_PLATFORM_WINDOWS;
         cfg.platform.windows.hwnd = hwnd;
         cfg.platform.windows.composition_surface_handle = handle;
+        // Pass the panel's actual layout size so ghostty creates the swap
+        // chain at the final size — saves an immediate ResizeBuffers on the
+        // first frame and reduces driver allocator stress over many tabs.
+        cfg.platform.windows.initial_width = static_cast<uint32_t>(panel.ActualWidth());
+        cfg.platform.windows.initial_height = static_cast<uint32_t>(panel.ActualHeight());
         UINT dpi = GetDpiForWindow(hwnd);
         cfg.scale_factor = static_cast<double>(dpi) / 96.0;
 
