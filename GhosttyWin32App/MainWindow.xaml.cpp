@@ -8,7 +8,22 @@
 #endif
 #include <microsoft.ui.xaml.window.h>
 #include <dwmapi.h>
+#include <filesystem>
+#include <fstream>
 #pragma comment(lib, "dwmapi.lib")
+
+namespace {
+    // Flag file used to detect that the previous process didn't exit cleanly.
+    // Created at startup, deleted on clean shutdown — if it's still there at
+    // launch time, the previous run crashed and we wait briefly so the
+    // NVIDIA driver has time to recover its internal state.
+    std::filesystem::path crashFlagPath() {
+        wchar_t buf[MAX_PATH];
+        DWORD len = GetTempPathW(MAX_PATH, buf);
+        if (len == 0) return L"GhosttyWin32_running.flag";
+        return std::filesystem::path(buf) / L"GhosttyWin32_running.flag";
+    }
+}
 
 using namespace winrt;
 using namespace Microsoft::UI::Xaml;
@@ -26,6 +41,23 @@ namespace winrt::GhosttyWin32::implementation
             static bool initialized = false;
             if (initialized) return;
             initialized = true;
+
+            // Crash recovery: if the flag file is still present, the previous
+            // run terminated abnormally. Wait briefly so NVIDIA's driver can
+            // self-recover before we touch D3D11 again.
+            {
+                std::error_code ec;
+                auto flag = crashFlagPath();
+                if (std::filesystem::exists(flag, ec)) {
+                    OutputDebugStringA("GhosttyWin32: previous run crashed; pausing 2s for driver recovery\n");
+                    Sleep(2000);
+                }
+                std::ofstream(flag).close();
+            }
+
+            // Best-effort cleanup if we crash later — tells DComp to release
+            // surfaces so the next launch starts cleaner.
+            SetUnhandledExceptionFilter(&MainWindow::OnUnhandledException);
 
             g_mainWindow = this;
             auto windowNative = this->try_as<::IWindowNative>();
@@ -307,6 +339,29 @@ namespace winrt::GhosttyWin32::implementation
         m_tabs.clear();  // Tab destructors handle cleanup
         if (m_app) ghostty_app_free(m_app);
         if (m_config) ghostty_config_free(m_config);
+        // Clean shutdown reached — clear the crash flag so the next launch
+        // doesn't pause unnecessarily.
+        std::error_code ec;
+        std::filesystem::remove(crashFlagPath(), ec);
+    }
+
+    long __stdcall MainWindow::OnUnhandledException(struct _EXCEPTION_POINTERS* /*info*/) noexcept
+    {
+        OutputDebugStringA("GhosttyWin32: unhandled exception, attempting cleanup\n");
+        if (g_mainWindow) {
+            for (auto& tab : g_mainWindow->m_tabs) {
+                if (!tab) continue;
+                // Only do operations safe in a corrupted-process state:
+                // CloseHandle is a kernel call, doesn't touch in-process
+                // structures that might be wrecked. Skip XAML / D3D calls.
+                __try {
+                    HANDLE h = tab->SurfaceHandle();
+                    if (h) CloseHandle(h);
+                } __except (EXCEPTION_EXECUTE_HANDLER) {}
+            }
+        }
+        // Don't swallow the exception — let WER / debugger see it as usual.
+        return EXCEPTION_CONTINUE_SEARCH;
     }
 
     Tab* MainWindow::ActiveTab()

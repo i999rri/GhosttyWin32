@@ -13,6 +13,13 @@ namespace winrt::GhosttyWin32::implementation
         MainWindow();
         ~MainWindow();
 
+        // Best-effort cleanup invoked from SetUnhandledExceptionFilter.
+        // Walks live tabs and closes their composition surface handles so
+        // DComp drops its driver-side references before the OS kills the
+        // process — reduces the chance the next launch inherits corrupted
+        // NVIDIA state.
+        static long __stdcall OnUnhandledException(struct _EXCEPTION_POINTERS* info) noexcept;
+
     private:
         void InitGhostty();
         void CreateTab();

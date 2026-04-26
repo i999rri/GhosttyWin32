@@ -40,6 +40,7 @@ public:
     ghostty_surface_t Surface() const noexcept { return m_surface; }
     Microsoft::UI::Xaml::Controls::SwapChainPanel const& Panel() const noexcept { return m_panel; }
     Microsoft::UI::Xaml::Controls::TabViewItem const& Item() const noexcept { return m_item; }
+    HANDLE SurfaceHandle() const noexcept { return m_surfaceHandle; }
 
     void Focus() {
         m_panel.Focus(Microsoft::UI::Xaml::FocusState::Programmatic);
