@@ -2,19 +2,12 @@
 
 #include "MainWindow.g.h"
 #include "ghostty.h"
-#include <d3d11.h>
-#include <dxgi1_2.h>
-#include <vector>
 #include "ImeBuffer.h"
+#include "Tab.h"
+#include <vector>
 
 namespace winrt::GhosttyWin32::implementation
 {
-    struct TabSession {
-        ghostty_surface_t surface = nullptr;
-        HANDLE surfaceHandle = nullptr;   // DComp surface handle (owned by C++)
-        Microsoft::UI::Xaml::Controls::SwapChainPanel panel{ nullptr };
-    };
-
     struct MainWindow : MainWindowT<MainWindow>
     {
         MainWindow();
@@ -23,16 +16,14 @@ namespace winrt::GhosttyWin32::implementation
     private:
         void InitGhostty();
         void CreateTab();
-        TabSession* ActiveSession();
+        Tab* ActiveTab();
 
         ghostty_app_t m_app = nullptr;
         ghostty_config_t m_config = nullptr;
         HWND m_hwnd = nullptr;
-        IDXGIFactory2* m_dxgiFactory = nullptr;
-        IDXGIAdapter* m_dxgiAdapter = nullptr;
         winrt::Windows::UI::Text::Core::CoreTextEditContext m_editContext{ nullptr };
         ImeBuffer m_ime;
-        std::vector<std::unique_ptr<TabSession>> m_sessions;
+        std::vector<std::unique_ptr<Tab>> m_tabs;
     };
 }
 
