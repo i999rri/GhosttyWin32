@@ -493,81 +493,88 @@ namespace winrt::GhosttyWin32::implementation
         item.IsClosable(true);
         item.Content(panel);
         tv.TabItems().Append(item);
-        tv.SelectedItem(item);
+        // Append-only — don't switch to the new tab yet. The SelectedItem
+        // call (which is what makes the panel visible) is deferred to the
+        // onActivated callback below, fired by Tab once ghostty has
+        // presented its first frame to the swap chain. That way the panel
+        // becomes visible only with real content — issue #22.
 
-        auto app = m_ghostty->Handle();
-        auto hwnd = m_hwnd;
+        // Tab activation work, fired on the UI thread via Tab once the
+        // swap chain is bound to the panel and has at least one frame.
         auto weakThis = get_weak();
-        // Hold strong refs so the lambda can keep them alive until Loaded fires.
-        auto panelStrong = panel;
         auto itemStrong = item;
-
-        panel.Loaded([weakThis, panelStrong, itemStrong, app, hwnd](auto&&, auto&&) {
+        auto tvStrong = tv;
+        auto onActivated = [weakThis, itemStrong, tvStrong]() {
             auto self = weakThis.get();
             if (!self) return;
-
-            // Loaded can fire again on layout updates — bail if already constructed.
-            if (self->m_tabs.FindByItem(itemStrong)) return;
-
-            // Wrap Tab::Create in SEH guard so a hardware exception in the
-            // NVIDIA driver during ghostty_surface_new (e.g. dx_create_texture
-            // crash) doesn't kill the whole app and take every other tab
-            // with it. The C++ work happens inside the callback below.
-            struct CreateCtx {
-                muxc::SwapChainPanel const* panel;
-                muxc::TabViewItem const* item;
-                ghostty_app_t app;
-                HWND hwnd;
-                std::unique_ptr<Tab> result;
-            };
-            CreateCtx ctx{ &panelStrong, &itemStrong, app, hwnd, nullptr };
-            int ok = RunSEHGuarded([](void* arg) noexcept {
-                auto* c = static_cast<CreateCtx*>(arg);
-                c->result = Tab::Create(*c->panel, *c->item, c->app, c->hwnd);
-            }, &ctx);
-
-            std::unique_ptr<Tab> tab = std::move(ctx.result);
-            if (!ok) {
-                // SEH caught a hardware exception inside Tab::Create — almost
-                // always the NVIDIA driver memcpy crash. Process state is
-                // unreliable from here (heap locks may be stuck, driver
-                // kernel state corrupted, etc.) so don't try to continue.
-                //
-                // Hide the main window first — its XAML/D3D state may be
-                // partially broken and showing it next to the message box
-                // looks alarming. The dialog is parented to nullptr so it
-                // stays visible after we hide the window.
-                if (self->m_hwnd) ShowWindow(self->m_hwnd, SW_HIDE);
-                MessageBoxW(nullptr,
-                    L"A graphics driver error occurred while creating the new tab.\n"
-                    L"GhosttyWin32 will exit safely.\n\n"
-                    L"Restarting the app usually recovers — the next launch\n"
-                    L"will automatically wait 2 seconds for the driver.",
-                    L"GhosttyWin32",
-                    MB_OK | MB_ICONERROR | MB_TASKMODAL);
-                if (self->m_hwnd) {
-                    PostMessageW(self->m_hwnd, WM_CLOSE, 0, 0);
-                }
-                return;
+            tvStrong.SelectedItem(itemStrong);
+            if (auto* tab = self->m_tabs.FindByItem(itemStrong)) {
+                tab->Focus();
             }
-            if (!tab) {
-                // Tab::Create returned null cleanly (handle / attach / surface
-                // creation failed but no hardware exception). Heap state is
-                // intact, so just drop the orphan tab item and continue.
-                auto items = self->TabView().TabItems();
-                uint32_t idx = 0;
-                if (items.IndexOf(itemStrong, idx)) items.RemoveAt(idx);
-                return;
-            }
-
-            tab->Focus();
-            ShowWindow(hwnd, SW_SHOW);
             if (self->m_editContext) {
                 self->m_ime.reset();
                 self->m_editContext.NotifyFocusEnter();
             }
+            if (self->m_hwnd) ShowWindow(self->m_hwnd, SW_SHOW);
+        };
 
-            self->m_tabs.Add(std::move(tab));
-        });
+        // Wrap Tab::Create in SEH guard so a hardware exception in the
+        // NVIDIA driver during ghostty_surface_new (e.g. dx_create_texture
+        // crash) doesn't kill the whole app and take every other tab
+        // with it. The C++ work happens inside the callback below.
+        auto app = m_ghostty->Handle();
+        auto hwnd = m_hwnd;
+        struct CreateCtx {
+            muxc::SwapChainPanel const* panel;
+            muxc::TabViewItem const* item;
+            ghostty_app_t app;
+            HWND hwnd;
+            std::function<void()> onActivated;
+            std::unique_ptr<Tab> result;
+        };
+        CreateCtx ctx{ &panel, &item, app, hwnd, std::move(onActivated), nullptr };
+        int ok = RunSEHGuarded([](void* arg) noexcept {
+            auto* c = static_cast<CreateCtx*>(arg);
+            c->result = Tab::Create(*c->panel, *c->item, c->app, c->hwnd, std::move(c->onActivated));
+        }, &ctx);
+
+        std::unique_ptr<Tab> tab = std::move(ctx.result);
+        if (!ok) {
+            // SEH caught a hardware exception inside Tab::Create — almost
+            // always the NVIDIA driver memcpy crash. Process state is
+            // unreliable from here (heap locks may be stuck, driver kernel
+            // state corrupted, etc.) so don't try to continue.
+            //
+            // Hide the main window first — its XAML/D3D state may be
+            // partially broken and showing it next to the message box
+            // looks alarming. The dialog is parented to nullptr so it
+            // stays visible after we hide the window.
+            if (m_hwnd) ShowWindow(m_hwnd, SW_HIDE);
+            MessageBoxW(nullptr,
+                L"A graphics driver error occurred while creating the new tab.\n"
+                L"GhosttyWin32 will exit safely.\n\n"
+                L"Restarting the app usually recovers — the next launch\n"
+                L"will automatically wait 2 seconds for the driver.",
+                L"GhosttyWin32",
+                MB_OK | MB_ICONERROR | MB_TASKMODAL);
+            if (m_hwnd) {
+                PostMessageW(m_hwnd, WM_CLOSE, 0, 0);
+            }
+            return;
+        }
+        if (!tab) {
+            // Tab::Create returned null cleanly (handle / attach / surface
+            // creation failed but no hardware exception). Heap state is
+            // intact, so just drop the orphan tab item and continue.
+            auto items = tv.TabItems();
+            uint32_t idx = 0;
+            if (items.IndexOf(item, idx)) items.RemoveAt(idx);
+            return;
+        }
+
+        // Focus / SW_SHOW / SelectedItem / NotifyFocusEnter are deferred
+        // to the onActivated callback fired from Tab once ghostty has
+        // presented its first frame.
+        m_tabs.Add(std::move(tab));
     }
 }

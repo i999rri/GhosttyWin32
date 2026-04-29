@@ -7,6 +7,7 @@
 #include <winrt/Microsoft.UI.Xaml.Controls.h>
 #include <winrt/Microsoft.UI.Dispatching.h>
 #include <atomic>
+#include <functional>
 #include <memory>
 
 #pragma comment(lib, "dcomp.lib")
@@ -24,6 +25,12 @@ struct SwapChainAttachRequest {
     Microsoft::UI::Xaml::Controls::SwapChainPanel panel{ nullptr };
     Microsoft::UI::Dispatching::DispatcherQueue dispatcher{ nullptr };
     std::atomic<bool> cancelled{ false };
+    // Called on the UI thread after SetSwapChainHandle has bound the swap
+    // chain (which now has its first frame presented) to the panel. The
+    // host uses this to switch the TabView, focus the panel, etc., so
+    // the panel only becomes visible once it actually has content
+    // (issue #22).
+    std::function<void()> onActivated;
 };
 
 // One terminal tab. Existence implies fully-formed: panel attached to a
@@ -67,25 +74,29 @@ public:
         m_panel.Focus(Microsoft::UI::Xaml::FocusState::Programmatic);
     }
 
-    // Factory: given an already-loaded panel + item, do the failable
-    // orchestration (handle creation, ghostty surface creation, swap-chain
-    // attach scheduling) and return a fully-formed Tab. Returns nullptr on
-    // failure (after cleaning up any partially-acquired resources). Must be
-    // called on the UI thread inside panel.Loaded so DispatcherQueue() is
-    // valid and SetSwapChainHandle has a real composition tree to attach to.
+    // Factory: given a panel + item, do the failable orchestration (handle
+    // creation, ghostty surface creation, swap-chain attach scheduling) and
+    // return a fully-formed Tab. Returns nullptr on failure (after cleaning
+    // up any partially-acquired resources). Call on the UI thread; the panel
+    // does NOT need to be in the visual tree yet — that's the whole point of
+    // issue #22, where making the panel visible before it had displayable
+    // content produced a flicker. The optional onActivated callback runs on
+    // the UI thread once ghostty has presented its first frame and we've
+    // bound the swap chain to the panel; the host uses it to switch the
+    // TabView so the panel becomes visible only with real content.
     //
     // Ordering: the DComp surface handle is bound to the panel only AFTER
-    // ghostty's renderer thread creates the swap chain that publishes to it
-    // — see OnSwapChainReady. This matches the order Microsoft documents
-    // and Windows Terminal's AtlasEngine implements (handle → swap chain →
-    // SetSwapChainHandle). Calling SetSwapChainHandle before the swap chain
-    // exists works in practice but appears to trigger NVIDIA driver crashes
-    // under tab-churn stress.
+    // ghostty's renderer thread has presented at least one real frame —
+    // see OnSwapChainReady. ghostty fires the swap-chain-ready callback
+    // from drawFrameEnd (post first present), not from swap-chain creation,
+    // so the back buffer is guaranteed to have displayable content by the
+    // time we attach.
     static std::unique_ptr<Tab> Create(
         Microsoft::UI::Xaml::Controls::SwapChainPanel panel,
         Microsoft::UI::Xaml::Controls::TabViewItem item,
         ghostty_app_t app,
-        HWND hwnd)
+        HWND hwnd,
+        std::function<void()> onActivated = {})
     {
         constexpr DWORD COMPOSITIONSURFACE_ALL_ACCESS = 0x0003L;
 
@@ -99,6 +110,7 @@ public:
         attach->handle = handle;
         attach->panel = panel;
         attach->dispatcher = panel.DispatcherQueue();
+        attach->onActivated = std::move(onActivated);
         // Heap-allocated owning shared_ptr handed to ghostty; it'll come back
         // through OnSwapChainReady (or be deleted here if surface_new fails).
         auto* attachOwned = new std::shared_ptr<SwapChainAttachRequest>(attach);
@@ -181,9 +193,16 @@ private:
         try {
             req->dispatcher.TryEnqueue([req]() {
                 if (req->cancelled.load()) return;
+                // Bind the swap chain (which now has at least one presented
+                // frame) to the panel, then run the host's activation work.
+                // Order: handle attach → onActivated. Host's onActivated
+                // typically calls SelectedItem to make the panel visible
+                // — by then the panel already has displayable content,
+                // closing the flicker window of issue #22.
                 if (auto native2 = req->panel.try_as<ISwapChainPanelNative2>()) {
                     native2->SetSwapChainHandle(req->handle);
                 }
+                if (req->onActivated) req->onActivated();
             });
         } catch (...) {
             // Window torn down — request is implicitly cancelled.
