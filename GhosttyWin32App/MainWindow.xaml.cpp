@@ -162,6 +162,22 @@ namespace winrt::GhosttyWin32::implementation
                 });
             }
 
+            // Re-attach IME when window regains activation. The init handler
+            // above runs once and calls NotifyFocusEnter only after the first
+            // tab is created; without this, switching focus to another window
+            // and back leaves CoreTextEditContext detached, so IME stays off
+            // even if the OS-level IME toggle is on.
+            Activated([this](winrt::Windows::Foundation::IInspectable const&,
+                             winrt::Microsoft::UI::Xaml::WindowActivatedEventArgs const& args) {
+                if (!m_editContext) return;
+                using State = winrt::Microsoft::UI::Xaml::WindowActivationState;
+                if (args.WindowActivationState() == State::Deactivated) {
+                    m_editContext.NotifyFocusLeave();
+                } else if (ActiveTab()) {
+                    m_editContext.NotifyFocusEnter();
+                }
+            });
+
             auto tv = TabView();
             SetTitleBar(DragRegion());
 
