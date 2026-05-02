@@ -251,24 +251,54 @@ namespace winrt::GhosttyWin32::implementation
                     return;
                 }
 
-                // Send key event to ghostty
+                // Compute the unshifted codepoint (VK translated with no
+                // modifiers held) so unicode-keyed bindings can match.
+                // Without this, Binding.Set.getEvent() in
+                // input/Binding.zig:2622 falls through every lookup path
+                // for entries like `unicode = 't'` (ctrl+shift+t = new_tab,
+                // ctrl+shift+w = close_tab, etc.) and returns null. The
+                // physical-keyed bindings (ctrl+tab = next_tab,
+                // ctrl+shift+arrow_left = previous_tab) already match via
+                // keycode; this fixes the unicode ones.
+                //
+                // We keep text encoding on the separate ghostty_surface_text
+                // path below — passing a `text` field here would
+                // double-input because encodeKey also writes utf8 to the
+                // pty.
+                BYTE plainState[256] = {};
+                wchar_t unshiftedChars[4] = {};
+                int unshiftedCount = ToUnicode(vk, scanCode, plainState, unshiftedChars, 4, 0);
+                // Drain any dead-key state ToUnicode left in plainState so
+                // the next real keystroke isn't affected.
+                wchar_t drain[4] = {};
+                ToUnicode(VK_SPACE, 0x39, plainState, drain, 4, 0);
+
+                // Send key event to ghostty (binding match happens here)
                 ghostty_input_key_s keyEvent = {};
                 keyEvent.action = GHOSTTY_ACTION_PRESS;
                 keyEvent.keycode = scanCode;
                 if (args.KeyStatus().IsExtendedKey) keyEvent.keycode |= 0xE000;
                 keyEvent.mods = currentMods();
-                ghostty_surface_key(tab->Surface(), keyEvent);
+                if (unshiftedCount > 0 && unshiftedChars[0] >= 0x20) {
+                    keyEvent.unshifted_codepoint = static_cast<uint32_t>(unshiftedChars[0]);
+                }
+                bool consumed = ghostty_surface_key(tab->Surface(), keyEvent);
 
-                // Translate to text using ToUnicode (replaces CharacterReceived)
-                BYTE kbState[256] = {};
-                GetKeyboardState(kbState);
-                wchar_t chars[4] = {};
-                int charCount = ToUnicode(vk, scanCode, kbState, chars, 4, 0);
-                if (charCount > 0 && chars[0] >= 0x20) {
-                    char utf8[16] = {};
-                    int len = WideCharToMultiByte(CP_UTF8, 0, chars, charCount, utf8, sizeof(utf8), nullptr, nullptr);
-                    if (len > 0) {
-                        ghostty_surface_text(tab->Surface(), utf8, len);
+                // Translate to text using ToUnicode (replaces CharacterReceived).
+                // Skip when the binding consumed the key — otherwise
+                // ctrl+shift+t would type "T" into the pty in addition to
+                // opening a new tab.
+                if (!consumed) {
+                    BYTE kbState[256] = {};
+                    GetKeyboardState(kbState);
+                    wchar_t chars[4] = {};
+                    int charCount = ToUnicode(vk, scanCode, kbState, chars, 4, 0);
+                    if (charCount > 0 && chars[0] >= 0x20) {
+                        char utf8[16] = {};
+                        int len = WideCharToMultiByte(CP_UTF8, 0, chars, charCount, utf8, sizeof(utf8), nullptr, nullptr);
+                        if (len > 0) {
+                            ghostty_surface_text(tab->Surface(), utf8, len);
+                        }
                     }
                 }
 
@@ -443,6 +473,90 @@ namespace winrt::GhosttyWin32::implementation
             });
         };
         rtConfig.action_cb = [](ghostty_app_t, ghostty_target_s target, ghostty_action_s action) -> bool {
+            // Tab lifecycle / navigation actions. ghostty's default keybinds
+            // (Ctrl+Shift+T new tab, Ctrl+Shift+W close, Ctrl+Tab/Ctrl+PageDown
+            // next, etc.) are matched on the renderer thread inside
+            // ghostty_surface_key and surfaced here as actions; the actual
+            // TabView mutation has to happen on the UI thread.
+            //
+            // NEW_WINDOW is folded into NEW_TAB for now since multi-window
+            // isn't implemented — this matches how other shells fall back
+            // when they get a "new window" request without a window manager.
+            if (action.tag == GHOSTTY_ACTION_NEW_TAB ||
+                action.tag == GHOSTTY_ACTION_NEW_WINDOW) {
+                if (g_mainWindow) {
+                    auto mw = g_mainWindow;
+                    mw->DispatcherQueue().TryEnqueue([mw]() {
+                        if (g_mainWindow) g_mainWindow->CreateTab();
+                    });
+                }
+                return true;
+            }
+
+            if (action.tag == GHOSTTY_ACTION_CLOSE_TAB &&
+                target.tag == GHOSTTY_TARGET_SURFACE) {
+                auto surface = target.target.surface;
+                if (g_mainWindow && surface) {
+                    auto mw = g_mainWindow;
+                    mw->DispatcherQueue().TryEnqueue([mw, surface]() {
+                        // Mirror the TabCloseRequested handler: pull the
+                        // TabViewItem out of the TabView, DwmFlush so the
+                        // compositor releases its reference, then drop the
+                        // owning Tab. The Tab destructor frees the ghostty
+                        // surface and closes the composition handle.
+                        auto* t = mw->m_tabs.FindBySurface(surface);
+                        if (!t) return;
+                        auto item = t->Item();
+                        auto tv = mw->TabView();
+                        uint32_t idx = 0;
+                        if (tv.TabItems().IndexOf(item, idx)) {
+                            tv.TabItems().RemoveAt(idx);
+                        }
+                        DwmFlush();
+                        mw->m_tabs.Remove(item);
+                        if (tv.TabItems().Size() == 0) {
+                            mw->Close();
+                        }
+                    });
+                }
+                return true;
+            }
+
+            if (action.tag == GHOSTTY_ACTION_GOTO_TAB) {
+                int requested = static_cast<int>(action.action.goto_tab);
+                if (g_mainWindow) {
+                    auto mw = g_mainWindow;
+                    mw->DispatcherQueue().TryEnqueue([mw, requested]() {
+                        auto tv = mw->TabView();
+                        int count = static_cast<int>(tv.TabItems().Size());
+                        if (count == 0) return;
+                        int next = -1;
+                        switch (requested) {
+                            case GHOSTTY_GOTO_TAB_PREVIOUS: {
+                                int cur = tv.SelectedIndex();
+                                next = (cur - 1 + count) % count;
+                                break;
+                            }
+                            case GHOSTTY_GOTO_TAB_NEXT: {
+                                int cur = tv.SelectedIndex();
+                                next = (cur + 1) % count;
+                                break;
+                            }
+                            case GHOSTTY_GOTO_TAB_LAST:
+                                next = count - 1;
+                                break;
+                            default:
+                                if (requested >= 0 && requested < count) {
+                                    next = requested;
+                                }
+                                break;
+                        }
+                        if (next >= 0) tv.SelectedIndex(next);
+                    });
+                }
+                return true;
+            }
+
             if ((action.tag == GHOSTTY_ACTION_SET_TITLE || action.tag == GHOSTTY_ACTION_SET_TAB_TITLE)
                 && target.tag == GHOSTTY_TARGET_SURFACE) {
                 const char* title = action.action.set_title.title;
