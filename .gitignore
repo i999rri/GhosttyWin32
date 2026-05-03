@@ -20,3 +20,7 @@ Generated Files/
 ghostty/ghostty.dll
 ghostty/ghostty.lib
 ghostty/ghostty.pdb
+obj/
+*.dll
+*.lib
+GhosttyWin32App/ghostty.h

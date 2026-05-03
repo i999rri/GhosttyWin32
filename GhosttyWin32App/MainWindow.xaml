@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="GhosttyWin32.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:GhosttyWin32"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Title="Ghostty">
+
+    <!-- Layout strategy:
+           Col 0  TabView (spans both columns) — fills the entire window so
+                  the SwapChainPanel content area keeps the full width.
+           Col 1  CaptionButtons (Auto = 138px) — anchored to the window's
+                  right edge in the OUTER grid so they don't shift around
+                  when the TabStripFooter width changes with tab count.
+                  Drawn on top of TabView's tab-strip area thanks to later-
+                  sibling Z-order.
+         The TabStripFooter still hosts a DragRegion border, but with
+         MinWidth=200 the OS gives it at least ~62px of empty space to the
+         left of where the buttons land (200 footer - 138 button cluster),
+         which is the only draggable strip area when many tabs are open. -->
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+
+        <TabView x:Name="TabView" Grid.Column="0" Grid.ColumnSpan="2"
+                 IsAddTabButtonVisible="True"
+                 TabWidthMode="Equal"
+                 VerticalAlignment="Stretch"
+                 HorizontalAlignment="Stretch">
+            <TabView.TabStripFooter>
+                <Border x:Name="DragRegion"
+                        Background="Transparent"
+                        HorizontalAlignment="Stretch"
+                        MinWidth="200" />
+            </TabView.TabStripFooter>
+        </TabView>
+
+        <StackPanel x:Name="CaptionButtons" Grid.Column="1"
+                    Orientation="Horizontal"
+                    VerticalAlignment="Top">
+            <!-- Local Button.Resources overrides let the default
+                 ControlTemplate paint flat caption-style backgrounds
+                 without us retemplating the whole control.
+                 SubtleFillColorSecondary/Tertiary follow OS light/dark. -->
+            <Button x:Name="MinimizeButton" Width="46" Height="40"
+                    Padding="0" BorderThickness="0" CornerRadius="0"
+                    Click="OnMinimizeClick">
+                <Button.Resources>
+                    <SolidColorBrush x:Key="ButtonBackground" Color="Transparent" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="{ThemeResource SubtleFillColorSecondary}" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="{ThemeResource SubtleFillColorTertiary}" />
+                    <SolidColorBrush x:Key="ButtonBackgroundDisabled" Color="Transparent" />
+                    <SolidColorBrush x:Key="ButtonBorderBrush" Color="Transparent" />
+                    <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="Transparent" />
+                    <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="Transparent" />
+                </Button.Resources>
+                <FontIcon FontFamily="Segoe Fluent Icons,Segoe MDL2 Assets"
+                          Glyph="&#xE921;" FontSize="10" />
+            </Button>
+            <Button x:Name="MaximizeButton" Width="46" Height="40"
+                    Padding="0" BorderThickness="0" CornerRadius="0"
+                    Click="OnMaximizeClick">
+                <Button.Resources>
+                    <SolidColorBrush x:Key="ButtonBackground" Color="Transparent" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="{ThemeResource SubtleFillColorSecondary}" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="{ThemeResource SubtleFillColorTertiary}" />
+                    <SolidColorBrush x:Key="ButtonBackgroundDisabled" Color="Transparent" />
+                    <SolidColorBrush x:Key="ButtonBorderBrush" Color="Transparent" />
+                    <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="Transparent" />
+                    <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="Transparent" />
+                </Button.Resources>
+                <FontIcon x:Name="MaximizeGlyph"
+                          FontFamily="Segoe Fluent Icons,Segoe MDL2 Assets"
+                          Glyph="&#xE922;" FontSize="10" />
+            </Button>
+            <!-- Close button uses Windows' canonical red hover (#E81123)
+                 with white foreground; the rest of the theme tokens stay
+                 transparent. -->
+            <Button x:Name="CloseButton" Width="46" Height="40"
+                    Padding="0" BorderThickness="0" CornerRadius="0"
+                    Click="OnCloseClick">
+                <Button.Resources>
+                    <SolidColorBrush x:Key="ButtonBackground" Color="Transparent" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#E81123" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#F1707A" />
+                    <SolidColorBrush x:Key="ButtonBackgroundDisabled" Color="Transparent" />
+                    <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="White" />
+                    <SolidColorBrush x:Key="ButtonForegroundPressed" Color="White" />
+                    <SolidColorBrush x:Key="ButtonBorderBrush" Color="Transparent" />
+                    <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="Transparent" />
+                    <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="Transparent" />
+                </Button.Resources>
+                <FontIcon FontFamily="Segoe Fluent Icons,Segoe MDL2 Assets"
+                          Glyph="&#xE8BB;" FontSize="10" />
+            </Button>
+        </StackPanel>
+    </Grid>
+</Window>
