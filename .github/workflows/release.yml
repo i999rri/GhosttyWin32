@@ -3,7 +3,10 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      # Restrict to v<digit>... so 'vfoo' or 'v-' tags don't trigger a
+      # release run. The tag-format validation in "Set MSIX version
+      # from tag" still rejects 2-part / 5-part / non-numeric variants.
+      - 'v[0-9]*'
 
 permissions:
   contents: write
@@ -93,6 +96,14 @@ jobs:
           # suffix because appxmanifest only accepts a four-part numeric.
           $tag = "${{ github.ref_name }}"
           $version = ($tag.TrimStart('v') -split '-')[0]
+          # Fail-fast on malformed tags. The MSIX manifest only accepts a
+          # 4-part numeric Version, so anything that doesn't reduce to
+          # exactly 3 numeric segments here would fail later in obscure
+          # ways. Reject up front with a clear message instead.
+          if ($version -notmatch '^\d+\.\d+\.\d+$') {
+            Write-Error "Tag '$tag' produced version '$version', which is not 3 numeric parts. Expected v<major>.<minor>.<patch> (optional -rcN / -beta suffix)."
+            exit 1
+          }
           $fullVersion = "$version.0"
           # Read with -Raw so existing line endings are preserved verbatim
           # (the previous Get-Content + Set-Content -NoNewline approach
