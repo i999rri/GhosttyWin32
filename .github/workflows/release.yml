@@ -90,10 +90,20 @@ jobs:
           $tag = "${{ github.ref_name }}"
           $version = ($tag.TrimStart('v') -split '-')[0]
           $fullVersion = "$version.0"
+          # Read with -Raw so existing line endings are preserved verbatim
+          # (the previous Get-Content + Set-Content -NoNewline approach
+          # joined array elements with no separator, collapsing the XML
+          # declaration into the next line and producing APPX1402).
+          # Use -creplace (case-sensitive) on uppercase Version=, otherwise
+          # -replace also clobbers `version="1.0"` in the <?xml ... ?>
+          # declaration since PowerShell -replace is case-insensitive.
           $manifestPath = "GhosttyWin32 (Package)/Package.appxmanifest"
-          (Get-Content $manifestPath) `
-            -replace 'Version="[\d\.]+"', "Version=`"$fullVersion`"" |
-            Set-Content $manifestPath -NoNewline
+          $content = Get-Content $manifestPath -Raw
+          # (?<=\s) lookbehind requires whitespace before Version=, so
+          # MinVersion= / MaxVersionTested= in <TargetDeviceFamily> aren't
+          # touched — only the Version= attribute on <Identity> matches.
+          $content = $content -creplace '(?<=\s)Version="[\d\.]+"', "Version=`"$fullVersion`""
+          [System.IO.File]::WriteAllText((Resolve-Path $manifestPath), $content)
           Write-Host "Set MSIX version to $fullVersion"
           # Echo for downstream steps.
           "msix_version=$fullVersion" >> $env:GITHUB_ENV
