@@ -125,7 +125,7 @@ git push origin v0.3.0
 ```
 
 挙動:
-1. ghostty fork の `feature/swapchain-panel-api` から `ghostty.dll` をビルド
+1. ghostty fork の `windows-port` から `ghostty.dll` をビルド
 2. `Package.appxmanifest` の `Version` をタグから動的書き換え (`v0.3.0` → `0.3.0.0`)
 3. **`release` Environment が承認待ち** → Actions タブ → "Review pending deployments" で承認
 4. 承認後: PFX を Secrets から復元 → MSIX 署名 → PFX 削除 → Releases にアップロード
@@ -148,7 +148,7 @@ git push origin dev
 ```
 
 挙動:
-1. 自動的に `feature/swapchain-panel-api` の最新 ghostty.dll をビルド
+1. 自動的に `windows-port` の最新 ghostty.dll をビルド
 2. MSIX manifest version は `0.3.0.<run_number>` (例: `0.3.0.42`)
 3. 自動承認、即ビルド
 4. **`dev-build` という固定タグの Release を上書き作成**（前回の dev-build は削除される）

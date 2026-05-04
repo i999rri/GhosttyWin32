@@ -121,7 +121,7 @@ This requires a forked version of Ghostty with Windows support patches:
 ```bash
 git clone https://github.com/i999rri/ghostty.git
 cd ghostty
-git switch feature/swapchain-panel-api
+git switch windows-port
 zig build -Doptimize=ReleaseSafe -Drenderer=directx
 ```
 

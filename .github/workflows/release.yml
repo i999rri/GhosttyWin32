@@ -27,7 +27,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: i999rri/ghostty
-          ref: feature/swapchain-panel-api
+          ref: windows-port
           path: ghostty
 
       - name: Setup Zig
