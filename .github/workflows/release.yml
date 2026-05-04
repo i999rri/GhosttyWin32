@@ -41,8 +41,10 @@ jobs:
           cd ghostty
           zig build -Doptimize=ReleaseSafe -Drenderer=directx
           # GhosttyWin32App.vcxproj links against ../ghostty/ghostty.{dll,lib,h}
-          # at the workspace root; copy the canonical artifacts there.
-          Copy-Item zig-out/lib/ghostty.dll ../ghostty/
+          # at the workspace root. upstream renamed the install artifact
+          # ghostty.dll → ghostty-internal.dll (ghostty 4fd16ef9b), so rename
+          # on copy to keep the linker target stable.
+          Copy-Item zig-out/lib/ghostty-internal.dll ../ghostty/ghostty.dll
           Copy-Item include/ghostty.h ../ghostty/
           # The Zig build writes the small import lib into the cache, not
           # zig-out. Hunt for the most recently produced one (~60 KB) and
