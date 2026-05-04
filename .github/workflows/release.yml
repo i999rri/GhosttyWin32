@@ -67,11 +67,12 @@ jobs:
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
-      - name: Setup NuGet
-        uses: NuGet/setup-nuget@v2
-
+      # NuGet CLI doesn't understand the new .slnx solution format yet, so
+      # restore via msbuild's Restore target instead. msbuild 17.7+ handles
+      # .slnx natively and the wapproj's PackageReferences resolve the same
+      # way as `nuget restore` would on a legacy .sln.
       - name: Restore NuGet packages
-        run: nuget restore GhosttyWin32.sln
+        run: msbuild GhosttyWin32.slnx /t:Restore /p:Configuration=Release /p:Platform=x64
 
       - name: Set MSIX version from tag
         shell: pwsh
