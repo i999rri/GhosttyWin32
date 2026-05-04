@@ -38,6 +38,8 @@ jobs:
         id: version
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
           # MSIX manifest Version is X.Y.Z.W (each part is UInt16, max 65535).
           # We use 0.3.0.<run_number> so each CI build is monotonically
           # increasing within a base version. Bump $base manually before
@@ -64,6 +66,8 @@ jobs:
       - name: Build ghostty.dll
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
           cd ghostty
           zig build -Doptimize=ReleaseSafe -Drenderer=directx
           # upstream renamed the install artifact: zig-out/lib/ghostty.dll →
@@ -107,6 +111,8 @@ jobs:
       - name: Patch manifest version
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
           # Read with -Raw so existing line endings are preserved verbatim
           # (the previous Get-Content + Set-Content -NoNewline approach
           # joined array elements with no separator, collapsing the XML
@@ -128,6 +134,8 @@ jobs:
           PFX_BASE64: ${{ secrets.SIGNING_PFX_BASE64 }}
           PFX_PASSWORD: ${{ secrets.SIGNING_PFX_PASSWORD }}
         run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
           if (-not $env:PFX_BASE64) {
             Write-Error "SIGNING_PFX_BASE64 secret is empty. See .github/RELEASING.md."
             exit 1
@@ -151,6 +159,8 @@ jobs:
         env:
           PFX_PASSWORD: ${{ secrets.SIGNING_PFX_PASSWORD }}
         run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
           $pfxPath = (Resolve-Path "ghostty-signing.pfx").Path
           msbuild "GhosttyWin32 (Package)/GhosttyWin32 (Package).wapproj" `
             /p:Configuration=Release `
@@ -174,6 +184,8 @@ jobs:
         id: locate
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
           $msix = Get-ChildItem -Recurse -Filter "*.msix" -Path "GhosttyWin32 (Package)/AppPackages" |
                   Where-Object { $_.Name -notlike "*Microsoft.*" } |
                   Select-Object -First 1
@@ -194,15 +206,27 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release delete dev-build --yes --cleanup-tag 2>$null
-          $LASTEXITCODE = 0
-          Write-Host "Cleared any previous dev-build release."
+          # This step intentionally swallows errors: on the very first run
+          # there's no `dev-build` release to delete, so gh exits non-zero.
+          # We use try/catch (with strict preferences set) instead of the
+          # old `$LASTEXITCODE = 0` reset trick which is brittle once
+          # PSNativeCommandUseErrorActionPreference is on globally.
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          try {
+            gh release delete dev-build --yes --cleanup-tag 2>$null
+            Write-Host "Deleted previous dev-build release."
+          } catch {
+            Write-Host "No previous dev-build release to delete (first run or already gone)."
+          }
 
       - name: Create dev-build release
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
           $shortSha = "${{ steps.version.outputs.short_sha }}"
           $now = Get-Date -Format 'yyyy-MM-dd HH:mm UTC'
           $repo = "${{ github.repository }}"
