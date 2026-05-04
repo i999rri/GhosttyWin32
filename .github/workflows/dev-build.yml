@@ -189,35 +189,40 @@ jobs:
           $sha = "${{ github.sha }}"
           $msixVer = "${{ steps.version.outputs.msix_version }}"
 
-          $body = @"
-**Dev build** — automated build of the latest ``dev`` branch.
-
-⚠️ This is **not** a stable release. Expect bugs.
-
-## Install
-
-1. Download ``Ghostty-dev-x64.msix`` and ``Ghostty.cer``
-2. Right-click ``Ghostty.cer`` → Install Certificate → **Local Machine** →
-   **Trusted People** (UAC prompt; one-time per machine)
-3. Double-click the ``.msix`` to install
-
-If you previously installed Ghostty (stable or dev), this MSIX upgrades it
-in place.
-
-## Source
-
-| | |
-|---|---|
-| Branch | ``dev`` |
-| Commit | [``$shortSha``](https://github.com/$repo/commit/$sha) |
-| Build  | [\#$runNum](https://github.com/$repo/actions/runs/$runId) |
-| MSIX version | ``$msixVer`` |
-| Built | $now |
-"@
+          # Build the release notes as an array of lines and write to a file.
+          # PowerShell here-strings (@"..."@) require the closing "@ at column 0,
+          # which YAML's `run: |` block scalar can't satisfy because every line
+          # in the block needs indenting. Building line-by-line avoids the
+          # conflict entirely.
+          $bt = [char]0x60   # backtick — used in markdown as code delimiter
+          $lines = @(
+            "**Dev build** — automated build of the latest ${bt}dev${bt} branch.",
+            "",
+            "⚠️ This is **not** a stable release. Expect bugs.",
+            "",
+            "## Install",
+            "",
+            "1. Download ${bt}Ghostty-dev-x64.msix${bt} and ${bt}Ghostty.cer${bt}",
+            "2. Right-click ${bt}Ghostty.cer${bt} → Install Certificate → **Local Machine** → **Trusted People** (UAC prompt; one-time per machine)",
+            "3. Double-click the ${bt}.msix${bt} to install",
+            "",
+            "If you previously installed Ghostty (stable or dev), this MSIX upgrades it in place.",
+            "",
+            "## Source",
+            "",
+            "| | |",
+            "|---|---|",
+            "| Branch | ${bt}dev${bt} |",
+            "| Commit | [${bt}${shortSha}${bt}](https://github.com/${repo}/commit/${sha}) |",
+            "| Build  | [#${runNum}](https://github.com/${repo}/actions/runs/${runId}) |",
+            "| MSIX version | ${bt}${msixVer}${bt} |",
+            "| Built | ${now} |"
+          )
+          $lines | Set-Content -Path release-notes.md -Encoding utf8
 
           gh release create dev-build `
             --title "Dev build (${{ steps.version.outputs.display_version }})" `
-            --notes "$body" `
+            --notes-file release-notes.md `
             --prerelease `
             "${{ steps.locate.outputs.msix_path }}" `
             Ghostty.cer
