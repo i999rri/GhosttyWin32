@@ -96,15 +96,15 @@ GhosttyWin32
 
 ### Manual (MSIX)
 
-1. Download both `Ghostty-X.Y.Z-x64.msix` and `Ghostty.cer` from
+1. Download `Ghostty-X.Y.Z-x64.msix` and `Ghostty.cer` from
    [Releases](https://github.com/i999rri/GhosttyWin32/releases).
-2. Right-click `Ghostty.cer` → Install Certificate → **Local Machine** → place
-   in **Trusted People** (UAC prompt). This is a one-time step per machine; the
-   self-signed publisher certificate has to be trusted before Windows will
-   sideload the MSIX.
+2. Trust the certificate (one-time per machine; **Local Machine → Trusted
+   People** store — see [docs/INSTALL.md](docs/INSTALL.md) for the exact wizard
+   choices, since the wrong store choice silently fails with `0x800B0109`).
 3. Double-click the `.msix` to install.
 
-Subsequent updates only require step 3.
+Subsequent updates only require step 3. Detailed walkthrough and
+troubleshooting: [docs/INSTALL.md](docs/INSTALL.md).
 
 ## Building from Source
 

@@ -194,8 +194,8 @@ jobs:
 
             ### Manual install
             1. Download `Ghostty.cer` and `Ghostty-${{ env.release_version }}-x64.msix`
-            2. Right-click `Ghostty.cer` → Install Certificate → Local Machine →
-               Trusted People (UAC prompt will appear)
+            2. Trust the certificate (Local Machine → Trusted People store)
             3. Double-click the `.msix` to install
 
-            See the README for full setup details.
+            📖 Detailed steps + troubleshooting:
+            [docs/INSTALL.md](https://github.com/${{ github.repository }}/blob/main/docs/INSTALL.md)
