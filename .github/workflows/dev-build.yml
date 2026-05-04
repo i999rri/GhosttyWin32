@@ -89,12 +89,20 @@ jobs:
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
-      # NuGet CLI doesn't understand the new .slnx solution format yet, so
-      # restore via msbuild's Restore target instead. msbuild 17.7+ handles
-      # .slnx natively and the wapproj's PackageReferences resolve the same
-      # way as `nuget restore` would on a legacy .sln.
+      - name: Setup NuGet
+        uses: NuGet/setup-nuget@v2
+
+      # The wapproj uses PackageReference (handled by msbuild /t:Restore),
+      # but GhosttyWin32App.vcxproj / GhosttyTests.vcxproj still use the
+      # legacy packages.config format which msbuild's Restore target ignores.
+      # We need both: nuget restore expands ..\packages\ for the vcxprojs,
+      # then msbuild /t:Restore resolves the wapproj's PackageReferences.
+      # NuGet CLI doesn't read .slnx so we point it at each vcxproj.
       - name: Restore NuGet packages
-        run: msbuild GhosttyWin32.slnx /t:Restore /p:Configuration=Release /p:Platform=x64
+        run: |
+          nuget restore "GhosttyWin32App/GhosttyWin32App.vcxproj" -PackagesDirectory packages -SolutionDirectory .
+          nuget restore "GhosttyTests/GhosttyTests.vcxproj" -PackagesDirectory packages -SolutionDirectory .
+          msbuild GhosttyWin32.slnx /t:Restore /p:Configuration=Release /p:Platform=x64
 
       - name: Patch manifest version
         shell: pwsh
