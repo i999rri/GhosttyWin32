@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ghostty.h"
+#include "TabId.h"
 #include <microsoft.ui.xaml.media.dxinterop.h>
 #include <dcomp.h>
 #include <winrt/Microsoft.UI.Xaml.h>
@@ -69,7 +70,7 @@ public:
     Microsoft::UI::Xaml::Controls::SwapChainPanel const& Panel() const noexcept { return m_panel; }
     Microsoft::UI::Xaml::Controls::TabViewItem const& Item() const noexcept { return m_item; }
     HANDLE SurfaceHandle() const noexcept { return m_surfaceHandle; }
-    uint64_t Id() const noexcept { return m_id; }
+    TabId Id() const noexcept { return m_id; }
 
     // Process-wide monotonically increasing identifier for the close-surface
     // callback path. ghostty hands the value we put in cfg.userdata back
@@ -77,9 +78,9 @@ public:
     // resolve to the current Tab*. Using a value (instead of Tab*) means a
     // stale callback from a freed Tab safely returns nullptr from FindById
     // — no slot, no disarm, no dangling pointer.
-    static uint64_t AllocateId() {
+    static TabId AllocateId() {
         static std::atomic<uint64_t> s_nextId{1};  // 0 reserved as sentinel
-        return s_nextId.fetch_add(1, std::memory_order_relaxed);
+        return TabId{ s_nextId.fetch_add(1, std::memory_order_relaxed) };
     }
 
     void Focus() {
@@ -132,9 +133,8 @@ public:
         // ID for the close-surface callback path. Generated before
         // surface_new because cfg.userdata must be set up-front; the value
         // is opaque to ghostty and travels back to us through
-        // close_surface_cb. uintptr_t hop keeps the cast portable on
-        // 32-bit (we're 64-bit Windows so it's identity).
-        uint64_t id = Tab::AllocateId();
+        // close_surface_cb.
+        TabId id = Tab::AllocateId();
 
         ghostty_surface_config_s cfg = ghostty_surface_config_new();
         cfg.platform_tag = GHOSTTY_PLATFORM_WINDOWS;
@@ -142,7 +142,7 @@ public:
         cfg.platform.windows.composition_surface_handle = handle;
         cfg.platform.windows.swap_chain_ready_cb = &OnSwapChainReady;
         cfg.platform.windows.swap_chain_ready_userdata = attachOwned;
-        cfg.userdata = reinterpret_cast<void*>(static_cast<uintptr_t>(id));
+        cfg.userdata = id.ToUserdata();
         // Initial swap chain size: prefer the host's caller-supplied estimate
         // (typically the active tab's panel size, since the new panel will
         // land in the same TabView content area), then fall back to the
@@ -194,7 +194,7 @@ private:
         HANDLE surfaceHandle,
         ghostty_surface_t surface,
         std::shared_ptr<SwapChainAttachRequest> attachRequest,
-        uint64_t id)
+        TabId id)
         : m_panel(std::move(panel))
         , m_item(std::move(item))
         , m_surfaceHandle(surfaceHandle)
@@ -250,7 +250,7 @@ private:
     ghostty_surface_t m_surface{ nullptr };
     winrt::event_token m_sizeChangedToken{};
     std::shared_ptr<SwapChainAttachRequest> m_attachRequest;
-    uint64_t m_id{ 0 };
+    TabId m_id{};
 };
 
 }  // namespace winrt::GhosttyWin32::implementation

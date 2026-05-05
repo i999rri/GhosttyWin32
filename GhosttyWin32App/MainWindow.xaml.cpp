@@ -628,7 +628,7 @@ namespace winrt::GhosttyWin32::implementation
         // next UI tick to mirror the GHOSTTY_ACTION_CLOSE_TAB handler.
         rtConfig.close_surface_cb = [](void* userdata, bool /*process_alive*/) {
             if (!g_mainWindow || !userdata) return;
-            uint64_t id = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(userdata));
+            TabId id = TabId::FromUserdata(userdata);
             auto mw = g_mainWindow;
             mw->DispatcherQueue().TryEnqueue([mw, id]() {
                 auto* t = mw->m_tabs.FindById(id);

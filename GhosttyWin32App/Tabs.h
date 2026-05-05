@@ -50,7 +50,7 @@ public:
     // the UI thread. Returns nullptr if the user already closed the tab
     // via the UI before the dispatched close arrived (or if the ID is
     // otherwise unknown), making stale callbacks a safe no-op.
-    Tab* FindById(uint64_t id) const {
+    Tab* FindById(TabId id) const {
         if (!id) return nullptr;
         for (auto& t : m_tabs) {
             if (t && t->Id() == id) return t.get();
