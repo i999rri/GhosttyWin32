@@ -44,6 +44,20 @@ public:
         return nullptr;
     }
 
+    // Look up a Tab by its raw pointer. Used by the close_surface_cb
+    // callback path: ghostty's close callback hands us a userdata void*
+    // that was set to the Tab* at surface creation, and we need to verify
+    // the Tab still exists before touching it (the user might have
+    // already closed the tab via the UI before the dispatched close
+    // arrives).
+    Tab* FindByPointer(Tab* ptr) const {
+        if (!ptr) return nullptr;
+        for (auto& t : m_tabs) {
+            if (t.get() == ptr) return t.get();
+        }
+        return nullptr;
+    }
+
     // The Tab whose TabViewItem is currently selected in the given TabView,
     // or nullptr if there is no selection / no match. Encapsulates the
     // SelectedItem → TabViewItem → match dance the input handlers all need.

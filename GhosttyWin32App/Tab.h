@@ -56,7 +56,13 @@ public:
                 native2->SetSwapChainHandle(nullptr);
             }
         }
+        // Disarm the close-surface slot before freeing the surface so any
+        // late close_surface_cb fired by ghostty during teardown becomes a
+        // no-op. The slot itself outlives the Tab by exactly one delete
+        // call below.
+        if (m_closeSlot) *m_closeSlot = nullptr;
         if (m_surface) ghostty_surface_free(m_surface);
+        delete m_closeSlot;
         if (m_surfaceHandle) CloseHandle(m_surfaceHandle);
     }
 
@@ -117,12 +123,22 @@ public:
         // through OnSwapChainReady (or be deleted here if surface_new fails).
         auto* attachOwned = new std::shared_ptr<SwapChainAttachRequest>(attach);
 
+        // Heap slot for the future Tab pointer. ghostty stores cfg.userdata
+        // verbatim and hands it back through close_surface_cb when the
+        // shell process exits; we populate ->Tab* once the Tab object
+        // exists, and the Tab clears + deletes the slot in its destructor.
+        // Indirection is required because surface_new returns the surface
+        // that the Tab owns, so the Tab can't exist before the cfg is
+        // submitted.
+        Tab** closeSlot = new Tab*{nullptr};
+
         ghostty_surface_config_s cfg = ghostty_surface_config_new();
         cfg.platform_tag = GHOSTTY_PLATFORM_WINDOWS;
         cfg.platform.windows.hwnd = hwnd;
         cfg.platform.windows.composition_surface_handle = handle;
         cfg.platform.windows.swap_chain_ready_cb = &OnSwapChainReady;
         cfg.platform.windows.swap_chain_ready_userdata = attachOwned;
+        cfg.userdata = closeSlot;
         // Initial swap chain size: prefer the host's caller-supplied estimate
         // (typically the active tab's panel size, since the new panel will
         // land in the same TabView content area), then fall back to the
@@ -147,19 +163,23 @@ public:
             OutputDebugStringA("Tab::Create: ghostty_surface_new FAILED\n");
             // Callback won't fire — release the renderer's owning handle.
             delete attachOwned;
+            delete closeSlot;
             CloseHandle(handle);
             return nullptr;
         }
 
         try {
             // Private constructor — std::make_unique can't see it, so use new.
-            return std::unique_ptr<Tab>(new Tab(std::move(panel), std::move(item), handle, surface, std::move(attach)));
+            auto t = std::unique_ptr<Tab>(new Tab(std::move(panel), std::move(item), handle, surface, std::move(attach), closeSlot));
+            *closeSlot = t.get();
+            return t;
         } catch (winrt::hresult_error const&) {
             // Tab construction failed but the renderer thread may already
             // have fired (or be about to fire) OnSwapChainReady. Cancel
             // first, then tear down what we have.
             attach->cancelled.store(true);
             ghostty_surface_free(surface);
+            delete closeSlot;
             CloseHandle(handle);
             return nullptr;
         }
@@ -173,12 +193,14 @@ private:
         Microsoft::UI::Xaml::Controls::TabViewItem item,
         HANDLE surfaceHandle,
         ghostty_surface_t surface,
-        std::shared_ptr<SwapChainAttachRequest> attachRequest)
+        std::shared_ptr<SwapChainAttachRequest> attachRequest,
+        Tab** closeSlot)
         : m_panel(std::move(panel))
         , m_item(std::move(item))
         , m_surfaceHandle(surfaceHandle)
         , m_surface(surface)
         , m_attachRequest(std::move(attachRequest))
+        , m_closeSlot(closeSlot)
     {
         if (!m_panel || !m_item || !m_surfaceHandle || !m_surface) {
             throw winrt::hresult_error(E_INVALIDARG, L"Tab: missing resource");
@@ -228,6 +250,10 @@ private:
     ghostty_surface_t m_surface{ nullptr };
     winrt::event_token m_sizeChangedToken{};
     std::shared_ptr<SwapChainAttachRequest> m_attachRequest;
+    // Heap slot referenced by ghostty's cfg.userdata. Stays alive across
+    // the close_surface_cb dispatch and is freed in ~Tab after the surface
+    // is freed and any in-flight callback has had a chance to fire.
+    Tab** m_closeSlot{ nullptr };
 };
 
 }  // namespace winrt::GhosttyWin32::implementation

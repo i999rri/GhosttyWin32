@@ -622,8 +622,36 @@ namespace winrt::GhosttyWin32::implementation
             HWND hwnd = g_mainWindow ? g_mainWindow->m_hwnd : nullptr;
             Clipboard::write(hwnd, Encoding::toUtf16(content[0].data));
         };
-        // TODO: ghostty doesn't call close_surface_cb on shell exit (see ghostty#34)
-        rtConfig.close_surface_cb = [](void*, bool) {};
+        // Shell exited (e.g. user typed `exit`). ghostty hands us back the
+        // Tab pointer slot we set in Tab::Create via cfg.userdata; we
+        // dispatch the actual TabView mutation to the next UI tick to
+        // mirror the GHOSTTY_ACTION_CLOSE_TAB handler — both end up
+        // doing the same teardown so they share the deferred shape.
+        rtConfig.close_surface_cb = [](void* userdata, bool /*process_alive*/) {
+            if (!g_mainWindow || !userdata) return;
+            auto* slot = static_cast<implementation::Tab**>(userdata);
+            auto* tabRaw = *slot;
+            if (!tabRaw) return; // Tab already torn down by the host
+            auto mw = g_mainWindow;
+            mw->DispatcherQueue().TryEnqueue([mw, tabRaw]() {
+                // Verify the Tab still exists — the user may have closed
+                // it via the UI between the callback firing and this
+                // dispatched lambda running.
+                auto* t = mw->m_tabs.FindByPointer(tabRaw);
+                if (!t) return;
+                auto item = t->Item();
+                auto tv = mw->TabView();
+                uint32_t idx = 0;
+                if (tv.TabItems().IndexOf(item, idx)) {
+                    tv.TabItems().RemoveAt(idx);
+                }
+                DwmFlush();
+                mw->m_tabs.Remove(item);
+                if (tv.TabItems().Size() == 0) {
+                    mw->Close();
+                }
+            });
+        };
 
         m_ghostty = GhosttyApp::Create(rtConfig);
     }
