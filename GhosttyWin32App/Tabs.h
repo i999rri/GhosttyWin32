@@ -44,16 +44,16 @@ public:
         return nullptr;
     }
 
-    // Look up a Tab by its raw pointer. Used by the close_surface_cb
-    // callback path: ghostty's close callback hands us a userdata void*
-    // that was set to the Tab* at surface creation, and we need to verify
-    // the Tab still exists before touching it (the user might have
-    // already closed the tab via the UI before the dispatched close
-    // arrives).
-    Tab* FindByPointer(Tab* ptr) const {
-        if (!ptr) return nullptr;
+    // Look up a Tab by the monotonic ID it was assigned at creation. Used
+    // by the close_surface_cb callback path: ghostty hands us back the ID
+    // we placed in cfg.userdata, and the dispatched lambda calls this on
+    // the UI thread. Returns nullptr if the user already closed the tab
+    // via the UI before the dispatched close arrived (or if the ID is
+    // otherwise unknown), making stale callbacks a safe no-op.
+    Tab* FindById(uint64_t id) const {
+        if (!id) return nullptr;
         for (auto& t : m_tabs) {
-            if (t.get() == ptr) return t.get();
+            if (t && t->Id() == id) return t.get();
         }
         return nullptr;
     }

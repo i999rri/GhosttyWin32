@@ -622,23 +622,17 @@ namespace winrt::GhosttyWin32::implementation
             HWND hwnd = g_mainWindow ? g_mainWindow->m_hwnd : nullptr;
             Clipboard::write(hwnd, Encoding::toUtf16(content[0].data));
         };
-        // Shell exited (e.g. user typed `exit`). ghostty hands us back the
-        // Tab pointer slot we set in Tab::Create via cfg.userdata; we
-        // dispatch the actual TabView mutation to the next UI tick to
-        // mirror the GHOSTTY_ACTION_CLOSE_TAB handler — both end up
-        // doing the same teardown so they share the deferred shape.
+        // Shell exited (e.g. user typed `exit`), or ghostty asked to close
+        // the surface for any other reason. The userdata is the Tab ID
+        // we set in Tab::Create. Dispatch the TabView mutation to the
+        // next UI tick to mirror the GHOSTTY_ACTION_CLOSE_TAB handler.
         rtConfig.close_surface_cb = [](void* userdata, bool /*process_alive*/) {
             if (!g_mainWindow || !userdata) return;
-            auto* slot = static_cast<implementation::Tab**>(userdata);
-            auto* tabRaw = *slot;
-            if (!tabRaw) return; // Tab already torn down by the host
+            uint64_t id = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(userdata));
             auto mw = g_mainWindow;
-            mw->DispatcherQueue().TryEnqueue([mw, tabRaw]() {
-                // Verify the Tab still exists — the user may have closed
-                // it via the UI between the callback firing and this
-                // dispatched lambda running.
-                auto* t = mw->m_tabs.FindByPointer(tabRaw);
-                if (!t) return;
+            mw->DispatcherQueue().TryEnqueue([mw, id]() {
+                auto* t = mw->m_tabs.FindById(id);
+                if (!t) return; // Tab already closed via the UI
                 auto item = t->Item();
                 auto tv = mw->TabView();
                 uint32_t idx = 0;
