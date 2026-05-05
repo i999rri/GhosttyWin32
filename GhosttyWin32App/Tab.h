@@ -2,6 +2,7 @@
 
 #include "ghostty.h"
 #include "TabId.h"
+#include "TabIdAllocator.h"
 #include <microsoft.ui.xaml.media.dxinterop.h>
 #include <dcomp.h>
 #include <winrt/Microsoft.UI.Xaml.h>
@@ -72,17 +73,6 @@ public:
     HANDLE SurfaceHandle() const noexcept { return m_surfaceHandle; }
     TabId Id() const noexcept { return m_id; }
 
-    // Process-wide monotonically increasing identifier for the close-surface
-    // callback path. ghostty hands the value we put in cfg.userdata back
-    // through close_surface_cb, and we look it up via Tabs::FindById to
-    // resolve to the current Tab*. Using a value (instead of Tab*) means a
-    // stale callback from a freed Tab safely returns nullptr from FindById
-    // — no slot, no disarm, no dangling pointer.
-    static TabId AllocateId() {
-        static std::atomic<uint64_t> s_nextId{1};  // 0 reserved as sentinel
-        return TabId{ s_nextId.fetch_add(1, std::memory_order_relaxed) };
-    }
-
     void Focus() {
         m_panel.Focus(Microsoft::UI::Xaml::FocusState::Programmatic);
     }
@@ -109,6 +99,7 @@ public:
         Microsoft::UI::Xaml::Controls::TabViewItem item,
         ghostty_app_t app,
         HWND hwnd,
+        TabIdAllocator& idAllocator,
         std::function<void()> onActivated = {},
         uint32_t initialWidth = 0,
         uint32_t initialHeight = 0)
@@ -130,11 +121,11 @@ public:
         // through OnSwapChainReady (or be deleted here if surface_new fails).
         auto* attachOwned = new std::shared_ptr<SwapChainAttachRequest>(attach);
 
-        // ID for the close-surface callback path. Generated before
+        // ID for the close-surface callback path. Allocated before
         // surface_new because cfg.userdata must be set up-front; the value
         // is opaque to ghostty and travels back to us through
         // close_surface_cb.
-        TabId id = Tab::AllocateId();
+        TabId id = idAllocator.Allocate();
 
         ghostty_surface_config_s cfg = ghostty_surface_config_new();
         cfg.platform_tag = GHOSTTY_PLATFORM_WINDOWS;

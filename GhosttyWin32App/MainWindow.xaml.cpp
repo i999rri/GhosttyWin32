@@ -717,15 +717,16 @@ namespace winrt::GhosttyWin32::implementation
             muxc::TabViewItem const* item;
             ghostty_app_t app;
             HWND hwnd;
+            TabIdAllocator* idAllocator;
             std::function<void()> onActivated;
             uint32_t initialWidth;
             uint32_t initialHeight;
             std::unique_ptr<Tab> result;
         };
-        CreateCtx ctx{ &panel, &item, app, hwnd, std::move(onActivated), initialW, initialH, nullptr };
+        CreateCtx ctx{ &panel, &item, app, hwnd, &m_tabIds, std::move(onActivated), initialW, initialH, nullptr };
         int ok = RunSEHGuarded([](void* arg) noexcept {
             auto* c = static_cast<CreateCtx*>(arg);
-            c->result = Tab::Create(*c->panel, *c->item, c->app, c->hwnd, std::move(c->onActivated), c->initialWidth, c->initialHeight);
+            c->result = Tab::Create(*c->panel, *c->item, c->app, c->hwnd, *c->idAllocator, std::move(c->onActivated), c->initialWidth, c->initialHeight);
         }, &ctx);
 
         std::unique_ptr<Tab> tab = std::move(ctx.result);
