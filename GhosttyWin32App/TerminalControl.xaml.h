@@ -62,9 +62,11 @@ namespace winrt::GhosttyWin32::implementation
         // SizeChanged on the inner panel so layout changes flow into
         // ghostty_surface_set_size. The attachRequest is kept so
         // Detach() can cancel a queued SetSwapChainHandle that hasn't
-        // run yet.
+        // run yet. The host HWND is stashed for Win32 APIs that need a
+        // window owner (clipboard read/write, IME positioning, etc.).
         void Attach(ghostty_surface_t surface,
                     HANDLE compositionHandle,
+                    HWND hostHwnd,
                     std::shared_ptr<SwapChainAttachRequest> attachRequest);
 
         // Tear-down counterpart of Attach. Idempotent — calling twice
@@ -86,6 +88,12 @@ namespace winrt::GhosttyWin32::implementation
     private:
         ghostty_surface_t m_surface{ nullptr };
         HANDLE m_compositionHandle{ nullptr };
+        // Host window HWND — used for Win32 APIs that need a window
+        // owner (clipboard read/write today, IME bounds in a future
+        // commit). Same value across every TerminalControl in this
+        // window; stored locally to avoid reaching into MainWindow
+        // globals from input handlers.
+        HWND m_hostHwnd{ nullptr };
         winrt::event_token m_sizeChangedToken{};
         std::shared_ptr<SwapChainAttachRequest> m_attachRequest;
     };

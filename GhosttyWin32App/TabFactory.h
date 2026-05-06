@@ -134,7 +134,7 @@ public:
         // Hand surface ownership to the control. From here on the
         // control's Detach() (called from Tab::~Tab) is responsible for
         // freeing the surface and closing the handle.
-        controlImpl->Attach(surface, handle, attach);
+        controlImpl->Attach(surface, handle, m_hwnd, attach);
 
         try {
             return std::make_unique<Tab>(std::move(control), std::move(item), id);

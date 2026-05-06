@@ -307,57 +307,10 @@ namespace winrt::GhosttyWin32::implementation
                 args.Handled(true);
             });
 
-            // Mouse input on root
-            root.PointerMoved([this](auto&&, winrt::Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args) {
-                auto* tc = ActiveControl();
-                if (!tc || !tc->Surface()) return;
-                winrt::Microsoft::UI::Input::PointerPoint point = args.GetCurrentPoint(tc->InnerPanel());
-                winrt::Windows::Foundation::Point pos = point.Position();
-                ghostty_surface_mouse_pos(tc->Surface(), pos.X, pos.Y, currentMods());
-            });
-
-            root.PointerPressed([this](auto&&, winrt::Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args) {
-                auto* tc = ActiveControl();
-                if (!tc || !tc->Surface()) return;
-                winrt::Microsoft::UI::Input::PointerPoint point = args.GetCurrentPoint(tc->InnerPanel());
-                winrt::Microsoft::UI::Input::PointerPointProperties props = point.Properties();
-                ghostty_input_mouse_button_e btn;
-                if (props.IsLeftButtonPressed()) btn = GHOSTTY_MOUSE_LEFT;
-                else if (props.IsRightButtonPressed()) {
-                    // Right-click: copy selection if exists
-                    if (ghostty_surface_has_selection(tc->Surface())) {
-                        ghostty_text_s text = {};
-                        if (ghostty_surface_read_selection(tc->Surface(), &text) && text.text && text.text_len > 0) {
-                            Clipboard::write(m_hwnd, Encoding::toUtf16(text.text, static_cast<int>(text.text_len)));
-                            ghostty_surface_free_text(tc->Surface(), &text);
-                        }
-                        ghostty_surface_mouse_button(tc->Surface(), GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, (ghostty_input_mods_e)0);
-                        ghostty_surface_mouse_button(tc->Surface(), GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, (ghostty_input_mods_e)0);
-                        return;
-                    }
-                    btn = GHOSTTY_MOUSE_RIGHT;
-                }
-                else return; // Ignore middle-click and others
-                ghostty_surface_mouse_button(tc->Surface(), GHOSTTY_MOUSE_PRESS, btn, currentMods());
-            });
-
-            root.PointerReleased([this](auto&&, winrt::Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const&) {
-                auto* tc = ActiveControl();
-                if (!tc || !tc->Surface()) return;
-                ghostty_surface_mouse_button(tc->Surface(), GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, currentMods());
-            });
-
-            root.PointerWheelChanged([this](auto&&, winrt::Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args) {
-                auto* tc = ActiveControl();
-                if (!tc || !tc->Surface()) return;
-                winrt::Microsoft::UI::Input::PointerPoint point = args.GetCurrentPoint(tc->InnerPanel());
-                winrt::Microsoft::UI::Input::PointerPointProperties props = point.Properties();
-                int delta = props.MouseWheelDelta();
-                double scrollY = (double)delta / 120.0;
-                ghostty_input_scroll_mods_t smods = {};
-                ghostty_surface_mouse_scroll(tc->Surface(), 0, scrollY, smods);
-                args.Handled(true);
-            });
+            // Pointer routing now lives on TerminalControl — each
+            // instance hooks PointerMoved/Pressed/Released/Wheel on
+            // itself and forwards directly to its own ghostty surface.
+            // No window-level pointer handler is needed.
 
             root.KeyUp([this](auto&&, winrt::Microsoft::UI::Xaml::Input::KeyRoutedEventArgs const& args) {
                 auto* tc = ActiveControl();

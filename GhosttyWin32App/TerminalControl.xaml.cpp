@@ -1,5 +1,8 @@
 #include "pch.h"
 #include "TerminalControl.xaml.h"
+#include "Clipboard.h"
+#include "Encoding.h"
+#include "KeyModifiers.h"
 #if __has_include("TerminalControl.g.cpp")
 #include "TerminalControl.g.cpp"
 #endif
@@ -9,6 +12,67 @@ namespace winrt::GhosttyWin32::implementation
     TerminalControl::TerminalControl()
     {
         InitializeComponent();
+
+        // Pointer routing: the handlers early-return if no surface is
+        // attached yet, so it's safe to register them in the
+        // constructor before TabFactory calls Attach(). Coordinates are
+        // taken relative to the inner panel (== this UserControl's
+        // dimensions today, but Panel() is the explicit truth) so they
+        // match what ghostty's renderer expects.
+        namespace muxi = winrt::Microsoft::UI::Xaml::Input;
+        namespace muix = winrt::Microsoft::UI::Input;
+
+        PointerMoved([this](auto&&, muxi::PointerRoutedEventArgs const& args) {
+            if (!m_surface) return;
+            muix::PointerPoint point = args.GetCurrentPoint(Panel());
+            auto pos = point.Position();
+            ghostty_surface_mouse_pos(m_surface, pos.X, pos.Y, currentMods());
+        });
+
+        PointerPressed([this](auto&&, muxi::PointerRoutedEventArgs const& args) {
+            if (!m_surface) return;
+            muix::PointerPoint point = args.GetCurrentPoint(Panel());
+            muix::PointerPointProperties props = point.Properties();
+            ghostty_input_mouse_button_e btn;
+            if (props.IsLeftButtonPressed()) {
+                btn = GHOSTTY_MOUSE_LEFT;
+            } else if (props.IsRightButtonPressed()) {
+                // Right-click: copy selection if there is one,
+                // otherwise treat as a normal right button press.
+                if (ghostty_surface_has_selection(m_surface)) {
+                    ghostty_text_s text = {};
+                    if (ghostty_surface_read_selection(m_surface, &text) && text.text && text.text_len > 0) {
+                        Clipboard::write(m_hostHwnd, Encoding::toUtf16(text.text, static_cast<int>(text.text_len)));
+                        ghostty_surface_free_text(m_surface, &text);
+                    }
+                    // Click-then-release without modifiers clears the
+                    // selection in ghostty, matching the macOS gesture.
+                    ghostty_surface_mouse_button(m_surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, (ghostty_input_mods_e)0);
+                    ghostty_surface_mouse_button(m_surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, (ghostty_input_mods_e)0);
+                    return;
+                }
+                btn = GHOSTTY_MOUSE_RIGHT;
+            } else {
+                return;
+            }
+            ghostty_surface_mouse_button(m_surface, GHOSTTY_MOUSE_PRESS, btn, currentMods());
+        });
+
+        PointerReleased([this](auto&&, muxi::PointerRoutedEventArgs const&) {
+            if (!m_surface) return;
+            ghostty_surface_mouse_button(m_surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, currentMods());
+        });
+
+        PointerWheelChanged([this](auto&&, muxi::PointerRoutedEventArgs const& args) {
+            if (!m_surface) return;
+            muix::PointerPoint point = args.GetCurrentPoint(Panel());
+            muix::PointerPointProperties props = point.Properties();
+            int delta = props.MouseWheelDelta();
+            double scrollY = (double)delta / 120.0;
+            ghostty_input_scroll_mods_t smods = {};
+            ghostty_surface_mouse_scroll(m_surface, 0, scrollY, smods);
+            args.Handled(true);
+        });
     }
 
     TerminalControl::~TerminalControl()
@@ -21,10 +85,12 @@ namespace winrt::GhosttyWin32::implementation
 
     void TerminalControl::Attach(ghostty_surface_t surface,
                                  HANDLE compositionHandle,
+                                 HWND hostHwnd,
                                  std::shared_ptr<SwapChainAttachRequest> attachRequest)
     {
         m_surface = surface;
         m_compositionHandle = compositionHandle;
+        m_hostHwnd = hostHwnd;
         m_attachRequest = std::move(attachRequest);
 
         // Capture the surface by value so the lambda doesn't dereference
