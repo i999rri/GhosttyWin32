@@ -36,10 +36,16 @@ public:
         return nullptr;
     }
 
+    // O(N) over tabs; with future pane support this would walk the
+    // pane tree of each tab. Today every tab has at most one
+    // TerminalControl, so it's a flat scan.
     Tab* FindBySurface(ghostty_surface_t surface) const {
         if (!surface) return nullptr;
         for (auto& t : m_tabs) {
-            if (t && t->Surface() == surface) return t.get();
+            if (!t) continue;
+            if (auto* c = t->ActiveControl(); c && c->Surface() == surface) {
+                return t.get();
+            }
         }
         return nullptr;
     }

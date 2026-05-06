@@ -133,20 +133,20 @@ namespace winrt::GhosttyWin32::implementation
                     m_ime.applyTextUpdate(range.StartCaretPosition, range.EndCaretPosition,
                                           newText.c_str(), newText.size());
 
-                    auto* tab = ActiveTab();
-                    if (!tab || !tab->Surface()) return;
+                    auto* tc = ActiveControl();
+                    if (!tc || !tc->Surface()) return;
 
                     if (m_ime.composing()) {
                         if (m_ime.text().empty()) {
-                            ghostty_surface_preedit(tab->Surface(), nullptr, 0);
+                            ghostty_surface_preedit(tc->Surface(), nullptr, 0);
                         } else {
                             auto utf8 = Encoding::toUtf8(m_ime.text());
                             if (!utf8.empty())
-                                ghostty_surface_preedit(tab->Surface(), utf8.c_str(), utf8.size());
+                                ghostty_surface_preedit(tc->Surface(), utf8.c_str(), utf8.size());
                         }
                     }
                     if (m_ghostty) m_ghostty->Tick();
-                    ghostty_surface_refresh(tab->Surface());
+                    ghostty_surface_refresh(tc->Surface());
                 });
 
                 m_editContext.CompositionStarted([this](txtCore::CoreTextEditContext const&, txtCore::CoreTextCompositionStartedEventArgs const&) {
@@ -154,24 +154,24 @@ namespace winrt::GhosttyWin32::implementation
                 });
 
                 m_editContext.CompositionCompleted([this](txtCore::CoreTextEditContext const&, txtCore::CoreTextCompositionCompletedEventArgs const&) {
-                    auto* tab = ActiveTab();
-                    if (tab && tab->Surface()) {
-                        ghostty_surface_preedit(tab->Surface(), nullptr, 0);
+                    auto* tc = ActiveControl();
+                    if (tc && tc->Surface()) {
+                        ghostty_surface_preedit(tc->Surface(), nullptr, 0);
                         auto utf8 = Encoding::toUtf8(m_ime.text());
                         if (!utf8.empty()) {
-                            ghostty_surface_text(tab->Surface(), utf8.c_str(), utf8.size());
+                            ghostty_surface_text(tc->Surface(), utf8.c_str(), utf8.size());
                         }
                         if (m_ghostty) m_ghostty->Tick();
-                        ghostty_surface_refresh(tab->Surface());
+                        ghostty_surface_refresh(tc->Surface());
                     }
                     m_ime.compositionCompleted();
                 });
 
                 m_editContext.LayoutRequested([this](txtCore::CoreTextEditContext const&, txtCore::CoreTextLayoutRequestedEventArgs const& args) {
-                    auto* tab = ActiveTab();
-                    if (!tab || !tab->Surface() || !m_hwnd) return;
+                    auto* tc = ActiveControl();
+                    if (!tc || !tc->Surface() || !m_hwnd) return;
                     double x = 0, y = 0, w = 0, h = 0;
-                    ghostty_surface_ime_point(tab->Surface(), &x, &y, &w, &h);
+                    ghostty_surface_ime_point(tc->Surface(), &x, &y, &w, &h);
                     POINT screenPt = { (LONG)x, (LONG)y };
                     ClientToScreen(m_hwnd, &screenPt);
                     winrt::Windows::Foundation::Rect bounds{
@@ -183,9 +183,9 @@ namespace winrt::GhosttyWin32::implementation
                 m_editContext.FocusRemoved([this](txtCore::CoreTextEditContext const&, auto&&) {
                     if (m_ime.composing()) {
                         m_ime.reset();
-                        auto* tab = ActiveTab();
-                        if (tab && tab->Surface())
-                            ghostty_surface_preedit(tab->Surface(), nullptr, 0);
+                        auto* tc = ActiveControl();
+                        if (tc && tc->Surface())
+                            ghostty_surface_preedit(tc->Surface(), nullptr, 0);
                     }
                 });
             }
@@ -213,8 +213,8 @@ namespace winrt::GhosttyWin32::implementation
             auto root = Content().as<winrt::Microsoft::UI::Xaml::UIElement>();
 
             root.KeyDown([this](auto&&, winrt::Microsoft::UI::Xaml::Input::KeyRoutedEventArgs const& args) {
-                auto* tab = ActiveTab();
-                if (!tab || !tab->Surface()) return;
+                auto* tc = ActiveControl();
+                if (!tc || !tc->Surface()) return;
 
                 int vk = static_cast<int>(args.Key());
                 UINT scanCode = args.KeyStatus().ScanCode;
@@ -226,14 +226,14 @@ namespace winrt::GhosttyWin32::implementation
 
                 // Ctrl+C: copy if selection exists, otherwise send SIGINT
                 if (ctrl && !shift && vk == 'C') {
-                    if (ghostty_surface_has_selection(tab->Surface())) {
+                    if (ghostty_surface_has_selection(tc->Surface())) {
                         ghostty_text_s text = {};
-                        if (ghostty_surface_read_selection(tab->Surface(), &text) && text.text && text.text_len > 0) {
+                        if (ghostty_surface_read_selection(tc->Surface(), &text) && text.text && text.text_len > 0) {
                             Clipboard::write(m_hwnd, Encoding::toUtf16(text.text, static_cast<int>(text.text_len)));
-                            ghostty_surface_free_text(tab->Surface(), &text);
+                            ghostty_surface_free_text(tc->Surface(), &text);
                         }
-                        ghostty_surface_mouse_button(tab->Surface(), GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, (ghostty_input_mods_e)0);
-                        ghostty_surface_mouse_button(tab->Surface(), GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, (ghostty_input_mods_e)0);
+                        ghostty_surface_mouse_button(tc->Surface(), GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, (ghostty_input_mods_e)0);
+                        ghostty_surface_mouse_button(tc->Surface(), GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, (ghostty_input_mods_e)0);
                         args.Handled(true);
                         return;
                     }
@@ -243,10 +243,10 @@ namespace winrt::GhosttyWin32::implementation
                 if (ctrl && !shift && vk == 'V') {
                     auto utf8 = Encoding::toUtf8(Clipboard::read(m_hwnd));
                     if (!utf8.empty()) {
-                        ghostty_surface_text(tab->Surface(), utf8.c_str(), utf8.size());
+                        ghostty_surface_text(tc->Surface(), utf8.c_str(), utf8.size());
                     }
                     if (m_ghostty) m_ghostty->Tick();
-                    ghostty_surface_refresh(tab->Surface());
+                    ghostty_surface_refresh(tc->Surface());
                     args.Handled(true);
                     return;
                 }
@@ -282,7 +282,7 @@ namespace winrt::GhosttyWin32::implementation
                 if (unshiftedCount > 0 && unshiftedChars[0] >= 0x20) {
                     keyEvent.unshifted_codepoint = static_cast<uint32_t>(unshiftedChars[0]);
                 }
-                bool consumed = ghostty_surface_key(tab->Surface(), keyEvent);
+                bool consumed = ghostty_surface_key(tc->Surface(), keyEvent);
 
                 // Translate to text using ToUnicode (replaces CharacterReceived).
                 // Skip when the binding consumed the key — otherwise
@@ -297,77 +297,77 @@ namespace winrt::GhosttyWin32::implementation
                         char utf8[16] = {};
                         int len = WideCharToMultiByte(CP_UTF8, 0, chars, charCount, utf8, sizeof(utf8), nullptr, nullptr);
                         if (len > 0) {
-                            ghostty_surface_text(tab->Surface(), utf8, len);
+                            ghostty_surface_text(tc->Surface(), utf8, len);
                         }
                     }
                 }
 
                 if (m_ghostty) m_ghostty->Tick();
-                ghostty_surface_refresh(tab->Surface());
+                ghostty_surface_refresh(tc->Surface());
                 args.Handled(true);
             });
 
             // Mouse input on root
             root.PointerMoved([this](auto&&, winrt::Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args) {
-                auto* tab = ActiveTab();
-                if (!tab || !tab->Surface()) return;
-                winrt::Microsoft::UI::Input::PointerPoint point = args.GetCurrentPoint(tab->Panel());
+                auto* tc = ActiveControl();
+                if (!tc || !tc->Surface()) return;
+                winrt::Microsoft::UI::Input::PointerPoint point = args.GetCurrentPoint(tc->InnerPanel());
                 winrt::Windows::Foundation::Point pos = point.Position();
-                ghostty_surface_mouse_pos(tab->Surface(), pos.X, pos.Y, currentMods());
+                ghostty_surface_mouse_pos(tc->Surface(), pos.X, pos.Y, currentMods());
             });
 
             root.PointerPressed([this](auto&&, winrt::Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args) {
-                auto* tab = ActiveTab();
-                if (!tab || !tab->Surface()) return;
-                winrt::Microsoft::UI::Input::PointerPoint point = args.GetCurrentPoint(tab->Panel());
+                auto* tc = ActiveControl();
+                if (!tc || !tc->Surface()) return;
+                winrt::Microsoft::UI::Input::PointerPoint point = args.GetCurrentPoint(tc->InnerPanel());
                 winrt::Microsoft::UI::Input::PointerPointProperties props = point.Properties();
                 ghostty_input_mouse_button_e btn;
                 if (props.IsLeftButtonPressed()) btn = GHOSTTY_MOUSE_LEFT;
                 else if (props.IsRightButtonPressed()) {
                     // Right-click: copy selection if exists
-                    if (ghostty_surface_has_selection(tab->Surface())) {
+                    if (ghostty_surface_has_selection(tc->Surface())) {
                         ghostty_text_s text = {};
-                        if (ghostty_surface_read_selection(tab->Surface(), &text) && text.text && text.text_len > 0) {
+                        if (ghostty_surface_read_selection(tc->Surface(), &text) && text.text && text.text_len > 0) {
                             Clipboard::write(m_hwnd, Encoding::toUtf16(text.text, static_cast<int>(text.text_len)));
-                            ghostty_surface_free_text(tab->Surface(), &text);
+                            ghostty_surface_free_text(tc->Surface(), &text);
                         }
-                        ghostty_surface_mouse_button(tab->Surface(), GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, (ghostty_input_mods_e)0);
-                        ghostty_surface_mouse_button(tab->Surface(), GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, (ghostty_input_mods_e)0);
+                        ghostty_surface_mouse_button(tc->Surface(), GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, (ghostty_input_mods_e)0);
+                        ghostty_surface_mouse_button(tc->Surface(), GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, (ghostty_input_mods_e)0);
                         return;
                     }
                     btn = GHOSTTY_MOUSE_RIGHT;
                 }
                 else return; // Ignore middle-click and others
-                ghostty_surface_mouse_button(tab->Surface(), GHOSTTY_MOUSE_PRESS, btn, currentMods());
+                ghostty_surface_mouse_button(tc->Surface(), GHOSTTY_MOUSE_PRESS, btn, currentMods());
             });
 
             root.PointerReleased([this](auto&&, winrt::Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const&) {
-                auto* tab = ActiveTab();
-                if (!tab || !tab->Surface()) return;
-                ghostty_surface_mouse_button(tab->Surface(), GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, currentMods());
+                auto* tc = ActiveControl();
+                if (!tc || !tc->Surface()) return;
+                ghostty_surface_mouse_button(tc->Surface(), GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, currentMods());
             });
 
             root.PointerWheelChanged([this](auto&&, winrt::Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args) {
-                auto* tab = ActiveTab();
-                if (!tab || !tab->Surface()) return;
-                winrt::Microsoft::UI::Input::PointerPoint point = args.GetCurrentPoint(tab->Panel());
+                auto* tc = ActiveControl();
+                if (!tc || !tc->Surface()) return;
+                winrt::Microsoft::UI::Input::PointerPoint point = args.GetCurrentPoint(tc->InnerPanel());
                 winrt::Microsoft::UI::Input::PointerPointProperties props = point.Properties();
                 int delta = props.MouseWheelDelta();
                 double scrollY = (double)delta / 120.0;
                 ghostty_input_scroll_mods_t smods = {};
-                ghostty_surface_mouse_scroll(tab->Surface(), 0, scrollY, smods);
+                ghostty_surface_mouse_scroll(tc->Surface(), 0, scrollY, smods);
                 args.Handled(true);
             });
 
             root.KeyUp([this](auto&&, winrt::Microsoft::UI::Xaml::Input::KeyRoutedEventArgs const& args) {
-                auto* tab = ActiveTab();
-                if (!tab || !tab->Surface()) return;
+                auto* tc = ActiveControl();
+                if (!tc || !tc->Surface()) return;
                 ghostty_input_key_s keyEvent = {};
                 keyEvent.action = GHOSTTY_ACTION_RELEASE;
                 keyEvent.keycode = args.KeyStatus().ScanCode;
                 if (args.KeyStatus().IsExtendedKey) keyEvent.keycode |= 0xE000;
                 keyEvent.mods = currentMods();
-                ghostty_surface_key(tab->Surface(), keyEvent);
+                ghostty_surface_key(tc->Surface(), keyEvent);
             });
 
             // DPI change handling (deferred until XamlRoot is available)
@@ -376,9 +376,12 @@ namespace winrt::GhosttyWin32::implementation
                     if (!m_hwnd) return;
                     UINT dpi = GetDpiForWindow(m_hwnd);
                     double scale = (double)dpi / 96.0;
+                    // Today every tab has a single TerminalControl. With
+                    // future pane support this would walk each tab's
+                    // pane tree and apply the scale to every leaf.
                     for (auto& t : m_tabs) {
-                        if (t->Surface()) {
-                            ghostty_surface_set_content_scale(t->Surface(), scale, scale);
+                        if (auto* tc = t->ActiveControl(); tc && tc->Surface()) {
+                            ghostty_surface_set_content_scale(tc->Surface(), scale, scale);
                         }
                     }
                 });
@@ -442,8 +445,10 @@ namespace winrt::GhosttyWin32::implementation
             if (g_mainWindow->m_hwnd) ShowWindow(g_mainWindow->m_hwnd, SW_HIDE);
             for (auto& tab : g_mainWindow->m_tabs) {
                 if (!tab) continue;
-                HANDLE h = tab->SurfaceHandle();
-                if (h) CloseHandle(h);
+                if (auto* tc = tab->ActiveControl()) {
+                    HANDLE h = tc->CompositionHandle();
+                    if (h) CloseHandle(h);
+                }
             }
         }
         MessageBoxW(nullptr,
@@ -458,6 +463,12 @@ namespace winrt::GhosttyWin32::implementation
     Tab* MainWindow::ActiveTab()
     {
         return m_tabs.Active(TabView());
+    }
+
+    TerminalControl* MainWindow::ActiveControl()
+    {
+        auto* tab = ActiveTab();
+        return tab ? tab->ActiveControl() : nullptr;
     }
 
     void MainWindow::InitGhostty()
@@ -601,19 +612,19 @@ namespace winrt::GhosttyWin32::implementation
         };
         rtConfig.read_clipboard_cb = [](void*, ghostty_clipboard_e, void* state) -> bool {
             if (!g_mainWindow) return false;
-            auto* tab = g_mainWindow->ActiveTab();
-            if (!tab || !tab->Surface()) return false;
+            auto* tc = g_mainWindow->ActiveControl();
+            if (!tc || !tc->Surface()) return false;
             auto utf8 = Encoding::toUtf8(Clipboard::read(g_mainWindow->m_hwnd));
             if (utf8.empty()) return false;
-            ghostty_surface_complete_clipboard_request(tab->Surface(), utf8.c_str(), state, false);
+            ghostty_surface_complete_clipboard_request(tc->Surface(), utf8.c_str(), state, false);
             return true;
         };
         rtConfig.confirm_read_clipboard_cb = [](void*, const char* content, void* state, ghostty_clipboard_request_e) {
             // Auto-confirm clipboard reads
             if (g_mainWindow) {
-                auto* tab = g_mainWindow->ActiveTab();
-                if (tab && tab->Surface()) {
-                    ghostty_surface_complete_clipboard_request(tab->Surface(), content, state, true);
+                auto* tc = g_mainWindow->ActiveControl();
+                if (tc && tc->Surface()) {
+                    ghostty_surface_complete_clipboard_request(tc->Surface(), content, state, true);
                 }
             }
         };
@@ -658,16 +669,16 @@ namespace winrt::GhosttyWin32::implementation
         if (!m_ghostty || !m_hwnd) return;
         auto tv = TabView();
 
-        auto panel = muxc::SwapChainPanel();
-        panel.IsTabStop(true);
-        panel.IsHitTestVisible(true);
-        panel.AllowFocusOnInteraction(true);
+        // Each tab is a TerminalControl (UserControl wrapping a
+        // SwapChainPanel). Focus/IsTabStop/etc. are set in the XAML
+        // template, so no per-instance setup is needed here.
+        auto control = winrt::GhosttyWin32::TerminalControl();
 
         auto item = muxc::TabViewItem();
         static constexpr wchar_t kDefaultTabTitle[] = L" ";
         item.Header(box_value(kDefaultTabTitle));
         item.IsClosable(true);
-        item.Content(panel);
+        item.Content(control);
         tv.TabItems().Append(item);
         // Append-only — don't switch to the new tab yet. The SelectedItem
         // call (which is what makes the panel visible) is deferred to the
@@ -703,8 +714,8 @@ namespace winrt::GhosttyWin32::implementation
         // SelectedItem) and ghostty falls back to the main window's full
         // client rect, which is too tall by the tab strip height.
         uint32_t initialW = 0, initialH = 0;
-        if (auto* prev = ActiveTab()) {
-            auto const& prevPanel = prev->Panel();
+        if (auto* prevControl = ActiveControl()) {
+            auto prevPanel = prevControl->InnerPanel();
             initialW = static_cast<uint32_t>(prevPanel.ActualWidth());
             initialH = static_cast<uint32_t>(prevPanel.ActualHeight());
         }
@@ -716,7 +727,7 @@ namespace winrt::GhosttyWin32::implementation
         // callback below.
         if (!m_tabFactory) return;
         struct CreateCtx {
-            muxc::SwapChainPanel const* panel;
+            winrt::GhosttyWin32::TerminalControl const* control;
             muxc::TabViewItem const* item;
             TabFactory* factory;
             std::function<void()> onActivated;
@@ -724,10 +735,10 @@ namespace winrt::GhosttyWin32::implementation
             uint32_t initialHeight;
             std::unique_ptr<Tab> result;
         };
-        CreateCtx ctx{ &panel, &item, m_tabFactory.get(), std::move(onActivated), initialW, initialH, nullptr };
+        CreateCtx ctx{ &control, &item, m_tabFactory.get(), std::move(onActivated), initialW, initialH, nullptr };
         int ok = RunSEHGuarded([](void* arg) noexcept {
             auto* c = static_cast<CreateCtx*>(arg);
-            c->result = c->factory->Make(*c->panel, *c->item, std::move(c->onActivated), c->initialWidth, c->initialHeight);
+            c->result = c->factory->Make(*c->control, *c->item, std::move(c->onActivated), c->initialWidth, c->initialHeight);
         }, &ctx);
 
         std::unique_ptr<Tab> tab = std::move(ctx.result);
