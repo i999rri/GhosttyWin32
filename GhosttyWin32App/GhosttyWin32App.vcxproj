@@ -134,10 +134,14 @@
     <ClInclude Include="TabFactory.h" />
     <ClInclude Include="TabId.h" />
     <ClInclude Include="TabIdAllocator.h" />
+    <ClInclude Include="TerminalControl.xaml.h">
+      <DependentUpon>TerminalControl.xaml</DependentUpon>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ApplicationDefinition Include="App.xaml" />
     <Page Include="MainWindow.xaml" />
+    <Page Include="TerminalControl.xaml" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">
@@ -149,12 +153,19 @@
     <ClCompile Include="MainWindow.xaml.cpp">
       <DependentUpon>MainWindow.xaml</DependentUpon>
     </ClCompile>
+    <ClCompile Include="TerminalControl.xaml.cpp">
+      <DependentUpon>TerminalControl.xaml</DependentUpon>
+    </ClCompile>
     <ClCompile Include="$(GeneratedFilesDir)module.g.cpp" />
   </ItemGroup>
   <ItemGroup>
     <Midl Include="MainWindow.idl">
       <SubType>Code</SubType>
       <DependentUpon>MainWindow.xaml</DependentUpon>
+    </Midl>
+    <Midl Include="TerminalControl.idl">
+      <SubType>Code</SubType>
+      <DependentUpon>TerminalControl.xaml</DependentUpon>
     </Midl>
   </ItemGroup>
   <ItemGroup>
