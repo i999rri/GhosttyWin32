@@ -19,19 +19,44 @@ namespace winrt::GhosttyWin32::implementation
         // taken relative to the inner panel (== this UserControl's
         // dimensions today, but Panel() is the explicit truth) so they
         // match what ghostty's renderer expects.
+        //
+        // The lambdas capture a weak_ref instead of `this`. XAML can
+        // route a final pointer event during window/control teardown
+        // after the impl has started destructing — a raw `this` capture
+        // would dereference a dangling pointer (the AV symptom we hit:
+        // microsoft.ui.xaml.dll reading near-null at the m_surface
+        // offset). The weak_ref short-circuits cleanly when the impl is
+        // gone; weakSelf.get() returns a strong impl com_ptr that
+        // exposes private members directly via operator->.
         namespace muxi = winrt::Microsoft::UI::Xaml::Input;
         namespace muix = winrt::Microsoft::UI::Input;
 
-        PointerMoved([this](auto&&, muxi::PointerRoutedEventArgs const& args) {
-            if (!m_surface) return;
-            muix::PointerPoint point = args.GetCurrentPoint(Panel());
-            auto pos = point.Position();
-            ghostty_surface_mouse_pos(m_surface, pos.X, pos.Y, currentMods());
+        auto weakSelf = get_weak();
+
+        // Self-focus on Loaded. SelectedItem-driven focus from the
+        // outside (MainWindow's SelectionChanged handler) fires while
+        // TabView's content presenter is still swapping us in, and
+        // Focus() returns false before layout completes. Loaded fires
+        // only once the control is actually in the live visual tree
+        // and measured — at that point Focus succeeds without retry.
+        Loaded([weakSelf](auto&&, auto&&) {
+            auto self = weakSelf.get();
+            if (!self) return;
+            self->Focus(Microsoft::UI::Xaml::FocusState::Programmatic);
         });
 
-        PointerPressed([this](auto&&, muxi::PointerRoutedEventArgs const& args) {
-            if (!m_surface) return;
-            muix::PointerPoint point = args.GetCurrentPoint(Panel());
+        PointerMoved([weakSelf](auto&&, muxi::PointerRoutedEventArgs const& args) {
+            auto self = weakSelf.get();
+            if (!self || !self->m_surface) return;
+            muix::PointerPoint point = args.GetCurrentPoint(self->Panel());
+            auto pos = point.Position();
+            ghostty_surface_mouse_pos(self->m_surface, pos.X, pos.Y, currentMods());
+        });
+
+        PointerPressed([weakSelf](auto&&, muxi::PointerRoutedEventArgs const& args) {
+            auto self = weakSelf.get();
+            if (!self || !self->m_surface) return;
+            muix::PointerPoint point = args.GetCurrentPoint(self->Panel());
             muix::PointerPointProperties props = point.Properties();
             ghostty_input_mouse_button_e btn;
             if (props.IsLeftButtonPressed()) {
@@ -39,38 +64,40 @@ namespace winrt::GhosttyWin32::implementation
             } else if (props.IsRightButtonPressed()) {
                 // Right-click: copy selection if there is one,
                 // otherwise treat as a normal right button press.
-                if (ghostty_surface_has_selection(m_surface)) {
+                if (ghostty_surface_has_selection(self->m_surface)) {
                     ghostty_text_s text = {};
-                    if (ghostty_surface_read_selection(m_surface, &text) && text.text && text.text_len > 0) {
-                        Clipboard::write(m_hostHwnd, Encoding::toUtf16(text.text, static_cast<int>(text.text_len)));
-                        ghostty_surface_free_text(m_surface, &text);
+                    if (ghostty_surface_read_selection(self->m_surface, &text) && text.text && text.text_len > 0) {
+                        Clipboard::write(self->m_hostHwnd, Encoding::toUtf16(text.text, static_cast<int>(text.text_len)));
+                        ghostty_surface_free_text(self->m_surface, &text);
                     }
                     // Click-then-release without modifiers clears the
                     // selection in ghostty, matching the macOS gesture.
-                    ghostty_surface_mouse_button(m_surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, (ghostty_input_mods_e)0);
-                    ghostty_surface_mouse_button(m_surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, (ghostty_input_mods_e)0);
+                    ghostty_surface_mouse_button(self->m_surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, (ghostty_input_mods_e)0);
+                    ghostty_surface_mouse_button(self->m_surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, (ghostty_input_mods_e)0);
                     return;
                 }
                 btn = GHOSTTY_MOUSE_RIGHT;
             } else {
                 return;
             }
-            ghostty_surface_mouse_button(m_surface, GHOSTTY_MOUSE_PRESS, btn, currentMods());
+            ghostty_surface_mouse_button(self->m_surface, GHOSTTY_MOUSE_PRESS, btn, currentMods());
         });
 
-        PointerReleased([this](auto&&, muxi::PointerRoutedEventArgs const&) {
-            if (!m_surface) return;
-            ghostty_surface_mouse_button(m_surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, currentMods());
+        PointerReleased([weakSelf](auto&&, muxi::PointerRoutedEventArgs const&) {
+            auto self = weakSelf.get();
+            if (!self || !self->m_surface) return;
+            ghostty_surface_mouse_button(self->m_surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, currentMods());
         });
 
-        PointerWheelChanged([this](auto&&, muxi::PointerRoutedEventArgs const& args) {
-            if (!m_surface) return;
-            muix::PointerPoint point = args.GetCurrentPoint(Panel());
+        PointerWheelChanged([weakSelf](auto&&, muxi::PointerRoutedEventArgs const& args) {
+            auto self = weakSelf.get();
+            if (!self || !self->m_surface) return;
+            muix::PointerPoint point = args.GetCurrentPoint(self->Panel());
             muix::PointerPointProperties props = point.Properties();
             int delta = props.MouseWheelDelta();
             double scrollY = (double)delta / 120.0;
             ghostty_input_scroll_mods_t smods = {};
-            ghostty_surface_mouse_scroll(m_surface, 0, scrollY, smods);
+            ghostty_surface_mouse_scroll(self->m_surface, 0, scrollY, smods);
             args.Handled(true);
         });
     }
@@ -93,17 +120,22 @@ namespace winrt::GhosttyWin32::implementation
         m_hostHwnd = hostHwnd;
         m_attachRequest = std::move(attachRequest);
 
-        // Capture the surface by value so the lambda doesn't dereference
-        // `this` after Detach() nulls m_surface — Detach unhooks the
-        // event so further fires are impossible, but defense in depth.
-        ghostty_surface_t s = m_surface;
+        // Capture a weak_ref to self instead of `this` or the raw
+        // surface pointer. Detach unhooks SizeChanged before
+        // ghostty_surface_free, so in steady state the handler never
+        // fires on a dead surface — but XAML can deliver a queued
+        // SizeChanged after Detach during teardown, so we recheck
+        // m_surface inside the handler under a strong lock.
+        auto weakSelf = get_weak();
         m_sizeChangedToken = Panel().SizeChanged(
-            [s](auto&&, Microsoft::UI::Xaml::SizeChangedEventArgs const& args) {
+            [weakSelf](auto&&, Microsoft::UI::Xaml::SizeChangedEventArgs const& args) {
+                auto self = weakSelf.get();
+                if (!self || !self->m_surface) return;
                 auto sz = args.NewSize();
                 uint32_t w = static_cast<uint32_t>(sz.Width);
                 uint32_t h = static_cast<uint32_t>(sz.Height);
                 if (w > 0 && h > 0) {
-                    ghostty_surface_set_size(s, w, h);
+                    ghostty_surface_set_size(self->m_surface, w, h);
                 }
             });
     }

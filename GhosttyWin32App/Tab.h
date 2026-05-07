@@ -78,14 +78,14 @@ public:
     Microsoft::UI::Xaml::Controls::TabViewItem const& Item() const noexcept { return m_item; }
     TabId Id() const noexcept { return m_id; }
 
-    void Focus() {
-        // TerminalControl is a UserControl with IsTabStop=true, so
-        // unlike a bare SwapChainPanel this Focus call actually moves
-        // focus reliably. Future: focus the active leaf of the pane
-        // tree, not just the single control.
-        if (m_control) {
-            m_control.Focus(Microsoft::UI::Xaml::FocusState::Programmatic);
-        }
+    // Returns whether XAML accepted the focus request (used in
+    // diagnostics for the tab-switch focus path). TerminalControl is a
+    // UserControl with IsTabStop=true, so unlike a bare SwapChainPanel
+    // this Focus call actually moves focus reliably. Future: focus the
+    // active leaf of the pane tree, not just the single control.
+    bool Focus() {
+        if (!m_control) return false;
+        return m_control.Focus(Microsoft::UI::Xaml::FocusState::Programmatic);
     }
 
 private:

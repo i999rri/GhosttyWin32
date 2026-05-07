@@ -356,6 +356,42 @@ namespace winrt::GhosttyWin32::implementation
                 CreateTab();
             });
 
+            // TabView's built-in AddTabButton (the "+") is focusable by
+            // default, and its Click cycle holds onto focus across the
+            // tab-creation sequence — so even after the new tab is
+            // selected and we Focus() the new TerminalControl, the +
+            // button retains keyboard focus and the next Enter press
+            // re-fires its Click (creating yet another tab). Walking
+            // TabView's template to flip IsTabStop/AllowFocusOnInteraction
+            // on the AddButton breaks that retention.
+            //
+            // The template only materialises after Loaded, so we hook
+            // TabView.Loaded and walk its visual tree once.
+            tv.Loaded([](winrt::Windows::Foundation::IInspectable const& sender, auto&&) {
+                auto tv = sender.try_as<muxc::TabView>();
+                if (!tv) return;
+                namespace mux = winrt::Microsoft::UI::Xaml;
+                std::function<bool(mux::DependencyObject const&)> walk =
+                    [&walk](mux::DependencyObject const& parent) -> bool {
+                        int count = mux::Media::VisualTreeHelper::GetChildrenCount(parent);
+                        for (int i = 0; i < count; ++i) {
+                            auto child = mux::Media::VisualTreeHelper::GetChild(parent, i);
+                            if (auto fe = child.try_as<mux::FrameworkElement>()) {
+                                if (fe.Name() == L"AddButton") {
+                                    if (auto button = child.try_as<muxc::Button>()) {
+                                        button.IsTabStop(false);
+                                        button.AllowFocusOnInteraction(false);
+                                    }
+                                    return true;
+                                }
+                            }
+                            if (walk(child)) return true;
+                        }
+                        return false;
+                    };
+                walk(tv);
+            });
+
             tv.TabCloseRequested([this](muxc::TabView const& sender, muxc::TabViewTabCloseRequestedEventArgs const& args) {
                 auto item = args.Tab();
                 uint32_t idx = 0;
@@ -366,6 +402,36 @@ namespace winrt::GhosttyWin32::implementation
                 m_tabs.Remove(item);     // Tab destructor handles teardown
                 if (sender.TabItems().Size() == 0) {
                     this->Close();
+                }
+            });
+
+            // Whenever the selected tab changes — explicit click on a
+            // header, AddTabButton creating a new tab, keybind switch,
+            // auto-reselect after a close — pull focus into the new
+            // active TerminalControl. Without this, focus stays on
+            // whatever element triggered the selection (most painfully:
+            // the AddTabButton, whose IsDefault-like Enter-handling
+            // would create yet another tab on the next Enter keystroke).
+            // TerminalControl is a UserControl with IsTabStop=true so
+            // the Focus call actually moves focus, unlike the bare
+            // SwapChainPanel from before the refactor.
+            //
+            // weak_ref instead of `this`: TabView fires SelectionChanged
+            // during shutdown as TabItems is cleared, after MainWindow
+            // has started disposing — a raw `this->TabView()` call then
+            // throws RO_E_CLOSED on the disposed window.
+            auto weakSelf = get_weak();
+            tv.SelectionChanged([weakSelf](auto&&, auto&&) {
+                auto self = weakSelf.get();
+                if (!self) return;
+                // weak_ref.get() can return non-null briefly while the
+                // window is mid-dispose, in which case TabView() throws
+                // RO_E_CLOSED. Swallow — focus restoration is moot then.
+                try {
+                    if (auto* tab = self->ActiveTab()) {
+                        tab->Focus();
+                    }
+                } catch (winrt::hresult_error const&) {
                 }
             });
 
@@ -632,6 +698,13 @@ namespace winrt::GhosttyWin32::implementation
         item.Header(box_value(kDefaultTabTitle));
         item.IsClosable(true);
         item.Content(control);
+        // Same focus-retention story as the AddTabButton: TabViewItem is
+        // a Control with IsTabStop=true by default, so clicking a tab
+        // header lands focus on the header itself rather than the inner
+        // TerminalControl. Selection still works without IsTabStop —
+        // it's driven by click, not keyboard tab order.
+        item.IsTabStop(false);
+        item.AllowFocusOnInteraction(false);
         tv.TabItems().Append(item);
         // Append-only — don't switch to the new tab yet. The SelectedItem
         // call (which is what makes the panel visible) is deferred to the
@@ -647,10 +720,12 @@ namespace winrt::GhosttyWin32::implementation
         auto onActivated = [weakThis, itemStrong, tvStrong]() {
             auto self = weakThis.get();
             if (!self) return;
+            // Setting SelectedItem fires SelectionChanged (which focuses
+            // the active tab) and realises the TerminalControl into the
+            // visual tree (which fires its Loaded → self-focus). Both
+            // paths land focus where we want it, so no explicit Focus()
+            // call is needed here.
             tvStrong.SelectedItem(itemStrong);
-            if (auto* tab = self->m_tabs.FindByItem(itemStrong)) {
-                tab->Focus();
-            }
             if (self->m_editContext) {
                 self->m_ime.reset();
                 self->m_editContext.NotifyFocusEnter();
