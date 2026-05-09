@@ -97,6 +97,17 @@ namespace winrt::GhosttyWin32::implementation
         PointerPressed([weakSelf](auto&&, muxi::PointerRoutedEventArgs const& args) {
             auto self = weakSelf.get();
             if (!self || !self->m_surface) return;
+            // Mark Handled up front so the event doesn't bubble into
+            // ancestor focus-management code (TabViewItem / TabView /
+            // root content presenter, depending on layout). Without
+            // this, after our explicit Focus(Pointer) call XAML's
+            // default routed-event handling on the bubble path moves
+            // logical focus off the TerminalControl, LostFocus fires,
+            // and KeyDown stops being delivered until focus is restored
+            // some other way (alt-tab, Tab key, new tab). Calling Focus
+            // here covers initial focus claim; Handled(true) keeps it.
+            self->Focus(Microsoft::UI::Xaml::FocusState::Pointer);
+            args.Handled(true);
             muix::PointerPoint point = args.GetCurrentPoint(self->Panel());
             muix::PointerPointProperties props = point.Properties();
             ghostty_input_mouse_button_e btn;
@@ -124,10 +135,11 @@ namespace winrt::GhosttyWin32::implementation
             ghostty_surface_mouse_button(self->m_surface, GHOSTTY_MOUSE_PRESS, btn, currentMods());
         });
 
-        PointerReleased([weakSelf](auto&&, muxi::PointerRoutedEventArgs const&) {
+        PointerReleased([weakSelf](auto&&, muxi::PointerRoutedEventArgs const& args) {
             auto self = weakSelf.get();
             if (!self || !self->m_surface) return;
             ghostty_surface_mouse_button(self->m_surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, currentMods());
+            args.Handled(true);
         });
 
         PointerWheelChanged([weakSelf](auto&&, muxi::PointerRoutedEventArgs const& args) {
