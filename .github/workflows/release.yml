@@ -26,68 +26,8 @@ jobs:
       - name: Checkout GhosttyWin32
         uses: actions/checkout@v4
 
-      - name: Checkout ghostty fork
-        uses: actions/checkout@v4
-        with:
-          repository: i999rri/ghostty
-          ref: windows-port
-          path: ghostty
-
-      - name: Setup Zig
-        uses: mlugg/setup-zig@v2
-        with:
-          version: 0.15.2
-
-      - name: Build ghostty.dll
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $PSNativeCommandUseErrorActionPreference = $true
-          cd ghostty
-          zig build -Doptimize=ReleaseSafe -Drenderer=directx
-          # GhosttyWin32App.vcxproj links against ../ghostty/ghostty.{dll,lib,h}
-          # at the workspace root. upstream renamed the install artifact
-          # ghostty.dll → ghostty-internal.dll (ghostty 4fd16ef9b), so rename
-          # on copy to keep the linker target stable.
-          Copy-Item zig-out/lib/ghostty-internal.dll ../ghostty/ghostty.dll
-          Copy-Item include/ghostty.h ../ghostty/
-          # The Zig build writes the small import lib into the cache, not
-          # zig-out. Hunt for the most recently produced one (~60 KB) and
-          # copy it next to the dll.
-          $searchPaths = @(".")
-          if ($env:ZIG_LOCAL_CACHE_DIR) { $searchPaths += $env:ZIG_LOCAL_CACHE_DIR }
-          if (Test-Path "$env:LOCALAPPDATA\zig") { $searchPaths += "$env:LOCALAPPDATA\zig" }
-          $lib = Get-ChildItem -Path $searchPaths -Recurse -Filter "ghostty.lib" -ErrorAction SilentlyContinue |
-                 Where-Object { $_.Length -lt 100KB -and $_.Length -gt 10KB } |
-                 Sort-Object LastWriteTime -Descending |
-                 Select-Object -First 1
-          if ($lib) {
-            Copy-Item $lib.FullName ../ghostty/
-            Write-Host "Found import lib: $($lib.FullName) ($($lib.Length) bytes)"
-          } else {
-            Write-Error "ghostty.lib import library not found"
-            exit 1
-          }
-
-      - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@v2
-
-      - name: Setup NuGet
-        uses: NuGet/setup-nuget@v2
-
-      # The wapproj uses PackageReference (handled by msbuild /t:Restore),
-      # but GhosttyWin32App.vcxproj / GhosttyTests.vcxproj still use the
-      # legacy packages.config format which msbuild's Restore target ignores.
-      # We need both: nuget restore expands ..\packages\ for the vcxprojs,
-      # then msbuild /t:Restore resolves the wapproj's PackageReferences.
-      # NuGet CLI doesn't read .slnx so we point it at each vcxproj.
-      - name: Restore NuGet packages
-        run: |
-          nuget restore "GhosttyWin32App/GhosttyWin32App.vcxproj" -PackagesDirectory packages -SolutionDirectory .
-          nuget restore "GhosttyTests/GhosttyTests.vcxproj" -PackagesDirectory packages -SolutionDirectory .
-          msbuild GhosttyWin32.slnx /t:Restore /p:Configuration=Release /p:Platform=x64
-
       - name: Set MSIX version from tag
+        id: version
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -105,103 +45,36 @@ jobs:
             exit 1
           }
           $fullVersion = "$version.0"
-          # Read with -Raw so existing line endings are preserved verbatim
-          # (the previous Get-Content + Set-Content -NoNewline approach
-          # joined array elements with no separator, collapsing the XML
-          # declaration into the next line and producing APPX1402).
-          # Use -creplace (case-sensitive) on uppercase Version=, otherwise
-          # -replace also clobbers `version="1.0"` in the <?xml ... ?>
-          # declaration since PowerShell -replace is case-insensitive.
-          $manifestPath = "GhosttyWin32 (Package)/Package.appxmanifest"
-          $content = Get-Content $manifestPath -Raw
-          # (?<=\s) lookbehind requires whitespace before Version=, so
-          # MinVersion= / MaxVersionTested= in <TargetDeviceFamily> aren't
-          # touched — only the Version= attribute on <Identity> matches.
-          $content = $content -creplace '(?<=\s)Version="[\d\.]+"', "Version=`"$fullVersion`""
-          [System.IO.File]::WriteAllText((Resolve-Path $manifestPath), $content)
-          Write-Host "Set MSIX version to $fullVersion"
-          # Echo for downstream steps.
-          "msix_version=$fullVersion" >> $env:GITHUB_ENV
-          "release_version=$version" >> $env:GITHUB_ENV
+          "msix_version=$fullVersion" >> $env:GITHUB_OUTPUT
+          "release_version=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "Tag $tag -> MSIX version $fullVersion (release version $version)"
 
-      - name: Decode signing certificate
-        shell: pwsh
-        env:
-          PFX_BASE64: ${{ secrets.SIGNING_PFX_BASE64 }}
-          PFX_PASSWORD: ${{ secrets.SIGNING_PFX_PASSWORD }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $PSNativeCommandUseErrorActionPreference = $true
-          if (-not $env:PFX_BASE64) {
-            Write-Error "SIGNING_PFX_BASE64 secret is empty. See .github/RELEASING.md."
-            exit 1
-          }
-          $pfxBytes = [System.Convert]::FromBase64String($env:PFX_BASE64)
-          [System.IO.File]::WriteAllBytes("ghostty-signing.pfx", $pfxBytes)
+      - name: Build signed MSIX
+        id: build
+        uses: ./.github/actions/build-signed-msix
+        with:
+          msix-version: ${{ steps.version.outputs.msix_version }}
+          sign: 'true'
+          pfx-base64: ${{ secrets.SIGNING_PFX_BASE64 }}
+          pfx-password: ${{ secrets.SIGNING_PFX_PASSWORD }}
 
-          # Derive the public cer from the PFX so the release artifact and the
-          # signing key are guaranteed to match. We don't commit Ghostty.cer
-          # because the source of truth is the PFX in Secrets — keeping a
-          # second copy in git invites drift.
-          $pfx = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2(
-            (Resolve-Path "ghostty-signing.pfx").Path,
-            $env:PFX_PASSWORD,
-            [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet)
-          $cerBytes = $pfx.Export(
-            [System.Security.Cryptography.X509Certificates.X509ContentType]::Cert)
-          [System.IO.File]::WriteAllBytes("Ghostty.cer", $cerBytes)
-          $pfx.Dispose()
-
-      - name: Build MSIX package
-        shell: pwsh
-        env:
-          PFX_PASSWORD: ${{ secrets.SIGNING_PFX_PASSWORD }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $PSNativeCommandUseErrorActionPreference = $true
-          $pfxPath = (Resolve-Path "ghostty-signing.pfx").Path
-          msbuild "GhosttyWin32 (Package)/GhosttyWin32 (Package).wapproj" `
-            /p:Configuration=Release `
-            /p:Platform=x64 `
-            /p:PlatformToolset=v143 `
-            /p:GenerateAppxPackageOnBuild=true `
-            /p:AppxPackageSigningEnabled=true `
-            /p:PackageCertificateKeyFile=$pfxPath `
-            /p:PackageCertificatePassword=$env:PFX_PASSWORD `
-            /p:UapAppxPackageBuildMode=SideloadOnly `
-            /p:AppxBundle=Never
-
-      - name: Cleanup PFX
-        if: always()
-        shell: pwsh
-        run: |
-          Remove-Item ghostty-signing.pfx -ErrorAction SilentlyContinue
-          # Ghostty.cer (public part) stays for the release upload step.
-
-      - name: Locate and rename MSIX
-        id: locate
+      - name: Rename MSIX for release
+        id: artifact
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $true
-          $msix = Get-ChildItem -Recurse -Filter "*.msix" -Path "GhosttyWin32 (Package)/AppPackages" |
-                  Where-Object { $_.Name -notlike "*Microsoft.*" } |
-                  Select-Object -First 1
-          if (-not $msix) {
-            Write-Error "Built MSIX not found under AppPackages/"
-            exit 1
-          }
-          $renamed = "Ghostty-$env:release_version-x64.msix"
-          Copy-Item $msix.FullName $renamed
-          Write-Host "Release artifact: $renamed (from $($msix.FullName))"
+          $renamed = "Ghostty-${{ steps.version.outputs.release_version }}-x64.msix"
+          Copy-Item "${{ steps.build.outputs.msix-path }}" $renamed
+          Write-Host "Release artifact: $renamed"
           "msix_path=$renamed" >> $env:GITHUB_OUTPUT
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            ${{ steps.locate.outputs.msix_path }}
-            Ghostty.cer
+            ${{ steps.artifact.outputs.msix_path }}
+            ${{ steps.build.outputs.cer-path }}
           generate_release_notes: true
           # Tags with a hyphen are pre-releases (rc / beta / alpha).
           prerelease: ${{ contains(github.ref_name, '-') }}
@@ -214,7 +87,7 @@ jobs:
             ```
 
             ### Manual install
-            1. Download `Ghostty.cer` and `Ghostty-${{ env.release_version }}-x64.msix`
+            1. Download `Ghostty.cer` and `Ghostty-${{ steps.version.outputs.release_version }}-x64.msix`
             2. Trust the certificate (Local Machine → Trusted People store)
             3. Double-click the `.msix` to install
 
