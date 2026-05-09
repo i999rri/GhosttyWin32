@@ -3,25 +3,33 @@ name: Dev Build
 on:
   push:
     branches: [dev]
+  # PR builds: compile-only verification. Signing + release upload are
+  # gated on `github.event_name == 'push'` below so PRs don't need PFX
+  # secrets and don't mutate the dev-build release. Catches build
+  # breakages (e.g. /std:c++17 vs c++20 mismatches) before merge to dev.
+  pull_request: {}
   workflow_dispatch: {}
 
 permissions:
   contents: write
 
-# Run-coalescing: only one dev-build is meaningful at a time. If a newer push
-# arrives while the previous build is still going, cancel the older one so we
-# don't overwrite a newer artifact with an older one when both finish.
+# Run-coalescing: cancel an older in-flight build when a newer one for the
+# same branch+event arrives. Keyed on event name + ref so that a dev push
+# and a parallel PR build don't cancel each other.
 concurrency:
-  group: dev-build
+  group: dev-build-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build:
     runs-on: windows-latest
 
-    # Same Environment as pre-release tags. Auto-approves; only the production
-    # `release` Environment requires reviewer approval.
-    environment: dev-release
+    # `dev-release` Environment gates publishing on dev pushes (auto-approves;
+    # only the production `release` Environment requires reviewer approval).
+    # PR builds skip the environment entirely — they're compile-only and
+    # would otherwise be rejected by the environment's branch protection
+    # rule that limits deployments to `dev`.
+    environment: ${{ github.event_name == 'push' && 'dev-release' || '' }}
 
     steps:
       - name: Checkout GhosttyWin32
@@ -129,6 +137,7 @@ jobs:
           [System.IO.File]::WriteAllText((Resolve-Path $manifestPath), $content)
 
       - name: Decode signing certificate
+        if: github.event_name == 'push'
         shell: pwsh
         env:
           PFX_BASE64: ${{ secrets.SIGNING_PFX_BASE64 }}
@@ -154,6 +163,10 @@ jobs:
           [System.IO.File]::WriteAllBytes("Ghostty.cer", $cerBytes)
           $pfx.Dispose()
 
+      # On dev push: build + sign for the publishable MSIX.
+      # On PR: build only (no signing) — verifies the C++/MSIX pipeline
+      # compiles cleanly without needing PFX secrets or producing an
+      # uploadable artifact.
       - name: Build MSIX package
         shell: pwsh
         env:
@@ -161,26 +174,38 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $true
-          $pfxPath = (Resolve-Path "ghostty-signing.pfx").Path
-          msbuild "GhosttyWin32 (Package)/GhosttyWin32 (Package).wapproj" `
-            /p:Configuration=Release `
-            /p:Platform=x64 `
-            /p:PlatformToolset=v143 `
-            /p:GenerateAppxPackageOnBuild=true `
-            /p:AppxPackageSigningEnabled=true `
-            /p:PackageCertificateKeyFile=$pfxPath `
-            /p:PackageCertificatePassword=$env:PFX_PASSWORD `
-            /p:UapAppxPackageBuildMode=SideloadOnly `
-            /p:AppxBundle=Never
+          $args = @(
+            "GhosttyWin32 (Package)/GhosttyWin32 (Package).wapproj",
+            "/p:Configuration=Release",
+            "/p:Platform=x64",
+            "/p:PlatformToolset=v143",
+            "/p:GenerateAppxPackageOnBuild=true",
+            "/p:UapAppxPackageBuildMode=SideloadOnly",
+            "/p:AppxBundle=Never"
+          )
+          if ("${{ github.event_name }}" -eq "push") {
+            $pfxPath = (Resolve-Path "ghostty-signing.pfx").Path
+            $args += @(
+              "/p:AppxPackageSigningEnabled=true",
+              "/p:PackageCertificateKeyFile=$pfxPath",
+              "/p:PackageCertificatePassword=$env:PFX_PASSWORD"
+            )
+          } else {
+            $args += "/p:AppxPackageSigningEnabled=false"
+          }
+          msbuild @args
 
+      # always() ensures PFX is wiped even if a prior step failed — important
+      # because secrets shouldn't sit on the runner after a failure.
       - name: Cleanup PFX
-        if: always()
+        if: always() && github.event_name == 'push'
         shell: pwsh
         run: |
           Remove-Item ghostty-signing.pfx -ErrorAction SilentlyContinue
           # Ghostty.cer (public part) stays for the release upload step.
 
       - name: Locate and rename MSIX
+        if: github.event_name == 'push'
         id: locate
         shell: pwsh
         run: |
@@ -202,6 +227,7 @@ jobs:
       # assets which would pile up across runs. We swallow errors so the very
       # first run (no prior release) doesn't fail.
       - name: Delete previous dev-build release
+        if: github.event_name == 'push'
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -221,6 +247,7 @@ jobs:
           }
 
       - name: Create dev-build release
+        if: github.event_name == 'push'
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
