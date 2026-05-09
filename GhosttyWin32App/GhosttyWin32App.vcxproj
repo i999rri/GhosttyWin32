@@ -124,6 +124,7 @@
     <ClInclude Include="ImeBuffer.h" />
     <ClInclude Include="KeyModifiers.h" />
     <ClInclude Include="pch.h" />
+    <ClInclude Include="SEHGuard.h" />
     <ClInclude Include="App.xaml.h">
       <DependentUpon>App.xaml</DependentUpon>
     </ClInclude>
@@ -153,6 +154,7 @@
     <ClCompile Include="MainWindow.xaml.cpp">
       <DependentUpon>MainWindow.xaml</DependentUpon>
     </ClCompile>
+    <ClCompile Include="SEHGuard.cpp" />
     <ClCompile Include="TerminalControl.xaml.cpp">
       <DependentUpon>TerminalControl.xaml</DependentUpon>
     </ClCompile>

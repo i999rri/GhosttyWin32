@@ -3,6 +3,7 @@
 #include "Clipboard.h"
 #include "KeyModifiers.h"
 #include "Encoding.h"
+#include "SEHGuard.h"
 #if __has_include("MainWindow.g.cpp")
 #include "MainWindow.g.cpp"
 #endif
@@ -22,22 +23,6 @@ namespace {
         DWORD len = GetTempPathW(MAX_PATH, buf);
         if (len == 0) return L"GhosttyWin32_running.flag";
         return std::filesystem::path(buf) / L"GhosttyWin32_running.flag";
-    }
-
-    // SEH "trampoline": isolates a callable invocation behind __try/__except.
-    // MSVC's /EHsc refuses __try in any function that has C++ unwinding
-    // (i.e. anything dealing with C++ objects). This helper has only raw
-    // C types in its frame, so it compiles. The C++ work lives in the
-    // callback we invoke through a function pointer — if that callback
-    // raises a hardware exception, we swallow it here.
-    extern "C" int RunSEHGuarded(void (*fn)(void*), void* ctx) noexcept {
-        __try {
-            fn(ctx);
-            return 1;
-        } __except (EXCEPTION_EXECUTE_HANDLER) {
-            OutputDebugStringA("SEH caught hardware exception inside guarded call\n");
-            return 0;
-        }
     }
 }
 
