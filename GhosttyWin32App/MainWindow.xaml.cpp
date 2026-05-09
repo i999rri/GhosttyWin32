@@ -95,15 +95,33 @@ namespace winrt::GhosttyWin32::implementation
                 this->SystemBackdrop(backdrop);
             }
 
-            // Re-attach IME when window regains activation. XAML's
-            // GotFocus/LostFocus on TerminalControl don't fire on
-            // window de/activation (focus is logically retained on the
-            // focused element across alt-tab), so we forward window
-            // state changes to the active control's EditContext
-            // directly. Without this, switching focus to another window
-            // and back leaves the OS-side text-services manager
-            // pointing at a detached EditContext and IME stays off
-            // even if the OS-level IME toggle is on.
+            // On every window (re)activation: pull keyboard focus onto
+            // the active terminal and re-attach IME. Two reasons to
+            // anchor both jobs on this event:
+            //
+            //   * Focus on initial show. The first tab's onActivated
+            //     callback calls ShowWindow(SW_SHOW), which only posts
+            //     WM_ACTIVATE — WinUI's own activation logic runs later
+            //     in the message pump and assigns default focus to its
+            //     internal first-focusable element. Calling Focus
+            //     directly inside onActivated (or through a Low-priority
+            //     dispatcher tick) races against that and loses
+            //     intermittently. The Activated event itself is signalled
+            //     after WinUI has finished its default-focus pass, so a
+            //     Focus call here is the last write and reliably sticks.
+            //     Subsequent alt-tab returns ride the same path: focus
+            //     comes back to the terminal, which is what users expect
+            //     of a terminal app where there's nothing else to focus.
+            //
+            //   * IME re-attach. XAML's GotFocus/LostFocus on
+            //     TerminalControl don't fire on window de/activation
+            //     (focus is logically retained on the focused element
+            //     across alt-tab), so we forward window state changes to
+            //     the active control's EditContext directly. Without
+            //     this, switching focus to another window and back leaves
+            //     the OS-side text-services manager pointing at a
+            //     detached EditContext and IME stays off even if the
+            //     OS-level IME toggle is on.
             //
             // weak_ref + try/catch instead of `[this]`: WindowActivated
             // fires during shutdown after MainWindow has started
@@ -119,13 +137,18 @@ namespace winrt::GhosttyWin32::implementation
                 auto self = weakActivated.get();
                 if (!self) return;
                 try {
-                    auto* tc = self->ActiveControl();
-                    if (!tc) return;
                     using State = winrt::Microsoft::UI::Xaml::WindowActivationState;
                     if (args.WindowActivationState() == State::Deactivated) {
-                        tc->NotifyImeFocusLeave();
+                        if (auto* tc = self->ActiveControl()) {
+                            tc->NotifyImeFocusLeave();
+                        }
                     } else {
-                        tc->NotifyImeFocusEnter();
+                        if (auto* tab = self->ActiveTab()) {
+                            tab->Focus();
+                        }
+                        if (auto* tc = self->ActiveControl()) {
+                            tc->NotifyImeFocusEnter();
+                        }
                     }
                 } catch (winrt::hresult_error const&) {
                 }
@@ -578,19 +601,10 @@ namespace winrt::GhosttyWin32::implementation
             // for an element that's actually in the live tree).
             tvStrong.SelectedItem(itemStrong);
             if (self->m_hwnd) ShowWindow(self->m_hwnd, SW_SHOW);
-            // Focus has to be (re)taken AFTER ShowWindow for the very
-            // first tab. Loaded fires synchronously inside SelectedItem
-            // while the window is still hidden, and Focus(Programmatic)
-            // can't bind OS-level keyboard focus to an element of an
-            // invisible window — the call silently no-ops, KeyDown
-            // never fires, and plain typing goes nowhere. Subsequent
-            // tabs reach onActivated with the window already shown so
-            // their Loaded → Focus succeeds; the explicit re-focus
-            // below is a no-op for them but the load-bearing fix for
-            // the first tab.
-            if (auto* tab = self->m_tabs.FindByItem(itemStrong)) {
-                tab->Focus();
-            }
+            // Focus is taken in the Activated event handler that fires
+            // from the WM_ACTIVATE this ShowWindow posts. See the
+            // comment on that handler for why anchoring focus there is
+            // race-free, while a direct Focus() call here is not.
         };
 
         // Estimate the new panel's eventual size from the currently active
