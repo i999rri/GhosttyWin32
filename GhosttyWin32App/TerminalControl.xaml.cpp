@@ -33,16 +33,57 @@ namespace winrt::GhosttyWin32::implementation
 
         auto weakSelf = get_weak();
 
-        // Self-focus on Loaded. SelectedItem-driven focus from the
-        // outside (MainWindow's SelectionChanged handler) fires while
-        // TabView's content presenter is still swapping us in, and
-        // Focus() returns false before layout completes. Loaded fires
-        // only once the control is actually in the live visual tree
-        // and measured — at that point Focus succeeds without retry.
+        // Set up IME + self-focus on Loaded. Three reasons this all
+        // happens here rather than in Attach or the ctor:
+        //
+        //   * SelectedItem-driven focus from the outside (MainWindow's
+        //     SelectionChanged handler) fires while TabView's content
+        //     presenter is still swapping us in, and Focus() returns
+        //     false before layout completes. Loaded fires only once
+        //     the control is actually in the live visual tree and
+        //     measured — at that point Focus succeeds without retry.
+        //
+        //   * CoreTextEditContext registration with the OS-side text-
+        //     services manager only takes effect when the EditContext
+        //     is created against an element that's in the live visual
+        //     tree. Creating it earlier (in Attach, before
+        //     TabView.SelectedItem realises us) silently fails to
+        //     register, so NotifyFocusEnter doesn't engage IME — the
+        //     symptom was "first tab can't toggle 半角/全角 until a
+        //     second tab is created."
+        //
+        //   * Loaded fires once per control, after both of the above
+        //     conditions are true, so the setup is naturally a single
+        //     idempotent step.
         Loaded([weakSelf](auto&&, auto&&) {
             auto self = weakSelf.get();
             if (!self) return;
+            if (!self->m_editContext) {
+                self->SetupImeContext();
+            }
             self->Focus(Microsoft::UI::Xaml::FocusState::Programmatic);
+        });
+
+        // Mirror keyboard-focus state into the EditContext. Tab
+        // switches inside the same window trip these (the losing tab's
+        // TerminalControl LostFocus, the gaining tab's GotFocus) so
+        // IME composition is naturally scoped to the focused tab. A
+        // composition in flight on tab A pauses at LostFocus and the
+        // OS does not deliver further updates until tab A's
+        // EditContext is reactivated. Window-level activation crosses
+        // the boundary without firing these events; MainWindow's
+        // Activated handler routes through NotifyImeFocusEnter/Leave
+        // for that case.
+        GotFocus([weakSelf](auto&&, auto&&) {
+            auto self = weakSelf.get();
+            if (!self || !self->m_editContext) return;
+            self->m_editContext.NotifyFocusEnter();
+        });
+
+        LostFocus([weakSelf](auto&&, auto&&) {
+            auto self = weakSelf.get();
+            if (!self || !self->m_editContext) return;
+            self->m_editContext.NotifyFocusLeave();
         });
 
         PointerMoved([weakSelf](auto&&, muxi::PointerRoutedEventArgs const& args) {
@@ -110,15 +151,22 @@ namespace winrt::GhosttyWin32::implementation
         Detach();
     }
 
-    void TerminalControl::Attach(ghostty_surface_t surface,
+    void TerminalControl::Attach(ghostty_app_t app,
+                                 ghostty_surface_t surface,
                                  HANDLE compositionHandle,
                                  HWND hostHwnd,
                                  std::shared_ptr<SwapChainAttachRequest> attachRequest)
     {
+        m_app = app;
         m_surface = surface;
         m_compositionHandle = compositionHandle;
         m_hostHwnd = hostHwnd;
         m_attachRequest = std::move(attachRequest);
+        // IME setup is deferred to Loaded — see the Loaded handler
+        // comment in the ctor. CreateEditContext only registers
+        // properly when the owning element is in the live visual
+        // tree, which doesn't happen until TabView.SelectedItem
+        // realises us.
 
         // Capture a weak_ref to self instead of `this` or the raw
         // surface pointer. Detach unhooks SizeChanged before
@@ -150,14 +198,30 @@ namespace winrt::GhosttyWin32::implementation
             m_attachRequest.reset();
         }
 
+        if (m_editContext) {
+            // Best-effort: tell the OS the EditContext is leaving focus
+            // before we drop our reference. Skipping this leaves the
+            // text-services manager holding a stale focus pointer until
+            // GC catches up.
+            m_editContext.NotifyFocusLeave();
+            m_editContext = nullptr;
+        }
+
         if (auto panel = Panel()) {
             if (m_sizeChangedToken.value != 0) {
                 panel.SizeChanged(m_sizeChangedToken);
                 m_sizeChangedToken = {};
             }
-            if (auto native2 = panel.try_as<ISwapChainPanelNative2>()) {
-                native2->SetSwapChainHandle(nullptr);
-            }
+            // We deliberately skip the symmetric
+            // ISwapChainPanelNative2::SetSwapChainHandle(nullptr) that
+            // mirrors the attach in OnSwapChainReady. Calling it
+            // during rapid Ctrl+Shift+W tab teardown reads a null
+            // compositor visual at +0x1F8 inside microsoft.ui.xaml.dll
+            // and AVs. The panel keeps a reference to the (about-to-
+            // be-closed) composition handle until the impl is
+            // released; XAML's own panel-cleanup path runs at that
+            // point with the kernel handle already invalid, which it
+            // tolerates without faulting.
         }
         if (m_surface) {
             ghostty_surface_free(m_surface);
@@ -167,6 +231,125 @@ namespace winrt::GhosttyWin32::implementation
             CloseHandle(m_compositionHandle);
             m_compositionHandle = nullptr;
         }
+        m_app = nullptr;
+    }
+
+    void TerminalControl::SetupImeContext()
+    {
+        namespace txtCore = winrt::Windows::UI::Text::Core;
+        // CoreTextServicesManager.GetForCurrentView lives at the view
+        // (~window) level, but CreateEditContext spins up an
+        // independent context — multiple controls in the same window
+        // each get their own. The OS arbitrates which one receives
+        // input via NotifyFocusEnter/Leave; we drive those on tab
+        // switch (GotFocus/LostFocus) and on window activation
+        // (forwarded from MainWindow via NotifyImeFocusEnter/Leave).
+        auto manager = txtCore::CoreTextServicesManager::GetForCurrentView();
+        m_editContext = manager.CreateEditContext();
+        m_editContext.InputPaneDisplayPolicy(txtCore::CoreTextInputPaneDisplayPolicy::Manual);
+        m_editContext.InputScope(txtCore::CoreTextInputScope::Default);
+
+        auto weakSelf = get_weak();
+
+        m_editContext.TextRequested([weakSelf](
+            txtCore::CoreTextEditContext const&,
+            txtCore::CoreTextTextRequestedEventArgs const& args) {
+            auto self = weakSelf.get();
+            if (!self) return;
+            args.Request().Text(winrt::hstring(self->m_ime.paddedText()));
+        });
+
+        m_editContext.SelectionRequested([weakSelf](
+            txtCore::CoreTextEditContext const&,
+            txtCore::CoreTextSelectionRequestedEventArgs const& args) {
+            auto self = weakSelf.get();
+            if (!self) return;
+            int32_t pos = self->m_ime.selectionPosition();
+            args.Request().Selection({ pos, pos });
+        });
+
+        m_editContext.TextUpdating([weakSelf](
+            txtCore::CoreTextEditContext const&,
+            txtCore::CoreTextTextUpdatingEventArgs const& args) {
+            auto self = weakSelf.get();
+            if (!self || !self->m_surface) return;
+            auto range = args.Range();
+            auto newText = args.Text();
+            self->m_ime.applyTextUpdate(range.StartCaretPosition, range.EndCaretPosition,
+                                        newText.c_str(), newText.size());
+            if (self->m_ime.composing()) {
+                if (self->m_ime.text().empty()) {
+                    ghostty_surface_preedit(self->m_surface, nullptr, 0);
+                } else {
+                    auto utf8 = Encoding::toUtf8(self->m_ime.text());
+                    if (!utf8.empty())
+                        ghostty_surface_preedit(self->m_surface, utf8.c_str(), utf8.size());
+                }
+            }
+            if (self->m_app) ghostty_app_tick(self->m_app);
+            ghostty_surface_refresh(self->m_surface);
+        });
+
+        m_editContext.CompositionStarted([weakSelf](
+            txtCore::CoreTextEditContext const&,
+            txtCore::CoreTextCompositionStartedEventArgs const&) {
+            auto self = weakSelf.get();
+            if (!self) return;
+            self->m_ime.compositionStarted();
+        });
+
+        m_editContext.CompositionCompleted([weakSelf](
+            txtCore::CoreTextEditContext const&,
+            txtCore::CoreTextCompositionCompletedEventArgs const&) {
+            auto self = weakSelf.get();
+            if (!self) return;
+            if (self->m_surface) {
+                ghostty_surface_preedit(self->m_surface, nullptr, 0);
+                auto utf8 = Encoding::toUtf8(self->m_ime.text());
+                if (!utf8.empty()) {
+                    ghostty_surface_text(self->m_surface, utf8.c_str(), utf8.size());
+                }
+                if (self->m_app) ghostty_app_tick(self->m_app);
+                ghostty_surface_refresh(self->m_surface);
+            }
+            self->m_ime.compositionCompleted();
+        });
+
+        m_editContext.LayoutRequested([weakSelf](
+            txtCore::CoreTextEditContext const&,
+            txtCore::CoreTextLayoutRequestedEventArgs const& args) {
+            auto self = weakSelf.get();
+            if (!self || !self->m_surface || !self->m_hostHwnd) return;
+            double x = 0, y = 0, w = 0, h = 0;
+            ghostty_surface_ime_point(self->m_surface, &x, &y, &w, &h);
+            POINT screenPt = { (LONG)x, (LONG)y };
+            ClientToScreen(self->m_hostHwnd, &screenPt);
+            winrt::Windows::Foundation::Rect bounds{
+                (float)screenPt.x, (float)screenPt.y, (float)w, (float)h };
+            args.Request().LayoutBounds().ControlBounds(bounds);
+            args.Request().LayoutBounds().TextBounds(bounds);
+        });
+
+        m_editContext.FocusRemoved([weakSelf](
+            txtCore::CoreTextEditContext const&, auto&&) {
+            auto self = weakSelf.get();
+            if (!self) return;
+            if (self->m_ime.composing()) {
+                self->m_ime.reset();
+                if (self->m_surface)
+                    ghostty_surface_preedit(self->m_surface, nullptr, 0);
+            }
+        });
+    }
+
+    void TerminalControl::NotifyImeFocusEnter()
+    {
+        if (m_editContext) m_editContext.NotifyFocusEnter();
+    }
+
+    void TerminalControl::NotifyImeFocusLeave()
+    {
+        if (m_editContext) m_editContext.NotifyFocusLeave();
     }
 
     void TerminalControl::OnSwapChainReady(void* userdata) noexcept

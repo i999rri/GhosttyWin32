@@ -110,99 +110,39 @@ namespace winrt::GhosttyWin32::implementation
                 this->SystemBackdrop(backdrop);
             }
 
-            // IME via CoreTextEditContext
-            {
-                namespace txtCore = winrt::Windows::UI::Text::Core;
-                auto manager = txtCore::CoreTextServicesManager::GetForCurrentView();
-                m_editContext = manager.CreateEditContext();
-                m_editContext.InputPaneDisplayPolicy(txtCore::CoreTextInputPaneDisplayPolicy::Manual);
-                m_editContext.InputScope(txtCore::CoreTextInputScope::Default);
-
-                m_editContext.TextRequested([this](txtCore::CoreTextEditContext const&, txtCore::CoreTextTextRequestedEventArgs const& args) {
-                    args.Request().Text(winrt::hstring(m_ime.paddedText()));
-                });
-
-                m_editContext.SelectionRequested([this](txtCore::CoreTextEditContext const&, txtCore::CoreTextSelectionRequestedEventArgs const& args) {
-                    int32_t pos = m_ime.selectionPosition();
-                    args.Request().Selection({ pos, pos });
-                });
-
-                m_editContext.TextUpdating([this](txtCore::CoreTextEditContext const&, txtCore::CoreTextTextUpdatingEventArgs const& args) {
-                    auto range = args.Range();
-                    auto newText = args.Text();
-                    m_ime.applyTextUpdate(range.StartCaretPosition, range.EndCaretPosition,
-                                          newText.c_str(), newText.size());
-
-                    auto* tc = ActiveControl();
-                    if (!tc || !tc->Surface()) return;
-
-                    if (m_ime.composing()) {
-                        if (m_ime.text().empty()) {
-                            ghostty_surface_preedit(tc->Surface(), nullptr, 0);
-                        } else {
-                            auto utf8 = Encoding::toUtf8(m_ime.text());
-                            if (!utf8.empty())
-                                ghostty_surface_preedit(tc->Surface(), utf8.c_str(), utf8.size());
-                        }
-                    }
-                    if (m_ghostty) m_ghostty->Tick();
-                    ghostty_surface_refresh(tc->Surface());
-                });
-
-                m_editContext.CompositionStarted([this](txtCore::CoreTextEditContext const&, txtCore::CoreTextCompositionStartedEventArgs const&) {
-                    m_ime.compositionStarted();
-                });
-
-                m_editContext.CompositionCompleted([this](txtCore::CoreTextEditContext const&, txtCore::CoreTextCompositionCompletedEventArgs const&) {
-                    auto* tc = ActiveControl();
-                    if (tc && tc->Surface()) {
-                        ghostty_surface_preedit(tc->Surface(), nullptr, 0);
-                        auto utf8 = Encoding::toUtf8(m_ime.text());
-                        if (!utf8.empty()) {
-                            ghostty_surface_text(tc->Surface(), utf8.c_str(), utf8.size());
-                        }
-                        if (m_ghostty) m_ghostty->Tick();
-                        ghostty_surface_refresh(tc->Surface());
-                    }
-                    m_ime.compositionCompleted();
-                });
-
-                m_editContext.LayoutRequested([this](txtCore::CoreTextEditContext const&, txtCore::CoreTextLayoutRequestedEventArgs const& args) {
-                    auto* tc = ActiveControl();
-                    if (!tc || !tc->Surface() || !m_hwnd) return;
-                    double x = 0, y = 0, w = 0, h = 0;
-                    ghostty_surface_ime_point(tc->Surface(), &x, &y, &w, &h);
-                    POINT screenPt = { (LONG)x, (LONG)y };
-                    ClientToScreen(m_hwnd, &screenPt);
-                    winrt::Windows::Foundation::Rect bounds{
-                        (float)screenPt.x, (float)screenPt.y, (float)w, (float)h };
-                    args.Request().LayoutBounds().ControlBounds(bounds);
-                    args.Request().LayoutBounds().TextBounds(bounds);
-                });
-
-                m_editContext.FocusRemoved([this](txtCore::CoreTextEditContext const&, auto&&) {
-                    if (m_ime.composing()) {
-                        m_ime.reset();
-                        auto* tc = ActiveControl();
-                        if (tc && tc->Surface())
-                            ghostty_surface_preedit(tc->Surface(), nullptr, 0);
-                    }
-                });
-            }
-
-            // Re-attach IME when window regains activation. The init handler
-            // above runs once and calls NotifyFocusEnter only after the first
-            // tab is created; without this, switching focus to another window
-            // and back leaves CoreTextEditContext detached, so IME stays off
+            // Re-attach IME when window regains activation. XAML's
+            // GotFocus/LostFocus on TerminalControl don't fire on
+            // window de/activation (focus is logically retained on the
+            // focused element across alt-tab), so we forward window
+            // state changes to the active control's EditContext
+            // directly. Without this, switching focus to another window
+            // and back leaves the OS-side text-services manager
+            // pointing at a detached EditContext and IME stays off
             // even if the OS-level IME toggle is on.
-            Activated([this](winrt::Windows::Foundation::IInspectable const&,
-                             winrt::Microsoft::UI::Xaml::WindowActivatedEventArgs const& args) {
-                if (!m_editContext) return;
-                using State = winrt::Microsoft::UI::Xaml::WindowActivationState;
-                if (args.WindowActivationState() == State::Deactivated) {
-                    m_editContext.NotifyFocusLeave();
-                } else if (ActiveTab()) {
-                    m_editContext.NotifyFocusEnter();
+            //
+            // weak_ref + try/catch instead of `[this]`: WindowActivated
+            // fires during shutdown after MainWindow has started
+            // disposing — m_tabs is mid-destruction and ActiveControl()
+            // can return a dangling TerminalControl pointer. Calling
+            // NotifyImeFocusLeave on it AVs at the m_editContext
+            // member offset inside microsoft.ui.xaml.dll. The weak_ref
+            // path bails cleanly; the catch covers RO_E_CLOSED if
+            // TabView() is hit on a torn-down window.
+            auto weakActivated = get_weak();
+            Activated([weakActivated](winrt::Windows::Foundation::IInspectable const&,
+                                      winrt::Microsoft::UI::Xaml::WindowActivatedEventArgs const& args) {
+                auto self = weakActivated.get();
+                if (!self) return;
+                try {
+                    auto* tc = self->ActiveControl();
+                    if (!tc) return;
+                    using State = winrt::Microsoft::UI::Xaml::WindowActivationState;
+                    if (args.WindowActivationState() == State::Deactivated) {
+                        tc->NotifyImeFocusLeave();
+                    } else {
+                        tc->NotifyImeFocusEnter();
+                    }
+                } catch (winrt::hresult_error const&) {
                 }
             });
 
@@ -222,7 +162,7 @@ namespace winrt::GhosttyWin32::implementation
                 bool shift = GetKeyState(VK_SHIFT) & 0x8000;
 
                 // IME is processing this key
-                if (vk == VK_PROCESSKEY || m_ime.composing()) return;
+                if (vk == VK_PROCESSKEY || tc->ImeComposing()) return;
 
                 // Ctrl+C: copy if selection exists, otherwise send SIGINT
                 if (ctrl && !shift && vk == 'C') {
@@ -394,14 +334,40 @@ namespace winrt::GhosttyWin32::implementation
 
             tv.TabCloseRequested([this](muxc::TabView const& sender, muxc::TabViewTabCloseRequestedEventArgs const& args) {
                 auto item = args.Tab();
+                // Detach the control BEFORE removing it from TabView.
+                // Detach calls ISwapChainPanelNative2::SetSwapChainHandle(nullptr)
+                // on the inner panel, and that call AVs at +0x1F8 inside
+                // microsoft.ui.xaml.dll if the panel has already been
+                // unparented from the live visual tree (reproducer:
+                // Ctrl+Shift+W long-press across multiple tabs, where
+                // XAML hasn't finished processing the previous RemoveAt
+                // when the next Detach kicks in). Doing it pre-RemoveAt
+                // keeps the panel in the live tree for the duration of
+                // SetSwapChainHandle. Detach is idempotent, so the
+                // ~Tab → ~TerminalControl path runs it again as a no-op.
+                if (auto* t = m_tabs.FindByItem(item)) {
+                    if (auto* tc = t->ActiveControl()) {
+                        tc->Detach();
+                    }
+                }
                 uint32_t idx = 0;
                 if (sender.TabItems().IndexOf(item, idx)) {
                     sender.TabItems().RemoveAt(idx);
                 }
                 DwmFlush();              // wait for compositor to release
-                m_tabs.Remove(item);     // Tab destructor handles teardown
                 if (sender.TabItems().Size() == 0) {
+                    // Last tab: defer Tab object destruction to
+                    // ~MainWindow's m_tabs.Clear. Tearing down the
+                    // focused control synchronously here leaves XAML's
+                    // focus subsystem holding a stale pointer that AVs
+                    // at +0x1F8 once mw->Close() kicks off window
+                    // teardown — same path as a normal title-bar X
+                    // close, which works fine precisely because XAML
+                    // finishes its own focus cleanup before our
+                    // destructors run.
                     this->Close();
+                } else {
+                    m_tabs.Remove(item);
                 }
             });
 
@@ -529,23 +495,26 @@ namespace winrt::GhosttyWin32::implementation
                 if (g_mainWindow && surface) {
                     auto mw = g_mainWindow;
                     mw->DispatcherQueue().TryEnqueue([mw, surface]() {
-                        // Mirror the TabCloseRequested handler: pull the
-                        // TabViewItem out of the TabView, DwmFlush so the
-                        // compositor releases its reference, then drop the
-                        // owning Tab. The Tab destructor frees the ghostty
-                        // surface and closes the composition handle.
+                        // Mirror the TabCloseRequested handler — see
+                        // there for why Detach runs before RemoveAt and
+                        // why the last tab's Tab destruction is deferred
+                        // to ~MainWindow.
                         auto* t = mw->m_tabs.FindBySurface(surface);
                         if (!t) return;
                         auto item = t->Item();
+                        if (auto* tc = t->ActiveControl()) {
+                            tc->Detach();
+                        }
                         auto tv = mw->TabView();
                         uint32_t idx = 0;
                         if (tv.TabItems().IndexOf(item, idx)) {
                             tv.TabItems().RemoveAt(idx);
                         }
                         DwmFlush();
-                        mw->m_tabs.Remove(item);
                         if (tv.TabItems().Size() == 0) {
                             mw->Close();
+                        } else {
+                            mw->m_tabs.Remove(item);
                         }
                     });
                 }
@@ -664,15 +633,21 @@ namespace winrt::GhosttyWin32::implementation
                 auto* t = mw->m_tabs.FindById(id);
                 if (!t) return; // Tab already closed via the UI
                 auto item = t->Item();
+                // Same Detach-before-RemoveAt pattern as the other
+                // close paths — see TabCloseRequested.
+                if (auto* tc = t->ActiveControl()) {
+                    tc->Detach();
+                }
                 auto tv = mw->TabView();
                 uint32_t idx = 0;
                 if (tv.TabItems().IndexOf(item, idx)) {
                     tv.TabItems().RemoveAt(idx);
                 }
                 DwmFlush();
-                mw->m_tabs.Remove(item);
                 if (tv.TabItems().Size() == 0) {
                     mw->Close();
+                } else {
+                    mw->m_tabs.Remove(item);
                 }
             });
         };
@@ -720,16 +695,15 @@ namespace winrt::GhosttyWin32::implementation
         auto onActivated = [weakThis, itemStrong, tvStrong]() {
             auto self = weakThis.get();
             if (!self) return;
-            // Setting SelectedItem fires SelectionChanged (which focuses
-            // the active tab) and realises the TerminalControl into the
-            // visual tree (which fires its Loaded → self-focus). Both
-            // paths land focus where we want it, so no explicit Focus()
-            // call is needed here.
+            // Setting SelectedItem realises the TerminalControl into
+            // the visual tree, which fires its Loaded handler. Loaded
+            // builds the per-control CoreTextEditContext (deferred
+            // there because EditContext registration only takes hold
+            // for an element that's actually in the live tree),
+            // grants self-focus, and the resulting GotFocus calls
+            // NotifyFocusEnter — so IME engages without any explicit
+            // routing from this lambda.
             tvStrong.SelectedItem(itemStrong);
-            if (self->m_editContext) {
-                self->m_ime.reset();
-                self->m_editContext.NotifyFocusEnter();
-            }
             if (self->m_hwnd) ShowWindow(self->m_hwnd, SW_SHOW);
         };
 
@@ -803,9 +777,10 @@ namespace winrt::GhosttyWin32::implementation
             return;
         }
 
-        // Focus / SW_SHOW / SelectedItem / NotifyFocusEnter are deferred
-        // to the onActivated callback fired from Tab once ghostty has
-        // presented its first frame.
+        // SelectedItem / SW_SHOW are deferred to the onActivated
+        // callback fired from Tab once ghostty has presented its first
+        // frame; focus + IME activation chain off SelectedItem via the
+        // TerminalControl's Loaded → Focus → GotFocus path.
         m_tabs.Add(std::move(tab));
     }
 

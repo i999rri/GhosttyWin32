@@ -133,8 +133,10 @@ public:
 
         // Hand surface ownership to the control. From here on the
         // control's Detach() (called from Tab::~Tab) is responsible for
-        // freeing the surface and closing the handle.
-        controlImpl->Attach(surface, handle, m_hwnd, attach);
+        // freeing the surface and closing the handle. The app handle
+        // is needed inside the control to drive ghostty_app_tick after
+        // IME / keyboard input commits.
+        controlImpl->Attach(m_app, surface, handle, m_hwnd, attach);
 
         try {
             return std::make_unique<Tab>(std::move(control), std::move(item), id);

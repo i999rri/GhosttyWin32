@@ -1,8 +1,10 @@
 #pragma once
 
 #include "TerminalControl.g.h"
+#include "ImeBuffer.h"
 #include "ghostty.h"
 #include <microsoft.ui.xaml.media.dxinterop.h>
+#include <winrt/Windows.UI.Text.Core.h>
 #include <atomic>
 #include <functional>
 #include <memory>
@@ -60,14 +62,32 @@ namespace winrt::GhosttyWin32::implementation
 
         // Wire a freshly-created ghostty surface to this control. Hooks
         // SizeChanged on the inner panel so layout changes flow into
-        // ghostty_surface_set_size. The attachRequest is kept so
-        // Detach() can cancel a queued SetSwapChainHandle that hasn't
-        // run yet. The host HWND is stashed for Win32 APIs that need a
-        // window owner (clipboard read/write, IME positioning, etc.).
-        void Attach(ghostty_surface_t surface,
+        // ghostty_surface_set_size, and creates a CoreTextEditContext
+        // bound to this control's surface so IME composition stays
+        // per-tab. The attachRequest is kept so Detach() can cancel a
+        // queued SetSwapChainHandle that hasn't run yet. The host HWND
+        // is stashed for Win32 APIs that need a window owner (clipboard
+        // read/write, IME bounds in screen coordinates). The ghostty
+        // app handle is needed to drive ghostty_app_tick after IME
+        // commits so the renderer wakes promptly.
+        void Attach(ghostty_app_t app,
+                    ghostty_surface_t surface,
                     HANDLE compositionHandle,
                     HWND hostHwnd,
                     std::shared_ptr<SwapChainAttachRequest> attachRequest);
+
+        // Forwarded by MainWindow's window-Activated handler. XAML's
+        // GotFocus / LostFocus don't fire on window de/activation
+        // (focus is logically retained on the focused element across
+        // alt-tab), so the host has to ping the active control whenever
+        // the window crosses the activation boundary.
+        void NotifyImeFocusEnter();
+        void NotifyImeFocusLeave();
+
+        // True while a CoreTextEditContext composition is in progress.
+        // KeyDown handlers (currently in MainWindow, moving here in a
+        // follow-up) must skip key encoding while the IME owns the key.
+        bool ImeComposing() const noexcept { return m_ime.composing(); }
 
         // Tear-down counterpart of Attach. Idempotent — calling twice
         // (e.g. once from Tab::~Tab and once from ~TerminalControl) is
@@ -86,16 +106,34 @@ namespace winrt::GhosttyWin32::implementation
         HANDLE CompositionHandle() const noexcept { return m_compositionHandle; }
 
     private:
+        // Builds the per-control CoreTextEditContext and wires its
+        // seven event handlers (TextRequested / SelectionRequested /
+        // TextUpdating / CompositionStarted / CompositionCompleted /
+        // LayoutRequested / FocusRemoved). Called from Attach once the
+        // surface and HWND are both valid.
+        void SetupImeContext();
+
+        ghostty_app_t m_app{ nullptr };
         ghostty_surface_t m_surface{ nullptr };
         HANDLE m_compositionHandle{ nullptr };
         // Host window HWND — used for Win32 APIs that need a window
-        // owner (clipboard read/write today, IME bounds in a future
-        // commit). Same value across every TerminalControl in this
-        // window; stored locally to avoid reaching into MainWindow
-        // globals from input handlers.
+        // owner (clipboard read/write, IME bounds in screen coords).
+        // Same value across every TerminalControl in this window;
+        // stored locally to avoid reaching into MainWindow globals
+        // from input handlers.
         HWND m_hostHwnd{ nullptr };
         winrt::event_token m_sizeChangedToken{};
         std::shared_ptr<SwapChainAttachRequest> m_attachRequest;
+
+        // IME plumbing. Each TerminalControl gets its own EditContext
+        // so a composition started in one tab doesn't leak preedit
+        // updates to another tab's surface when the user switches.
+        // CoreTextServicesManager allows multiple EditContexts in a
+        // single view; only one receives input at a time, controlled
+        // via NotifyFocusEnter/Leave on tab switches and window
+        // activation.
+        ImeBuffer m_ime;
+        winrt::Windows::UI::Text::Core::CoreTextEditContext m_editContext{ nullptr };
     };
 }
 
