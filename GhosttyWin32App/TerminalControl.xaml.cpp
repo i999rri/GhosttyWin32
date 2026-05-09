@@ -141,6 +141,120 @@ namespace winrt::GhosttyWin32::implementation
             ghostty_surface_mouse_scroll(self->m_surface, 0, scrollY, smods);
             args.Handled(true);
         });
+
+        // KeyDown / KeyUp on the control itself: the events fire only
+        // while focus is inside us, so the handlers feed directly into
+        // m_surface without an ActiveControl() lookup. Args.Handled(true)
+        // suppresses bubbling, which in particular prevents the
+        // TabView's built-in keybindings from also acting on the
+        // already-routed key.
+        KeyDown([weakSelf](auto&&, muxi::KeyRoutedEventArgs const& args) {
+            auto self = weakSelf.get();
+            if (!self || !self->m_surface) return;
+
+            int vk = static_cast<int>(args.Key());
+            UINT scanCode = args.KeyStatus().ScanCode;
+            bool ctrl = GetKeyState(VK_CONTROL) & 0x8000;
+            bool shift = GetKeyState(VK_SHIFT) & 0x8000;
+
+            // IME is processing this key — let the EditContext handlers
+            // own the composition lifecycle, and don't double-encode
+            // into the pty.
+            if (vk == VK_PROCESSKEY || self->m_ime.composing()) return;
+
+            // Ctrl+C: copy selection if any, otherwise fall through to
+            // ghostty_surface_key so the SIGINT path runs.
+            if (ctrl && !shift && vk == 'C') {
+                if (ghostty_surface_has_selection(self->m_surface)) {
+                    ghostty_text_s text = {};
+                    if (ghostty_surface_read_selection(self->m_surface, &text) && text.text && text.text_len > 0) {
+                        Clipboard::write(self->m_hostHwnd, Encoding::toUtf16(text.text, static_cast<int>(text.text_len)));
+                        ghostty_surface_free_text(self->m_surface, &text);
+                    }
+                    ghostty_surface_mouse_button(self->m_surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, (ghostty_input_mods_e)0);
+                    ghostty_surface_mouse_button(self->m_surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, (ghostty_input_mods_e)0);
+                    args.Handled(true);
+                    return;
+                }
+            }
+
+            // Ctrl+V: paste from clipboard.
+            if (ctrl && !shift && vk == 'V') {
+                auto utf8 = Encoding::toUtf8(Clipboard::read(self->m_hostHwnd));
+                if (!utf8.empty()) {
+                    ghostty_surface_text(self->m_surface, utf8.c_str(), utf8.size());
+                }
+                if (self->m_app) ghostty_app_tick(self->m_app);
+                ghostty_surface_refresh(self->m_surface);
+                args.Handled(true);
+                return;
+            }
+
+            // Compute the unshifted codepoint (VK translated with no
+            // modifiers held) so unicode-keyed bindings can match.
+            // Without this, Binding.Set.getEvent() in
+            // input/Binding.zig:2622 falls through every lookup path
+            // for entries like `unicode = 't'` (ctrl+shift+t = new_tab,
+            // ctrl+shift+w = close_tab, etc.) and returns null. The
+            // physical-keyed bindings (ctrl+tab = next_tab,
+            // ctrl+shift+arrow_left = previous_tab) already match via
+            // keycode; this fixes the unicode ones.
+            //
+            // Text encoding stays on the separate ghostty_surface_text
+            // path below — passing a `text` field into the key event
+            // would double-input because encodeKey also writes utf8 to
+            // the pty.
+            BYTE plainState[256] = {};
+            wchar_t unshiftedChars[4] = {};
+            int unshiftedCount = ToUnicode(vk, scanCode, plainState, unshiftedChars, 4, 0);
+            // Drain any dead-key state ToUnicode left in plainState so
+            // the next real keystroke isn't affected.
+            wchar_t drain[4] = {};
+            ToUnicode(VK_SPACE, 0x39, plainState, drain, 4, 0);
+
+            ghostty_input_key_s keyEvent = {};
+            keyEvent.action = GHOSTTY_ACTION_PRESS;
+            keyEvent.keycode = scanCode;
+            if (args.KeyStatus().IsExtendedKey) keyEvent.keycode |= 0xE000;
+            keyEvent.mods = currentMods();
+            if (unshiftedCount > 0 && unshiftedChars[0] >= 0x20) {
+                keyEvent.unshifted_codepoint = static_cast<uint32_t>(unshiftedChars[0]);
+            }
+            bool consumed = ghostty_surface_key(self->m_surface, keyEvent);
+
+            // Translate to text using ToUnicode (replaces
+            // CharacterReceived). Skip when the binding consumed the
+            // key — otherwise ctrl+shift+t would type "T" into the pty
+            // in addition to opening a new tab.
+            if (!consumed) {
+                BYTE kbState[256] = {};
+                GetKeyboardState(kbState);
+                wchar_t chars[4] = {};
+                int charCount = ToUnicode(vk, scanCode, kbState, chars, 4, 0);
+                if (charCount > 0 && chars[0] >= 0x20) {
+                    char utf8[16] = {};
+                    int len = WideCharToMultiByte(CP_UTF8, 0, chars, charCount, utf8, sizeof(utf8), nullptr, nullptr);
+                    if (len > 0) {
+                        ghostty_surface_text(self->m_surface, utf8, len);
+                    }
+                }
+            }
+
+            if (self->m_app) ghostty_app_tick(self->m_app);
+            ghostty_surface_refresh(self->m_surface);
+            args.Handled(true);
+        });
+
+        KeyUp([weakSelf](auto&&, muxi::KeyRoutedEventArgs const& args) {
+            auto self = weakSelf.get();
+            if (!self || !self->m_surface) return;
+            ghostty_input_key_s keyEvent = {};
+            keyEvent.action = GHOSTTY_ACTION_RELEASE;
+            keyEvent.keycode = args.KeyStatus().ScanCode;
+            if (args.KeyStatus().IsExtendedKey) keyEvent.keycode |= 0xE000;
+            keyEvent.mods = currentMods();
+            ghostty_surface_key(self->m_surface, keyEvent);
+        });
     }
 
     TerminalControl::~TerminalControl()

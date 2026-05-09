@@ -149,119 +149,10 @@ namespace winrt::GhosttyWin32::implementation
             auto tv = TabView();
             SetTitleBar(DragRegion());
 
-            // Window-level input handling (same approach as Windows Terminal)
-            auto root = Content().as<winrt::Microsoft::UI::Xaml::UIElement>();
-
-            root.KeyDown([this](auto&&, winrt::Microsoft::UI::Xaml::Input::KeyRoutedEventArgs const& args) {
-                auto* tc = ActiveControl();
-                if (!tc || !tc->Surface()) return;
-
-                int vk = static_cast<int>(args.Key());
-                UINT scanCode = args.KeyStatus().ScanCode;
-                bool ctrl = GetKeyState(VK_CONTROL) & 0x8000;
-                bool shift = GetKeyState(VK_SHIFT) & 0x8000;
-
-                // IME is processing this key
-                if (vk == VK_PROCESSKEY || tc->ImeComposing()) return;
-
-                // Ctrl+C: copy if selection exists, otherwise send SIGINT
-                if (ctrl && !shift && vk == 'C') {
-                    if (ghostty_surface_has_selection(tc->Surface())) {
-                        ghostty_text_s text = {};
-                        if (ghostty_surface_read_selection(tc->Surface(), &text) && text.text && text.text_len > 0) {
-                            Clipboard::write(m_hwnd, Encoding::toUtf16(text.text, static_cast<int>(text.text_len)));
-                            ghostty_surface_free_text(tc->Surface(), &text);
-                        }
-                        ghostty_surface_mouse_button(tc->Surface(), GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, (ghostty_input_mods_e)0);
-                        ghostty_surface_mouse_button(tc->Surface(), GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, (ghostty_input_mods_e)0);
-                        args.Handled(true);
-                        return;
-                    }
-                }
-
-                // Ctrl+V: paste from clipboard
-                if (ctrl && !shift && vk == 'V') {
-                    auto utf8 = Encoding::toUtf8(Clipboard::read(m_hwnd));
-                    if (!utf8.empty()) {
-                        ghostty_surface_text(tc->Surface(), utf8.c_str(), utf8.size());
-                    }
-                    if (m_ghostty) m_ghostty->Tick();
-                    ghostty_surface_refresh(tc->Surface());
-                    args.Handled(true);
-                    return;
-                }
-
-                // Compute the unshifted codepoint (VK translated with no
-                // modifiers held) so unicode-keyed bindings can match.
-                // Without this, Binding.Set.getEvent() in
-                // input/Binding.zig:2622 falls through every lookup path
-                // for entries like `unicode = 't'` (ctrl+shift+t = new_tab,
-                // ctrl+shift+w = close_tab, etc.) and returns null. The
-                // physical-keyed bindings (ctrl+tab = next_tab,
-                // ctrl+shift+arrow_left = previous_tab) already match via
-                // keycode; this fixes the unicode ones.
-                //
-                // We keep text encoding on the separate ghostty_surface_text
-                // path below — passing a `text` field here would
-                // double-input because encodeKey also writes utf8 to the
-                // pty.
-                BYTE plainState[256] = {};
-                wchar_t unshiftedChars[4] = {};
-                int unshiftedCount = ToUnicode(vk, scanCode, plainState, unshiftedChars, 4, 0);
-                // Drain any dead-key state ToUnicode left in plainState so
-                // the next real keystroke isn't affected.
-                wchar_t drain[4] = {};
-                ToUnicode(VK_SPACE, 0x39, plainState, drain, 4, 0);
-
-                // Send key event to ghostty (binding match happens here)
-                ghostty_input_key_s keyEvent = {};
-                keyEvent.action = GHOSTTY_ACTION_PRESS;
-                keyEvent.keycode = scanCode;
-                if (args.KeyStatus().IsExtendedKey) keyEvent.keycode |= 0xE000;
-                keyEvent.mods = currentMods();
-                if (unshiftedCount > 0 && unshiftedChars[0] >= 0x20) {
-                    keyEvent.unshifted_codepoint = static_cast<uint32_t>(unshiftedChars[0]);
-                }
-                bool consumed = ghostty_surface_key(tc->Surface(), keyEvent);
-
-                // Translate to text using ToUnicode (replaces CharacterReceived).
-                // Skip when the binding consumed the key — otherwise
-                // ctrl+shift+t would type "T" into the pty in addition to
-                // opening a new tab.
-                if (!consumed) {
-                    BYTE kbState[256] = {};
-                    GetKeyboardState(kbState);
-                    wchar_t chars[4] = {};
-                    int charCount = ToUnicode(vk, scanCode, kbState, chars, 4, 0);
-                    if (charCount > 0 && chars[0] >= 0x20) {
-                        char utf8[16] = {};
-                        int len = WideCharToMultiByte(CP_UTF8, 0, chars, charCount, utf8, sizeof(utf8), nullptr, nullptr);
-                        if (len > 0) {
-                            ghostty_surface_text(tc->Surface(), utf8, len);
-                        }
-                    }
-                }
-
-                if (m_ghostty) m_ghostty->Tick();
-                ghostty_surface_refresh(tc->Surface());
-                args.Handled(true);
-            });
-
-            // Pointer routing now lives on TerminalControl — each
-            // instance hooks PointerMoved/Pressed/Released/Wheel on
+            // Pointer / keyboard / IME routing all live on
+            // TerminalControl — each instance hooks the events on
             // itself and forwards directly to its own ghostty surface.
-            // No window-level pointer handler is needed.
-
-            root.KeyUp([this](auto&&, winrt::Microsoft::UI::Xaml::Input::KeyRoutedEventArgs const& args) {
-                auto* tc = ActiveControl();
-                if (!tc || !tc->Surface()) return;
-                ghostty_input_key_s keyEvent = {};
-                keyEvent.action = GHOSTTY_ACTION_RELEASE;
-                keyEvent.keycode = args.KeyStatus().ScanCode;
-                if (args.KeyStatus().IsExtendedKey) keyEvent.keycode |= 0xE000;
-                keyEvent.mods = currentMods();
-                ghostty_surface_key(tc->Surface(), keyEvent);
-            });
+            // No window-level input handler is needed here.
 
             // DPI change handling (deferred until XamlRoot is available)
             Content().as<winrt::Microsoft::UI::Xaml::FrameworkElement>().Loaded([this](auto&&, auto&&) {
@@ -699,12 +590,22 @@ namespace winrt::GhosttyWin32::implementation
             // the visual tree, which fires its Loaded handler. Loaded
             // builds the per-control CoreTextEditContext (deferred
             // there because EditContext registration only takes hold
-            // for an element that's actually in the live tree),
-            // grants self-focus, and the resulting GotFocus calls
-            // NotifyFocusEnter — so IME engages without any explicit
-            // routing from this lambda.
+            // for an element that's actually in the live tree).
             tvStrong.SelectedItem(itemStrong);
             if (self->m_hwnd) ShowWindow(self->m_hwnd, SW_SHOW);
+            // Focus has to be (re)taken AFTER ShowWindow for the very
+            // first tab. Loaded fires synchronously inside SelectedItem
+            // while the window is still hidden, and Focus(Programmatic)
+            // can't bind OS-level keyboard focus to an element of an
+            // invisible window — the call silently no-ops, KeyDown
+            // never fires, and plain typing goes nowhere. Subsequent
+            // tabs reach onActivated with the window already shown so
+            // their Loaded → Focus succeeds; the explicit re-focus
+            // below is a no-op for them but the load-bearing fix for
+            // the first tab.
+            if (auto* tab = self->m_tabs.FindByItem(itemStrong)) {
+                tab->Focus();
+            }
         };
 
         // Estimate the new panel's eventual size from the currently active

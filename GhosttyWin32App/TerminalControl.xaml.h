@@ -84,11 +84,6 @@ namespace winrt::GhosttyWin32::implementation
         void NotifyImeFocusEnter();
         void NotifyImeFocusLeave();
 
-        // True while a CoreTextEditContext composition is in progress.
-        // KeyDown handlers (currently in MainWindow, moving here in a
-        // follow-up) must skip key encoding while the IME owns the key.
-        bool ImeComposing() const noexcept { return m_ime.composing(); }
-
         // Tear-down counterpart of Attach. Idempotent — calling twice
         // (e.g. once from Tab::~Tab and once from ~TerminalControl) is
         // safe.
