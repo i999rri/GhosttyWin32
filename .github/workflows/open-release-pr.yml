@@ -1,0 +1,138 @@
+name: Open release PR
+
+# Cuts a "release/vX.Y.Z" branch from `dev` HEAD and opens a PR against
+# `main`. Triggered manually from the Actions tab when ready to ship a
+# production release.
+#
+# RC tags (vX.Y.Z-rcN) are intentionally NOT supported here — they're
+# created with `git tag` directly on `dev` per the model in
+# .github/RELEASING.md. This workflow only handles the dev → main
+# promotion that yields a production semver tag.
+#
+# After merge, .github/workflows/auto-tag-release-pr.yml picks up the
+# release/v* head ref and tags `main` HEAD, which fires release.yml.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (例: 0.3.0、production のみ。"v" は付けない、ハイフン suffix も不可)'
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  open-pr:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0
+
+      - name: Validate version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Version '$VERSION' must be plain semver (X.Y.Z, no 'v' prefix, no hyphen suffix)."
+            echo "::error::RC tags are made manually on dev — see .github/RELEASING.md."
+            exit 1
+          fi
+
+      - name: Create release branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          BRANCH="release/v$VERSION"
+
+          # Refuse if any release/* PR is already open against main —
+          # we only run one release at a time so the auto-tag workflow
+          # has an unambiguous target.
+          existing=$(gh pr list --base main --search "head:release/" --state open --json number --jq 'length')
+          if [[ "$existing" -gt 0 ]]; then
+            echo "::error::An open release/* PR already exists. Close or merge it first."
+            exit 1
+          fi
+
+          # Refuse if the branch is already on the remote (could be from
+          # a previous abandoned attempt — let the operator clean up
+          # explicitly rather than silently overwriting).
+          if git ls-remote --exit-code origin "refs/heads/$BRANCH" >/dev/null 2>&1; then
+            echo "::error::Branch $BRANCH already exists on origin. Delete it (gh api -X DELETE) before retrying."
+            exit 1
+          fi
+
+          # Push current dev HEAD as the release branch. From this point
+          # the branch is a frozen snapshot — dev can keep moving.
+          git push origin "HEAD:refs/heads/$BRANCH"
+          echo "Pushed branch $BRANCH at $(git rev-parse --short HEAD)"
+
+      - name: Generate change list
+        id: changes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+
+          # Pick the most recent production release as the "previous"
+          # baseline. Filtering on isPrerelease=false excludes both RC
+          # tags (vX.Y.Z-rcN) and the rolling `dev-build` release.
+          prev_tag=$(gh release list --json tagName,isPrerelease \
+            --jq '[.[] | select(.isPrerelease == false) | .tagName] | first // ""')
+
+          if [[ -n "$prev_tag" ]]; then
+            echo "Generating notes vs previous tag: $prev_tag"
+            notes=$(gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+              --method POST \
+              -f tag_name="v$VERSION" \
+              -f target_commitish="release/v$VERSION" \
+              -f previous_tag_name="$prev_tag" \
+              --jq '.body')
+          else
+            echo "No previous production release found — bootstrap mode."
+            notes="(No previous production release found. This is the first one.)"
+          fi
+
+          # multi-line outputs need a heredoc-style delimiter.
+          {
+            echo "notes<<RELEASE_NOTES_EOF"
+            echo "$notes"
+            echo "RELEASE_NOTES_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Open release PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ inputs.version }}
+          NOTES: ${{ steps.changes.outputs.notes }}
+        run: |
+          set -euo pipefail
+          BRANCH="release/v$VERSION"
+
+          body=$(cat <<EOM
+          ## What's in this release
+
+          $NOTES
+
+          ---
+
+          このブランチは \`dev\` の HEAD をスナップショットしたもの。マージで自動的に
+          \`v$VERSION\` タグが \`main\` に打たれて \`release.yml\` が走る。
+
+          See [.github/RELEASING.md](.github/RELEASING.md) for the full release procedure.
+          EOM
+          )
+
+          gh pr create \
+            --base main \
+            --head "$BRANCH" \
+            --title "Release v$VERSION" \
+            --body "$body"
