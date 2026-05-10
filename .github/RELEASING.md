@@ -3,6 +3,84 @@
 GhosttyWin32 のリリースは GitHub Actions で MSIX をビルド・自己署名 → GitHub Releases にアップロードする。
 Scoop / 手動どちらでもインストール可能な配布形態。
 
+## ブランチとリリースの全体像
+
+### ブランチの役割
+
+| ブランチ | 役割 |
+|---|---|
+| `feature/*`, `fix/*`, `ci/*` | 個別の作業ブランチ。`pull_request` で `ci.yml` が compile-only ビルド検証する。merge までユーザには届かない。 |
+| `dev` | **デフォルトブランチ**。PR の merge 先。ここに乗っている = 次のリリースに含める意思表示。push のたびに `dev-build.yml` が走り、`dev-build` Release が上書きされる。 |
+| `main` | リリース履歴。正式版のタグはここに打つ。`dev` から **release PR** 経由で反映する。 |
+
+### リリースの単位 = タグ
+
+タグを打った瞬間がリリースイベント。**タグ名・PR タイトル・GitHub Release** の 3者が一致する三位一体。
+
+| リリースイベント | タグ起点 | タグ例 |
+|---|---|---|
+| RC (リハーサル / テスター向け) | **`dev` HEAD** | `v0.3.0-rc1`, `v0.3.0-rc2` |
+| 正式版 | **`main` HEAD** (release PR マージ後) | `v0.3.0` |
+
+非対称な理由:
+- RC = dev のスナップショットを試すだけ。main を触らないので気軽に何度でも切れる。
+- 正式版 = main を進めるリリース。release PR の review を通す。
+
+`release.yml` はタグ名から自動分岐 (`-` 付きは pre-release、無しは production)。タグがどのブランチで打たれたかは workflow 側は気にしない。
+
+### リリース計画
+
+事前に「v0.3.0 には機能 A, B, C を入れる」と硬く計画しない。代わりに:
+
+- 各機能は feature branch で開発
+- 進捗が良ければ PR で **`dev` にマージ** (= 「次のリリースに含める」と意思表示)
+- ある程度たまったタイミングで RC → 正式版
+
+「途中で機能を抜きたい」場合は、該当 feature の squash commit を `git revert` する (1 PR = 1 squash commit 運用なので 1 commit で剥がせる)。
+
+### RC を出す判断
+
+- ✅ dev に変更がある程度積まれた、大きな新機能を入れた直後はリハーサル兼ドッグフードで RC
+- ❌ 小さい修正リリース (v0.3.1 等) は RC スキップして正式版直行も可
+
+### RC2 以降を出す典型ケース
+
+RC1 と RC2 (以降) は **機能セットを変えない**。RC2 にしていいのは:
+
+- ✅ クリティカルバグ修正 (クラッシュ、データ破壊、起動不能)
+- ✅ パイプライン問題の修正 (署名エラー、MSIX 構造問題)
+- ✅ 依存の重大バグ修正 (RC1 後に発覚した security fix 等)
+- ✅ パフォーマンス退行の修正
+
+RC2 で **やってはいけない** こと:
+
+- ❌ 新機能の追加 (= 機能セット変わる、リハーサルにならない)
+- ❌ 大きいリファクタ (バグ持ち込みリスク)
+- ❌ 「ついで」の修正
+
+軽微な不具合は **「known issue として release notes に書いて正式版で出荷」** の判断もある。RC が 4 回以上続いたら「リリース計画ミスった」「機能凍結が緩かった」のサイン。
+
+### dev → main の release PR
+
+正式版を出す時の手順:
+
+```powershell
+# 1. release PR を作成 (タイトルはタグと一致させる)
+gh pr create --base main --head dev --title "Release v0.3.0" --body "(変更点サマリ)"
+
+# 2. レビュー → squash merge
+
+# 3. ローカルの main を更新してタグ
+git checkout main
+git pull
+git tag v0.3.0
+git push origin v0.3.0
+```
+
+タグ push で `release.yml` が走って GitHub Release 完成。
+
+---
+
 ## 一回だけやるセットアップ
 
 リポジトリオーナーが最初に一度だけやる作業。証明書の有効期限が切れたら再実行。
@@ -105,21 +183,29 @@ GitHub Secrets を再設定する必要が出たら、手順 1 から証明書�
 
 ## リリース種別
 
-3 層構成で目的別にビルドが走る。
+3 層構成で目的別にビルドが走る。加えて PR 検証用に CI が走る。
 
 | 種別 | トリガー | Environment | Release タグ | 用途 |
 |---|---|---|---|---|
 | **Production** | `v0.3.0` のような hyphen 無しタグ push | `release` (manual approval) | そのタグ | 正式リリース |
 | **Pre-release** | `v0.3.0-rc1`, `v0.3.0-beta` など hyphen 付きタグ | `dev-release` (auto) | そのタグ (pre-release マーク) | リリース候補、テスター向け |
 | **Dev build** | `dev` ブランチへの push | `dev-release` (auto) | `dev-build` (上書き) | 開発中の最新を試す |
+| **CI** | 全 PR (`pull_request` イベント) | (なし) | (Release 作らない) | コンパイル検証のみ、PFX 不要 |
 
 ワークフロー:
-- `.github/workflows/release.yml` ← Production と Pre-release を扱う（タグ push がトリガー）
-- `.github/workflows/dev-build.yml` ← Dev build を扱う（dev ブランチ push がトリガー）
+- `.github/workflows/release.yml` ← Production と Pre-release (タグ push がトリガー)
+- `.github/workflows/dev-build.yml` ← Dev build (dev ブランチ push がトリガー)
+- `.github/workflows/ci.yml` ← CI (PR 検証、composite を sign='false' で呼ぶ)
+- `.github/actions/build-signed-msix/action.yml` ← 上 3 つが共有する composite action (zig build → ghostty.dll → NuGet restore → manifest patch → 署名 (任意) → MSIX)
 
 ### Production リリース
 
+dev → main の release PR を経由する (詳細は冒頭「dev → main の release PR」セクション参照)。
+PR がマージされた後、main HEAD にタグを打って push:
+
 ```powershell
+git checkout main
+git pull
 git tag v0.3.0
 git push origin v0.3.0
 ```
@@ -133,13 +219,28 @@ git push origin v0.3.0
 
 ### Pre-release（RC / Beta）
 
+main を更新する必要なし。**dev の HEAD にタグを直接打つ**:
+
 ```powershell
+git checkout dev
+git pull
 git tag v0.3.0-rc1
 git push origin v0.3.0-rc1
 ```
 
-挙動: Production と同じだが、自動承認 + GitHub Releases で **Pre-release マーク** 付き。
+挙動: Production と同じビルドパスだが、自動承認 + GitHub Releases で **Pre-release マーク** 付き。
 タグ名 / バージョン番号は同じ仕組み (`v0.3.0-rc1` → MSIX manifest は `0.3.0.0`、リリース名は `v0.3.0-rc1`)。
+
+RC2 以降が必要になった場合は、dev に修正コミットを積んでから新タグ:
+
+```powershell
+git checkout dev
+git pull   # 修正コミットを取り込む
+git tag v0.3.0-rc2
+git push origin v0.3.0-rc2
+```
+
+何を入れる/入れないかの判断基準は冒頭「RC2 以降を出す典型ケース」を参照。
 
 ### Dev build
 
