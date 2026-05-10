@@ -340,3 +340,22 @@ msbuild がエラーを起こしている。`Build MSIX package` step のログ�
 Windows のサイドロードが無効になっているか、`Ghostty.cer` を信頼ストアに入れていない可能性。
 Settings → Privacy & Security → For developers → "Developer Mode" もしくは
 "Sideload apps" を有効化。
+
+### `0x80073cfb` — 「パッケージ化されていないバージョンを既にインストールしています」
+Visual Studio で F5 / Ctrl+F5 デバッグ実行すると `Add-AppxPackage -Register` 経由で
+loose-files 登録される。これが残っている状態で MSIX を入れようとすると
+同じ Identity の「unpackaged」と「packaged」が衝突してこのエラーになる。
+
+```powershell
+# 既存の登録を確認 (パッケージ Name または Publisher で)
+Get-AppxPackage | Where-Object { $_.Publisher -like "*i999rri*" }
+
+# 削除
+Get-AppxPackage -Name "<NameFromAbove>" | Remove-AppxPackage
+
+# それでも残るなら -PreserveApplicationData 付きや -AllUsers (admin) で
+Get-AppxPackage -Name "<NameFromAbove>" -AllUsers | Remove-AppxPackage -AllUsers
+```
+
+削除後に MSIX を再インストール。リリーステスト前に `Get-AppxPackage` で
+loose 登録が残ってないか確認するとハマらない。
