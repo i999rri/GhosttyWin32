@@ -103,14 +103,24 @@ scoop bucket add ghostty https://github.com/i999rri/scoop-bucket
 scoop install ghosttywin32
 ```
 
-The bucket ships a signed MSIX. Installation imports the signing certificate
-into `LocalMachine\TrustedPeople` and registers the MSIX via
-`Add-AppxPackage`, so the command currently has to run from an elevated
-PowerShell. See [issue #46](https://github.com/i999rri/GhosttyWin32/issues/46)
-for the in-flight migration to SignPath Foundation, which will remove the
+**v0.2.x (current latest release):** the bucket ships a portable ZIP. No
+elevation required.
+
+**v0.3.0 and later (in development):** the bucket will ship a signed MSIX.
+Installation imports the signing certificate into
+`LocalMachine\TrustedPeople` and registers the MSIX via `Add-AppxPackage`,
+so `scoop install` has to run from an elevated PowerShell. See
+[issue #46](https://github.com/i999rri/GhosttyWin32/issues/46) for the
+in-flight migration to SignPath Foundation, which will remove the
 elevation requirement.
 
-### Manual (MSIX)
+### Manual install
+
+**v0.2.x:** download `GhosttyWin32-v<version>-x64.zip` from
+[Releases](https://github.com/i999rri/GhosttyWin32/releases) and unzip
+anywhere.
+
+**v0.3.0 and later:**
 
 1. Download `Ghostty-<version>-x64.msix` and `Ghostty.cer` from
    [Releases](https://github.com/i999rri/GhosttyWin32/releases).
