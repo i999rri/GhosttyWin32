@@ -269,6 +269,15 @@ git push origin v0.3.0-rc1
 挙動: Production と同じビルドパスだが、自動承認 + GitHub Releases で **Pre-release マーク** 付き。
 タグ名 / バージョン番号は同じ仕組み (`v0.3.0-rc1` → MSIX manifest は `0.3.0.0`、リリース名は `v0.3.0-rc1`)。
 
+**MSIX 成果物のファイル名は production と RC で異なる** (assets 一覧で見分けられるように):
+
+| タグ | 成果物ファイル名 |
+|---|---|
+| `v0.3.0` (production) | `Ghostty-0.3.0-x64.msix` |
+| `v0.3.0-rc1` (RC) | `Ghostty-v0.3.0-rc1-x64.msix` |
+
+scoop manifest 側はこの違いを autoupdate URL pattern で吸収する (RC channel の manifest では `$matchHead` か full ref を使う)。
+
 RC2 以降が必要になった場合は、dev に修正コミットを積んでから新タグ:
 
 ```powershell

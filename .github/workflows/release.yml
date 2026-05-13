@@ -58,13 +58,33 @@ jobs:
           pfx-base64: ${{ secrets.SIGNING_PFX_BASE64 }}
           pfx-password: ${{ secrets.SIGNING_PFX_PASSWORD }}
 
+      # MSIX file naming differs by channel so the two are visually
+      # distinguishable in the GitHub Releases asset list and in the
+      # scoop bucket:
+      #
+      #   Production tag v0.3.0          →  Ghostty-0.3.0-x64.msix
+      #   Pre-release tag v0.3.0-rc1     →  Ghostty-v0.3.0-rc1-x64.msix
+      #
+      # Stable keeps the short version (no "v" prefix) for backward
+      # compatibility with the existing scoop manifest URL pattern; RC
+      # uses the full ref_name so users grabbing the artifact can tell
+      # at a glance "this is RC1, not the final v0.3.0".
       - name: Rename MSIX for release
         id: artifact
         shell: pwsh
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          RELEASE_VERSION: ${{ steps.version.outputs.release_version }}
         run: |
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $true
-          $renamed = "Ghostty-${{ steps.version.outputs.release_version }}-x64.msix"
+          if ($env:REF_NAME -match '-') {
+            # Pre-release: full tag including 'v' prefix and -rcN/-beta suffix
+            $renamed = "Ghostty-$env:REF_NAME-x64.msix"
+          } else {
+            # Production: short version, no 'v' prefix
+            $renamed = "Ghostty-$env:RELEASE_VERSION-x64.msix"
+          }
           Copy-Item "${{ steps.build.outputs.msix-path }}" $renamed
           Write-Host "Release artifact: $renamed"
           "msix_path=$renamed" >> $env:GITHUB_OUTPUT
@@ -87,7 +107,7 @@ jobs:
             ```
 
             ### Manual install
-            1. Download `Ghostty.cer` and `Ghostty-${{ steps.version.outputs.release_version }}-x64.msix`
+            1. Download `Ghostty.cer` and the `.msix` from the assets above
             2. Trust the certificate (Local Machine → Trusted People store)
             3. Double-click the `.msix` to install
 
