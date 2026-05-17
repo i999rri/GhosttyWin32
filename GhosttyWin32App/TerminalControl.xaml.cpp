@@ -267,6 +267,46 @@ namespace winrt::GhosttyWin32::implementation
             keyEvent.mods = currentMods();
             ghostty_surface_key(self->m_surface, keyEvent);
         });
+
+        // Terminals default to a text-input cursor; ghostty issues a
+        // MOUSE_SHAPE = TEXT request once the surface is wired up, but
+        // setting it here too avoids a flash of arrow cursor between
+        // window show and the first ghostty tick.
+        SetCursorShape(GHOSTTY_MOUSE_SHAPE_TEXT);
+    }
+
+    void TerminalControl::SetCursorShape(ghostty_action_mouse_shape_e shape)
+    {
+        using muxi = winrt::Microsoft::UI::Input::InputSystemCursorShape;
+        muxi mapped;
+        switch (shape) {
+            case GHOSTTY_MOUSE_SHAPE_TEXT:
+            case GHOSTTY_MOUSE_SHAPE_VERTICAL_TEXT:    mapped = muxi::IBeam; break;
+            case GHOSTTY_MOUSE_SHAPE_POINTER:          mapped = muxi::Hand; break;
+            case GHOSTTY_MOUSE_SHAPE_HELP:             mapped = muxi::Help; break;
+            case GHOSTTY_MOUSE_SHAPE_WAIT:             mapped = muxi::Wait; break;
+            case GHOSTTY_MOUSE_SHAPE_PROGRESS:         mapped = muxi::AppStarting; break;
+            case GHOSTTY_MOUSE_SHAPE_CROSSHAIR:        mapped = muxi::Cross; break;
+            case GHOSTTY_MOUSE_SHAPE_NOT_ALLOWED:
+            case GHOSTTY_MOUSE_SHAPE_NO_DROP:          mapped = muxi::UniversalNo; break;
+            case GHOSTTY_MOUSE_SHAPE_ALL_SCROLL:       mapped = muxi::SizeAll; break;
+            case GHOSTTY_MOUSE_SHAPE_N_RESIZE:
+            case GHOSTTY_MOUSE_SHAPE_S_RESIZE:
+            case GHOSTTY_MOUSE_SHAPE_NS_RESIZE:
+            case GHOSTTY_MOUSE_SHAPE_ROW_RESIZE:       mapped = muxi::SizeNorthSouth; break;
+            case GHOSTTY_MOUSE_SHAPE_E_RESIZE:
+            case GHOSTTY_MOUSE_SHAPE_W_RESIZE:
+            case GHOSTTY_MOUSE_SHAPE_EW_RESIZE:
+            case GHOSTTY_MOUSE_SHAPE_COL_RESIZE:       mapped = muxi::SizeWestEast; break;
+            case GHOSTTY_MOUSE_SHAPE_NE_RESIZE:
+            case GHOSTTY_MOUSE_SHAPE_SW_RESIZE:
+            case GHOSTTY_MOUSE_SHAPE_NESW_RESIZE:      mapped = muxi::SizeNortheastSouthwest; break;
+            case GHOSTTY_MOUSE_SHAPE_NW_RESIZE:
+            case GHOSTTY_MOUSE_SHAPE_SE_RESIZE:
+            case GHOSTTY_MOUSE_SHAPE_NWSE_RESIZE:      mapped = muxi::SizeNorthwestSoutheast; break;
+            default:                                   mapped = muxi::Arrow; break;
+        }
+        ProtectedCursor(winrt::Microsoft::UI::Input::InputSystemCursor::Create(mapped));
     }
 
     TerminalControl::~TerminalControl()
