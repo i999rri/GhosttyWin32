@@ -9,9 +9,11 @@
 #endif
 #include <microsoft.ui.xaml.window.h>
 #include <dwmapi.h>
+#include <shellapi.h>
 #include <filesystem>
 #include <fstream>
 #pragma comment(lib, "dwmapi.lib")
+#pragma comment(lib, "shell32.lib")
 
 namespace {
     // Flag file used to detect that the previous process didn't exit cleanly.
@@ -491,6 +493,25 @@ namespace winrt::GhosttyWin32::implementation
                             winrt::Windows::UI::Color{ 255, r, g, b });
                         mw->Content().as<winrt::Microsoft::UI::Xaml::Controls::Panel>().Background(brush);
                     });
+                }
+                return true;
+            }
+
+            // Ctrl+click on a URL in the terminal. Hand off to the shell
+            // verb opener so the user's default browser / mail client /
+            // etc. handles it. Without this, libghostty falls back to
+            // spawning `rundll32 url.dll,FileProtocolHandler` via
+            // std.process.Child, which works but is slower and leaves a
+            // brief child-process flash visible in tools like Process
+            // Hacker.
+            if (action.tag == GHOSTTY_ACTION_OPEN_URL) {
+                auto& ou = action.action.open_url;
+                if (ou.url && ou.len > 0) {
+                    std::wstring wurl = Encoding::toUtf16(ou.url, static_cast<int>(ou.len));
+                    if (!wurl.empty()) {
+                        HWND hwnd = g_mainWindow ? g_mainWindow->m_hwnd : nullptr;
+                        ShellExecuteW(hwnd, L"open", wurl.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+                    }
                 }
                 return true;
             }
