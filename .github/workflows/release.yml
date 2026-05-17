@@ -89,16 +89,94 @@ jobs:
           Write-Host "Release artifact: $renamed"
           "msix_path=$renamed" >> $env:GITHUB_OUTPUT
 
+      # Pick the previous tag to anchor the auto-generated changelog
+      # against. GitHub's default is "most recent semver tag", which
+      # bundles RC iteration noise into the production release notes
+      # and ignores production lineage when the next release skips a
+      # version. Make the choice explicit instead:
+      #
+      #   vX.Y.Z-rc1     -> latest production tag (e.g. v0.2.2)
+      #   vX.Y.Z-rcN>1   -> previous RC of the same base (vX.Y.Z-rc(N-1))
+      #   vX.Y.Z         -> latest production tag (excluding self)
+      #
+      # If no suitable baseline exists, leave it empty and let GitHub
+      # decide (first-release bootstrap case).
+      - name: Determine previous tag for changelog
+        id: prev
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          prev=""
+          if [[ "$REF_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-rc([0-9]+)$ ]]; then
+            base="${BASH_REMATCH[1]}"
+            rc_num="${BASH_REMATCH[2]}"
+            if [[ "$rc_num" -gt 1 ]]; then
+              # Find the highest RC of the same base less than current.
+              # sort -V handles rc1..rc10 numerically (lexical would mis-sort).
+              prev=$(gh release list --limit 100 --json tagName \
+                --jq ".[] | .tagName | select(startswith(\"v${base}-rc\"))" \
+                | grep -vx "$REF_NAME" | sort -V | tail -1 || true)
+            fi
+            if [[ -z "$prev" ]]; then
+              prev=$(gh release list --limit 100 --json tagName,isPrerelease \
+                --jq '[.[] | select(.isPrerelease == false) | .tagName] | first // ""')
+            fi
+          elif [[ "$REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            prev=$(gh release list --limit 100 --json tagName,isPrerelease \
+              --jq "[.[] | select(.isPrerelease == false and .tagName != \"$REF_NAME\") | .tagName] | first // \"\"")
+          fi
+          echo "tag=$prev" >> "$GITHUB_OUTPUT"
+          echo "Previous tag selected: ${prev:-<none>}"
+
+      # Generate the changelog body manually so we can pass
+      # previous_tag_name explicitly. softprops/action-gh-release's
+      # generate_release_notes: true would call the same API but with
+      # GitHub's default baseline.
+      - name: Generate release notes body
+        id: notes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REF_NAME: ${{ github.ref_name }}
+          PREV_TAG: ${{ steps.prev.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if [[ -n "$PREV_TAG" ]]; then
+            body=$(gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+              --method POST \
+              -f tag_name="$REF_NAME" \
+              -f previous_tag_name="$PREV_TAG" \
+              --jq '.body')
+          else
+            body=$(gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+              --method POST \
+              -f tag_name="$REF_NAME" \
+              --jq '.body')
+          fi
+          {
+            echo "body<<RELEASE_NOTES_EOF"
+            echo "$body"
+            echo "RELEASE_NOTES_EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             ${{ steps.artifact.outputs.msix_path }}
             ${{ steps.build.outputs.cer-path }}
-          generate_release_notes: true
           # Tags with a hyphen are pre-releases (rc / beta / alpha).
           prerelease: ${{ contains(github.ref_name, '-') }}
+          # Auto-generated changelog (anchored at the tag chosen above)
+          # followed by the install instructions. generate_release_notes
+          # is deliberately not used so previous_tag_name above takes
+          # effect.
           body: |
+            ${{ steps.notes.outputs.body }}
+
             ## Installation
 
             ### Scoop (recommended)
