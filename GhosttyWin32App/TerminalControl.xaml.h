@@ -100,6 +100,14 @@ namespace winrt::GhosttyWin32::implementation
         ghostty_surface_t Surface() const noexcept { return m_surface; }
         HANDLE CompositionHandle() const noexcept { return m_compositionHandle; }
 
+        // Apply a ghostty-requested mouse cursor shape. Must be called on
+        // the UI thread (the caller in MainWindow::action_cb dispatches
+        // via DispatcherQueue). Unrecognised shapes fall back to Arrow.
+        // Used both for the initial IBeam set in the ctor and for live
+        // updates as the pointer moves over/off cells, links, resize
+        // borders, etc.
+        void SetCursorShape(ghostty_action_mouse_shape_e shape);
+
     private:
         // Builds the per-control CoreTextEditContext and wires its
         // seven event handlers (TextRequested / SelectionRequested /

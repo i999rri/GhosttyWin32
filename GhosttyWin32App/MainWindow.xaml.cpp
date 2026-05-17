@@ -497,6 +497,27 @@ namespace winrt::GhosttyWin32::implementation
                 return true;
             }
 
+            // Pointer cursor shape requests — IBeam over cells, Hand
+            // when Ctrl-hovering a link, resize arrows on split borders
+            // (not yet exposed), etc. Per-surface so multi-tab windows
+            // can have different cursors per tab.
+            if (action.tag == GHOSTTY_ACTION_MOUSE_SHAPE
+                && target.tag == GHOSTTY_TARGET_SURFACE) {
+                auto surface = target.target.surface;
+                auto shape = action.action.mouse_shape;
+                if (g_mainWindow && surface) {
+                    auto mw = g_mainWindow;
+                    mw->DispatcherQueue().TryEnqueue([mw, surface, shape]() {
+                        if (auto* t = mw->m_tabs.FindBySurface(surface)) {
+                            if (auto* tc = t->ActiveControl()) {
+                                tc->SetCursorShape(shape);
+                            }
+                        }
+                    });
+                }
+                return true;
+            }
+
             // Ctrl+click on a URL in the terminal. Hand off to the shell
             // verb opener so the user's default browser / mail client /
             // etc. handles it. Without this, libghostty falls back to
