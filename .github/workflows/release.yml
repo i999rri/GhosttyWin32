@@ -114,15 +114,31 @@ jobs:
             base="${BASH_REMATCH[1]}"
             rc_num="${BASH_REMATCH[2]}"
             if [[ "$rc_num" -gt 1 ]]; then
-              # Find the highest RC of the same base less than current.
-              # sort -V handles rc1..rc10 numerically (lexical would mis-sort).
+              # RC2+ of the same base: anchor at the previous RC of that
+              # same base so the diff covers only the RC-to-RC delta.
               prev=$(gh release list --limit 100 --json tagName \
                 --jq ".[] | .tagName | select(startswith(\"v${base}-rc\"))" \
                 | grep -vx "$REF_NAME" | sort -V | tail -1 || true)
             fi
             if [[ -z "$prev" ]]; then
-              prev=$(gh release list --limit 100 --json tagName,isPrerelease \
-                --jq '[.[] | select(.isPrerelease == false) | .tagName] | first // ""')
+              # RC1 (or no earlier RC of the same base): anchor at the
+              # tag immediately before this one in version order,
+              # regardless of whether it's an RC or production tag.
+              # Anchoring blindly at the latest production tag loses
+              # every RC tag that landed in between (e.g. v0.3.1-rc1
+              # against v0.2.2 instead of v0.3.0-rcN — the v0.3.1-rc1
+              # release notes regression).
+              #
+              # Implementation: collect all release tags, splice in the
+              # current ref name so sort -V positions it correctly,
+              # then walk forward and remember the line that immediately
+              # precedes it.
+              prev=$(
+                (gh release list --limit 100 --json tagName --jq '.[] | .tagName'; echo "$REF_NAME") \
+                | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?$' \
+                | sort -V \
+                | awk -v cur="$REF_NAME" '$0 == cur { exit } { last = $0 } END { print last }'
+              )
             fi
           elif [[ "$REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             prev=$(gh release list --limit 100 --json tagName,isPrerelease \
