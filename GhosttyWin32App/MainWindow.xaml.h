@@ -45,6 +45,14 @@ namespace winrt::GhosttyWin32::implementation
         // depending on the current OverlappedPresenter state.
         void UpdateMaximizeGlyph();
 
+        // Handle GHOSTTY_ACTION_NEW_SPLIT: locate the source pane for
+        // `surface`, create a new TerminalControl + ghostty surface,
+        // and insert it next to the source according to `direction`.
+        // The new pane becomes the active leaf and takes focus. UI
+        // thread only.
+        void SplitActivePane(ghostty_surface_t surface,
+                             ghostty_action_split_direction_e direction);
+
         std::unique_ptr<GhosttyApp> m_ghostty;
         HWND m_hwnd = nullptr;
         PaneIdAllocator m_paneIds;

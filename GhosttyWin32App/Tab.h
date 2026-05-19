@@ -94,6 +94,14 @@ public:
     winrt::GhosttyWin32::SplitPanel const& Panel() const noexcept { return m_panel; }
     Pane* ActiveLeaf() const noexcept { return m_activeLeaf; }
 
+    // Retarget the active leaf — used by NEW_SPLIT (focus shifts to
+    // the freshly-created pane), GOTO_SPLIT (direction-based pane
+    // nav), and any future pointer-focus path. `leaf` must reach back
+    // to a leaf currently inside this tab's SplitPanel tree;
+    // callers are expected to verify with FindLeafByPaneId or by
+    // building the leaf themselves before the tree mutation.
+    void SetActiveLeaf(Pane* leaf) noexcept { m_activeLeaf = leaf; }
+
     // Whether XAML accepted the focus request. The active leaf's
     // TerminalControl is a UserControl with IsTabStop=true, so unlike
     // a bare SwapChainPanel this Focus call actually moves focus

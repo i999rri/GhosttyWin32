@@ -518,6 +518,24 @@ namespace winrt::GhosttyWin32::implementation
                 return true;
             }
 
+            // Split the source pane along the requested direction. The
+            // existing pane stays put and a new TerminalControl /
+            // ghostty surface is inserted alongside it; the active
+            // leaf shifts to the new pane so the user's next keystroke
+            // lands in the split they just created.
+            if (action.tag == GHOSTTY_ACTION_NEW_SPLIT
+                && target.tag == GHOSTTY_TARGET_SURFACE) {
+                auto surface = target.target.surface;
+                auto direction = action.action.new_split;
+                if (g_mainWindow && surface) {
+                    auto mw = g_mainWindow;
+                    mw->DispatcherQueue().TryEnqueue([mw, surface, direction]() {
+                        mw->SplitActivePane(surface, direction);
+                    });
+                }
+                return true;
+            }
+
             // Ctrl+click on a URL in the terminal. Hand off to the shell
             // verb opener so the user's default browser / mail client /
             // etc. handles it. Without this, libghostty falls back to
@@ -610,11 +628,6 @@ namespace winrt::GhosttyWin32::implementation
         if (!m_ghostty || !m_hwnd) return;
         auto tv = TabView();
 
-        // Each tab is a TerminalControl (UserControl wrapping a
-        // SwapChainPanel). Focus/IsTabStop/etc. are set in the XAML
-        // template, so no per-instance setup is needed here.
-        auto control = winrt::GhosttyWin32::TerminalControl();
-
         auto item = muxc::TabViewItem();
         static constexpr wchar_t kDefaultTabTitle[] = L" ";
         item.Header(box_value(kDefaultTabTitle));
@@ -680,7 +693,6 @@ namespace winrt::GhosttyWin32::implementation
         // callback below.
         if (!m_tabFactory) return;
         struct CreateCtx {
-            winrt::GhosttyWin32::TerminalControl const* control;
             muxc::TabViewItem const* item;
             TabFactory* factory;
             std::function<void()> onActivated;
@@ -688,10 +700,10 @@ namespace winrt::GhosttyWin32::implementation
             uint32_t initialHeight;
             std::unique_ptr<Tab> result;
         };
-        CreateCtx ctx{ &control, &item, m_tabFactory.get(), std::move(onActivated), initialW, initialH, nullptr };
+        CreateCtx ctx{ &item, m_tabFactory.get(), std::move(onActivated), initialW, initialH, nullptr };
         int ok = RunSEHGuarded([](void* arg) noexcept {
             auto* c = static_cast<CreateCtx*>(arg);
-            c->result = c->factory->Make(*c->control, *c->item, std::move(c->onActivated), c->initialWidth, c->initialHeight);
+            c->result = c->factory->Make(*c->item, std::move(c->onActivated), c->initialWidth, c->initialHeight);
         }, &ctx);
 
         std::unique_ptr<Tab> tab = std::move(ctx.result);
@@ -733,6 +745,103 @@ namespace winrt::GhosttyWin32::implementation
         // frame; focus + IME activation chain off SelectedItem via the
         // TerminalControl's Loaded → Focus → GotFocus path.
         m_tabs.Add(std::move(tab));
+    }
+
+    namespace {
+        // Depth-first search for the leaf hosting `surface`. The pane
+        // tree is small (a handful of leaves at most) so a flat walk
+        // is strictly cheaper than maintaining a side index.
+        Pane* FindLeafForSurface(Pane* node, ghostty_surface_t surface) {
+            if (!node) return nullptr;
+            if (node->IsLeaf()) {
+                auto* tc = Tab::LeafToTerminalControl(*node);
+                return (tc && tc->Surface() == surface) ? node : nullptr;
+            }
+            if (auto* p = FindLeafForSurface(node->First(), surface)) return p;
+            return FindLeafForSurface(node->Second(), surface);
+        }
+    }
+
+    void MainWindow::SplitActivePane(ghostty_surface_t surface,
+                                     ghostty_action_split_direction_e direction)
+    {
+        if (!m_tabFactory || !surface) return;
+        auto* sourceTab = m_tabs.FindBySurface(surface);
+        if (!sourceTab) return;
+        auto* panelImpl = winrt::get_self<implementation::SplitPanel>(sourceTab->Panel());
+        if (!panelImpl) return;
+
+        Pane* sourceLeaf = FindLeafForSurface(panelImpl->Root(), surface);
+        if (!sourceLeaf || !sourceLeaf->IsLeaf()) return;
+
+        // The source leaf's UIElement + PaneId are about to be moved
+        // into a new wrapper leaf inside the split subtree we build
+        // below. Capturing them here means the wrapper has its own
+        // reference to the underlying TerminalControl before the
+        // ReplaceLeaf call destroys the original Pane node.
+        auto sourceContent = sourceLeaf->Content();
+        PaneId sourcePaneId = sourceLeaf->Id();
+
+        // ghostty's split-direction maps to (orientation, which-side-
+        // does-the-new-pane-take). RIGHT/DOWN put the new pane after
+        // the source on the layout axis; LEFT/UP put it before.
+        SplitOrientation orient;
+        bool newFirst;
+        switch (direction) {
+            case GHOSTTY_SPLIT_DIRECTION_RIGHT: orient = SplitOrientation::Horizontal; newFirst = false; break;
+            case GHOSTTY_SPLIT_DIRECTION_LEFT:  orient = SplitOrientation::Horizontal; newFirst = true;  break;
+            case GHOSTTY_SPLIT_DIRECTION_DOWN:  orient = SplitOrientation::Vertical;   newFirst = false; break;
+            case GHOSTTY_SPLIT_DIRECTION_UP:    orient = SplitOrientation::Vertical;   newFirst = true;  break;
+            default: return;
+        }
+
+        // Size hint for the new ghostty surface: the source pane's
+        // current SwapChainPanel size halved on the split axis. The
+        // SplitPanel's first arrange pass after ReplaceLeaf will
+        // re-size both leaves to their actual half-extent and trigger
+        // SizeChanged → ghostty resize anyway; this just keeps the
+        // initial swap chain close to the eventual size so the first
+        // frame doesn't have to stretch.
+        uint32_t srcW = 0, srcH = 0;
+        if (auto* srcTc = Tab::LeafToTerminalControl(*sourceLeaf)) {
+            auto p = srcTc->InnerPanel();
+            srcW = static_cast<uint32_t>(p.ActualWidth());
+            srcH = static_cast<uint32_t>(p.ActualHeight());
+        }
+        uint32_t newW = (orient == SplitOrientation::Horizontal) ? srcW / 2 : srcW;
+        uint32_t newH = (orient == SplitOrientation::Vertical)   ? srcH / 2 : srcH;
+
+        auto newLeaf = m_tabFactory->MakeLeaf(newW, newH);
+        if (!newLeaf) return;
+        Pane* newLeafPtr = newLeaf.get();
+        auto newControl = newLeaf->Content().try_as<winrt::GhosttyWin32::TerminalControl>();
+
+        // Build the replacement subtree: a split node whose children
+        // are (a) a wrapper around the original source content and
+        // (b) the new leaf, ordered per `newFirst`.
+        auto sourceWrapper = Pane::MakeLeaf(sourceContent, sourcePaneId);
+        auto subtree = newFirst
+            ? Pane::MakeSplit(orient, 0.5, std::move(newLeaf), std::move(sourceWrapper))
+            : Pane::MakeSplit(orient, 0.5, std::move(sourceWrapper), std::move(newLeaf));
+
+        if (!panelImpl->ReplaceLeaf(sourceLeaf, std::move(subtree))) {
+            // Tree mutation failed after the new surface was already
+            // attached — detach so it doesn't leak.
+            if (newControl) {
+                if (auto* tc = winrt::get_self<implementation::TerminalControl>(newControl)) {
+                    tc->Detach();
+                }
+            }
+            return;
+        }
+
+        // Focus shifts to the freshly-created pane: matches the
+        // expectation set by every other terminal (a `:vsplit` lands
+        // the cursor in the new pane).
+        sourceTab->SetActiveLeaf(newLeafPtr);
+        if (newControl) {
+            newControl.Focus(Microsoft::UI::Xaml::FocusState::Programmatic);
+        }
     }
 
     // Caption button click handlers. We route through Win32 messages

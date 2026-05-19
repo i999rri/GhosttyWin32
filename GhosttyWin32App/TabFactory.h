@@ -36,13 +36,12 @@ public:
     TabFactory(TabFactory&&) = delete;
     TabFactory& operator=(TabFactory&&) = delete;
 
-    // Build a fully-formed Tab from a pre-created TerminalControl + item.
-    // The caller created `control` and `item` and appended `item` to
-    // the TabView, but did NOT set `item.Content` — this factory wraps
-    // `control` in a single-leaf Pane tree, hosts it in a SplitPanel,
-    // and assigns the SplitPanel as the item's content. That keeps the
-    // pane-tree ownership invariant ("SplitPanel owns the tree, Tab
-    // borrows it") in one place.
+    // Build a fully-formed Tab. The caller created `item` and appended
+    // it to the TabView, but did NOT set `item.Content` — this factory
+    // creates the TerminalControl, wraps it in a single-leaf Pane
+    // tree, hosts it in a SplitPanel, and assigns the SplitPanel as
+    // the item's content. That keeps the pane-tree ownership invariant
+    // ("SplitPanel owns the tree, Tab borrows it") in one place.
     //
     // Returns nullptr on failure (after cleaning up any partially-
     // acquired resources). Call on the UI thread; neither the inner
@@ -61,22 +60,64 @@ public:
     // not from swap-chain creation, so the back buffer is guaranteed to
     // have displayable content by the time we attach.
     std::unique_ptr<Tab> Make(
-        winrt::GhosttyWin32::TerminalControl control,
         Microsoft::UI::Xaml::Controls::TabViewItem item,
         std::function<void()> onActivated = {},
         uint32_t initialWidth = 0,
         uint32_t initialHeight = 0)
     {
+        auto leaf = MakeLeaf(initialWidth, initialHeight, std::move(onActivated));
+        if (!leaf) return nullptr;
+
+        // Wrap the leaf in a SplitPanel and assign as item.Content.
+        // With one leaf SplitPanel collapses to "arrange the single
+        // child at the full rect", matching the previous behaviour of
+        // placing the control directly under TabViewItem.
+        winrt::GhosttyWin32::SplitPanel splitPanel{};
+        auto* splitPanelImpl = winrt::get_self<implementation::SplitPanel>(splitPanel);
+        if (!splitPanelImpl) {
+            OutputDebugStringA("TabFactory::Make: get_self<SplitPanel> FAILED\n");
+            DetachLeaf(*leaf);
+            return nullptr;
+        }
+        splitPanelImpl->SetRoot(std::move(leaf));
+        item.Content(splitPanel);
+
+        try {
+            return std::make_unique<Tab>(std::move(splitPanel), std::move(item));
+        } catch (winrt::hresult_error const&) {
+            // Tab construction validation failed. Detach synchronously
+            // so the surface/handle don't leak. The splitPanel /
+            // tree own the leaf at this point.
+            if (auto* root = splitPanelImpl->Root()) DetachLeaf(*root);
+            return nullptr;
+        }
+    }
+
+    // Build a new pane: TerminalControl + DComp surface handle +
+    // ghostty surface + freshly-allocated PaneId, returned as a Pane
+    // leaf. Shared between Make() (the leaf becomes the only pane in
+    // a brand-new tab) and the NEW_SPLIT action handler (the leaf is
+    // inserted into an existing tab's tree alongside its source pane).
+    //
+    // Returns nullptr on any failure. Resources acquired before the
+    // failure point are released before the return — caller doesn't
+    // need to clean up after a null result.
+    std::unique_ptr<Pane> MakeLeaf(
+        uint32_t initialWidth,
+        uint32_t initialHeight,
+        std::function<void()> onActivated = {})
+    {
         constexpr DWORD COMPOSITIONSURFACE_ALL_ACCESS = 0x0003L;
 
+        auto control = winrt::GhosttyWin32::TerminalControl();
         auto* controlImpl = winrt::get_self<implementation::TerminalControl>(control);
         if (!controlImpl) {
-            OutputDebugStringA("TabFactory::Make: get_self<TerminalControl> FAILED\n");
+            OutputDebugStringA("TabFactory::MakeLeaf: get_self<TerminalControl> FAILED\n");
             return nullptr;
         }
         auto panel = controlImpl->InnerPanel();
         if (!panel) {
-            OutputDebugStringA("TabFactory::Make: TerminalControl has no inner panel\n");
+            OutputDebugStringA("TabFactory::MakeLeaf: TerminalControl has no inner panel\n");
             return nullptr;
         }
 
@@ -88,26 +129,9 @@ public:
         // close_surface_cb.
         PaneId paneId = m_idAllocator.Allocate();
 
-        // Wrap the control in a single-leaf Pane tree and host it in a
-        // SplitPanel. Setting the SplitPanel as item.Content here (not
-        // in MainWindow.CreateTab) keeps the "panel owns the tree, Tab
-        // borrows it" invariant centralised. With one leaf SplitPanel
-        // collapses to "arrange the single child at the full rect",
-        // matching the previous behaviour of placing the control
-        // directly under TabViewItem.
-        auto leaf = Pane::MakeLeaf(control, paneId);
-        winrt::GhosttyWin32::SplitPanel splitPanel{};
-        auto* splitPanelImpl = winrt::get_self<implementation::SplitPanel>(splitPanel);
-        if (!splitPanelImpl) {
-            OutputDebugStringA("TabFactory::Make: get_self<SplitPanel> FAILED\n");
-            return nullptr;
-        }
-        splitPanelImpl->SetRoot(std::move(leaf));
-        item.Content(splitPanel);
-
         HANDLE handle = nullptr;
         if (FAILED(DCompositionCreateSurfaceHandle(COMPOSITIONSURFACE_ALL_ACCESS, nullptr, &handle))) {
-            OutputDebugStringA("TabFactory::Make: DCompositionCreateSurfaceHandle FAILED\n");
+            OutputDebugStringA("TabFactory::MakeLeaf: DCompositionCreateSurfaceHandle FAILED\n");
             return nullptr;
         }
 
@@ -129,8 +153,8 @@ public:
         cfg.platform.windows.swap_chain_ready_userdata = attachOwned;
         cfg.userdata = paneId.ToUserdata();
         // Initial swap chain size: prefer the host's caller-supplied
-        // estimate (typically the active tab's panel size, since the
-        // new panel will land in the same TabView content area), then
+        // estimate (typically the active tab/pane's panel size, since
+        // the new panel will land in the same content area), then
         // fall back to the panel's own ActualWidth/Height. With
         // deferred SelectedItem (issue #22) the panel isn't in the
         // visual tree yet so its ActualWidth is 0 — without the host
@@ -150,7 +174,7 @@ public:
 
         ghostty_surface_t surface = ghostty_surface_new(m_app, &cfg);
         if (!surface) {
-            OutputDebugStringA("TabFactory::Make: ghostty_surface_new FAILED\n");
+            OutputDebugStringA("TabFactory::MakeLeaf: ghostty_surface_new FAILED\n");
             // Callback won't fire — release the renderer's owning handle.
             delete attachOwned;
             CloseHandle(handle);
@@ -158,23 +182,30 @@ public:
         }
 
         // Hand surface ownership to the control. From here on the
-        // control's Detach() (called from Tab::~Tab) is responsible for
-        // freeing the surface and closing the handle. The app handle
-        // is needed inside the control to drive ghostty_app_tick after
-        // IME / keyboard input commits.
+        // control's Detach() is responsible for freeing the surface
+        // and closing the handle.
         controlImpl->Attach(m_app, surface, handle, m_hwnd, attach);
 
-        try {
-            return std::make_unique<Tab>(std::move(splitPanel), std::move(item));
-        } catch (winrt::hresult_error const&) {
-            // Tab construction validation failed. Detach synchronously
-            // so the surface/handle don't leak.
-            controlImpl->Detach();
-            return nullptr;
-        }
+        return Pane::MakeLeaf(control, paneId);
     }
 
 private:
+    // Synchronously detach every TerminalControl under `node` so the
+    // surface / DComp handle don't leak when an error path discards a
+    // partially-constructed tree. Mirrors Tab::DetachAllLeaves but is
+    // factored locally so the error paths above can call it without
+    // depending on Tab.
+    static void DetachLeaf(Pane const& node) {
+        if (node.IsLeaf()) {
+            if (auto* tc = Tab::LeafToTerminalControl(node)) {
+                tc->Detach();
+            }
+            return;
+        }
+        if (auto* f = node.First()) DetachLeaf(*f);
+        if (auto* s = node.Second()) DetachLeaf(*s);
+    }
+
     ghostty_app_t m_app;
     HWND m_hwnd;
     PaneIdAllocator& m_idAllocator;
