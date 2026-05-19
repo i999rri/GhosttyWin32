@@ -61,6 +61,27 @@ void SplitPanel::SetRoot(std::unique_ptr<Pane> root) {
     InvalidateArrange();
 }
 
+bool SplitPanel::ReplaceLeaf(Pane* leaf, std::unique_ptr<Pane> newSubtree) {
+    if (!leaf || !newSubtree || !m_root) return false;
+
+    // Root replacement: defer to SetRoot so the same children-sync /
+    // invalidate path runs.
+    if (m_root.get() == leaf) {
+        SetRoot(std::move(newSubtree));
+        return true;
+    }
+
+    // Non-root: parent owns leaf via unique_ptr; rewrite that pointer.
+    auto* parent = leaf->Parent();
+    if (!parent) return false;
+    if (!parent->ReplaceChild(leaf, std::move(newSubtree))) return false;
+
+    SyncChildrenFromTree();
+    InvalidateMeasure();
+    InvalidateArrange();
+    return true;
+}
+
 void SplitPanel::SyncChildrenFromTree() {
     Children().Clear();
     if (m_root) AppendLeavesToChildren(*m_root);

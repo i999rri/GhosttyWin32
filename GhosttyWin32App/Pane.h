@@ -101,6 +101,32 @@ public:
     // Back-pointer to the enclosing internal node, or null at the root.
     Pane* Parent() const noexcept { return m_parent; }
 
+    // Swap the child unique_ptr matching `oldChild` for `newChild`.
+    // Returns true when `oldChild` was one of this node's children
+    // (the old subtree is destroyed when its unique_ptr is overwritten;
+    // the new child's parent back-pointer is rewritten to point here).
+    // No-op + false if called on a leaf or if `oldChild` isn't a
+    // child — the caller is expected to verify membership when the
+    // distinction matters.
+    //
+    // Used by SplitPanel::ReplaceLeaf for in-place tree edits like
+    // NEW_SPLIT (replace a leaf with a split subtree wrapping it) and
+    // CLOSE_PANE (replace a split with its surviving child).
+    bool ReplaceChild(Pane* oldChild, std::unique_ptr<Pane> newChild) noexcept {
+        if (IsLeaf() || !oldChild || !newChild) return false;
+        if (m_first.get() == oldChild) {
+            newChild->m_parent = this;
+            m_first = std::move(newChild);
+            return true;
+        }
+        if (m_second.get() == oldChild) {
+            newChild->m_parent = this;
+            m_second = std::move(newChild);
+            return true;
+        }
+        return false;
+    }
+
 private:
     Pane() = default;
 

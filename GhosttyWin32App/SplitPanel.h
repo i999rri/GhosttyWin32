@@ -33,6 +33,18 @@ struct SplitPanel : SplitPanelT<SplitPanel> {
     // Passing `nullptr` clears the panel: tree gone, no children.
     void SetRoot(std::unique_ptr<Pane> root);
 
+    // Replace `leaf` (which must currently be reachable from m_root)
+    // with the subtree `newSubtree`. Returns true on success — false
+    // if `leaf` isn't in this tree, or if either pointer is null.
+    //
+    // Used by NEW_SPLIT: the caller builds a split subtree whose
+    // first/second is a new leaf wrapping the existing leaf's content
+    // (preserving its PaneId so close_surface_cb still routes
+    // correctly) plus a fresh leaf for the new pane, then calls this
+    // to swap it in. The framework's Children() collection is
+    // refreshed and a layout pass is requested.
+    bool ReplaceLeaf(Pane* leaf, std::unique_ptr<Pane> newSubtree);
+
     // Read-only access for the host (Tab will need this to walk for
     // active-leaf focusing, but Phase 1 only uses it for diagnostics).
     Pane* Root() const noexcept { return m_root.get(); }
