@@ -130,6 +130,8 @@
     <ClInclude Include="MainWindow.xaml.h">
       <DependentUpon>MainWindow.xaml</DependentUpon>
     </ClInclude>
+    <ClInclude Include="Pane.h" />
+    <ClInclude Include="SplitPanel.h" />
     <ClInclude Include="Tab.h" />
     <ClInclude Include="TabFactory.h" />
     <ClInclude Include="TabId.h" />
@@ -154,6 +156,7 @@
       <DependentUpon>MainWindow.xaml</DependentUpon>
     </ClCompile>
     <ClCompile Include="SEHGuard.cpp" />
+    <ClCompile Include="SplitPanel.cpp" />
     <ClCompile Include="TerminalControl.xaml.cpp">
       <DependentUpon>TerminalControl.xaml</DependentUpon>
     </ClCompile>
@@ -163,6 +166,9 @@
     <Midl Include="MainWindow.idl">
       <SubType>Code</SubType>
       <DependentUpon>MainWindow.xaml</DependentUpon>
+    </Midl>
+    <Midl Include="SplitPanel.idl">
+      <SubType>Code</SubType>
     </Midl>
     <Midl Include="TerminalControl.idl">
       <SubType>Code</SubType>
