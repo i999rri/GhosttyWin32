@@ -61,14 +61,15 @@ public:
     }
 
     ~Tab() {
-        // Detach every TerminalControl in the tree — surface free,
-        // swap chain release, composition handle close, SizeChanged
-        // unhook all live on the control. Walking the tree handles
-        // the post-split case naturally; with a single leaf it
-        // collapses to one Detach call.
-        if (auto* panelImpl = winrt::get_self<implementation::SplitPanel>(m_panel)) {
-            DetachAllLeaves(panelImpl->Root());
-        }
+        // Catch-all teardown: any leaves still attached at destruction
+        // get released here. The host's close paths (TabCloseRequested,
+        // CLOSE_TAB action, close_surface_cb) all call DetachAll()
+        // explicitly first so the framework's panel unparenting doesn't
+        // run against a still-bound swap chain handle (the AV at +0x1F8
+        // documented in MainWindow's close handlers). This destructor
+        // is idempotent against those calls — Detach itself is a no-op
+        // on an already-detached control.
+        DetachAll();
     }
 
     Tab(const Tab&) = delete;
@@ -101,6 +102,18 @@ public:
     // callers are expected to verify with FindLeafByPaneId or by
     // building the leaf themselves before the tree mutation.
     void SetActiveLeaf(Pane* leaf) noexcept { m_activeLeaf = leaf; }
+
+    // Detach every TerminalControl in the tree (surface free, swap
+    // chain release, composition handle close, SizeChanged unhook).
+    // Must run while the SplitPanel is still in the live visual tree
+    // — see MainWindow close handlers for the AV that happens if a
+    // SwapChainPanel is unparented before its swap chain handle is
+    // cleared.
+    void DetachAll() {
+        if (auto* panelImpl = winrt::get_self<implementation::SplitPanel>(m_panel)) {
+            DetachAllLeaves(panelImpl->Root());
+        }
+    }
 
     // Whether XAML accepted the focus request. The active leaf's
     // TerminalControl is a UserControl with IsTabStop=true, so unlike

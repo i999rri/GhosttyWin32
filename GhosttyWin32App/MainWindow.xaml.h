@@ -53,6 +53,10 @@ namespace winrt::GhosttyWin32::implementation
         void SplitActivePane(ghostty_surface_t surface,
                              ghostty_action_split_direction_e direction);
 
+        // Tear down the pane carrying `id` and update the tree / tab
+        // list. Dispatched from close_surface_cb. UI thread only.
+        void CloseSurfaceByPaneId(PaneId id);
+
         std::unique_ptr<GhosttyApp> m_ghostty;
         HWND m_hwnd = nullptr;
         PaneIdAllocator m_paneIds;

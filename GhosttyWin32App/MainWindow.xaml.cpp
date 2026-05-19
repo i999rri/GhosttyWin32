@@ -247,9 +247,11 @@ namespace winrt::GhosttyWin32::implementation
                 // SetSwapChainHandle. Detach is idempotent, so the
                 // ~Tab → ~TerminalControl path runs it again as a no-op.
                 if (auto* t = m_tabs.FindByItem(item)) {
-                    if (auto* tc = t->ActiveControl()) {
-                        tc->Detach();
-                    }
+                    // Detach every pane in the tab, not just the active
+                    // one — multi-pane tabs have multiple swap chains
+                    // and each needs SetSwapChainHandle(nullptr) before
+                    // the panel is unparented.
+                    t->DetachAll();
                 }
                 uint32_t idx = 0;
                 if (sender.TabItems().IndexOf(item, idx)) {
@@ -403,9 +405,10 @@ namespace winrt::GhosttyWin32::implementation
                         auto* t = mw->m_tabs.FindBySurface(surface);
                         if (!t) return;
                         auto item = t->Item();
-                        if (auto* tc = t->ActiveControl()) {
-                            tc->Detach();
-                        }
+                        // CLOSE_TAB closes the whole tab regardless of
+                        // pane count — detach every leaf so each swap
+                        // chain handle is cleared before unparent.
+                        t->DetachAll();
                         auto tv = mw->TabView();
                         uint32_t idx = 0;
                         if (tv.TabItems().IndexOf(item, idx)) {
@@ -582,38 +585,22 @@ namespace winrt::GhosttyWin32::implementation
         };
         // Shell exited (e.g. user typed `exit`), or ghostty asked to close
         // the surface for any other reason. The userdata is the PaneId
-        // we set in TabFactory::Make. Dispatch the TabView mutation to
-        // the next UI tick to mirror the GHOSTTY_ACTION_CLOSE_TAB handler.
+        // we set in TabFactory::MakeLeaf. Dispatch the UI mutation to
+        // the next UI tick so it happens off the renderer thread.
         //
-        // Today every tab has exactly one pane, so closing the pane
-        // means closing the tab. Once NEW_SPLIT lands, this handler
-        // needs to collapse the split when the closed pane is one of
-        // several in a tab — phase 5 / Issue #13.
+        // Two cases:
+        //   * Leaf is the only pane in its tab → close the tab (same
+        //     path as GHOSTTY_ACTION_CLOSE_TAB).
+        //   * Leaf has a sibling → collapse the split. The surviving
+        //     sibling takes the parent split's slot; if the closed
+        //     pane was the active leaf, focus moves to the first leaf
+        //     under the surviving subtree.
         rtConfig.close_surface_cb = [](void* userdata, bool /*process_alive*/) {
             if (!g_mainWindow || !userdata) return;
             PaneId id = PaneId::FromUserdata(userdata);
             auto mw = g_mainWindow;
             mw->DispatcherQueue().TryEnqueue([mw, id]() {
-                auto lookup = mw->m_tabs.FindByPaneId(id);
-                if (!lookup.tab || !lookup.leaf) return;  // pane already closed via the UI
-                auto* t = lookup.tab;
-                auto item = t->Item();
-                // Same Detach-before-RemoveAt pattern as the other
-                // close paths — see TabCloseRequested.
-                if (auto* tc = Tab::LeafToTerminalControl(*lookup.leaf)) {
-                    tc->Detach();
-                }
-                auto tv = mw->TabView();
-                uint32_t idx = 0;
-                if (tv.TabItems().IndexOf(item, idx)) {
-                    tv.TabItems().RemoveAt(idx);
-                }
-                DwmFlush();
-                if (tv.TabItems().Size() == 0) {
-                    mw->Close();
-                } else {
-                    mw->m_tabs.Remove(item);
-                }
+                mw->CloseSurfaceByPaneId(id);
             });
         };
 
@@ -760,6 +747,16 @@ namespace winrt::GhosttyWin32::implementation
             if (auto* p = FindLeafForSurface(node->First(), surface)) return p;
             return FindLeafForSurface(node->Second(), surface);
         }
+
+        // Returns the first leaf reached by depth-first descent — used
+        // to pick a focus target after a split collapses and the
+        // previously-active leaf is gone.
+        Pane* FirstLeafIn(Pane* node) {
+            if (!node) return nullptr;
+            if (node->IsLeaf()) return node;
+            if (auto* p = FirstLeafIn(node->First())) return p;
+            return FirstLeafIn(node->Second());
+        }
     }
 
     void MainWindow::SplitActivePane(ghostty_surface_t surface,
@@ -841,6 +838,73 @@ namespace winrt::GhosttyWin32::implementation
         sourceTab->SetActiveLeaf(newLeafPtr);
         if (newControl) {
             newControl.Focus(Microsoft::UI::Xaml::FocusState::Programmatic);
+        }
+    }
+
+    void MainWindow::CloseSurfaceByPaneId(PaneId id)
+    {
+        auto lookup = m_tabs.FindByPaneId(id);
+        if (!lookup.tab || !lookup.leaf) return;
+        auto* tab = lookup.tab;
+        auto* leaf = lookup.leaf;
+
+        // Detach first so the surface / DComp handle are released
+        // synchronously, before the Pane node holding the
+        // TerminalControl is destroyed.
+        if (auto* tc = Tab::LeafToTerminalControl(*leaf)) {
+            tc->Detach();
+        }
+
+        auto* panelImpl = winrt::get_self<implementation::SplitPanel>(tab->Panel());
+        if (!panelImpl) return;
+
+        // Identify the sibling subtree BEFORE the removal so we can
+        // retarget the active leaf into it (the leaf pointer is about
+        // to be invalidated).
+        Pane* sibling = nullptr;
+        bool closingActive = (tab->ActiveLeaf() == leaf);
+        if (auto* parent = leaf->Parent()) {
+            sibling = (parent->First() == leaf) ? parent->Second() : parent->First();
+        }
+        // Clear the active-leaf pointer up front: regardless of which
+        // branch runs below, leaving it pointing at the doomed leaf
+        // would dangle until the SetActiveLeaf calls overwrite it.
+        if (closingActive) tab->SetActiveLeaf(nullptr);
+
+        auto result = panelImpl->RemoveLeaf(leaf);
+        if (result == implementation::SplitPanel::RemovalResult::Collapsed) {
+            // Tab survives; retarget focus to the surviving subtree.
+            if (closingActive && sibling) {
+                if (auto* newActive = FirstLeafIn(sibling)) {
+                    tab->SetActiveLeaf(newActive);
+                    if (auto* tc = Tab::LeafToTerminalControl(*newActive)) {
+                        auto element = newActive->Content();
+                        if (auto control = element.try_as<winrt::GhosttyWin32::TerminalControl>()) {
+                            control.Focus(Microsoft::UI::Xaml::FocusState::Programmatic);
+                        }
+                    }
+                }
+            }
+            return;
+        }
+
+        // RemovedRoot or NotFound — treat as full-tab close.
+        // (NotFound shouldn't happen, but failing closed by closing
+        // the tab is the safer recovery than leaving a half-detached
+        // pane around.) DetachAll is idempotent against the leaf we
+        // already detached above and sweeps any remaining ones.
+        tab->DetachAll();
+        auto item = tab->Item();
+        auto tv = TabView();
+        uint32_t idx = 0;
+        if (tv.TabItems().IndexOf(item, idx)) {
+            tv.TabItems().RemoveAt(idx);
+        }
+        DwmFlush();
+        if (tv.TabItems().Size() == 0) {
+            Close();
+        } else {
+            m_tabs.Remove(item);
         }
     }
 

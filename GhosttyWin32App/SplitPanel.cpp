@@ -82,6 +82,47 @@ bool SplitPanel::ReplaceLeaf(Pane* leaf, std::unique_ptr<Pane> newSubtree) {
     return true;
 }
 
+SplitPanel::RemovalResult SplitPanel::RemoveLeaf(Pane* leaf) {
+    if (!leaf || !m_root) return RemovalResult::NotFound;
+
+    if (m_root.get() == leaf) {
+        // Root removal — tree becomes empty. Caller decides the
+        // surrounding-tab action.
+        SetRoot(nullptr);
+        return RemovalResult::RemovedRoot;
+    }
+
+    auto* parent = leaf->Parent();
+    if (!parent) return RemovalResult::NotFound;
+
+    // Identify the surviving sibling (the parent's other child) and
+    // detach it from the parent so its unique_ptr survives the parent
+    // destruction triggered below.
+    Pane* siblingRaw = (parent->First() == leaf) ? parent->Second()
+                                                  : parent->First();
+    if (!siblingRaw) return RemovalResult::NotFound;
+    auto sibling = parent->DetachChild(siblingRaw);
+    if (!sibling) return RemovalResult::NotFound;
+
+    // Replace `parent` in its slot with the sibling subtree. The
+    // parent's unique_ptr is overwritten, which destroys the parent
+    // node and (transitively) the doomed leaf. The sibling subtree's
+    // contents are unaffected because we already detached it.
+    auto* grandparent = parent->Parent();
+    if (!grandparent) {
+        // parent was root.
+        SetRoot(std::move(sibling));
+    } else {
+        if (!grandparent->ReplaceChild(parent, std::move(sibling))) {
+            return RemovalResult::NotFound;  // shouldn't happen, but fail closed
+        }
+        SyncChildrenFromTree();
+        InvalidateMeasure();
+        InvalidateArrange();
+    }
+    return RemovalResult::Collapsed;
+}
+
 void SplitPanel::SyncChildrenFromTree() {
     Children().Clear();
     if (m_root) AppendLeavesToChildren(*m_root);

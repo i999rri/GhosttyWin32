@@ -45,6 +45,28 @@ struct SplitPanel : SplitPanelT<SplitPanel> {
     // refreshed and a layout pass is requested.
     bool ReplaceLeaf(Pane* leaf, std::unique_ptr<Pane> newSubtree);
 
+    // Remove `leaf` from the tree and collapse its enclosing split
+    // node, promoting the surviving sibling into the slot the parent
+    // occupied. Returns the kind of removal that happened so the
+    // caller can take additional UI action:
+    //   * RemovedRoot — leaf was the root; tree is now empty (the
+    //     caller is expected to close the surrounding tab).
+    //   * Collapsed   — leaf had a sibling; parent split node was
+    //     replaced with that sibling, tab continues to render.
+    //   * NotFound    — leaf wasn't reachable from m_root, or one of
+    //     the back-pointer invariants was broken; no mutation
+    //     happened.
+    //
+    // The leaf's TerminalControl is NOT detached here; the caller is
+    // expected to do that before invoking RemoveLeaf so the surface
+    // and DComp handle are released synchronously.
+    enum class RemovalResult {
+        NotFound,
+        RemovedRoot,
+        Collapsed,
+    };
+    RemovalResult RemoveLeaf(Pane* leaf);
+
     // Read-only access for the host (Tab will need this to walk for
     // active-leaf focusing, but Phase 1 only uses it for diagnostics).
     Pane* Root() const noexcept { return m_root.get(); }

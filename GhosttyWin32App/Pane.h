@@ -127,6 +127,24 @@ public:
         return false;
     }
 
+    // Pull `child` out of this internal node and return ownership.
+    // The child becomes an orphan (parent back-pointer cleared) so
+    // the caller can re-attach it elsewhere — typically as a
+    // replacement for this node itself when collapsing a split.
+    // Returns nullptr if called on a leaf or if `child` isn't a child.
+    std::unique_ptr<Pane> DetachChild(Pane* child) noexcept {
+        if (IsLeaf() || !child) return nullptr;
+        if (m_first.get() == child) {
+            m_first->m_parent = nullptr;
+            return std::move(m_first);
+        }
+        if (m_second.get() == child) {
+            m_second->m_parent = nullptr;
+            return std::move(m_second);
+        }
+        return nullptr;
+    }
+
 private:
     Pane() = default;
 
