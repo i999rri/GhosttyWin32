@@ -131,11 +131,11 @@
       <DependentUpon>MainWindow.xaml</DependentUpon>
     </ClInclude>
     <ClInclude Include="Pane.h" />
+    <ClInclude Include="PaneId.h" />
+    <ClInclude Include="PaneIdAllocator.h" />
     <ClInclude Include="SplitPanel.h" />
     <ClInclude Include="Tab.h" />
     <ClInclude Include="TabFactory.h" />
-    <ClInclude Include="TabId.h" />
-    <ClInclude Include="TabIdAllocator.h" />
     <ClInclude Include="TerminalControl.xaml.h">
       <DependentUpon>TerminalControl.xaml</DependentUpon>
     </ClInclude>

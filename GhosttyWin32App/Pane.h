@@ -1,5 +1,6 @@
 #pragma once
 
+#include "PaneId.h"
 #include <winrt/Microsoft.UI.Xaml.h>
 #include <memory>
 
@@ -38,10 +39,16 @@ class Pane {
 public:
     // Construct a leaf wrapping `content`. `content` is the actual
     // UIElement that will be added to the SplitPanel's Children
-    // collection when the leaf is arranged.
-    static std::unique_ptr<Pane> MakeLeaf(Microsoft::UI::Xaml::UIElement content) {
+    // collection when the leaf is arranged. `id` identifies the leaf
+    // for ghostty's close_surface_cb routing — required to be non-zero
+    // for production callers; a default-constructed PaneId is accepted
+    // (and exposed as Id()) so layout-only tests can build trees
+    // without an allocator.
+    static std::unique_ptr<Pane> MakeLeaf(Microsoft::UI::Xaml::UIElement content,
+                                          PaneId id = {}) {
         auto p = std::unique_ptr<Pane>(new Pane{});
         p->m_content = std::move(content);
+        p->m_id = id;
         return p;
     }
 
@@ -76,6 +83,12 @@ public:
     // Leaf accessor. Returns null for internal nodes.
     Microsoft::UI::Xaml::UIElement Content() const noexcept { return m_content; }
 
+    // Leaf-side identifier set at MakeLeaf time. Used as cfg.userdata
+    // for ghostty's close_surface_cb so the host can route the
+    // callback back to a specific leaf. Internal nodes have no ID
+    // (returns the zero sentinel).
+    PaneId Id() const noexcept { return m_id; }
+
     // Internal-node accessors. Calling these on a leaf returns
     // default-initialized values / nullptrs — callers should gate on
     // IsLeaf() first.
@@ -99,6 +112,10 @@ private:
 
     // Leaf payload — non-null iff IsLeaf().
     Microsoft::UI::Xaml::UIElement m_content{ nullptr };
+
+    // Leaf identifier — zero sentinel for internal nodes and for
+    // layout-only test leaves built without an allocator.
+    PaneId m_id{};
 
     // Internal-node fields — unused when IsLeaf().
     SplitOrientation m_orientation{ SplitOrientation::Horizontal };

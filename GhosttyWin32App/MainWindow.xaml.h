@@ -3,9 +3,9 @@
 #include "MainWindow.g.h"
 #include "ghostty.h"
 #include "GhosttyApp.h"
+#include "PaneIdAllocator.h"
 #include "Tab.h"
 #include "TabFactory.h"
-#include "TabIdAllocator.h"
 #include "Tabs.h"
 
 namespace winrt::GhosttyWin32::implementation
@@ -47,7 +47,7 @@ namespace winrt::GhosttyWin32::implementation
 
         std::unique_ptr<GhosttyApp> m_ghostty;
         HWND m_hwnd = nullptr;
-        TabIdAllocator m_tabIds;
+        PaneIdAllocator m_paneIds;
         Tabs m_tabs;
         // Constructed once ghostty is initialized — needs the app handle
         // and HWND, neither available until InitGhostty has run.

@@ -563,20 +563,26 @@ namespace winrt::GhosttyWin32::implementation
             Clipboard::write(hwnd, Encoding::toUtf16(content[0].data));
         };
         // Shell exited (e.g. user typed `exit`), or ghostty asked to close
-        // the surface for any other reason. The userdata is the Tab ID
+        // the surface for any other reason. The userdata is the PaneId
         // we set in TabFactory::Make. Dispatch the TabView mutation to
         // the next UI tick to mirror the GHOSTTY_ACTION_CLOSE_TAB handler.
+        //
+        // Today every tab has exactly one pane, so closing the pane
+        // means closing the tab. Once NEW_SPLIT lands, this handler
+        // needs to collapse the split when the closed pane is one of
+        // several in a tab — phase 5 / Issue #13.
         rtConfig.close_surface_cb = [](void* userdata, bool /*process_alive*/) {
             if (!g_mainWindow || !userdata) return;
-            TabId id = TabId::FromUserdata(userdata);
+            PaneId id = PaneId::FromUserdata(userdata);
             auto mw = g_mainWindow;
             mw->DispatcherQueue().TryEnqueue([mw, id]() {
-                auto* t = mw->m_tabs.FindById(id);
-                if (!t) return; // Tab already closed via the UI
+                auto lookup = mw->m_tabs.FindByPaneId(id);
+                if (!lookup.tab || !lookup.leaf) return;  // pane already closed via the UI
+                auto* t = lookup.tab;
                 auto item = t->Item();
                 // Same Detach-before-RemoveAt pattern as the other
                 // close paths — see TabCloseRequested.
-                if (auto* tc = t->ActiveControl()) {
+                if (auto* tc = Tab::LeafToTerminalControl(*lookup.leaf)) {
                     tc->Detach();
                 }
                 auto tv = mw->TabView();
@@ -595,7 +601,7 @@ namespace winrt::GhosttyWin32::implementation
 
         m_ghostty = GhosttyApp::Create(rtConfig);
         if (m_ghostty && m_hwnd) {
-            m_tabFactory = std::make_unique<TabFactory>(m_ghostty->Handle(), m_hwnd, m_tabIds);
+            m_tabFactory = std::make_unique<TabFactory>(m_ghostty->Handle(), m_hwnd, m_paneIds);
         }
     }
 

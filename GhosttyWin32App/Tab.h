@@ -2,7 +2,6 @@
 
 #include "Pane.h"
 #include "SplitPanel.h"
-#include "TabId.h"
 #include "TerminalControl.xaml.h"
 #include <winrt/Microsoft.UI.Xaml.h>
 #include <winrt/Microsoft.UI.Xaml.Controls.h>
@@ -42,11 +41,9 @@ namespace winrt::GhosttyWin32::implementation {
 class Tab {
 public:
     Tab(winrt::GhosttyWin32::SplitPanel panel,
-        Microsoft::UI::Xaml::Controls::TabViewItem item,
-        TabId id)
+        Microsoft::UI::Xaml::Controls::TabViewItem item)
         : m_panel(std::move(panel))
         , m_item(std::move(item))
-        , m_id(id)
     {
         if (!m_panel || !m_item) {
             throw winrt::hresult_error(E_INVALIDARG, L"Tab: missing resource");
@@ -90,7 +87,6 @@ public:
     }
 
     Microsoft::UI::Xaml::Controls::TabViewItem const& Item() const noexcept { return m_item; }
-    TabId Id() const noexcept { return m_id; }
 
     // Read-only access to the SplitPanel hosting this tab's tree, used
     // by Tabs::FindBySurface to walk every leaf and locate the one
@@ -150,7 +146,6 @@ private:
     // the TabViewItem's Content by TabFactory.
     winrt::GhosttyWin32::SplitPanel m_panel{ nullptr };
     Microsoft::UI::Xaml::Controls::TabViewItem m_item{ nullptr };
-    TabId m_id{};
     // Borrowed pointer into the SplitPanel's tree — never owning.
     // Reset to nullptr or another leaf on tree mutations before any
     // leaf is destroyed.

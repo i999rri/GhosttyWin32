@@ -1,10 +1,10 @@
 #pragma once
 
 #include "Pane.h"
+#include "PaneId.h"
+#include "PaneIdAllocator.h"
 #include "SplitPanel.h"
 #include "Tab.h"
-#include "TabId.h"
-#include "TabIdAllocator.h"
 #include "TerminalControl.xaml.h"
 #include "ghostty.h"
 #include <microsoft.ui.xaml.media.dxinterop.h>
@@ -19,15 +19,16 @@
 namespace winrt::GhosttyWin32::implementation {
 
 // Builds Tabs. Holds the cross-cutting context (ghostty app handle, the
-// HWND for DPI/initial-size, and the TabIdAllocator that produces fresh
-// IDs) so callers don't have to thread those through every Make() call.
+// HWND for DPI/initial-size, and the PaneIdAllocator that produces fresh
+// per-leaf IDs) so callers don't have to thread those through every
+// Make() call.
 //
 // Stateless beyond the injected references — no mutable state of its
-// own. ID counter mutation lives in TabIdAllocator; the factory only
+// own. ID counter mutation lives in PaneIdAllocator; the factory only
 // borrows it.
 class TabFactory {
 public:
-    TabFactory(ghostty_app_t app, HWND hwnd, TabIdAllocator& idAllocator) noexcept
+    TabFactory(ghostty_app_t app, HWND hwnd, PaneIdAllocator& idAllocator) noexcept
         : m_app(app), m_hwnd(hwnd), m_idAllocator(idAllocator) {}
 
     TabFactory(const TabFactory&) = delete;
@@ -79,6 +80,14 @@ public:
             return nullptr;
         }
 
+        // Allocate the PaneId for this leaf up-front — it's used both
+        // as the close_surface_cb routing key (cfg.userdata) and as
+        // the leaf's stable identifier inside the tree. Allocated
+        // before surface_new so cfg.userdata is set; the value is
+        // opaque to ghostty and travels back to us through
+        // close_surface_cb.
+        PaneId paneId = m_idAllocator.Allocate();
+
         // Wrap the control in a single-leaf Pane tree and host it in a
         // SplitPanel. Setting the SplitPanel as item.Content here (not
         // in MainWindow.CreateTab) keeps the "panel owns the tree, Tab
@@ -86,7 +95,7 @@ public:
         // collapses to "arrange the single child at the full rect",
         // matching the previous behaviour of placing the control
         // directly under TabViewItem.
-        auto leaf = Pane::MakeLeaf(control);
+        auto leaf = Pane::MakeLeaf(control, paneId);
         winrt::GhosttyWin32::SplitPanel splitPanel{};
         auto* splitPanelImpl = winrt::get_self<implementation::SplitPanel>(splitPanel);
         if (!splitPanelImpl) {
@@ -112,19 +121,13 @@ public:
         // surface_new fails).
         auto* attachOwned = new std::shared_ptr<SwapChainAttachRequest>(attach);
 
-        // ID for the close-surface callback path. Allocated before
-        // surface_new because cfg.userdata must be set up-front; the
-        // value is opaque to ghostty and travels back to us through
-        // close_surface_cb.
-        TabId id = m_idAllocator.Allocate();
-
         ghostty_surface_config_s cfg = ghostty_surface_config_new();
         cfg.platform_tag = GHOSTTY_PLATFORM_WINDOWS;
         cfg.platform.windows.hwnd = m_hwnd;
         cfg.platform.windows.composition_surface_handle = handle;
         cfg.platform.windows.swap_chain_ready_cb = &TerminalControl::OnSwapChainReady;
         cfg.platform.windows.swap_chain_ready_userdata = attachOwned;
-        cfg.userdata = id.ToUserdata();
+        cfg.userdata = paneId.ToUserdata();
         // Initial swap chain size: prefer the host's caller-supplied
         // estimate (typically the active tab's panel size, since the
         // new panel will land in the same TabView content area), then
@@ -162,7 +165,7 @@ public:
         controlImpl->Attach(m_app, surface, handle, m_hwnd, attach);
 
         try {
-            return std::make_unique<Tab>(std::move(splitPanel), std::move(item), id);
+            return std::make_unique<Tab>(std::move(splitPanel), std::move(item));
         } catch (winrt::hresult_error const&) {
             // Tab construction validation failed. Detach synchronously
             // so the surface/handle don't leak.
@@ -174,7 +177,7 @@ public:
 private:
     ghostty_app_t m_app;
     HWND m_hwnd;
-    TabIdAllocator& m_idAllocator;
+    PaneIdAllocator& m_idAllocator;
 };
 
 }  // namespace winrt::GhosttyWin32::implementation
