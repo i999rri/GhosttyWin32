@@ -613,7 +613,10 @@ namespace winrt::GhosttyWin32::implementation
         static constexpr wchar_t kDefaultTabTitle[] = L" ";
         item.Header(box_value(kDefaultTabTitle));
         item.IsClosable(true);
-        item.Content(control);
+        // item.Content is set by TabFactory::Make (which wraps the
+        // control in a SplitPanel-backed Pane tree). Leaving it unset
+        // here keeps "the SplitPanel owns the pane tree" in a single
+        // place.
         // Same focus-retention story as the AddTabButton: TabViewItem is
         // a Control with IsTabStop=true by default, so clicking a tab
         // header lands focus on the header itself rather than the inner

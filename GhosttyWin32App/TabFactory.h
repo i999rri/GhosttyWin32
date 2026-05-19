@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Pane.h"
+#include "SplitPanel.h"
 #include "Tab.h"
 #include "TabId.h"
 #include "TabIdAllocator.h"
@@ -34,18 +36,22 @@ public:
     TabFactory& operator=(TabFactory&&) = delete;
 
     // Build a fully-formed Tab from a pre-created TerminalControl + item.
-    // The caller is expected to have already wired the control into the
-    // visual tree (item.Content(control) + tv.TabItems().Append(item))
-    // so the inner panel's DispatcherQueue is reachable.
+    // The caller created `control` and `item` and appended `item` to
+    // the TabView, but did NOT set `item.Content` — this factory wraps
+    // `control` in a single-leaf Pane tree, hosts it in a SplitPanel,
+    // and assigns the SplitPanel as the item's content. That keeps the
+    // pane-tree ownership invariant ("SplitPanel owns the tree, Tab
+    // borrows it") in one place.
     //
     // Returns nullptr on failure (after cleaning up any partially-
-    // acquired resources). Call on the UI thread; the panel does NOT
-    // need to be in the visual tree yet — see issue #22, where making
-    // the panel visible before it had displayable content produced a
-    // flicker. The optional onActivated callback runs on the UI thread
-    // once ghostty has presented its first frame and we've bound the
-    // swap chain to the panel; the host uses it to switch the TabView
-    // so the panel becomes visible only with real content.
+    // acquired resources). Call on the UI thread; neither the inner
+    // SwapChainPanel nor the SplitPanel need to be in the visual tree
+    // yet — see issue #22, where making the panel visible before it
+    // had displayable content produced a flicker. The optional
+    // onActivated callback runs on the UI thread once ghostty has
+    // presented its first frame and we've bound the swap chain to the
+    // panel; the host uses it to switch the TabView so the panel
+    // becomes visible only with real content.
     //
     // Ordering: the DComp surface handle is bound to the panel only
     // AFTER ghostty's renderer thread has presented at least one real
@@ -72,6 +78,23 @@ public:
             OutputDebugStringA("TabFactory::Make: TerminalControl has no inner panel\n");
             return nullptr;
         }
+
+        // Wrap the control in a single-leaf Pane tree and host it in a
+        // SplitPanel. Setting the SplitPanel as item.Content here (not
+        // in MainWindow.CreateTab) keeps the "panel owns the tree, Tab
+        // borrows it" invariant centralised. With one leaf SplitPanel
+        // collapses to "arrange the single child at the full rect",
+        // matching the previous behaviour of placing the control
+        // directly under TabViewItem.
+        auto leaf = Pane::MakeLeaf(control);
+        winrt::GhosttyWin32::SplitPanel splitPanel{};
+        auto* splitPanelImpl = winrt::get_self<implementation::SplitPanel>(splitPanel);
+        if (!splitPanelImpl) {
+            OutputDebugStringA("TabFactory::Make: get_self<SplitPanel> FAILED\n");
+            return nullptr;
+        }
+        splitPanelImpl->SetRoot(std::move(leaf));
+        item.Content(splitPanel);
 
         HANDLE handle = nullptr;
         if (FAILED(DCompositionCreateSurfaceHandle(COMPOSITIONSURFACE_ALL_ACCESS, nullptr, &handle))) {
@@ -139,7 +162,7 @@ public:
         controlImpl->Attach(m_app, surface, handle, m_hwnd, attach);
 
         try {
-            return std::make_unique<Tab>(std::move(control), std::move(item), id);
+            return std::make_unique<Tab>(std::move(splitPanel), std::move(item), id);
         } catch (winrt::hresult_error const&) {
             // Tab construction validation failed. Detach synchronously
             // so the surface/handle don't leak.
