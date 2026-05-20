@@ -129,6 +129,13 @@ void SplitPanel::SyncChildrenFromTree() {
     // call site for whether the zoomed leaf survived.
     m_zoomedLeaf = nullptr;
     if (m_root) AppendNodeToChildren(*m_root);
+    // Re-evaluate Visibility across the rebuilt Children collection:
+    // a previous zoom would have left some leaves with
+    // Visibility=Collapsed, and that state survives a Clear() +
+    // re-Append because Visibility is a property of the UIElement
+    // itself, not its parent-child relationship. With m_zoomedLeaf
+    // reset above, UpdateChildVisibility sets every child to Visible.
+    UpdateChildVisibility();
 }
 
 void SplitPanel::AppendNodeToChildren(Pane& node) {
