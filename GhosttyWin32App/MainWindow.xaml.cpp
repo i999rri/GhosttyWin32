@@ -720,6 +720,29 @@ namespace winrt::GhosttyWin32::implementation
                 return true;
             }
 
+            // Copy the active tab/surface title to the system
+            // clipboard. The title lives on the TabViewItem.Header
+            // (set by SET_TITLE / SET_TAB_TITLE earlier), so we
+            // unbox it back to hstring and round-trip it through
+            // the same Clipboard::write the selection-copy path
+            // uses.
+            if (action.tag == GHOSTTY_ACTION_COPY_TITLE_TO_CLIPBOARD
+                && target.tag == GHOSTTY_TARGET_SURFACE) {
+                auto surface = target.target.surface;
+                if (g_mainWindow && surface) {
+                    auto mw = g_mainWindow;
+                    mw->DispatcherQueue().TryEnqueue([mw, surface]() {
+                        auto* t = mw->m_tabs.FindBySurface(surface);
+                        if (!t) return;
+                        auto title = winrt::unbox_value_or<winrt::hstring>(
+                            t->Item().Header(), winrt::hstring{});
+                        if (title.empty()) return;
+                        Clipboard::write(mw->m_hwnd, std::wstring(title));
+                    });
+                }
+                return true;
+            }
+
             // Open the user's ghostty config in their default editor.
             // The Windows config path is %LOCALAPPDATA%\ghostty\config
             // (no extension); if the user has no association for
