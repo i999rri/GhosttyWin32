@@ -521,6 +521,23 @@ namespace winrt::GhosttyWin32::implementation
                 return true;
             }
 
+            // Keyboard-driven split resize. Same underlying ratio
+            // mutation as the splitter-drag path, just initiated from
+            // a ghostty keybind instead of pointer drag. `amount` is
+            // treated as DIPs along the split axis.
+            if (action.tag == GHOSTTY_ACTION_RESIZE_SPLIT
+                && target.tag == GHOSTTY_TARGET_SURFACE) {
+                auto surface = target.target.surface;
+                auto resize = action.action.resize_split;
+                if (g_mainWindow && surface) {
+                    auto mw = g_mainWindow;
+                    mw->DispatcherQueue().TryEnqueue([mw, surface, resize]() {
+                        mw->ResizeSplitFromAction(surface, resize);
+                    });
+                }
+                return true;
+            }
+
             // Split the source pane along the requested direction. The
             // existing pane stays put and a new TerminalControl /
             // ghostty surface is inserted alongside it; the active
@@ -839,6 +856,64 @@ namespace winrt::GhosttyWin32::implementation
         if (newControl) {
             newControl.Focus(Microsoft::UI::Xaml::FocusState::Programmatic);
         }
+    }
+
+    void MainWindow::ResizeSplitFromAction(ghostty_surface_t surface,
+                                           ghostty_action_resize_split_s resize)
+    {
+        if (!surface) return;
+        auto* tab = m_tabs.FindBySurface(surface);
+        if (!tab) return;
+        auto* panelImpl = winrt::get_self<implementation::SplitPanel>(tab->Panel());
+        if (!panelImpl) return;
+
+        Pane* leaf = FindLeafForSurface(panelImpl->Root(), surface);
+        if (!leaf) return;
+
+        // The split axis we're resizing matches the direction axis:
+        // LEFT/RIGHT → Horizontal split, UP/DOWN → Vertical split.
+        SplitOrientation needOrient =
+            (resize.direction == GHOSTTY_RESIZE_SPLIT_LEFT
+             || resize.direction == GHOSTTY_RESIZE_SPLIT_RIGHT)
+            ? SplitOrientation::Horizontal
+            : SplitOrientation::Vertical;
+
+        // Walk up to the nearest ancestor split with the right axis.
+        // `child` is the descendant of that ancestor that contains the
+        // active leaf — used to figure out whether the leaf is on the
+        // first/second side of the split so the direction sign is
+        // applied correctly.
+        Pane* node = leaf;
+        Pane* child = nullptr;
+        while (node && node->Parent()) {
+            auto* parent = node->Parent();
+            if (parent->Orientation() == needOrient) {
+                child = node;
+                node = parent;
+                break;
+            }
+            node = parent;
+        }
+        if (!child || !node || node->IsLeaf()) return;
+
+        bool activeIsFirst = (node->First() == child);
+
+        auto rect = node->ArrangedRect();
+        float extent = (needOrient == SplitOrientation::Horizontal) ? rect.Width : rect.Height;
+        float useable = std::max(1.0f,
+            extent - static_cast<float>(implementation::SplitPanel::kSplitterThickness));
+        double deltaRatio = static_cast<double>(resize.amount) / useable;
+
+        // RIGHT / DOWN push the boundary in the +axis direction.
+        // For the first-child side that's an increase in ratio; for
+        // the second-child side it's a decrease.
+        bool increase = (resize.direction == GHOSTTY_RESIZE_SPLIT_RIGHT
+                      || resize.direction == GHOSTTY_RESIZE_SPLIT_DOWN);
+        if (!activeIsFirst) increase = !increase;
+
+        node->SetRatio(node->Ratio() + (increase ? deltaRatio : -deltaRatio));
+        panelImpl->InvalidateMeasure();
+        panelImpl->InvalidateArrange();
     }
 
     void MainWindow::CloseSurfaceByPaneId(PaneId id)

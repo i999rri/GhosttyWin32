@@ -57,6 +57,13 @@ namespace winrt::GhosttyWin32::implementation
         // list. Dispatched from close_surface_cb. UI thread only.
         void CloseSurfaceByPaneId(PaneId id);
 
+        // Handle GHOSTTY_ACTION_RESIZE_SPLIT: walk up from the active
+        // pane to the nearest ancestor split whose axis matches the
+        // direction, then nudge that split's ratio by `amount` DIPs
+        // in the requested direction. UI thread only.
+        void ResizeSplitFromAction(ghostty_surface_t surface,
+                                   ghostty_action_resize_split_s resize);
+
         std::unique_ptr<GhosttyApp> m_ghostty;
         HWND m_hwnd = nullptr;
         PaneIdAllocator m_paneIds;
