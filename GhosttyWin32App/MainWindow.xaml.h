@@ -64,6 +64,13 @@ namespace winrt::GhosttyWin32::implementation
         void ResizeSplitFromAction(ghostty_surface_t surface,
                                    ghostty_action_resize_split_s resize);
 
+        // Handle GHOSTTY_ACTION_GOTO_SPLIT: move focus to another
+        // pane in the same tab. PREVIOUS/NEXT cycle the tree in
+        // depth-first order; UP/DOWN/LEFT/RIGHT pick the leaf whose
+        // arranged rect is adjacent in that direction. UI thread only.
+        void GotoSplitFromAction(ghostty_surface_t surface,
+                                 ghostty_action_goto_split_e direction);
+
         std::unique_ptr<GhosttyApp> m_ghostty;
         HWND m_hwnd = nullptr;
         PaneIdAllocator m_paneIds;

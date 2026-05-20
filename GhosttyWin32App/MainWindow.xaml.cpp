@@ -10,8 +10,12 @@
 #include <microsoft.ui.xaml.window.h>
 #include <dwmapi.h>
 #include <shellapi.h>
+#include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <limits>
+#include <vector>
 #pragma comment(lib, "dwmapi.lib")
 #pragma comment(lib, "shell32.lib")
 
@@ -521,6 +525,22 @@ namespace winrt::GhosttyWin32::implementation
                 return true;
             }
 
+            // Move focus to another pane within the same tab — the
+            // direction variants walk the tree by arranged-rect
+            // adjacency, the sequential variants cycle DFS order.
+            if (action.tag == GHOSTTY_ACTION_GOTO_SPLIT
+                && target.tag == GHOSTTY_TARGET_SURFACE) {
+                auto surface = target.target.surface;
+                auto direction = action.action.goto_split;
+                if (g_mainWindow && surface) {
+                    auto mw = g_mainWindow;
+                    mw->DispatcherQueue().TryEnqueue([mw, surface, direction]() {
+                        mw->GotoSplitFromAction(surface, direction);
+                    });
+                }
+                return true;
+            }
+
             // Keyboard-driven split resize. Same underlying ratio
             // mutation as the splitter-drag path, just initiated from
             // a ghostty keybind instead of pointer drag. `amount` is
@@ -774,6 +794,94 @@ namespace winrt::GhosttyWin32::implementation
             if (auto* p = FirstLeafIn(node->First())) return p;
             return FirstLeafIn(node->Second());
         }
+
+        // Push every leaf under `node` into `out` in depth-first
+        // order — left subtree before right. PREVIOUS / NEXT pane
+        // navigation iterates this list to find neighbours of the
+        // currently active leaf.
+        void CollectLeaves(Pane* node, std::vector<Pane*>& out) {
+            if (!node) return;
+            if (node->IsLeaf()) { out.push_back(node); return; }
+            CollectLeaves(node->First(), out);
+            CollectLeaves(node->Second(), out);
+        }
+
+        // Pick the leaf whose arranged rect is adjacent to `active`
+        // in the requested cardinal direction. Filters to leaves
+        // strictly on the requested side, then scores them by primary
+        // distance (along the axis) plus a perpendicular penalty so
+        // an aligned neighbour beats a far-off-axis one.
+        //
+        // Returns nullptr if no candidate qualifies — caller's job
+        // to decide whether to fall back (today: just ignore the
+        // input, matching how Windows Terminal handles "no neighbour
+        // in this direction").
+        Pane* FindAdjacentLeaf(Pane* active,
+                               std::vector<Pane*> const& leaves,
+                               ghostty_action_goto_split_e dir)
+        {
+            if (!active) return nullptr;
+            auto a = active->ArrangedRect();
+            float ax2 = a.X + a.Width;
+            float ay2 = a.Y + a.Height;
+            float aCenterX = a.X + a.Width  * 0.5f;
+            float aCenterY = a.Y + a.Height * 0.5f;
+
+            Pane* best = nullptr;
+            double bestScore = std::numeric_limits<double>::max();
+            for (auto* leaf : leaves) {
+                if (leaf == active) continue;
+                auto c = leaf->ArrangedRect();
+                float cx2 = c.X + c.Width;
+                float cy2 = c.Y + c.Height;
+                float cCenterX = c.X + c.Width  * 0.5f;
+                float cCenterY = c.Y + c.Height * 0.5f;
+
+                double primary, perpendicular;
+                bool valid = false;
+                switch (dir) {
+                case GHOSTTY_GOTO_SPLIT_LEFT:
+                    // Candidate must end at or before active starts —
+                    // allow a tiny overlap to absorb float rounding.
+                    if (cx2 > a.X + 1.0f) break;
+                    primary = a.X - cx2;
+                    perpendicular = std::abs(cCenterY - aCenterY);
+                    valid = true;
+                    break;
+                case GHOSTTY_GOTO_SPLIT_RIGHT:
+                    if (c.X < ax2 - 1.0f) break;
+                    primary = c.X - ax2;
+                    perpendicular = std::abs(cCenterY - aCenterY);
+                    valid = true;
+                    break;
+                case GHOSTTY_GOTO_SPLIT_UP:
+                    if (cy2 > a.Y + 1.0f) break;
+                    primary = a.Y - cy2;
+                    perpendicular = std::abs(cCenterX - aCenterX);
+                    valid = true;
+                    break;
+                case GHOSTTY_GOTO_SPLIT_DOWN:
+                    if (c.Y < ay2 - 1.0f) break;
+                    primary = c.Y - ay2;
+                    perpendicular = std::abs(cCenterX - aCenterX);
+                    valid = true;
+                    break;
+                default:
+                    return nullptr;  // PREVIOUS / NEXT handled elsewhere
+                }
+                if (!valid) continue;
+                // Weight perpendicular gap twice as heavily as primary
+                // distance — keeps focus moves predictable when there
+                // are off-axis panes that are technically closer in
+                // straight-line distance.
+                double score = primary + 2.0 * perpendicular;
+                if (score < bestScore) {
+                    bestScore = score;
+                    best = leaf;
+                }
+            }
+            return best;
+        }
     }
 
     void MainWindow::SplitActivePane(ghostty_surface_t surface,
@@ -855,6 +963,50 @@ namespace winrt::GhosttyWin32::implementation
         sourceTab->SetActiveLeaf(newLeafPtr);
         if (newControl) {
             newControl.Focus(Microsoft::UI::Xaml::FocusState::Programmatic);
+        }
+    }
+
+    void MainWindow::GotoSplitFromAction(ghostty_surface_t surface,
+                                         ghostty_action_goto_split_e direction)
+    {
+        if (!surface) return;
+        auto* tab = m_tabs.FindBySurface(surface);
+        if (!tab) return;
+        auto* panelImpl = winrt::get_self<implementation::SplitPanel>(tab->Panel());
+        if (!panelImpl) return;
+
+        Pane* active = FindLeafForSurface(panelImpl->Root(), surface);
+        if (!active) return;
+
+        std::vector<Pane*> leaves;
+        CollectLeaves(panelImpl->Root(), leaves);
+        if (leaves.size() <= 1) return;  // nothing to navigate to
+
+        Pane* target = nullptr;
+        if (direction == GHOSTTY_GOTO_SPLIT_PREVIOUS
+            || direction == GHOSTTY_GOTO_SPLIT_NEXT) {
+            // Cycle through DFS order. wrap-around so the last pane's
+            // NEXT lands on the first and vice versa.
+            auto it = std::find(leaves.begin(), leaves.end(), active);
+            if (it == leaves.end()) return;
+            size_t idx = static_cast<size_t>(std::distance(leaves.begin(), it));
+            size_t newIdx;
+            if (direction == GHOSTTY_GOTO_SPLIT_NEXT) {
+                newIdx = (idx + 1) % leaves.size();
+            } else {
+                newIdx = (idx == 0) ? leaves.size() - 1 : idx - 1;
+            }
+            target = leaves[newIdx];
+        } else {
+            target = FindAdjacentLeaf(active, leaves, direction);
+        }
+        if (!target || target == active) return;
+
+        tab->SetActiveLeaf(target);
+        if (auto element = target->Content()) {
+            if (auto control = element.try_as<winrt::GhosttyWin32::TerminalControl>()) {
+                control.Focus(Microsoft::UI::Xaml::FocusState::Programmatic);
+            }
         }
     }
 
