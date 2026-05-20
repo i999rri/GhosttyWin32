@@ -1,4 +1,9 @@
 #pragma once
+// Suppress the windows.h `max` / `min` function-like macros so
+// `std::max` and `std::numeric_limits<T>::max()` don't get rewritten
+// into ternary garbage at preprocessor time. Needs to be defined
+// before windows.h is included.
+#define NOMINMAX
 #include <windows.h>
 #include <unknwn.h>
 #include <restrictederrorinfo.h>
