@@ -154,22 +154,20 @@ Microsoft::UI::Xaml::Controls::Border SplitPanel::MakeSplitter(Pane* node) {
     using namespace winrt::Microsoft::UI::Xaml::Controls;
     using namespace winrt::Microsoft::UI::Xaml::Input;
     using namespace winrt::Microsoft::UI::Xaml::Media;
-    using namespace winrt::Microsoft::UI::Input;
 
     Border border{};
-    // Semi-transparent gray — visible on both light- and dark-themed
+    // Semi-transparent gray, visible on both light- and dark-themed
     // terminal backgrounds without dominating. Refined theming can
     // come later; the priority here is "the user can see it and grab
     // it" rather than "it matches the palette".
     border.Background(SolidColorBrush(winrt::Windows::UI::Color{ 96, 128, 128, 128 }));
 
-    // Resize cursor — perpendicular to the split axis. Set via
-    // ProtectedCursor on the UIElement (same path the MOUSE_SHAPE
-    // handler uses on TerminalControl).
-    auto cursorShape = (node->Orientation() == SplitOrientation::Horizontal)
-        ? InputSystemCursorShape::SizeWestEast
-        : InputSystemCursorShape::SizeNorthSouth;
-    border.ProtectedCursor(InputSystemCursor::Create(cursorShape));
+    // No resize cursor for now — ProtectedCursor is protected on
+    // UIElement and Border is sealed, so we can't set the per-element
+    // cursor from outside without subclassing. A follow-up can swap
+    // this Border for a custom UserControl-based splitter that
+    // exposes the cursor setup; until then the strip is visible
+    // enough to grab without the cursor hint.
 
     // Wire pointer events. `node` is captured by raw pointer; this is
     // safe because Borders are recreated on every SyncChildrenFromTree,
