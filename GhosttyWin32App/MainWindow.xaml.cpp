@@ -199,6 +199,20 @@ namespace winrt::GhosttyWin32::implementation
             auto tv = TabView();
             SetTitleBar(DragRegion());
 
+            // Diagnostic: see whether title-bar drag-region clicks
+            // actually raise XAML pointer events (Win32 may eat them
+            // for HTCAPTION processing instead) and how they interleave
+            // with TC GotFocus/LostFocus + Activated state changes.
+            DragRegion().PointerPressed([](auto&&, auto&&) {
+                OutputDebugStringA("[DragRegion] PointerPressed\n");
+            });
+            DragRegion().PointerReleased([](auto&&, auto&&) {
+                OutputDebugStringA("[DragRegion] PointerReleased\n");
+            });
+            DragRegion().PointerEntered([](auto&&, auto&&) {
+                OutputDebugStringA("[DragRegion] PointerEntered\n");
+            });
+
             // Pointer / keyboard / IME routing all live on
             // TerminalControl — each instance hooks the events on
             // itself and forwards directly to its own ghostty surface.
