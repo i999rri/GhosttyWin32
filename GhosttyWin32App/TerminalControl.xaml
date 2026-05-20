@@ -9,7 +9,19 @@
     IsTabStop="True"
     AllowFocusOnInteraction="True"
     IsHitTestVisible="True">
-    <SwapChainPanel x:Name="Panel"
-                    IsTabStop="False"
-                    AllowFocusOnInteraction="False" />
+    <!--
+      Focus border: thin colored frame around the active pane in a
+      multi-pane tab. BorderThickness stays at 1 regardless of focus
+      state so toggling the colour doesn't force a layout pass /
+      terminal grid reflow — only the BorderBrush flips between
+      Transparent and the accent in the code-behind GotFocus /
+      LostFocus handlers.
+    -->
+    <Border x:Name="FocusBorder"
+            BorderThickness="1"
+            BorderBrush="Transparent">
+        <SwapChainPanel x:Name="Panel"
+                        IsTabStop="False"
+                        AllowFocusOnInteraction="False" />
+    </Border>
 </UserControl>

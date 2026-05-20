@@ -108,6 +108,13 @@ namespace winrt::GhosttyWin32::implementation
         // borders, etc.
         void SetCursorShape(ghostty_action_mouse_shape_e shape);
 
+        // Flip the focus border between visible (accent colour) and
+        // hidden (transparent). The Border element keeps a constant
+        // BorderThickness of 1 so toggling the brush doesn't force a
+        // relayout / terminal grid reflow. Called from the GotFocus /
+        // LostFocus handlers wired up in the constructor.
+        void ShowFocusBorder(bool visible);
+
     private:
         // Builds the per-control CoreTextEditContext and wires its
         // seven event handlers (TextRequested / SelectionRequested /

@@ -76,14 +76,16 @@ namespace winrt::GhosttyWin32::implementation
         // for that case.
         GotFocus([weakSelf](auto&&, auto&&) {
             auto self = weakSelf.get();
-            if (!self || !self->m_editContext) return;
-            self->m_editContext.NotifyFocusEnter();
+            if (!self) return;
+            if (self->m_editContext) self->m_editContext.NotifyFocusEnter();
+            self->ShowFocusBorder(true);
         });
 
         LostFocus([weakSelf](auto&&, auto&&) {
             auto self = weakSelf.get();
-            if (!self || !self->m_editContext) return;
-            self->m_editContext.NotifyFocusLeave();
+            if (!self) return;
+            if (self->m_editContext) self->m_editContext.NotifyFocusLeave();
+            self->ShowFocusBorder(false);
         });
 
         PointerMoved([weakSelf](auto&&, muxi::PointerRoutedEventArgs const& args) {
@@ -307,6 +309,25 @@ namespace winrt::GhosttyWin32::implementation
             default:                                   mapped = muxi::Arrow; break;
         }
         ProtectedCursor(winrt::Microsoft::UI::Input::InputSystemCursor::Create(mapped));
+    }
+
+    void TerminalControl::ShowFocusBorder(bool visible)
+    {
+        auto border = FocusBorder();
+        if (!border) return;
+        if (visible) {
+            // Hard-coded accent — bright enough to be obvious against
+            // typical dark / light terminal backgrounds without bleeding
+            // visual noise into the cell area. Using the system accent
+            // brush would require a ThemeResource lookup that varies
+            // with the user's Windows accent colour and could clash
+            // with the terminal palette.
+            border.BorderBrush(winrt::Microsoft::UI::Xaml::Media::SolidColorBrush(
+                winrt::Windows::UI::Color{ 255, 0, 120, 215 }));
+        } else {
+            border.BorderBrush(winrt::Microsoft::UI::Xaml::Media::SolidColorBrush(
+                winrt::Windows::UI::Color{ 0, 0, 0, 0 }));
+        }
     }
 
     TerminalControl::~TerminalControl()
