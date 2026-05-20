@@ -961,7 +961,42 @@ namespace winrt::GhosttyWin32::implementation
         uint32_t newW = (orient == SplitOrientation::Horizontal) ? srcW / 2 : srcW;
         uint32_t newH = (orient == SplitOrientation::Vertical)   ? srcH / 2 : srcH;
 
-        auto newLeaf = m_tabFactory->MakeLeaf(newW, newH);
+        // Wrap MakeLeaf in an SEH guard for the same reason CreateTab
+        // does — ghostty_surface_new calls into dx_create_texture
+        // where NVIDIA drivers have historically thrown hardware
+        // exceptions. Without the guard, a driver AV here takes down
+        // every other pane / tab in the window. With it, we can fail
+        // closed for the new pane while leaving the rest of the
+        // window intact (or, if the heap is clearly corrupt, exit
+        // cleanly via the same cleanup path).
+        struct SplitCtx {
+            TabFactory* factory;
+            uint32_t initialWidth;
+            uint32_t initialHeight;
+            std::unique_ptr<Pane> result;
+        };
+        SplitCtx ctx{ m_tabFactory.get(), newW, newH, nullptr };
+        int ok = RunSEHGuarded([](void* arg) noexcept {
+            auto* c = static_cast<SplitCtx*>(arg);
+            c->result = c->factory->MakeLeaf(c->initialWidth, c->initialHeight);
+        }, &ctx);
+        if (!ok) {
+            // Driver-side hardware exception. Process state is
+            // unreliable from here — same recovery path as the tab-
+            // creation crash: hide window, show explanatory dialog,
+            // post WM_CLOSE.
+            if (m_hwnd) ShowWindow(m_hwnd, SW_HIDE);
+            MessageBoxW(nullptr,
+                L"A graphics driver error occurred while creating the new split.\n"
+                L"GhosttyWin32 will exit safely.\n\n"
+                L"Restarting the app usually recovers — the next launch\n"
+                L"will automatically wait 2 seconds for the driver.",
+                L"GhosttyWin32",
+                MB_OK | MB_ICONERROR | MB_TASKMODAL);
+            if (m_hwnd) PostMessageW(m_hwnd, WM_CLOSE, 0, 0);
+            return;
+        }
+        auto newLeaf = std::move(ctx.result);
         if (!newLeaf) return;
         Pane* newLeafPtr = newLeaf.get();
         auto newControl = newLeaf->Content().try_as<winrt::GhosttyWin32::TerminalControl>();
