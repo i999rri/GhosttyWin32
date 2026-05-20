@@ -702,6 +702,24 @@ namespace winrt::GhosttyWin32::implementation
                 return true;
             }
 
+            // Single-window builds collapse CLOSE_WINDOW, QUIT, and
+            // CLOSE_ALL_WINDOWS into the same effect — close the one
+            // window we have, which terminates the app. Multi-window
+            // support (#55) will need to give these three distinct
+            // behaviours.
+            if (action.tag == GHOSTTY_ACTION_CLOSE_WINDOW
+                || action.tag == GHOSTTY_ACTION_CLOSE_ALL_WINDOWS
+                || action.tag == GHOSTTY_ACTION_QUIT) {
+                if (g_mainWindow) {
+                    auto mw = g_mainWindow;
+                    mw->DispatcherQueue().TryEnqueue([mw]() {
+                        try { mw->Close(); }
+                        catch (winrt::hresult_error const&) {}
+                    });
+                }
+                return true;
+            }
+
             // Ctrl+click on a URL in the terminal. Hand off to the shell
             // verb opener so the user's default browser / mail client /
             // etc. handles it. Without this, libghostty falls back to
