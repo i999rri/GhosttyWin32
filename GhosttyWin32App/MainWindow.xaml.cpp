@@ -720,6 +720,25 @@ namespace winrt::GhosttyWin32::implementation
                 return true;
             }
 
+            // Toggle maximize/restore via the same WM_SYSCOMMAND
+            // path the caption-button click already uses, so the
+            // NVIDIA OverlappedPresenter AV from issue #26 stays out
+            // of the picture. SendMessage runs on the UI thread;
+            // dispatch to it because action_cb fires from the
+            // renderer thread.
+            if (action.tag == GHOSTTY_ACTION_TOGGLE_MAXIMIZE) {
+                if (g_mainWindow) {
+                    auto mw = g_mainWindow;
+                    mw->DispatcherQueue().TryEnqueue([mw]() {
+                        HWND hwnd = mw->m_hwnd;
+                        if (!hwnd) return;
+                        SendMessageW(hwnd, WM_SYSCOMMAND,
+                                     IsZoomed(hwnd) ? SC_RESTORE : SC_MAXIMIZE, 0);
+                    });
+                }
+                return true;
+            }
+
             // Ctrl+click on a URL in the terminal. Hand off to the shell
             // verb opener so the user's default browser / mail client /
             // etc. handles it. Without this, libghostty falls back to
