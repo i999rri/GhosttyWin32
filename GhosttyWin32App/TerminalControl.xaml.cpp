@@ -9,6 +9,27 @@
 
 namespace winrt::GhosttyWin32::implementation
 {
+    namespace {
+        // Focus-border palette. Brush colours are flipped in
+        // ShowFocusBorder() between these two values; the constant
+        // names make the call sites self-documenting and put the
+        // visual tuning knobs in one place.
+        //
+        // kFocusBorderAccent — Windows-blue-ish, ARGB. Saturated
+        // enough to stand out against most terminal palettes
+        // (foreground text + background fill) without bleeding into
+        // the cell area when the border flashes.
+        // kFocusBorderHidden — fully transparent, restores the
+        // no-chrome resting state.
+        constexpr winrt::Windows::UI::Color kFocusBorderAccent{ 255, 0, 120, 215 };
+        constexpr winrt::Windows::UI::Color kFocusBorderHidden{   0, 0,   0,   0 };
+
+        // How long the accent stays visible after the most recent
+        // GotFocus. Subsequent focus changes restart the timer, so
+        // rapid pane hops keep the border up through the sequence.
+        constexpr auto kFocusBorderHideDelay = std::chrono::milliseconds(1500);
+    }
+
     TerminalControl::TerminalControl()
     {
         InitializeComponent();
@@ -316,21 +337,15 @@ namespace winrt::GhosttyWin32::implementation
         auto border = FocusBorder();
         if (!border) return;
         if (visible) {
-            // Hard-coded accent — bright enough to be obvious against
-            // typical dark / light terminal backgrounds without bleeding
-            // visual noise into the cell area. Using the system accent
-            // brush would require a ThemeResource lookup that varies
-            // with the user's Windows accent colour and could clash
-            // with the terminal palette.
             border.BorderBrush(winrt::Microsoft::UI::Xaml::Media::SolidColorBrush(
-                winrt::Windows::UI::Color{ 255, 0, 120, 215 }));
+                kFocusBorderAccent));
             // Lazy-init the auto-hide timer the first time the border
             // goes visible. Capturing get_weak() and resolving inside
             // the Tick handler keeps the timer-held lambda safe across
             // TerminalControl destruction.
             if (!m_focusBorderTimer) {
                 m_focusBorderTimer = winrt::Microsoft::UI::Xaml::DispatcherTimer{};
-                m_focusBorderTimer.Interval(std::chrono::milliseconds(1500));
+                m_focusBorderTimer.Interval(kFocusBorderHideDelay);
                 auto weakSelf = get_weak();
                 m_focusBorderTimer.Tick([weakSelf](auto&&, auto&&) {
                     if (auto self = weakSelf.get()) {
@@ -344,7 +359,7 @@ namespace winrt::GhosttyWin32::implementation
             m_focusBorderTimer.Start();
         } else {
             border.BorderBrush(winrt::Microsoft::UI::Xaml::Media::SolidColorBrush(
-                winrt::Windows::UI::Color{ 0, 0, 0, 0 }));
+                kFocusBorderHidden));
             if (m_focusBorderTimer) m_focusBorderTimer.Stop();
         }
     }
