@@ -199,18 +199,38 @@ namespace winrt::GhosttyWin32::implementation
             auto tv = TabView();
             SetTitleBar(DragRegion());
 
-            // Diagnostic: see whether title-bar drag-region clicks
-            // actually raise XAML pointer events (Win32 may eat them
-            // for HTCAPTION processing instead) and how they interleave
-            // with TC GotFocus/LostFocus + Activated state changes.
-            DragRegion().PointerPressed([](auto&&, auto&&) {
-                OutputDebugStringA("[DragRegion] PointerPressed\n");
-            });
-            DragRegion().PointerReleased([](auto&&, auto&&) {
-                OutputDebugStringA("[DragRegion] PointerReleased\n");
-            });
-            DragRegion().PointerEntered([](auto&&, auto&&) {
-                OutputDebugStringA("[DragRegion] PointerEntered\n");
+            // Title-bar drag-region click bug, root cause (confirmed
+            // via TC GotFocus/LostFocus + Activated state traces):
+            //
+            //   1. User clicks DragRegion (the empty title-bar strip
+            //      we passed to SetTitleBar).
+            //   2. XAML routes PointerPressed/Released normally.
+            //   3. Either as part of the click handling, or via the
+            //      Win32 title-bar tracking modal loop DefWindowProc
+            //      runs for HTCAPTION clicks, the focused
+            //      TerminalControl receives LostFocus and the window
+            //      transitions to WindowActivationState::Deactivated.
+            //   4. No matching CodeActivated / PointerActivated event
+            //      follows, so the deferred-Focus restore in the
+            //      Activated handler never runs.
+            //   5. Visible effect: focus border disappears, keyboard
+            //      input goes nowhere. Switching tabs recovers because
+            //      the tab click programmatically reactivates the
+            //      window.
+            //
+            // Hooking PointerReleased and calling Activate() on
+            // ourselves re-triggers the activation chain on the
+            // dispatcher queue: WM_ACTIVATE fires, our existing
+            // Activated handler runs, its deferred Focus call lands
+            // the keyboard back on the active leaf.
+            auto weakSelfDrag = get_weak();
+            DragRegion().PointerReleased([weakSelfDrag](auto&&, auto&&) {
+                auto self = weakSelfDrag.get();
+                if (!self) return;
+                try {
+                    self->Activate();
+                } catch (winrt::hresult_error const&) {
+                }
             });
 
             // Pointer / keyboard / IME routing all live on
