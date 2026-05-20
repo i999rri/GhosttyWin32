@@ -12,7 +12,6 @@
 #include <shellapi.h>
 #include <algorithm>
 #include <cmath>
-#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <limits>
@@ -145,47 +144,34 @@ namespace winrt::GhosttyWin32::implementation
                 if (!self) return;
                 try {
                     using State = winrt::Microsoft::UI::Xaml::WindowActivationState;
-                    auto state = args.WindowActivationState();
-                    OutputDebugStringA(state == State::Deactivated
-                        ? "[Activated] Deactivated\n"
-                        : (state == State::CodeActivated
-                            ? "[Activated] CodeActivated\n"
-                            : "[Activated] PointerActivated\n"));
-                    if (state == State::Deactivated) {
+                    if (args.WindowActivationState() == State::Deactivated) {
                         if (auto* tc = self->ActiveControl()) {
                             tc->NotifyImeFocusLeave();
                         }
                         // Spurious-deactivation recovery, deferred.
                         // The Win32 title-bar tracking modal loop
                         // DefWindowProc runs for HTCAPTION clicks
-                        // briefly steals the foreground window
-                        // (for tracking proxies / system menu probes),
-                        // so a synchronous GetForegroundWindow() check
-                        // here can read a transient non-our-HWND
-                        // value and misclassify a spurious deactivation
-                        // as a genuine one. Bounce the check through
-                        // the dispatcher so it runs after the modal
-                        // loop returns and foreground state has
-                        // settled.
-                        //
-                        // If by then our HWND is still the foreground
-                        // window, the Deactivated event was a Win32
-                        // tracking-loop artifact and we self-Activate
-                        // to re-enter the activation path and trigger
-                        // the deferred-Focus restore. Genuine
-                        // deactivation leaves the foreground on the
-                        // other app, so the deferred check skips and
-                        // the window stays properly backgrounded.
+                        // briefly steals foreground for tracking
+                        // proxies, so a synchronous
+                        // GetForegroundWindow() check here reads a
+                        // transient non-our-HWND value and
+                        // misclassifies the spurious deactivation as
+                        // genuine. Bouncing through the dispatcher
+                        // delays the check until after the modal loop
+                        // returns and foreground state settles. If by
+                        // then our HWND is still foreground, we
+                        // self-Activate so the activated branch of
+                        // this same handler re-runs and queues the
+                        // focus restore. Genuine deactivation leaves
+                        // foreground on the other app, so the check
+                        // skips re-activation and the window properly
+                        // backgrounds.
                         auto dq = self->DispatcherQueue();
                         if (dq) {
                             dq.TryEnqueue([weakActivated]() {
                                 auto self = weakActivated.get();
                                 if (!self || !self->m_hwnd) return;
-                                bool stillForeground = (GetForegroundWindow() == self->m_hwnd);
-                                OutputDebugStringA(stillForeground
-                                    ? "[Activated] deferred check: spurious deactivation, re-Activating\n"
-                                    : "[Activated] deferred check: genuine deactivation, leaving alone\n");
-                                if (stillForeground) {
+                                if (GetForegroundWindow() == self->m_hwnd) {
                                     try { self->Activate(); }
                                     catch (winrt::hresult_error const&) {}
                                 }
@@ -198,14 +184,14 @@ namespace winrt::GhosttyWin32::implementation
                     // exactly one focusable TerminalControl, but with
                     // multiple panes WinUI's default-focus pass races
                     // with us and sometimes lands focus on a different
-                    // TabStop (a sibling pane, or the TabView header).
-                    // Deferring through the DispatcherQueue at Low
-                    // priority puts our Focus call after every default-
-                    // focus assignment XAML schedules for this
+                    // TabStop (a sibling pane, the TabView header,
+                    // etc.). Deferring through the DispatcherQueue at
+                    // Low priority puts our Focus call after every
+                    // default-focus assignment XAML schedules for this
                     // activation, so the last write wins. Same trick
-                    // as the SelectionChanged path which has always
-                    // worked because the SelectedItem assignment is
-                    // already on the dispatcher queue.
+                    // as the SelectionChanged path, which is naturally
+                    // last because SelectedItem assignment is itself
+                    // dispatcher-scheduled.
                     auto dq = self->DispatcherQueue();
                     if (!dq) return;
                     dq.TryEnqueue(
@@ -214,18 +200,13 @@ namespace winrt::GhosttyWin32::implementation
                             auto self = weakActivated.get();
                             if (!self) return;
                             try {
-                                bool focused = false;
                                 if (auto* tab = self->ActiveTab()) {
-                                    focused = tab->Focus();
+                                    tab->Focus();
                                 }
-                                OutputDebugStringA(focused
-                                    ? "[Activated] deferred Focus -> true\n"
-                                    : "[Activated] deferred Focus -> false\n");
                                 if (auto* tc = self->ActiveControl()) {
                                     tc->NotifyImeFocusEnter();
                                 }
                             } catch (winrt::hresult_error const&) {
-                                OutputDebugStringA("[Activated] deferred Focus threw\n");
                             }
                         });
                 } catch (winrt::hresult_error const&) {
@@ -235,32 +216,18 @@ namespace winrt::GhosttyWin32::implementation
             auto tv = TabView();
             SetTitleBar(DragRegion());
 
-            // Title-bar click focus loss, observed behaviour:
-            //
-            //   * Click DragRegion → PointerPressed / PointerReleased
-            //     fire on XAML, then TerminalControl LostFocus fires
-            //     immediately. Focus moves into limbo (not onto any
-            //     TerminalControl), keyboard input dies.
-            //   * Activated state transitions to Deactivated some time
-            //     later (often after several clicks), but by then
-            //     GetForegroundWindow() reports something other than
-            //     our HWND (the OS HTCAPTION tracking proxy briefly
-            //     owns foreground), so the spurious-deactivation
-            //     check in the Activated handler treats it as a real
-            //     deactivation and skips recovery.
-            //
-            // Direct recovery from PointerReleased is more reliable:
-            // we know the click went through XAML, we know the user
-            // wants the window to keep its focus, and we don't need
-            // to disambiguate spurious vs genuine deactivation. Defer
-            // the Focus call through the dispatcher so it runs after
-            // the DefWindowProc HTCAPTION tracking loop returns.
+            // Title-bar click focus restore. Clicking the DragRegion
+            // immediately knocks focus off the active TerminalControl
+            // (Win32 HTCAPTION click handling moves XAML logical focus
+            // into limbo), and the subsequent Activated state goes
+            // Deactivated long enough that the foreground check in
+            // the activation handler reports a "genuine" deactivation
+            // and skips recovery. Bouncing the Focus call through the
+            // dispatcher from PointerReleased restores focus right
+            // after the click completes, no matter how the activation
+            // state ends up.
             auto weakSelfDrag = get_weak();
-            DragRegion().PointerPressed([](auto&&, auto&&) {
-                OutputDebugStringA("[DragRegion] PointerPressed\n");
-            });
             DragRegion().PointerReleased([weakSelfDrag](auto&&, auto&&) {
-                OutputDebugStringA("[DragRegion] PointerReleased\n");
                 auto self = weakSelfDrag.get();
                 if (!self) return;
                 auto dq = self->DispatcherQueue();
@@ -270,10 +237,7 @@ namespace winrt::GhosttyWin32::implementation
                     if (!self) return;
                     try {
                         if (auto* tab = self->ActiveTab()) {
-                            bool result = tab->Focus();
-                            OutputDebugStringA(result
-                                ? "[DragRegion] deferred focus restore -> true\n"
-                                : "[DragRegion] deferred focus restore -> false\n");
+                            tab->Focus();
                         }
                     } catch (winrt::hresult_error const&) {}
                 });
@@ -639,17 +603,6 @@ namespace winrt::GhosttyWin32::implementation
                     });
                 }
                 return true;
-            }
-
-            if (action.tag == GHOSTTY_ACTION_TOGGLE_SPLIT_ZOOM
-                || action.tag == GHOSTTY_ACTION_EQUALIZE_SPLITS
-                || action.tag == GHOSTTY_ACTION_RESIZE_SPLIT
-                || action.tag == GHOSTTY_ACTION_GOTO_SPLIT
-                || action.tag == GHOSTTY_ACTION_NEW_SPLIT) {
-                char buf[96];
-                std::snprintf(buf, sizeof(buf),
-                    "[action_cb] tag=%d (split family)\n", static_cast<int>(action.tag));
-                OutputDebugStringA(buf);
             }
 
             // Zoom the source pane to fill the entire tab. A second
@@ -1158,20 +1111,17 @@ namespace winrt::GhosttyWin32::implementation
 
     void MainWindow::EqualizeSplitsForSurface(ghostty_surface_t surface)
     {
-        OutputDebugStringA("[Equalize] enter\n");
-        if (!surface) { OutputDebugStringA("[Equalize] no surface\n"); return; }
+        if (!surface) return;
         auto* tab = m_tabs.FindBySurface(surface);
-        if (!tab) { OutputDebugStringA("[Equalize] no tab\n"); return; }
+        if (!tab) return;
         auto* panelImpl = winrt::get_self<implementation::SplitPanel>(tab->Panel());
-        if (!panelImpl) { OutputDebugStringA("[Equalize] no panelImpl\n"); return; }
+        if (!panelImpl) return;
         panelImpl->EqualizeAll();
-        OutputDebugStringA("[Equalize] EqualizeAll done\n");
     }
 
     void MainWindow::ToggleSplitZoomForSurface(ghostty_surface_t surface)
     {
-        OutputDebugStringA("[Zoom] enter\n");
-        if (!surface) { OutputDebugStringA("[Zoom] no surface\n"); return; }
+        if (!surface) return;
         auto* tab = m_tabs.FindBySurface(surface);
         if (!tab) return;
         auto* panelImpl = winrt::get_self<implementation::SplitPanel>(tab->Panel());
@@ -1204,13 +1154,7 @@ namespace winrt::GhosttyWin32::implementation
     void MainWindow::GotoSplitFromAction(ghostty_surface_t surface,
                                          ghostty_action_goto_split_e direction)
     {
-        {
-            char buf[64];
-            std::snprintf(buf, sizeof(buf),
-                "[Goto] enter dir=%d\n", static_cast<int>(direction));
-            OutputDebugStringA(buf);
-        }
-        if (!surface) { OutputDebugStringA("[Goto] no surface\n"); return; }
+        if (!surface) return;
         auto* tab = m_tabs.FindBySurface(surface);
         if (!tab) return;
         auto* panelImpl = winrt::get_self<implementation::SplitPanel>(tab->Panel());
@@ -1254,14 +1198,7 @@ namespace winrt::GhosttyWin32::implementation
     void MainWindow::ResizeSplitFromAction(ghostty_surface_t surface,
                                            ghostty_action_resize_split_s resize)
     {
-        {
-            char buf[64];
-            std::snprintf(buf, sizeof(buf),
-                "[Resize] enter dir=%d amount=%u\n",
-                static_cast<int>(resize.direction), static_cast<unsigned>(resize.amount));
-            OutputDebugStringA(buf);
-        }
-        if (!surface) { OutputDebugStringA("[Resize] no surface\n"); return; }
+        if (!surface) return;
         auto* tab = m_tabs.FindBySurface(surface);
         if (!tab) return;
         auto* panelImpl = winrt::get_self<implementation::SplitPanel>(tab->Panel());

@@ -3,7 +3,6 @@
 #include "Clipboard.h"
 #include "Encoding.h"
 #include "KeyModifiers.h"
-#include <cstdio>
 #if __has_include("TerminalControl.g.cpp")
 #include "TerminalControl.g.cpp"
 #endif
@@ -78,12 +77,6 @@ namespace winrt::GhosttyWin32::implementation
         GotFocus([weakSelf](auto&&, auto&&) {
             auto self = weakSelf.get();
             if (!self) return;
-            {
-                char buf[64];
-                std::snprintf(buf, sizeof(buf), "[TC] GotFocus surface=%p\n",
-                              static_cast<void*>(self->m_surface));
-                OutputDebugStringA(buf);
-            }
             if (self->m_editContext) self->m_editContext.NotifyFocusEnter();
             self->ShowFocusBorder(true);
         });
@@ -91,12 +84,6 @@ namespace winrt::GhosttyWin32::implementation
         LostFocus([weakSelf](auto&&, auto&&) {
             auto self = weakSelf.get();
             if (!self) return;
-            {
-                char buf[64];
-                std::snprintf(buf, sizeof(buf), "[TC] LostFocus surface=%p\n",
-                              static_cast<void*>(self->m_surface));
-                OutputDebugStringA(buf);
-            }
             if (self->m_editContext) self->m_editContext.NotifyFocusLeave();
             self->ShowFocusBorder(false);
         });
