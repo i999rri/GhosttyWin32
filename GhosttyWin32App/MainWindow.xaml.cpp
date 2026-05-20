@@ -759,6 +759,36 @@ namespace winrt::GhosttyWin32::implementation
                 return true;
             }
 
+            // Toggle the always-on-top state of the window.
+            // ghostty exposes ON / OFF / TOGGLE; SetWindowPos with
+            // HWND_TOPMOST / HWND_NOTOPMOST is the standard Win32
+            // way to flip WS_EX_TOPMOST without recreating the
+            // window. SWP_NOMOVE | SWP_NOSIZE keeps the window in
+            // place while only the z-order flag changes.
+            if (action.tag == GHOSTTY_ACTION_FLOAT_WINDOW) {
+                auto mode = action.action.float_window;
+                if (g_mainWindow) {
+                    auto mw = g_mainWindow;
+                    mw->DispatcherQueue().TryEnqueue([mw, mode]() {
+                        HWND hwnd = mw->m_hwnd;
+                        if (!hwnd) return;
+                        bool wantTop;
+                        switch (mode) {
+                            case GHOSTTY_FLOAT_WINDOW_ON:  wantTop = true; break;
+                            case GHOSTTY_FLOAT_WINDOW_OFF: wantTop = false; break;
+                            case GHOSTTY_FLOAT_WINDOW_TOGGLE:
+                            default:
+                                wantTop = (GetWindowLongPtrW(hwnd, GWL_EXSTYLE) & WS_EX_TOPMOST) == 0;
+                                break;
+                        }
+                        SetWindowPos(hwnd, wantTop ? HWND_TOPMOST : HWND_NOTOPMOST,
+                                     0, 0, 0, 0,
+                                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                    });
+                }
+                return true;
+            }
+
             // Toggle maximize/restore via the same WM_SYSCOMMAND
             // path the caption-button click already uses, so the
             // NVIDIA OverlappedPresenter AV from issue #26 stays out
