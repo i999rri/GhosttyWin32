@@ -108,6 +108,16 @@ namespace winrt::GhosttyWin32::implementation
         // borders, etc.
         void SetCursorShape(ghostty_action_mouse_shape_e shape);
 
+        // Flash the focus border for ~1.5 s. Called from GotFocus to
+        // give a brief visual "you landed here" cue when focus moves
+        // between panes. visible=false stops the timer + clears the
+        // brush immediately (LostFocus path) so the previously-active
+        // pane's border doesn't linger past the focus change. The
+        // border is an overlay sibling in the XAML so the flash
+        // doesn't reserve permanent layout space — see
+        // TerminalControl.xaml.
+        void ShowFocusBorder(bool visible);
+
     private:
         // Builds the per-control CoreTextEditContext and wires its
         // seven event handlers (TextRequested / SelectionRequested /
@@ -137,6 +147,12 @@ namespace winrt::GhosttyWin32::implementation
         // activation.
         ImeBuffer m_ime;
         winrt::Windows::UI::Text::Core::CoreTextEditContext m_editContext{ nullptr };
+
+        // Auto-hide timer for the focus border. Created lazily on
+        // first ShowFocusBorder(true); subsequent visible calls reset
+        // the interval so the border stays visible for the full
+        // 1.5 s after the most recent focus change.
+        winrt::Microsoft::UI::Xaml::DispatcherTimer m_focusBorderTimer{ nullptr };
     };
 }
 

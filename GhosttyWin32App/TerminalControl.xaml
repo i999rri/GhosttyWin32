@@ -9,7 +9,24 @@
     IsTabStop="True"
     AllowFocusOnInteraction="True"
     IsHitTestVisible="True">
-    <SwapChainPanel x:Name="Panel"
-                    IsTabStop="False"
-                    AllowFocusOnInteraction="False" />
+    <!--
+      Focus border is an overlay sibling, not a wrapper, so its 1 DIP
+      thickness doesn't reserve permanent layout space around the
+      SwapChainPanel (which would draw a visible gap between panes
+      whether the border is colored or transparent). IsHitTestVisible
+      stays false so input passes straight through to the
+      SwapChainPanel underneath. BorderBrush flips between
+      Transparent and the accent colour from code-behind, with a
+      DispatcherTimer hiding it again after a short interval — see
+      ShowFocusBorder().
+    -->
+    <Grid>
+        <SwapChainPanel x:Name="Panel"
+                        IsTabStop="False"
+                        AllowFocusOnInteraction="False" />
+        <Border x:Name="FocusBorder"
+                BorderThickness="1"
+                BorderBrush="Transparent"
+                IsHitTestVisible="False" />
+    </Grid>
 </UserControl>
