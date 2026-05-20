@@ -148,14 +148,38 @@ namespace winrt::GhosttyWin32::implementation
                         if (auto* tc = self->ActiveControl()) {
                             tc->NotifyImeFocusLeave();
                         }
-                    } else {
-                        if (auto* tab = self->ActiveTab()) {
-                            tab->Focus();
-                        }
-                        if (auto* tc = self->ActiveControl()) {
-                            tc->NotifyImeFocusEnter();
-                        }
+                        return;
                     }
+                    // Window came back into focus. Restoring focus
+                    // inline used to be reliable when each tab had
+                    // exactly one focusable TerminalControl, but with
+                    // multiple panes WinUI's default-focus pass races
+                    // with us and sometimes lands focus on a different
+                    // TabStop (a sibling pane, or the TabView header).
+                    // Deferring through the DispatcherQueue at Low
+                    // priority puts our Focus call after every default-
+                    // focus assignment XAML schedules for this
+                    // activation, so the last write wins. Same trick
+                    // as the SelectionChanged path which has always
+                    // worked because the SelectedItem assignment is
+                    // already on the dispatcher queue.
+                    auto dq = self->DispatcherQueue();
+                    if (!dq) return;
+                    dq.TryEnqueue(
+                        winrt::Microsoft::UI::Dispatching::DispatcherQueuePriority::Low,
+                        [weakActivated]() {
+                            auto self = weakActivated.get();
+                            if (!self) return;
+                            try {
+                                if (auto* tab = self->ActiveTab()) {
+                                    tab->Focus();
+                                }
+                                if (auto* tc = self->ActiveControl()) {
+                                    tc->NotifyImeFocusEnter();
+                                }
+                            } catch (winrt::hresult_error const&) {
+                            }
+                        });
                 } catch (winrt::hresult_error const&) {
                 }
             });
