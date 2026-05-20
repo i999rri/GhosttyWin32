@@ -358,8 +358,12 @@ void SplitPanel::OnSplitterPointerMoved(Pane* node,
 
     // Position in SplitPanel local coordinates so it can be compared
     // against the parent split's arranged rect (also expressed in
-    // SplitPanel coordinates).
-    auto point = args.GetCurrentPoint(*this).Position();
+    // SplitPanel coordinates). get_strong() returns the projected
+    // SplitPanel; .as<UIElement>() narrows it to the UIElement
+    // projection GetCurrentPoint expects without the multi-step
+    // implicit conversion `*this` would need.
+    auto self = get_strong().as<winrt::Microsoft::UI::Xaml::UIElement>();
+    auto point = args.GetCurrentPoint(self).Position();
 
     // The parent split occupies the same rect ArrangeNode last
     // assigned to it, cached on the Pane itself.
