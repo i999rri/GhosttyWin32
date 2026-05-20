@@ -155,6 +155,35 @@ namespace winrt::GhosttyWin32::implementation
                         if (auto* tc = self->ActiveControl()) {
                             tc->NotifyImeFocusLeave();
                         }
+                        // Spurious-deactivation recovery. If the OS
+                        // says we're deactivated but our HWND is still
+                        // the foreground window, the Deactivated event
+                        // came from a Win32 title-bar tracking modal
+                        // loop (clicking the title bar caption area
+                        // outside our DragRegion, system menu probe,
+                        // etc.) — a state that never auto-recovers and
+                        // leaves focus dead. Schedule a re-activation;
+                        // the resulting CodeActivated event re-enters
+                        // this same handler on the activated branch
+                        // and queues the focus restore.
+                        //
+                        // Genuine deactivation (alt-tab, click another
+                        // window) changes the foreground window before
+                        // we observe Deactivated, so the equality
+                        // check skips re-activation and lets the
+                        // window properly background.
+                        if (self->m_hwnd && GetForegroundWindow() == self->m_hwnd) {
+                            OutputDebugStringA("[Activated] spurious deactivation, scheduling re-Activate\n");
+                            auto dq = self->DispatcherQueue();
+                            if (dq) {
+                                dq.TryEnqueue([weakActivated]() {
+                                    auto self = weakActivated.get();
+                                    if (!self) return;
+                                    try { self->Activate(); }
+                                    catch (winrt::hresult_error const&) {}
+                                });
+                            }
+                        }
                         return;
                     }
                     // Window came back into focus. Restoring focus
@@ -199,38 +228,17 @@ namespace winrt::GhosttyWin32::implementation
             auto tv = TabView();
             SetTitleBar(DragRegion());
 
-            // Title-bar drag-region click bug, root cause (confirmed
-            // via TC GotFocus/LostFocus + Activated state traces):
-            //
-            //   1. User clicks DragRegion (the empty title-bar strip
-            //      we passed to SetTitleBar).
-            //   2. XAML routes PointerPressed/Released normally.
-            //   3. Either as part of the click handling, or via the
-            //      Win32 title-bar tracking modal loop DefWindowProc
-            //      runs for HTCAPTION clicks, the focused
-            //      TerminalControl receives LostFocus and the window
-            //      transitions to WindowActivationState::Deactivated.
-            //   4. No matching CodeActivated / PointerActivated event
-            //      follows, so the deferred-Focus restore in the
-            //      Activated handler never runs.
-            //   5. Visible effect: focus border disappears, keyboard
-            //      input goes nowhere. Switching tabs recovers because
-            //      the tab click programmatically reactivates the
-            //      window.
-            //
-            // Hooking PointerReleased and calling Activate() on
-            // ourselves re-triggers the activation chain on the
-            // dispatcher queue: WM_ACTIVATE fires, our existing
-            // Activated handler runs, its deferred Focus call lands
-            // the keyboard back on the active leaf.
-            auto weakSelfDrag = get_weak();
-            DragRegion().PointerReleased([weakSelfDrag](auto&&, auto&&) {
-                auto self = weakSelfDrag.get();
-                if (!self) return;
-                try {
-                    self->Activate();
-                } catch (winrt::hresult_error const&) {
-                }
+            // Diagnostic: see whether title-bar clicks raise XAML
+            // pointer events on the DragRegion specifically. The
+            // spurious-deactivation recovery in the Activated handler
+            // catches the recovery regardless of which path (XAML
+            // routed event, or OS-only HTCAPTION) the click took, so
+            // these logs are now just for confirming which case fires.
+            DragRegion().PointerPressed([](auto&&, auto&&) {
+                OutputDebugStringA("[DragRegion] PointerPressed\n");
+            });
+            DragRegion().PointerReleased([](auto&&, auto&&) {
+                OutputDebugStringA("[DragRegion] PointerReleased\n");
             });
 
             // Pointer / keyboard / IME routing all live on
