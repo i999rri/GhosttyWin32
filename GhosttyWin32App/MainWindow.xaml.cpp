@@ -689,6 +689,19 @@ namespace winrt::GhosttyWin32::implementation
                 return true;
             }
 
+            // Terminal sent BEL (\x07). MessageBeep is the obvious
+            // Windows-native equivalent — it plays whatever the user
+            // has bound to the "Default Beep" system sound, runs
+            // asynchronously, and is thread-safe (so we don't need
+            // to bounce through the dispatcher queue). Honouring the
+            // ghostty `bell-features` config (audio / attention /
+            // title / unread) is a follow-up; this gets the audible
+            // path working.
+            if (action.tag == GHOSTTY_ACTION_RING_BELL) {
+                MessageBeep(MB_OK);
+                return true;
+            }
+
             // Ctrl+click on a URL in the terminal. Hand off to the shell
             // verb opener so the user's default browser / mail client /
             // etc. handles it. Without this, libghostty falls back to
