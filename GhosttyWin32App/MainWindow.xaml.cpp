@@ -720,6 +720,22 @@ namespace winrt::GhosttyWin32::implementation
                 return true;
             }
 
+            // Open the user's ghostty config in their default editor.
+            // The Windows config path is %LOCALAPPDATA%\ghostty\config
+            // (no extension); if the user has no association for
+            // extension-less files Windows shows the "Open With"
+            // dialog, which is the right OS-native behaviour for
+            // first run.
+            if (action.tag == GHOSTTY_ACTION_OPEN_CONFIG) {
+                wchar_t const* appdata = _wgetenv(L"LOCALAPPDATA");
+                if (appdata) {
+                    std::wstring path = std::wstring(appdata) + L"\\ghostty\\config";
+                    ShellExecuteW(nullptr, L"open", path.c_str(),
+                                  nullptr, nullptr, SW_SHOWNORMAL);
+                }
+                return true;
+            }
+
             // Toggle maximize/restore via the same WM_SYSCOMMAND
             // path the caption-button click already uses, so the
             // NVIDIA OverlappedPresenter AV from issue #26 stays out
