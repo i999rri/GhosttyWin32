@@ -235,17 +235,48 @@ namespace winrt::GhosttyWin32::implementation
             auto tv = TabView();
             SetTitleBar(DragRegion());
 
-            // Diagnostic: see whether title-bar clicks raise XAML
-            // pointer events on the DragRegion specifically. The
-            // spurious-deactivation recovery in the Activated handler
-            // catches the recovery regardless of which path (XAML
-            // routed event, or OS-only HTCAPTION) the click took, so
-            // these logs are now just for confirming which case fires.
+            // Title-bar click focus loss, observed behaviour:
+            //
+            //   * Click DragRegion → PointerPressed / PointerReleased
+            //     fire on XAML, then TerminalControl LostFocus fires
+            //     immediately. Focus moves into limbo (not onto any
+            //     TerminalControl), keyboard input dies.
+            //   * Activated state transitions to Deactivated some time
+            //     later (often after several clicks), but by then
+            //     GetForegroundWindow() reports something other than
+            //     our HWND (the OS HTCAPTION tracking proxy briefly
+            //     owns foreground), so the spurious-deactivation
+            //     check in the Activated handler treats it as a real
+            //     deactivation and skips recovery.
+            //
+            // Direct recovery from PointerReleased is more reliable:
+            // we know the click went through XAML, we know the user
+            // wants the window to keep its focus, and we don't need
+            // to disambiguate spurious vs genuine deactivation. Defer
+            // the Focus call through the dispatcher so it runs after
+            // the DefWindowProc HTCAPTION tracking loop returns.
+            auto weakSelfDrag = get_weak();
             DragRegion().PointerPressed([](auto&&, auto&&) {
                 OutputDebugStringA("[DragRegion] PointerPressed\n");
             });
-            DragRegion().PointerReleased([](auto&&, auto&&) {
+            DragRegion().PointerReleased([weakSelfDrag](auto&&, auto&&) {
                 OutputDebugStringA("[DragRegion] PointerReleased\n");
+                auto self = weakSelfDrag.get();
+                if (!self) return;
+                auto dq = self->DispatcherQueue();
+                if (!dq) return;
+                dq.TryEnqueue([weakSelfDrag]() {
+                    auto self = weakSelfDrag.get();
+                    if (!self) return;
+                    try {
+                        if (auto* tab = self->ActiveTab()) {
+                            bool result = tab->Focus();
+                            OutputDebugStringA(result
+                                ? "[DragRegion] deferred focus restore -> true\n"
+                                : "[DragRegion] deferred focus restore -> false\n");
+                        }
+                    } catch (winrt::hresult_error const&) {}
+                });
             });
 
             // Pointer / keyboard / IME routing all live on
