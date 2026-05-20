@@ -75,6 +75,19 @@ SplitPanel::RemovalResult SplitPanel::RemoveLeaf(Pane* leaf) {
     return RemovalResult::Collapsed;
 }
 
+void SplitPanel::EqualizeAll() {
+    // m_splitters already holds one entry per internal node, so reuse
+    // it instead of re-walking the tree. The vector is rebuilt on
+    // every SyncChildrenFromTree, so it's always in sync with the
+    // current tree shape.
+    if (m_splitters.empty()) return;
+    for (auto const& entry : m_splitters) {
+        if (entry.node) entry.node->SetRatio(0.5);
+    }
+    InvalidateMeasure();
+    InvalidateArrange();
+}
+
 void SplitPanel::SyncChildrenFromTree() {
     Children().Clear();
     m_splitters.clear();

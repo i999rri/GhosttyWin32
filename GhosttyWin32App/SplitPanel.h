@@ -68,6 +68,12 @@ struct SplitPanel : SplitPanelT<SplitPanel> {
     };
     RemovalResult RemoveLeaf(Pane* leaf);
 
+    // Reset every internal node's ratio to 0.5 (so each split divides
+    // its area evenly) and trigger a layout pass. Matches what the
+    // ghostty EQUALIZE_SPLITS action expects — no-op on a single-leaf
+    // tree.
+    void EqualizeAll();
+
     // Read-only access for the host (Tab will need this to walk for
     // active-leaf focusing, but Phase 1 only uses it for diagnostics).
     Pane* Root() const noexcept { return m_root.get(); }

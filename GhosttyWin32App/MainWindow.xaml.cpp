@@ -525,6 +525,20 @@ namespace winrt::GhosttyWin32::implementation
                 return true;
             }
 
+            // Reset all split ratios in the source tab to 0.5 so each
+            // pane gets an even share of its parent split.
+            if (action.tag == GHOSTTY_ACTION_EQUALIZE_SPLITS
+                && target.tag == GHOSTTY_TARGET_SURFACE) {
+                auto surface = target.target.surface;
+                if (g_mainWindow && surface) {
+                    auto mw = g_mainWindow;
+                    mw->DispatcherQueue().TryEnqueue([mw, surface]() {
+                        mw->EqualizeSplitsForSurface(surface);
+                    });
+                }
+                return true;
+            }
+
             // Move focus to another pane within the same tab — the
             // direction variants walk the tree by arranged-rect
             // adjacency, the sequential variants cycle DFS order.
@@ -964,6 +978,16 @@ namespace winrt::GhosttyWin32::implementation
         if (newControl) {
             newControl.Focus(Microsoft::UI::Xaml::FocusState::Programmatic);
         }
+    }
+
+    void MainWindow::EqualizeSplitsForSurface(ghostty_surface_t surface)
+    {
+        if (!surface) return;
+        auto* tab = m_tabs.FindBySurface(surface);
+        if (!tab) return;
+        auto* panelImpl = winrt::get_self<implementation::SplitPanel>(tab->Panel());
+        if (!panelImpl) return;
+        panelImpl->EqualizeAll();
     }
 
     void MainWindow::GotoSplitFromAction(ghostty_surface_t surface,

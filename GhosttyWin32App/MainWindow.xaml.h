@@ -71,6 +71,11 @@ namespace winrt::GhosttyWin32::implementation
         void GotoSplitFromAction(ghostty_surface_t surface,
                                  ghostty_action_goto_split_e direction);
 
+        // Handle GHOSTTY_ACTION_EQUALIZE_SPLITS: reset every split
+        // ratio in the active tab to 0.5 so each pane occupies an
+        // even share of its parent split. UI thread only.
+        void EqualizeSplitsForSurface(ghostty_surface_t surface);
+
         std::unique_ptr<GhosttyApp> m_ghostty;
         HWND m_hwnd = nullptr;
         PaneIdAllocator m_paneIds;
