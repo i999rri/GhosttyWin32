@@ -1233,20 +1233,24 @@ namespace winrt::GhosttyWin32::implementation
         }
         if (!child || !node || node->IsLeaf()) return;
 
-        bool activeIsFirst = (node->First() == child);
-
         auto rect = node->ArrangedRect();
         float extent = (needOrient == SplitOrientation::Horizontal) ? rect.Width : rect.Height;
         float useable = std::max(1.0f,
             extent - static_cast<float>(implementation::SplitPanel::kSplitterThickness));
         double deltaRatio = static_cast<double>(resize.amount) / useable;
 
-        // RIGHT / DOWN push the boundary in the +axis direction.
-        // For the first-child side that's an increase in ratio; for
-        // the second-child side it's a decrease.
+        // Arrow direction == direction the boundary moves, regardless
+        // of which side of the split the active pane is on.
+        //   * RIGHT / DOWN move the boundary toward +axis → ratio
+        //     grows (first child gets larger).
+        //   * LEFT / UP move the boundary toward -axis → ratio shrinks.
+        // The previous "flip the sign when the active pane is the
+        // second child" logic was a tmux-style "grow the active pane
+        // in the arrow direction" rule that surprised the user when
+        // pressing LEFT from the right-hand pane moved the boundary
+        // right instead of left.
         bool increase = (resize.direction == GHOSTTY_RESIZE_SPLIT_RIGHT
                       || resize.direction == GHOSTTY_RESIZE_SPLIT_DOWN);
-        if (!activeIsFirst) increase = !increase;
 
         node->SetRatio(node->Ratio() + (increase ? deltaRatio : -deltaRatio));
         panelImpl->InvalidateMeasure();
