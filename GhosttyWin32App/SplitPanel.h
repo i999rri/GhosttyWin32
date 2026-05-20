@@ -74,6 +74,19 @@ struct SplitPanel : SplitPanelT<SplitPanel> {
     // tree.
     void EqualizeAll();
 
+    // Zoom one leaf to fill the entire SplitPanel — every other leaf
+    // and every splitter is hidden via Visibility=Collapsed, and
+    // MeasureOverride / ArrangeOverride lay out only the zoomed leaf
+    // at the full size. Pass nullptr to unzoom.
+    //
+    // `leaf` must be currently reachable from m_root; on any tree
+    // mutation (SetRoot / ReplaceLeaf / RemoveLeaf) the zoom is
+    // automatically cleared because SyncChildrenFromTree resets the
+    // state — the previously-stored pointer can no longer be trusted
+    // after the tree shape changes.
+    void SetZoomed(Pane* leaf);
+    Pane* ZoomedLeaf() const noexcept { return m_zoomedLeaf; }
+
     // Read-only access for the host (Tab will need this to walk for
     // active-leaf focusing, but Phase 1 only uses it for diagnostics).
     Pane* Root() const noexcept { return m_root.get(); }
@@ -133,12 +146,21 @@ private:
         Pane* node{ nullptr };
     };
 
+    // Refresh Visibility on every child so the zoom state matches
+    // m_zoomedLeaf. Called from SetZoomed and from SyncChildrenFromTree
+    // (after rebuilding Children() but before the next layout pass).
+    void UpdateChildVisibility();
+
     std::unique_ptr<Pane> m_root;
     std::vector<SplitterEntry> m_splitters;
     // Set while a splitter drag is in progress (PointerPressed →
     // PointerReleased / CaptureLost). Identifies which internal node's
     // ratio is being updated by PointerMoved.
     Pane* m_draggingNode{ nullptr };
+    // Set by SetZoomed — the leaf that should fill the entire panel
+    // while other leaves / splitters are hidden. Cleared by tree
+    // mutations because the stored pointer can no longer be trusted.
+    Pane* m_zoomedLeaf{ nullptr };
 };
 
 }  // namespace winrt::GhosttyWin32::implementation

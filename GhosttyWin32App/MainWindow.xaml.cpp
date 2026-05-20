@@ -525,6 +525,20 @@ namespace winrt::GhosttyWin32::implementation
                 return true;
             }
 
+            // Zoom the source pane to fill the entire tab. A second
+            // press unzooms back to the regular split layout.
+            if (action.tag == GHOSTTY_ACTION_TOGGLE_SPLIT_ZOOM
+                && target.tag == GHOSTTY_TARGET_SURFACE) {
+                auto surface = target.target.surface;
+                if (g_mainWindow && surface) {
+                    auto mw = g_mainWindow;
+                    mw->DispatcherQueue().TryEnqueue([mw, surface]() {
+                        mw->ToggleSplitZoomForSurface(surface);
+                    });
+                }
+                return true;
+            }
+
             // Reset all split ratios in the source tab to 0.5 so each
             // pane gets an even share of its parent split.
             if (action.tag == GHOSTTY_ACTION_EQUALIZE_SPLITS
@@ -988,6 +1002,38 @@ namespace winrt::GhosttyWin32::implementation
         auto* panelImpl = winrt::get_self<implementation::SplitPanel>(tab->Panel());
         if (!panelImpl) return;
         panelImpl->EqualizeAll();
+    }
+
+    void MainWindow::ToggleSplitZoomForSurface(ghostty_surface_t surface)
+    {
+        if (!surface) return;
+        auto* tab = m_tabs.FindBySurface(surface);
+        if (!tab) return;
+        auto* panelImpl = winrt::get_self<implementation::SplitPanel>(tab->Panel());
+        if (!panelImpl) return;
+
+        // Already zoomed → unzoom regardless of which pane fired the
+        // action. Matches how Windows Terminal / iTerm exit zoom mode:
+        // a second press anywhere collapses it back.
+        if (panelImpl->ZoomedLeaf()) {
+            panelImpl->SetZoomed(nullptr);
+            return;
+        }
+
+        Pane* leaf = FindLeafForSurface(panelImpl->Root(), surface);
+        if (!leaf) return;
+        // Single-leaf tabs skip the zoom — there's nothing to expand
+        // against, and the visual state would be identical to the
+        // normal layout.
+        if (leaf == panelImpl->Root()) return;
+
+        panelImpl->SetZoomed(leaf);
+        tab->SetActiveLeaf(leaf);
+        // Re-focus so the zoomed pane keeps input even when zoom was
+        // toggled from a non-active pane via a remapped binding.
+        if (auto control = leaf->Content().try_as<winrt::GhosttyWin32::TerminalControl>()) {
+            control.Focus(Microsoft::UI::Xaml::FocusState::Programmatic);
+        }
     }
 
     void MainWindow::GotoSplitFromAction(ghostty_surface_t surface,

@@ -76,6 +76,12 @@ namespace winrt::GhosttyWin32::implementation
         // even share of its parent split. UI thread only.
         void EqualizeSplitsForSurface(ghostty_surface_t surface);
 
+        // Handle GHOSTTY_ACTION_TOGGLE_SPLIT_ZOOM: if no leaf is
+        // currently zoomed in the source surface's tab, expand the
+        // source leaf to fill the panel; if a leaf is already zoomed
+        // there, restore the regular split layout. UI thread only.
+        void ToggleSplitZoomForSurface(ghostty_surface_t surface);
+
         std::unique_ptr<GhosttyApp> m_ghostty;
         HWND m_hwnd = nullptr;
         PaneIdAllocator m_paneIds;

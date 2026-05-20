@@ -75,6 +75,37 @@ SplitPanel::RemovalResult SplitPanel::RemoveLeaf(Pane* leaf) {
     return RemovalResult::Collapsed;
 }
 
+void SplitPanel::SetZoomed(Pane* leaf) {
+    m_zoomedLeaf = leaf;
+    UpdateChildVisibility();
+    InvalidateMeasure();
+    InvalidateArrange();
+}
+
+void SplitPanel::UpdateChildVisibility() {
+    using namespace winrt::Microsoft::UI::Xaml;
+    // No zoom in effect — every child stays visible. Walk Children()
+    // directly so this also recovers visibility for elements that
+    // were previously hidden by an earlier zoom.
+    if (!m_zoomedLeaf) {
+        for (auto&& child : Children()) {
+            if (auto el = child.try_as<UIElement>()) {
+                el.Visibility(Visibility::Visible);
+            }
+        }
+        return;
+    }
+    // Zoom active — only the zoomed leaf's content stays visible.
+    // Comparing UIElement projections by identity works because each
+    // element appears at most once in Children().
+    auto zoomElement = m_zoomedLeaf->Content();
+    for (auto&& child : Children()) {
+        if (auto el = child.try_as<UIElement>()) {
+            el.Visibility(el == zoomElement ? Visibility::Visible : Visibility::Collapsed);
+        }
+    }
+}
+
 void SplitPanel::EqualizeAll() {
     // m_splitters already holds one entry per internal node, so reuse
     // it instead of re-walking the tree. The vector is rebuilt on
@@ -92,6 +123,11 @@ void SplitPanel::SyncChildrenFromTree() {
     Children().Clear();
     m_splitters.clear();
     m_draggingNode = nullptr;
+    // Any tree shape change invalidates a previously-stored zoom
+    // pointer (the leaf may have moved, been wrapped in a split, or
+    // gone away entirely). Clearing here is safer than auditing every
+    // call site for whether the zoomed leaf survived.
+    m_zoomedLeaf = nullptr;
     if (m_root) AppendNodeToChildren(*m_root);
 }
 
@@ -179,6 +215,16 @@ Microsoft::UI::Xaml::Controls::Border SplitPanel::SplitterForNode(Pane const* no
 
 Windows::Foundation::Size SplitPanel::MeasureOverride(Windows::Foundation::Size availableSize) {
     if (!m_root) return { 0, 0 };
+    // Zoom path: only the zoomed leaf participates in layout. The
+    // others are Visibility=Collapsed so Panel's base class skips
+    // them entirely — we don't need to Measure them.
+    if (m_zoomedLeaf && m_zoomedLeaf->IsLeaf()) {
+        if (auto element = m_zoomedLeaf->Content()) {
+            element.Measure(availableSize);
+            return element.DesiredSize();
+        }
+        return { 0, 0 };
+    }
     auto result = MeasureNode(*m_root, availableSize);
     // Every Splitter must also be measured before Arrange — XAML's
     // contract is "every child gets Measure before Arrange or the
@@ -233,9 +279,20 @@ Windows::Foundation::Size SplitPanel::MeasureNode(Pane& node, Windows::Foundatio
 }
 
 Windows::Foundation::Size SplitPanel::ArrangeOverride(Windows::Foundation::Size finalSize) {
-    if (m_root) {
-        ArrangeNode(*m_root, Windows::Foundation::Rect{ 0, 0, finalSize.Width, finalSize.Height });
+    if (!m_root) return finalSize;
+    Windows::Foundation::Rect fullRect{ 0, 0, finalSize.Width, finalSize.Height };
+    // Zoom: only the zoomed leaf is arranged. Others are Collapsed so
+    // their ActualSize / SizeChanged don't fire; the SwapChainPanel
+    // they own keeps whatever swap chain it had bound and resumes
+    // when unzoomed.
+    if (m_zoomedLeaf && m_zoomedLeaf->IsLeaf()) {
+        m_zoomedLeaf->SetArrangedRect(fullRect);
+        if (auto element = m_zoomedLeaf->Content()) {
+            element.Arrange(fullRect);
+        }
+        return finalSize;
     }
+    ArrangeNode(*m_root, fullRect);
     return finalSize;
 }
 
