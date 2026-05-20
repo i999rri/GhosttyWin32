@@ -2,6 +2,7 @@
 
 #include "PaneId.h"
 #include <winrt/Microsoft.UI.Xaml.h>
+#include <winrt/Windows.Foundation.h>
 #include <memory>
 
 namespace winrt::GhosttyWin32::implementation {
@@ -101,6 +102,16 @@ public:
     // Back-pointer to the enclosing internal node, or null at the root.
     Pane* Parent() const noexcept { return m_parent; }
 
+    // Most-recent rectangle this node was arranged into, in
+    // SplitPanel-local coordinates. Set by SplitPanel::ArrangeNode on
+    // every layout pass; consumed by splitter-drag resize math and
+    // direction-based GOTO_SPLIT (finding the leaf adjacent to the
+    // active one). Defaults to zero before the first arrange, which
+    // callers treat as "no info" — the host should defer any rect-
+    // dependent action until the user can see the panel anyway.
+    Windows::Foundation::Rect ArrangedRect() const noexcept { return m_arrangedRect; }
+    void SetArrangedRect(Windows::Foundation::Rect r) noexcept { m_arrangedRect = r; }
+
     // Swap the child unique_ptr matching `oldChild` for `newChild`.
     // Returns true when `oldChild` was one of this node's children
     // (the old subtree is destroyed when its unique_ptr is overwritten;
@@ -171,6 +182,9 @@ private:
     // the root. Used by future phases for direction-based navigation
     // and for collapsing the tree on pane close.
     Pane* m_parent{ nullptr };
+
+    // Refreshed on every SplitPanel arrange pass — see ArrangedRect.
+    Windows::Foundation::Rect m_arrangedRect{};
 };
 
 }  // namespace winrt::GhosttyWin32::implementation

@@ -6,54 +6,6 @@
 
 namespace winrt::GhosttyWin32::implementation {
 
-namespace {
-
-// Walks `node` and accumulates the union of every leaf's desired size.
-// Stacked dimensions add, perpendicular dimensions take the max — so a
-// horizontal split's width is `first + second` and its height is
-// `max(first, second)`. Mirrored for vertical splits.
-//
-// Called from MeasureOverride so the framework knows how much room
-// SplitPanel wants. Available size constrains each leaf so the
-// terminal surface receives a Measure with the right cap (avoids the
-// leaf reporting a content size that ignores the host's available
-// area).
-Windows::Foundation::Size MeasureNode(Pane& node, Windows::Foundation::Size available) {
-    if (node.IsLeaf()) {
-        if (auto element = node.Content()) {
-            element.Measure(available);
-            return element.DesiredSize();
-        }
-        return {0, 0};
-    }
-
-    auto* first = node.First();
-    auto* second = node.Second();
-    if (!first && !second) return {0, 0};
-    if (!first) return MeasureNode(*second, available);
-    if (!second) return MeasureNode(*first, available);
-
-    Windows::Foundation::Size firstAvail = available;
-    Windows::Foundation::Size secondAvail = available;
-    if (node.Orientation() == SplitOrientation::Horizontal) {
-        firstAvail.Width = static_cast<float>(available.Width * node.Ratio());
-        secondAvail.Width = static_cast<float>(available.Width * (1.0 - node.Ratio()));
-    } else {
-        firstAvail.Height = static_cast<float>(available.Height * node.Ratio());
-        secondAvail.Height = static_cast<float>(available.Height * (1.0 - node.Ratio()));
-    }
-
-    auto a = MeasureNode(*first, firstAvail);
-    auto b = MeasureNode(*second, secondAvail);
-
-    if (node.Orientation() == SplitOrientation::Horizontal) {
-        return { a.Width + b.Width, std::max(a.Height, b.Height) };
-    }
-    return { std::max(a.Width, b.Width), a.Height + b.Height };
-}
-
-}  // namespace
-
 void SplitPanel::SetRoot(std::unique_ptr<Pane> root) {
     m_root = std::move(root);
     SyncChildrenFromTree();
@@ -125,33 +77,161 @@ SplitPanel::RemovalResult SplitPanel::RemoveLeaf(Pane* leaf) {
 
 void SplitPanel::SyncChildrenFromTree() {
     Children().Clear();
-    if (m_root) AppendLeavesToChildren(*m_root);
+    m_splitters.clear();
+    m_draggingNode = nullptr;
+    if (m_root) AppendNodeToChildren(*m_root);
 }
 
-void SplitPanel::AppendLeavesToChildren(Pane& node) {
+void SplitPanel::AppendNodeToChildren(Pane& node) {
     if (node.IsLeaf()) {
         if (auto element = node.Content()) {
             Children().Append(element);
         }
         return;
     }
-    if (auto* f = node.First()) AppendLeavesToChildren(*f);
-    if (auto* s = node.Second()) AppendLeavesToChildren(*s);
+    // Walk first → splitter → second. The visual order matches the
+    // layout order, and putting the splitter between the children in
+    // the Children() collection means it gets painted on top of the
+    // junction so the dragable strip is always reachable for input.
+    if (auto* f = node.First()) AppendNodeToChildren(*f);
+    auto splitter = MakeSplitter(&node);
+    Children().Append(splitter);
+    m_splitters.push_back({ splitter, &node });
+    if (auto* s = node.Second()) AppendNodeToChildren(*s);
+}
+
+Microsoft::UI::Xaml::Controls::Border SplitPanel::MakeSplitter(Pane* node) {
+    using namespace winrt::Microsoft::UI::Xaml;
+    using namespace winrt::Microsoft::UI::Xaml::Controls;
+    using namespace winrt::Microsoft::UI::Xaml::Input;
+    using namespace winrt::Microsoft::UI::Xaml::Media;
+    using namespace winrt::Microsoft::UI::Input;
+
+    Border border{};
+    // Semi-transparent gray — visible on both light- and dark-themed
+    // terminal backgrounds without dominating. Refined theming can
+    // come later; the priority here is "the user can see it and grab
+    // it" rather than "it matches the palette".
+    border.Background(SolidColorBrush(winrt::Windows::UI::Color{ 96, 128, 128, 128 }));
+
+    // Resize cursor — perpendicular to the split axis. Set via
+    // ProtectedCursor on the UIElement (same path the MOUSE_SHAPE
+    // handler uses on TerminalControl).
+    auto cursorShape = (node->Orientation() == SplitOrientation::Horizontal)
+        ? InputSystemCursorShape::SizeWestEast
+        : InputSystemCursorShape::SizeNorthSouth;
+    border.ProtectedCursor(InputSystemCursor::Create(cursorShape));
+
+    // Wire pointer events. `node` is captured by raw pointer; this is
+    // safe because Borders are recreated on every SyncChildrenFromTree,
+    // so a stale `node` would only exist on a stale Border that's
+    // already been removed from Children() (and whose events therefore
+    // can't fire).
+    //
+    // `this` is also captured raw — the SplitPanel owns the Border via
+    // Children(), so the impl lives at least as long as any event the
+    // Border can fire.
+    border.PointerPressed([this, node](winrt::Windows::Foundation::IInspectable const& sender,
+                                       PointerRoutedEventArgs const& args) {
+        if (auto el = sender.try_as<UIElement>()) {
+            OnSplitterPointerPressed(el, node, args);
+        }
+    });
+    border.PointerMoved([this, node](winrt::Windows::Foundation::IInspectable const&,
+                                     PointerRoutedEventArgs const& args) {
+        OnSplitterPointerMoved(node, args);
+    });
+    border.PointerReleased([this](winrt::Windows::Foundation::IInspectable const& sender,
+                                  PointerRoutedEventArgs const& args) {
+        if (auto el = sender.try_as<UIElement>()) {
+            OnSplitterPointerReleased(el, args);
+        }
+    });
+    border.PointerCaptureLost([this](winrt::Windows::Foundation::IInspectable const& sender,
+                                     PointerRoutedEventArgs const& args) {
+        if (auto el = sender.try_as<UIElement>()) {
+            OnSplitterPointerReleased(el, args);
+        }
+    });
+
+    return border;
+}
+
+Microsoft::UI::Xaml::Controls::Border SplitPanel::SplitterForNode(Pane const* node) const {
+    for (auto const& entry : m_splitters) {
+        if (entry.node == node) return entry.element;
+    }
+    return nullptr;
 }
 
 Windows::Foundation::Size SplitPanel::MeasureOverride(Windows::Foundation::Size availableSize) {
-    if (!m_root) return {0, 0};
-    return MeasureNode(*m_root, availableSize);
+    if (!m_root) return { 0, 0 };
+    auto result = MeasureNode(*m_root, availableSize);
+    // Every Splitter must also be measured before Arrange — XAML's
+    // contract is "every child gets Measure before Arrange or the
+    // framework panics". They don't influence the panel's desired
+    // size, just have to be visited.
+    for (auto const& entry : m_splitters) {
+        if (entry.element) {
+            entry.element.Measure({ static_cast<float>(kSplitterThickness),
+                                    static_cast<float>(kSplitterThickness) });
+        }
+    }
+    return result;
+}
+
+Windows::Foundation::Size SplitPanel::MeasureNode(Pane& node, Windows::Foundation::Size available) {
+    if (node.IsLeaf()) {
+        if (auto element = node.Content()) {
+            element.Measure(available);
+            return element.DesiredSize();
+        }
+        return { 0, 0 };
+    }
+
+    auto* first = node.First();
+    auto* second = node.Second();
+    if (!first && !second) return { 0, 0 };
+    if (!first)  return MeasureNode(*second, available);
+    if (!second) return MeasureNode(*first, available);
+
+    // Reserve room for the splitter strip on the split axis so the
+    // children don't ask for space the splitter will end up taking.
+    auto firstAvail  = available;
+    auto secondAvail = available;
+    float thickness  = static_cast<float>(kSplitterThickness);
+    if (node.Orientation() == SplitOrientation::Horizontal) {
+        float useable = std::max(0.0f, available.Width - thickness);
+        firstAvail.Width  = static_cast<float>(useable * node.Ratio());
+        secondAvail.Width = static_cast<float>(useable * (1.0 - node.Ratio()));
+    } else {
+        float useable = std::max(0.0f, available.Height - thickness);
+        firstAvail.Height  = static_cast<float>(useable * node.Ratio());
+        secondAvail.Height = static_cast<float>(useable * (1.0 - node.Ratio()));
+    }
+
+    auto a = MeasureNode(*first, firstAvail);
+    auto b = MeasureNode(*second, secondAvail);
+
+    if (node.Orientation() == SplitOrientation::Horizontal) {
+        return { a.Width + b.Width + thickness, std::max(a.Height, b.Height) };
+    }
+    return { std::max(a.Width, b.Width), a.Height + b.Height + thickness };
 }
 
 Windows::Foundation::Size SplitPanel::ArrangeOverride(Windows::Foundation::Size finalSize) {
     if (m_root) {
-        ArrangeNode(*m_root, Windows::Foundation::Rect{0, 0, finalSize.Width, finalSize.Height});
+        ArrangeNode(*m_root, Windows::Foundation::Rect{ 0, 0, finalSize.Width, finalSize.Height });
     }
     return finalSize;
 }
 
 void SplitPanel::ArrangeNode(Pane& node, Windows::Foundation::Rect rect) {
+    // Cache the arranged rect on the node so drag-resize and
+    // direction-based pane navigation can recover it without walking
+    // the tree from the root each time.
+    node.SetArrangedRect(rect);
+
     if (node.IsLeaf()) {
         if (auto element = node.Content()) {
             element.Arrange(rect);
@@ -162,22 +242,82 @@ void SplitPanel::ArrangeNode(Pane& node, Windows::Foundation::Rect rect) {
     auto* first = node.First();
     auto* second = node.Second();
     if (!first && !second) return;
-    if (!first) { ArrangeNode(*second, rect); return; }
+    if (!first)  { ArrangeNode(*second, rect); return; }
     if (!second) { ArrangeNode(*first, rect); return; }
 
+    float thickness = static_cast<float>(kSplitterThickness);
+
     if (node.Orientation() == SplitOrientation::Horizontal) {
-        float w = rect.Width * static_cast<float>(node.Ratio());
-        Windows::Foundation::Rect firstRect{ rect.X, rect.Y, w, rect.Height };
-        Windows::Foundation::Rect secondRect{ rect.X + w, rect.Y, rect.Width - w, rect.Height };
+        float useable = std::max(0.0f, rect.Width - thickness);
+        float firstW  = useable * static_cast<float>(node.Ratio());
+        float secondW = useable - firstW;
+        Windows::Foundation::Rect firstRect{ rect.X, rect.Y, firstW, rect.Height };
+        Windows::Foundation::Rect splitRect{ rect.X + firstW, rect.Y, thickness, rect.Height };
+        Windows::Foundation::Rect secondRect{ rect.X + firstW + thickness, rect.Y, secondW, rect.Height };
         ArrangeNode(*first, firstRect);
+        if (auto sp = SplitterForNode(&node)) sp.Arrange(splitRect);
         ArrangeNode(*second, secondRect);
     } else {
-        float h = rect.Height * static_cast<float>(node.Ratio());
-        Windows::Foundation::Rect firstRect{ rect.X, rect.Y, rect.Width, h };
-        Windows::Foundation::Rect secondRect{ rect.X, rect.Y + h, rect.Width, rect.Height - h };
+        float useable = std::max(0.0f, rect.Height - thickness);
+        float firstH  = useable * static_cast<float>(node.Ratio());
+        float secondH = useable - firstH;
+        Windows::Foundation::Rect firstRect{ rect.X, rect.Y, rect.Width, firstH };
+        Windows::Foundation::Rect splitRect{ rect.X, rect.Y + firstH, rect.Width, thickness };
+        Windows::Foundation::Rect secondRect{ rect.X, rect.Y + firstH + thickness, rect.Width, secondH };
         ArrangeNode(*first, firstRect);
+        if (auto sp = SplitterForNode(&node)) sp.Arrange(splitRect);
         ArrangeNode(*second, secondRect);
     }
+}
+
+void SplitPanel::OnSplitterPointerPressed(Microsoft::UI::Xaml::UIElement const& splitter,
+                                          Pane* node,
+                                          Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args)
+{
+    if (!node) return;
+    if (!splitter.CapturePointer(args.Pointer())) return;
+    m_draggingNode = node;
+    args.Handled(true);
+}
+
+void SplitPanel::OnSplitterPointerMoved(Pane* node,
+                                        Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args)
+{
+    // Only consume moves that belong to the active drag — without
+    // this check, a stray PointerMoved on a non-pressed splitter
+    // (e.g. hover) would mutate the ratio.
+    if (!m_draggingNode || m_draggingNode != node) return;
+
+    // Position in SplitPanel local coordinates so it can be compared
+    // against the parent split's arranged rect (also expressed in
+    // SplitPanel coordinates).
+    auto point = args.GetCurrentPoint(*this).Position();
+
+    // The parent split occupies the same rect ArrangeNode last
+    // assigned to it, cached on the Pane itself.
+    auto rect = node->ArrangedRect();
+    double newRatio = node->Ratio();
+    float thickness = static_cast<float>(kSplitterThickness);
+
+    if (node->Orientation() == SplitOrientation::Horizontal) {
+        float useable = std::max(1.0f, rect.Width - thickness);
+        newRatio = (point.X - rect.X) / useable;
+    } else {
+        float useable = std::max(1.0f, rect.Height - thickness);
+        newRatio = (point.Y - rect.Y) / useable;
+    }
+    node->SetRatio(newRatio);  // clamped to [0.05, 0.95] inside Pane
+    InvalidateMeasure();
+    InvalidateArrange();
+    args.Handled(true);
+}
+
+void SplitPanel::OnSplitterPointerReleased(Microsoft::UI::Xaml::UIElement const& splitter,
+                                           Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args)
+{
+    splitter.ReleasePointerCapture(args.Pointer());
+    m_draggingNode = nullptr;
+    args.Handled(true);
 }
 
 }  // namespace winrt::GhosttyWin32::implementation

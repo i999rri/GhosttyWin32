@@ -3,6 +3,7 @@
 #include "SplitPanel.g.h"
 #include "Pane.h"
 #include <memory>
+#include <vector>
 
 namespace winrt::GhosttyWin32::implementation {
 
@@ -75,20 +76,63 @@ struct SplitPanel : SplitPanelT<SplitPanel> {
     Windows::Foundation::Size MeasureOverride(Windows::Foundation::Size availableSize);
     Windows::Foundation::Size ArrangeOverride(Windows::Foundation::Size finalSize);
 
+    // Width of the draggable splitter strip in DIPs. Wide enough to
+    // hit reliably with mouse, narrow enough that it doesn't visually
+    // dominate the split — matches Windows Terminal's GridSplitter.
+    static constexpr double kSplitterThickness = 6.0;
+
 private:
+    // Recursive measure — caps each subtree at its share of `available`
+    // along the split axis. Called by MeasureOverride.
+    Windows::Foundation::Size MeasureNode(Pane& node, Windows::Foundation::Size available);
+
     // Recursive arrange — `rect` is the area assigned to `node` in
     // SplitPanel coordinates, before any nested splits apply.
     void ArrangeNode(Pane& node, Windows::Foundation::Rect rect);
 
-    // Repopulates `Children()` to match the current tree (depth-first
-    // leaf order). Called by SetRoot after the tree pointer swap.
+    // Repopulates `Children()` (and the parallel `m_splitters` list)
+    // to match the current tree. Called by SetRoot / ReplaceLeaf /
+    // RemoveLeaf after a tree mutation.
     void SyncChildrenFromTree();
 
-    // Append every leaf under `node` to `Children()`. Recursive helper
-    // for SyncChildrenFromTree.
-    void AppendLeavesToChildren(Pane& node);
+    // Append a depth-first traversal of `node` to `Children()`: every
+    // leaf's content, and one fresh Splitter Border per internal node
+    // (recorded in m_splitters so MeasureNode / ArrangeNode can reach
+    // it from the corresponding Pane*).
+    void AppendNodeToChildren(Pane& node);
+
+    // Build a Border for the drag-handle of an internal node and wire
+    // its pointer events. Borders are recreated on every
+    // SyncChildrenFromTree, so the captured node pointer is always
+    // current at the time the lambda runs.
+    Microsoft::UI::Xaml::Controls::Border MakeSplitter(Pane* node);
+
+    // Find the Border previously created for `node`, or nullptr if
+    // none. Used during measure/arrange to position the strip.
+    Microsoft::UI::Xaml::Controls::Border SplitterForNode(Pane const* node) const;
+
+    // Pointer event handlers. Called from the lambdas wired up in
+    // MakeSplitter. `splitter` is the Border that owns the event;
+    // `node` is the internal Pane the splitter is for.
+    void OnSplitterPointerPressed(Microsoft::UI::Xaml::UIElement const& splitter,
+                                  Pane* node,
+                                  Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args);
+    void OnSplitterPointerMoved(Pane* node,
+                                Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args);
+    void OnSplitterPointerReleased(Microsoft::UI::Xaml::UIElement const& splitter,
+                                   Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args);
+
+    struct SplitterEntry {
+        Microsoft::UI::Xaml::Controls::Border element{ nullptr };
+        Pane* node{ nullptr };
+    };
 
     std::unique_ptr<Pane> m_root;
+    std::vector<SplitterEntry> m_splitters;
+    // Set while a splitter drag is in progress (PointerPressed →
+    // PointerReleased / CaptureLost). Identifies which internal node's
+    // ratio is being updated by PointerMoved.
+    Pane* m_draggingNode{ nullptr };
 };
 
 }  // namespace winrt::GhosttyWin32::implementation
