@@ -12,6 +12,7 @@
 #include <shellapi.h>
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <limits>
@@ -144,7 +145,13 @@ namespace winrt::GhosttyWin32::implementation
                 if (!self) return;
                 try {
                     using State = winrt::Microsoft::UI::Xaml::WindowActivationState;
-                    if (args.WindowActivationState() == State::Deactivated) {
+                    auto state = args.WindowActivationState();
+                    OutputDebugStringA(state == State::Deactivated
+                        ? "[Activated] Deactivated\n"
+                        : (state == State::CodeActivated
+                            ? "[Activated] CodeActivated\n"
+                            : "[Activated] PointerActivated\n"));
+                    if (state == State::Deactivated) {
                         if (auto* tc = self->ActiveControl()) {
                             tc->NotifyImeFocusLeave();
                         }
@@ -171,13 +178,18 @@ namespace winrt::GhosttyWin32::implementation
                             auto self = weakActivated.get();
                             if (!self) return;
                             try {
+                                bool focused = false;
                                 if (auto* tab = self->ActiveTab()) {
-                                    tab->Focus();
+                                    focused = tab->Focus();
                                 }
+                                OutputDebugStringA(focused
+                                    ? "[Activated] deferred Focus -> true\n"
+                                    : "[Activated] deferred Focus -> false\n");
                                 if (auto* tc = self->ActiveControl()) {
                                     tc->NotifyImeFocusEnter();
                                 }
                             } catch (winrt::hresult_error const&) {
+                                OutputDebugStringA("[Activated] deferred Focus threw\n");
                             }
                         });
                 } catch (winrt::hresult_error const&) {
@@ -547,6 +559,17 @@ namespace winrt::GhosttyWin32::implementation
                     });
                 }
                 return true;
+            }
+
+            if (action.tag == GHOSTTY_ACTION_TOGGLE_SPLIT_ZOOM
+                || action.tag == GHOSTTY_ACTION_EQUALIZE_SPLITS
+                || action.tag == GHOSTTY_ACTION_RESIZE_SPLIT
+                || action.tag == GHOSTTY_ACTION_GOTO_SPLIT
+                || action.tag == GHOSTTY_ACTION_NEW_SPLIT) {
+                char buf[96];
+                std::snprintf(buf, sizeof(buf),
+                    "[action_cb] tag=%d (split family)\n", static_cast<int>(action.tag));
+                OutputDebugStringA(buf);
             }
 
             // Zoom the source pane to fill the entire tab. A second
@@ -1055,17 +1078,20 @@ namespace winrt::GhosttyWin32::implementation
 
     void MainWindow::EqualizeSplitsForSurface(ghostty_surface_t surface)
     {
-        if (!surface) return;
+        OutputDebugStringA("[Equalize] enter\n");
+        if (!surface) { OutputDebugStringA("[Equalize] no surface\n"); return; }
         auto* tab = m_tabs.FindBySurface(surface);
-        if (!tab) return;
+        if (!tab) { OutputDebugStringA("[Equalize] no tab\n"); return; }
         auto* panelImpl = winrt::get_self<implementation::SplitPanel>(tab->Panel());
-        if (!panelImpl) return;
+        if (!panelImpl) { OutputDebugStringA("[Equalize] no panelImpl\n"); return; }
         panelImpl->EqualizeAll();
+        OutputDebugStringA("[Equalize] EqualizeAll done\n");
     }
 
     void MainWindow::ToggleSplitZoomForSurface(ghostty_surface_t surface)
     {
-        if (!surface) return;
+        OutputDebugStringA("[Zoom] enter\n");
+        if (!surface) { OutputDebugStringA("[Zoom] no surface\n"); return; }
         auto* tab = m_tabs.FindBySurface(surface);
         if (!tab) return;
         auto* panelImpl = winrt::get_self<implementation::SplitPanel>(tab->Panel());
@@ -1098,7 +1124,13 @@ namespace winrt::GhosttyWin32::implementation
     void MainWindow::GotoSplitFromAction(ghostty_surface_t surface,
                                          ghostty_action_goto_split_e direction)
     {
-        if (!surface) return;
+        {
+            char buf[64];
+            std::snprintf(buf, sizeof(buf),
+                "[Goto] enter dir=%d\n", static_cast<int>(direction));
+            OutputDebugStringA(buf);
+        }
+        if (!surface) { OutputDebugStringA("[Goto] no surface\n"); return; }
         auto* tab = m_tabs.FindBySurface(surface);
         if (!tab) return;
         auto* panelImpl = winrt::get_self<implementation::SplitPanel>(tab->Panel());
@@ -1142,7 +1174,14 @@ namespace winrt::GhosttyWin32::implementation
     void MainWindow::ResizeSplitFromAction(ghostty_surface_t surface,
                                            ghostty_action_resize_split_s resize)
     {
-        if (!surface) return;
+        {
+            char buf[64];
+            std::snprintf(buf, sizeof(buf),
+                "[Resize] enter dir=%d amount=%u\n",
+                static_cast<int>(resize.direction), static_cast<unsigned>(resize.amount));
+            OutputDebugStringA(buf);
+        }
+        if (!surface) { OutputDebugStringA("[Resize] no surface\n"); return; }
         auto* tab = m_tabs.FindBySurface(surface);
         if (!tab) return;
         auto* panelImpl = winrt::get_self<implementation::SplitPanel>(tab->Panel());
