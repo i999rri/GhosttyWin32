@@ -324,9 +324,28 @@ namespace winrt::GhosttyWin32::implementation
             // with the terminal palette.
             border.BorderBrush(winrt::Microsoft::UI::Xaml::Media::SolidColorBrush(
                 winrt::Windows::UI::Color{ 255, 0, 120, 215 }));
+            // Lazy-init the auto-hide timer the first time the border
+            // goes visible. Capturing get_weak() and resolving inside
+            // the Tick handler keeps the timer-held lambda safe across
+            // TerminalControl destruction.
+            if (!m_focusBorderTimer) {
+                m_focusBorderTimer = winrt::Microsoft::UI::Xaml::DispatcherTimer{};
+                m_focusBorderTimer.Interval(std::chrono::milliseconds(1500));
+                auto weakSelf = get_weak();
+                m_focusBorderTimer.Tick([weakSelf](auto&&, auto&&) {
+                    if (auto self = weakSelf.get()) {
+                        self->ShowFocusBorder(false);
+                    }
+                });
+            }
+            // Restart so the border stays visible for the full
+            // interval after the most recent focus change.
+            m_focusBorderTimer.Stop();
+            m_focusBorderTimer.Start();
         } else {
             border.BorderBrush(winrt::Microsoft::UI::Xaml::Media::SolidColorBrush(
                 winrt::Windows::UI::Color{ 0, 0, 0, 0 }));
+            if (m_focusBorderTimer) m_focusBorderTimer.Stop();
         }
     }
 

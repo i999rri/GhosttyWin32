@@ -113,6 +113,14 @@ namespace winrt::GhosttyWin32::implementation
         // BorderThickness of 1 so toggling the brush doesn't force a
         // relayout / terminal grid reflow. Called from the GotFocus /
         // LostFocus handlers wired up in the constructor.
+        //
+        // Visible flashes are momentary: passing true also (re)starts
+        // m_focusBorderTimer, which fires after a short interval and
+        // hides the border again. This keeps the indicator transient
+        // — useful for "you just landed on this pane" feedback after
+        // a click / keyboard navigation, but doesn't leave a
+        // permanent frame around the outer edges of every active
+        // pane during normal typing.
         void ShowFocusBorder(bool visible);
 
     private:
@@ -144,6 +152,12 @@ namespace winrt::GhosttyWin32::implementation
         // activation.
         ImeBuffer m_ime;
         winrt::Windows::UI::Text::Core::CoreTextEditContext m_editContext{ nullptr };
+
+        // Auto-hide timer for the focus border. Created lazily on
+        // first ShowFocusBorder(true); subsequent visible calls reset
+        // the interval so the border stays up for the full duration
+        // after the most recent focus change.
+        winrt::Microsoft::UI::Xaml::DispatcherTimer m_focusBorderTimer{ nullptr };
     };
 }
 
