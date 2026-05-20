@@ -759,6 +759,32 @@ namespace winrt::GhosttyWin32::implementation
                 return true;
             }
 
+            // Hide / unhide the window with no taskbar persistence
+            // change — equivalent to "press Win+D for just our
+            // window". Pairs with a global keybind so the user can
+            // bring the window back even when it's not focused;
+            // without `global:` the keybind only fires while the
+            // window has keyboard focus and a hidden window can't
+            // be unhidden via the bind (but it can via the
+            // taskbar, alt-tab, or the keybind from another
+            // ghostty window in the multi-window future).
+            if (action.tag == GHOSTTY_ACTION_TOGGLE_VISIBILITY) {
+                if (g_mainWindow) {
+                    auto mw = g_mainWindow;
+                    mw->DispatcherQueue().TryEnqueue([mw]() {
+                        HWND hwnd = mw->m_hwnd;
+                        if (!hwnd) return;
+                        if (IsWindowVisible(hwnd)) {
+                            ShowWindow(hwnd, SW_HIDE);
+                        } else {
+                            ShowWindow(hwnd, SW_SHOW);
+                            SetForegroundWindow(hwnd);
+                        }
+                    });
+                }
+                return true;
+            }
+
             // Toggle the always-on-top state of the window.
             // ghostty exposes ON / OFF / TOGGLE; SetWindowPos with
             // HWND_TOPMOST / HWND_NOTOPMOST is the standard Win32
