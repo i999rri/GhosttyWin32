@@ -155,34 +155,41 @@ namespace winrt::GhosttyWin32::implementation
                         if (auto* tc = self->ActiveControl()) {
                             tc->NotifyImeFocusLeave();
                         }
-                        // Spurious-deactivation recovery. If the OS
-                        // says we're deactivated but our HWND is still
-                        // the foreground window, the Deactivated event
-                        // came from a Win32 title-bar tracking modal
-                        // loop (clicking the title bar caption area
-                        // outside our DragRegion, system menu probe,
-                        // etc.) — a state that never auto-recovers and
-                        // leaves focus dead. Schedule a re-activation;
-                        // the resulting CodeActivated event re-enters
-                        // this same handler on the activated branch
-                        // and queues the focus restore.
+                        // Spurious-deactivation recovery, deferred.
+                        // The Win32 title-bar tracking modal loop
+                        // DefWindowProc runs for HTCAPTION clicks
+                        // briefly steals the foreground window
+                        // (for tracking proxies / system menu probes),
+                        // so a synchronous GetForegroundWindow() check
+                        // here can read a transient non-our-HWND
+                        // value and misclassify a spurious deactivation
+                        // as a genuine one. Bounce the check through
+                        // the dispatcher so it runs after the modal
+                        // loop returns and foreground state has
+                        // settled.
                         //
-                        // Genuine deactivation (alt-tab, click another
-                        // window) changes the foreground window before
-                        // we observe Deactivated, so the equality
-                        // check skips re-activation and lets the
-                        // window properly background.
-                        if (self->m_hwnd && GetForegroundWindow() == self->m_hwnd) {
-                            OutputDebugStringA("[Activated] spurious deactivation, scheduling re-Activate\n");
-                            auto dq = self->DispatcherQueue();
-                            if (dq) {
-                                dq.TryEnqueue([weakActivated]() {
-                                    auto self = weakActivated.get();
-                                    if (!self) return;
+                        // If by then our HWND is still the foreground
+                        // window, the Deactivated event was a Win32
+                        // tracking-loop artifact and we self-Activate
+                        // to re-enter the activation path and trigger
+                        // the deferred-Focus restore. Genuine
+                        // deactivation leaves the foreground on the
+                        // other app, so the deferred check skips and
+                        // the window stays properly backgrounded.
+                        auto dq = self->DispatcherQueue();
+                        if (dq) {
+                            dq.TryEnqueue([weakActivated]() {
+                                auto self = weakActivated.get();
+                                if (!self || !self->m_hwnd) return;
+                                bool stillForeground = (GetForegroundWindow() == self->m_hwnd);
+                                OutputDebugStringA(stillForeground
+                                    ? "[Activated] deferred check: spurious deactivation, re-Activating\n"
+                                    : "[Activated] deferred check: genuine deactivation, leaving alone\n");
+                                if (stillForeground) {
                                     try { self->Activate(); }
                                     catch (winrt::hresult_error const&) {}
-                                });
-                            }
+                                }
+                            });
                         }
                         return;
                     }
