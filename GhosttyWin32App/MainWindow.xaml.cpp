@@ -986,31 +986,23 @@ namespace winrt::GhosttyWin32::implementation
                 return true;
             }
 
-            // MOUSE_OVER_LINK — show a tooltip with the URL under the
-            // cursor whenever ghostty detects the mouse is hovering a
-            // link, hide it when the hover leaves. The cursor shape
-            // change (hand) is already wired via MOUSE_SHAPE; this
-            // adds the discoverable "where will I land if I click"
-            // text the user expects from a browser-grade link UI.
-            //
-            // The tooltip is a Win32 TOOLTIPS_CLASS popup in TRACK
-            // mode — TRACK lets us position it manually next to the
-            // cursor instead of relying on the default delay / tool
-            // rect mechanics, which don't map to a DComp surface
-            // anyway. Both the HWND and the text-backing wstring are
-            // function-local statics so the lazy init survives across
-            // hovers without leaking the string under TTM_UPDATETIPTEXT.
+            // MOUSE_OVER_LINK — TEMPORARILY DISABLED.
+            // The Win32 TOOLTIPS_CLASS popup approach below caused
+            // GhosttyWin32 to crash on URL click (process exit code
+            // 3 with no diagnostic), even though the action handler
+            // itself was firing correctly (verified via the
+            // [mouse_over_link] log line, ~16 fires per hover before
+            // the crash). The interaction between TTM_TRACKACTIVATE
+            // / SetWindowPos and the DComp surface's click routing
+            // needs more investigation before re-enabling. Until
+            // then, ack the action with a return-true and ship the
+            // URL click path unbroken.
+            if (action.tag == GHOSTTY_ACTION_MOUSE_OVER_LINK) {
+                return true;
+            }
+#if 0
             if (action.tag == GHOSTTY_ACTION_MOUSE_OVER_LINK) {
                 auto& ml = action.action.mouse_over_link;
-                {
-                    char buf[96];
-                    std::snprintf(buf, sizeof(buf),
-                                  "[mouse_over_link] fired url_len=%zu has_ptr=%d\n",
-                                  ml.len, ml.url ? 1 : 0);
-                    std::fputs(buf, stderr);
-                    std::fflush(stderr);
-                    OutputDebugStringA(buf);
-                }
                 std::wstring url = (ml.url && ml.len > 0)
                     ? Encoding::toUtf16(ml.url, static_cast<int>(ml.len))
                     : L"";
@@ -1060,6 +1052,7 @@ namespace winrt::GhosttyWin32::implementation
                 });
                 return true;
             }
+#endif
 
             // TOGGLE_FULLSCREEN — borderless fullscreen toggle. The
             // ghostty enum carries NATIVE + three macOS-specific
