@@ -1191,6 +1191,31 @@ namespace winrt::GhosttyWin32::implementation
                 return true;
             }
 
+            // Acknowledge actions whose feature surface is a separate
+            // design problem and is intentionally not on this PR's
+            // plate. Each is conceptually a real feature — a search
+            // bar (START/END/TOTAL/SELECTED), an ImGui inspector
+            // window (INSPECTOR + the render hook RENDER_INSPECTOR),
+            // a visual tab picker, a sliding hotkey terminal, a
+            // searchable command palette, terminal-level undo/redo.
+            // Routing them through a single ack today keeps the
+            // unhandled-default branch quiet so libghostty's future
+            // audit isn't full of false-positive missing entries; the
+            // proper feature work stays tracked in #57.
+            if (action.tag == GHOSTTY_ACTION_UNDO
+                || action.tag == GHOSTTY_ACTION_REDO
+                || action.tag == GHOSTTY_ACTION_START_SEARCH
+                || action.tag == GHOSTTY_ACTION_END_SEARCH
+                || action.tag == GHOSTTY_ACTION_SEARCH_TOTAL
+                || action.tag == GHOSTTY_ACTION_SEARCH_SELECTED
+                || action.tag == GHOSTTY_ACTION_INSPECTOR
+                || action.tag == GHOSTTY_ACTION_RENDER_INSPECTOR
+                || action.tag == GHOSTTY_ACTION_TOGGLE_TAB_OVERVIEW
+                || action.tag == GHOSTTY_ACTION_TOGGLE_QUICK_TERMINAL
+                || action.tag == GHOSTTY_ACTION_TOGGLE_COMMAND_PALETTE) {
+                return true;
+            }
+
             // CHECK_FOR_UPDATES — ghostty has no built-in updater on
             // Windows; the action just lets the host decide what
             // "check for updates" means. Sending the user to the
