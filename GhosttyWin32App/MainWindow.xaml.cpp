@@ -918,6 +918,22 @@ namespace winrt::GhosttyWin32::implementation
                 return true;
             }
 
+            // RENDER — ghostty is asking for an explicit repaint
+            // outside the natural wakeup_cb -> tick cadence. The
+            // dispatcher used by wakeup_cb already serialises ticks
+            // on the UI thread; route through the same path so the
+            // frame lands without us needing a separate per-surface
+            // draw entry. ghostty_app_tick is idempotent — calling it
+            // when nothing is dirty is a cheap no-op.
+            if (action.tag == GHOSTTY_ACTION_RENDER) {
+                if (!g_mainWindow || !g_mainWindow->m_ghostty) return true;
+                auto mw = g_mainWindow;
+                mw->DispatcherQueue().TryEnqueue([mw]() {
+                    if (mw->m_ghostty) mw->m_ghostty->Tick();
+                });
+                return true;
+            }
+
             // SCROLLBAR — ghostty exports scrollback total / offset /
             // visible-len whenever the scroll position moves. We don't
             // render a scrollbar (the terminal surface fills the
