@@ -30,6 +30,15 @@ namespace winrt::GhosttyWin32::implementation
             HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
             UINT_PTR id, DWORD_PTR ref) noexcept;
 
+        // WM_SETCURSOR subclass proc for MOUSE_VISIBILITY. WinUI 3
+        // ignores ShowCursor (the cursor goes through ProtectedCursor
+        // / InputSystemCursor instead), so the only reliable hide
+        // path is to short-circuit WM_SETCURSOR with SetCursor(NULL)
+        // while m_cursorHidden is true.
+        static LRESULT CALLBACK CursorVisibilitySubclassProc(
+            HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
+            UINT_PTR id, DWORD_PTR ref) noexcept;
+
         // Caption button click handlers, referenced from MainWindow.xaml.
         // Routed through Win32 messages (WM_SYSCOMMAND / WM_CLOSE / ShowWindow)
         // rather than OverlappedPresenter state changes, which have
@@ -133,6 +142,13 @@ namespace winrt::GhosttyWin32::implementation
         // never set a size limit don't pay the subclass cost.
         ghostty_action_size_limit_s m_sizeLimit{};
         bool m_sizeLimitSubclassed = false;
+        // MOUSE_VISIBILITY — when true, WM_SETCURSOR returns NULL so
+        // the cursor stays hidden until the next VISIBLE transition.
+        // Subclass installed lazily on the first MOUSE_VISIBILITY so
+        // the WM_SETCURSOR interception doesn't happen for apps that
+        // never fire the action.
+        bool m_cursorHidden = false;
+        bool m_cursorSubclassed = false;
         PaneIdAllocator m_paneIds;
         Tabs m_tabs;
         // Focus-tracked active surface. Set by NotifySurfaceFocused

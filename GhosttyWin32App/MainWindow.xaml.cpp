@@ -457,6 +457,23 @@ namespace winrt::GhosttyWin32::implementation
         return DefSubclassProc(hwnd, msg, wp, lp);
     }
 
+    LRESULT CALLBACK MainWindow::CursorVisibilitySubclassProc(
+        HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
+        UINT_PTR /*id*/, DWORD_PTR ref) noexcept
+    {
+        if (msg == WM_SETCURSOR) {
+            auto* mw = reinterpret_cast<MainWindow*>(ref);
+            if (mw && mw->m_cursorHidden) {
+                // Force the cursor null and tell Windows we handled
+                // the message so DefWindowProc / XAML doesn't reset
+                // it to the default arrow on every mouse move.
+                SetCursor(nullptr);
+                return TRUE;
+            }
+        }
+        return DefSubclassProc(hwnd, msg, wp, lp);
+    }
+
     Tab* MainWindow::ActiveTab()
     {
         return m_tabs.Active(TabView());
@@ -1363,25 +1380,48 @@ namespace winrt::GhosttyWin32::implementation
             // Auto-hide the cursor while the user is typing — the
             // ghostty convention (matching Vim / Helix / Kitty) is
             // to fire HIDDEN on first keystroke after motion and
-            // VISIBLE on the next WM_MOUSEMOVE-equivalent. ShowCursor
-            // is a counter, not a boolean, so blindly calling
-            // ShowCursor(FALSE) on every HIDDEN would tally the
-            // counter into the negative thousands and the matching
-            // VISIBLE calls couldn't catch up. Track our own bool
-            // and only toggle once per state transition.
+            // VISIBLE on the next WM_MOUSEMOVE-equivalent.
+            //
+            // WinUI 3 routes cursor handling through ProtectedCursor /
+            // InputSystemCursor, so the classic ShowCursor(FALSE)
+            // counter is ignored: even after decrementing the counter,
+            // XAML's WM_SETCURSOR handler resets the cursor on the
+            // next mouse move and the cursor reappears immediately.
+            // Install a WndProc subclass on first MOUSE_VISIBILITY
+            // that short-circuits WM_SETCURSOR while m_cursorHidden
+            // is true; that's the only place we can intercept XAML's
+            // cursor restoration. The subclass falls back to
+            // DefSubclassProc the moment m_cursorHidden flips off,
+            // so the next mouse move (which is exactly the event
+            // that fires VISIBLE) restores the normal cursor.
             if (action.tag == GHOSTTY_ACTION_MOUSE_VISIBILITY) {
                 bool hide = action.action.mouse_visibility == GHOSTTY_MOUSE_HIDDEN;
                 if (!g_mainWindow) return true;
                 auto mw = g_mainWindow;
-                mw->DispatcherQueue().TryEnqueue([hide]() {
-                    static bool s_cursorHidden = false;
-                    if (hide && !s_cursorHidden) {
-                        ShowCursor(FALSE);
-                        s_cursorHidden = true;
-                    } else if (!hide && s_cursorHidden) {
-                        ShowCursor(TRUE);
-                        s_cursorHidden = false;
+                mw->DispatcherQueue().TryEnqueue([mw, hide]() {
+                    HWND hwnd = mw->m_hwnd;
+                    if (!hwnd) return;
+                    if (!mw->m_cursorSubclassed) {
+                        if (SetWindowSubclass(hwnd,
+                                              &MainWindow::CursorVisibilitySubclassProc,
+                                              2,
+                                              reinterpret_cast<DWORD_PTR>(mw))) {
+                            mw->m_cursorSubclassed = true;
+                        }
                     }
+                    if (mw->m_cursorHidden == hide) return;
+                    mw->m_cursorHidden = hide;
+                    if (hide) {
+                        // Immediate hide without waiting for the next
+                        // WM_SETCURSOR; the subclass keeps it hidden
+                        // from there on.
+                        SetCursor(nullptr);
+                    }
+                    // For the visible case we deliberately do nothing
+                    // here — the subclass stops short-circuiting and
+                    // the next mouse move (which is what triggered
+                    // VISIBLE in the first place) lets XAML restore
+                    // the right cursor shape.
                 });
                 return true;
             }
