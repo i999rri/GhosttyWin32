@@ -100,6 +100,11 @@ namespace winrt::GhosttyWin32::implementation
 
         std::unique_ptr<GhosttyApp> m_ghostty;
         HWND m_hwnd = nullptr;
+        // Initial window size from GHOSTTY_ACTION_INITIAL_SIZE (physical
+        // pixels). Zero means "not yet received" — RESET_WINDOW_SIZE
+        // falls back to a DPI-scaled 1280x720 in that case.
+        uint32_t m_initialWidth = 0;
+        uint32_t m_initialHeight = 0;
         PaneIdAllocator m_paneIds;
         Tabs m_tabs;
         // Focus-tracked active surface. Set by NotifySurfaceFocused

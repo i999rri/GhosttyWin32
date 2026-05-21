@@ -918,24 +918,44 @@ namespace winrt::GhosttyWin32::implementation
                 return true;
             }
 
-            // RESET_WINDOW_SIZE — restore the window to a sensible
-            // default footprint. ghostty would ideally hand us the
-            // initial dimensions via INITIAL_SIZE at startup so we
-            // could snap back to that, but that path is still TODO
-            // (#57). Until then, 1280x720 DIPs lines up with the
-            // WinUI 3 fresh-window default and gives an 80-ish
-            // column / 24-row terminal at common font sizes —
-            // close enough to "reset" semantics that it's useful
-            // without being wrong.
+            // Record the desired startup window dimensions ghostty
+            // computes from config (`window-width` × `cell-width-px`,
+            // etc.). Stored as physical pixels — ghostty already did
+            // the cell-to-pixel math, so RESET_WINDOW_SIZE can hand
+            // the value to SetWindowPos directly without re-scaling.
+            // Without this the reset target stays the hardcoded
+            // 1280x720 fallback below, which ignores the user's
+            // config-defined window size.
+            if (action.tag == GHOSTTY_ACTION_INITIAL_SIZE) {
+                if (!g_mainWindow) return true;
+                auto sz = action.action.initial_size;
+                g_mainWindow->m_initialWidth = sz.width;
+                g_mainWindow->m_initialHeight = sz.height;
+                return true;
+            }
+
+            // RESET_WINDOW_SIZE — restore the window to its startup
+            // footprint. Prefer the size INITIAL_SIZE recorded (which
+            // honors the user's config); if INITIAL_SIZE never fired
+            // (e.g., default config, no startup size override) fall
+            // back to 1280x720 DIPs, which lines up with the WinUI 3
+            // fresh-window default and gives an 80-ish column / 24-
+            // row terminal at common font sizes.
             if (action.tag == GHOSTTY_ACTION_RESET_WINDOW_SIZE) {
                 if (!g_mainWindow) return true;
                 auto mw = g_mainWindow;
                 mw->DispatcherQueue().TryEnqueue([mw]() {
                     HWND hwnd = mw->m_hwnd;
                     if (!hwnd) return;
-                    UINT dpi = GetDpiForWindow(hwnd);
-                    int width = MulDiv(1280, dpi, 96);
-                    int height = MulDiv(720, dpi, 96);
+                    int width, height;
+                    if (mw->m_initialWidth && mw->m_initialHeight) {
+                        width = static_cast<int>(mw->m_initialWidth);
+                        height = static_cast<int>(mw->m_initialHeight);
+                    } else {
+                        UINT dpi = GetDpiForWindow(hwnd);
+                        width = MulDiv(1280, dpi, 96);
+                        height = MulDiv(720, dpi, 96);
+                    }
                     SetWindowPos(hwnd, nullptr, 0, 0, width, height,
                                  SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
                 });
