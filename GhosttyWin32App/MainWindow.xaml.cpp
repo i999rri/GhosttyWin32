@@ -905,6 +905,22 @@ namespace winrt::GhosttyWin32::implementation
                 return true;
             }
 
+            // Renderer health status from ghostty. UNHEALTHY means the
+            // generic renderer detected a problem (texture allocation
+            // failure, shader compile fault, etc.) and switched into a
+            // degraded mode. Surfacing this as a single stderr line
+            // makes the underlying cause findable in the debugger
+            // output without committing to a user-facing surface
+            // (toast, status bar) just yet — those can layer on top
+            // later if we want recovery UX.
+            if (action.tag == GHOSTTY_ACTION_RENDERER_HEALTH) {
+                bool healthy = action.action.renderer_health == GHOSTTY_RENDERER_HEALTH_HEALTHY;
+                std::fprintf(stderr, "[renderer_health] %s\n",
+                             healthy ? "healthy" : "unhealthy");
+                std::fflush(stderr);
+                return true;
+            }
+
             // Ctrl+click on a URL in the terminal. Hand off to the shell
             // verb opener so the user's default browser / mail client /
             // etc. handles it. Without this, libghostty falls back to
