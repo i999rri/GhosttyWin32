@@ -971,6 +971,27 @@ namespace winrt::GhosttyWin32::implementation
                 return true;
             }
 
+            // Acknowledge informational actions we don't have UI for
+            // yet. Each of these would deserve its own surface-side
+            // element in a fully-featured port — a read-only banner,
+            // a secure-input padlock, a pending-chord indicator, a
+            // modal-key-table label, a shell-supplied title source
+            // flag, a PWD breadcrumb, a post-command summary — but
+            // none of that UI exists today, and letting the action
+            // fall through to action_cb's unhandled-default branch
+            // would leave the door open to libghostty logging it as
+            // missing in a future audit. Returning true keeps that
+            // signal quiet; the proper UI work is tracked in #57.
+            if (action.tag == GHOSTTY_ACTION_READONLY
+                || action.tag == GHOSTTY_ACTION_SECURE_INPUT
+                || action.tag == GHOSTTY_ACTION_KEY_SEQUENCE
+                || action.tag == GHOSTTY_ACTION_KEY_TABLE
+                || action.tag == GHOSTTY_ACTION_PROMPT_TITLE
+                || action.tag == GHOSTTY_ACTION_PWD
+                || action.tag == GHOSTTY_ACTION_COMMAND_FINISHED) {
+                return true;
+            }
+
             // CHECK_FOR_UPDATES — ghostty has no built-in updater on
             // Windows; the action just lets the host decide what
             // "check for updates" means. Sending the user to the
