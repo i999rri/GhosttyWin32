@@ -749,9 +749,16 @@ namespace winrt::GhosttyWin32::implementation
             // extension-less files Windows shows the "Open With"
             // dialog, which is the right OS-native behaviour for
             // first run.
+            //
+            // GetEnvironmentVariableW over _wgetenv: the CRT helper
+            // is marked deprecated under MSVC /W4, the Win32 API is
+            // the documented modern path and writes into a caller-
+            // supplied buffer so there's no heap-allocation cleanup.
             if (action.tag == GHOSTTY_ACTION_OPEN_CONFIG) {
-                wchar_t const* appdata = _wgetenv(L"LOCALAPPDATA");
-                if (appdata) {
+                wchar_t appdata[MAX_PATH];
+                DWORD len = GetEnvironmentVariableW(L"LOCALAPPDATA", appdata,
+                                                   static_cast<DWORD>(std::size(appdata)));
+                if (len > 0 && len < std::size(appdata)) {
                     std::wstring path = std::wstring(appdata) + L"\\ghostty\\config";
                     ShellExecuteW(nullptr, L"open", path.c_str(),
                                   nullptr, nullptr, SW_SHOWNORMAL);
