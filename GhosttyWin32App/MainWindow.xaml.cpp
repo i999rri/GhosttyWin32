@@ -824,6 +824,61 @@ namespace winrt::GhosttyWin32::implementation
                 return true;
             }
 
+            // Reload the configuration. ghostty fires RELOAD_CONFIG
+            // when the user hits the default ctrl+shift+, keybind
+            // (or when a soft reload is requested internally, e.g.
+            // after a CONFIG_CHANGE notification). For soft reloads
+            // we just re-apply the config we already hold; for hard
+            // reloads we re-parse the file on a 4MB-stack worker
+            // thread (same reason GhosttyApp::Create uses one — the
+            // config parser stack-overflows the default 1MB) and
+            // hand the result to the UI thread for swap, since
+            // that's where ghostty_app_tick lives.
+            if (action.tag == GHOSTTY_ACTION_RELOAD_CONFIG) {
+                bool soft = action.action.reload_config.soft;
+                if (!g_mainWindow || !g_mainWindow->m_ghostty) return true;
+                auto mw = g_mainWindow;
+
+                if (soft) {
+                    mw->DispatcherQueue().TryEnqueue([mw]() {
+                        if (!mw->m_ghostty) return;
+                        auto app = mw->m_ghostty->Handle();
+                        auto cfg = mw->m_ghostty->ConfigHandle();
+                        if (app && cfg) ghostty_app_update_config(app, cfg);
+                    });
+                    return true;
+                }
+
+                struct ReloadCtx { MainWindow* mw; };
+                auto* ctx = new ReloadCtx{ mw };
+                HANDLE hThread = CreateThread(nullptr, 4 * 1024 * 1024,
+                    [](LPVOID p) -> DWORD {
+                        auto* c = static_cast<ReloadCtx*>(p);
+                        auto mwLocal = c->mw;
+                        delete c;
+                        ghostty_config_t newCfg = ghostty_config_new();
+                        if (newCfg) {
+                            ghostty_config_load_default_files(newCfg);
+                            ghostty_config_finalize(newCfg);
+                        }
+                        if (!mwLocal || !newCfg) {
+                            if (newCfg) ghostty_config_free(newCfg);
+                            return 0;
+                        }
+                        mwLocal->DispatcherQueue().TryEnqueue([mwLocal, newCfg]() {
+                            if (!mwLocal->m_ghostty) {
+                                ghostty_config_free(newCfg);
+                                return;
+                            }
+                            ghostty_app_update_config(mwLocal->m_ghostty->Handle(), newCfg);
+                            mwLocal->m_ghostty->ReplaceConfig(newCfg);
+                        });
+                        return 0;
+                    }, ctx, 0, nullptr);
+                if (hThread) CloseHandle(hThread); else delete ctx;
+                return true;
+            }
+
             // Toggle maximize/restore via the same WM_SYSCOMMAND
             // path the caption-button click already uses, so the
             // NVIDIA OverlappedPresenter AV from issue #26 stays out
