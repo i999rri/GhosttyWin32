@@ -1254,16 +1254,22 @@ namespace winrt::GhosttyWin32::implementation
             // (our default) the surface tears itself down via
             // close_surface_cb almost immediately, so this is mostly
             // a diagnostic breadcrumb: when a shell crashes during
-            // development, the exit code in stderr is the fastest
-            // path to "what failed". An in-terminal overlay would be
-            // the proper UI but needs its own design pass — for now,
-            // log and move on.
+            // development, the exit code in the debug output is the
+            // fastest path to "what failed". An in-terminal overlay
+            // would be the proper UI but needs its own design pass —
+            // for now, log and move on. Mirror to OutputDebugString
+            // so the line survives even when stderr was buffered
+            // through the surface teardown.
             if (action.tag == GHOSTTY_ACTION_SHOW_CHILD_EXITED) {
                 auto ce = action.action.child_exited;
-                std::fprintf(stderr, "[child_exited] exit_code=%u after_ms=%llu\n",
-                             ce.exit_code,
-                             static_cast<unsigned long long>(ce.timetime_ms));
+                char buf[128];
+                std::snprintf(buf, sizeof(buf),
+                              "[child_exited] exit_code=%u after_ms=%llu\n",
+                              ce.exit_code,
+                              static_cast<unsigned long long>(ce.timetime_ms));
+                std::fputs(buf, stderr);
                 std::fflush(stderr);
+                OutputDebugStringA(buf);
                 return true;
             }
 
@@ -1331,6 +1337,10 @@ namespace winrt::GhosttyWin32::implementation
             // fresh-window default and gives an 80-ish column / 24-
             // row terminal at common font sizes.
             if (action.tag == GHOSTTY_ACTION_RESET_WINDOW_SIZE) {
+                std::fprintf(stderr, "[reset_window_size] fired init=%ux%u\n",
+                             g_mainWindow ? g_mainWindow->m_initialWidth : 0,
+                             g_mainWindow ? g_mainWindow->m_initialHeight : 0);
+                std::fflush(stderr);
                 if (!g_mainWindow) return true;
                 auto mw = g_mainWindow;
                 mw->DispatcherQueue().TryEnqueue([mw]() {
@@ -1345,8 +1355,11 @@ namespace winrt::GhosttyWin32::implementation
                         width = MulDiv(1280, dpi, 96);
                         height = MulDiv(720, dpi, 96);
                     }
-                    SetWindowPos(hwnd, nullptr, 0, 0, width, height,
-                                 SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+                    BOOL ok = SetWindowPos(hwnd, nullptr, 0, 0, width, height,
+                                           SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+                    std::fprintf(stderr, "[reset_window_size] SetWindowPos w=%d h=%d ok=%d err=%lu\n",
+                                 width, height, ok ? 1 : 0, ok ? 0UL : GetLastError());
+                    std::fflush(stderr);
                 });
                 return true;
             }
