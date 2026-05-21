@@ -1392,23 +1392,20 @@ namespace winrt::GhosttyWin32::implementation
                 return true;
             }
 
-            // Auto-hide the cursor while the user is typing — the
-            // ghostty convention (matching Vim / Helix / Kitty) is
-            // to fire HIDDEN on first keystroke after motion and
-            // VISIBLE on the next WM_MOUSEMOVE-equivalent.
-            //
-            // WinUI 3 routes cursor handling through ProtectedCursor /
-            // InputSystemCursor, so the classic ShowCursor(FALSE)
-            // counter is ignored: even after decrementing the counter,
-            // XAML's WM_SETCURSOR handler resets the cursor on the
-            // next mouse move and the cursor reappears immediately.
-            // Install a WndProc subclass on first MOUSE_VISIBILITY
-            // that short-circuits WM_SETCURSOR while m_cursorHidden
-            // is true; that's the only place we can intercept XAML's
-            // cursor restoration. The subclass falls back to
-            // DefSubclassProc the moment m_cursorHidden flips off,
-            // so the next mouse move (which is exactly the event
-            // that fires VISIBLE) restores the normal cursor.
+            // MOUSE_VISIBILITY — DISABLED pending #60.
+            // The action never reached action_cb during verification
+            // even with mouse-hide-while-typing=true in config. The
+            // most likely cause is our ghostty_surface_key call site
+            // not populating event.utf8 for printable keystrokes,
+            // which is one of the four conditions ghostty checks
+            // before firing the action (Surface.zig:2686). On top of
+            // that, the implementation below uses a WM_SETCURSOR
+            // subclass + SetCursor(NULL), which would lose to
+            // WinUI 3's ProtectedCursor / InputSystemCursor every
+            // mouse move anyway — see #60 for the full diagnosis
+            // and the planned fix path. Body kept verbatim so the
+            // eventual re-enable is a straight unguard.
+#if 0
             if (action.tag == GHOSTTY_ACTION_MOUSE_VISIBILITY) {
                 bool hide = action.action.mouse_visibility == GHOSTTY_MOUSE_HIDDEN;
                 {
@@ -1434,19 +1431,12 @@ namespace winrt::GhosttyWin32::implementation
                     if (mw->m_cursorHidden == hide) return;
                     mw->m_cursorHidden = hide;
                     if (hide) {
-                        // Immediate hide without waiting for the next
-                        // WM_SETCURSOR; the subclass keeps it hidden
-                        // from there on.
                         SetCursor(nullptr);
                     }
-                    // For the visible case we deliberately do nothing
-                    // here — the subclass stops short-circuiting and
-                    // the next mouse move (which is what triggered
-                    // VISIBLE in the first place) lets XAML restore
-                    // the right cursor shape.
                 });
                 return true;
             }
+#endif
 
             // Renderer health status from ghostty. UNHEALTHY means the
             // generic renderer detected a problem (texture allocation
