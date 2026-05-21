@@ -12,6 +12,7 @@
 #include <shellapi.h>
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <limits>
@@ -461,6 +462,16 @@ namespace winrt::GhosttyWin32::implementation
             });
         };
         rtConfig.action_cb = [](ghostty_app_t, ghostty_target_s target, ghostty_action_s action) -> bool {
+            // Diagnostic: log every action that arrives at the host so we can
+            // verify whether a keybind is registered + dispatched.
+            // Remove once batch 1 actions are verified.
+            {
+                char dbgbuf[80];
+                std::snprintf(dbgbuf, sizeof(dbgbuf),
+                    "[action_cb] tag=%d target=%d\n",
+                    static_cast<int>(action.tag), static_cast<int>(target.tag));
+                OutputDebugStringA(dbgbuf);
+            }
             // Tab lifecycle / navigation actions. ghostty's default keybinds
             // (Ctrl+Shift+T new tab, Ctrl+Shift+W close, Ctrl+Tab/Ctrl+PageDown
             // next, etc.) are matched on the renderer thread inside
@@ -766,26 +777,28 @@ namespace winrt::GhosttyWin32::implementation
                 return true;
             }
 
-            // Hide / unhide the window with no taskbar persistence
-            // change — equivalent to "press Win+D for just our
-            // window". Pairs with a global keybind so the user can
-            // bring the window back even when it's not focused;
-            // without `global:` the keybind only fires while the
-            // window has keyboard focus and a hidden window can't
-            // be unhidden via the bind (but it can via the
-            // taskbar, alt-tab, or the keybind from another
-            // ghostty window in the multi-window future).
+            // Toggle minimize / restore. We use SW_MINIMIZE /
+            // SW_RESTORE instead of SW_HIDE here because hiding the
+            // window from the taskbar leaves Windows users without a
+            // discoverable way back — ghostty's `global:` keybind
+            // qualifier isn't wired to RegisterHotKey on this port
+            // yet, so a SW_HIDE'd window with no taskbar entry can
+            // only be recovered by relaunching. Minimizing keeps
+            // the window reachable via taskbar click / alt-tab,
+            // which matches what Windows users expect from a
+            // "toggle visibility" bind. The Mac-style full hide
+            // semantics can come back once global hotkeys land.
             if (action.tag == GHOSTTY_ACTION_TOGGLE_VISIBILITY) {
                 if (g_mainWindow) {
                     auto mw = g_mainWindow;
                     mw->DispatcherQueue().TryEnqueue([mw]() {
                         HWND hwnd = mw->m_hwnd;
                         if (!hwnd) return;
-                        if (IsWindowVisible(hwnd)) {
-                            ShowWindow(hwnd, SW_HIDE);
-                        } else {
-                            ShowWindow(hwnd, SW_SHOW);
+                        if (IsIconic(hwnd)) {
+                            ShowWindow(hwnd, SW_RESTORE);
                             SetForegroundWindow(hwnd);
+                        } else {
+                            ShowWindow(hwnd, SW_MINIMIZE);
                         }
                     });
                 }
