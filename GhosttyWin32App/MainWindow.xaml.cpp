@@ -918,6 +918,30 @@ namespace winrt::GhosttyWin32::implementation
                 return true;
             }
 
+            // RESET_WINDOW_SIZE — restore the window to a sensible
+            // default footprint. ghostty would ideally hand us the
+            // initial dimensions via INITIAL_SIZE at startup so we
+            // could snap back to that, but that path is still TODO
+            // (#57). Until then, 1280x720 DIPs lines up with the
+            // WinUI 3 fresh-window default and gives an 80-ish
+            // column / 24-row terminal at common font sizes —
+            // close enough to "reset" semantics that it's useful
+            // without being wrong.
+            if (action.tag == GHOSTTY_ACTION_RESET_WINDOW_SIZE) {
+                if (!g_mainWindow) return true;
+                auto mw = g_mainWindow;
+                mw->DispatcherQueue().TryEnqueue([mw]() {
+                    HWND hwnd = mw->m_hwnd;
+                    if (!hwnd) return;
+                    UINT dpi = GetDpiForWindow(hwnd);
+                    int width = MulDiv(1280, dpi, 96);
+                    int height = MulDiv(720, dpi, 96);
+                    SetWindowPos(hwnd, nullptr, 0, 0, width, height,
+                                 SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+                });
+                return true;
+            }
+
             // CONFIG_CHANGE sync. ghostty has already applied the new
             // config internally by the time this fires; it's a
             // notification, not a request. Without grabbing the new
