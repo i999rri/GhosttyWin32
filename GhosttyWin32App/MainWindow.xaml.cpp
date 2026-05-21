@@ -918,6 +918,32 @@ namespace winrt::GhosttyWin32::implementation
                 return true;
             }
 
+            // Auto-hide the cursor while the user is typing — the
+            // ghostty convention (matching Vim / Helix / Kitty) is
+            // to fire HIDDEN on first keystroke after motion and
+            // VISIBLE on the next WM_MOUSEMOVE-equivalent. ShowCursor
+            // is a counter, not a boolean, so blindly calling
+            // ShowCursor(FALSE) on every HIDDEN would tally the
+            // counter into the negative thousands and the matching
+            // VISIBLE calls couldn't catch up. Track our own bool
+            // and only toggle once per state transition.
+            if (action.tag == GHOSTTY_ACTION_MOUSE_VISIBILITY) {
+                bool hide = action.action.mouse_visibility == GHOSTTY_MOUSE_HIDDEN;
+                if (!g_mainWindow) return true;
+                auto mw = g_mainWindow;
+                mw->DispatcherQueue().TryEnqueue([hide]() {
+                    static bool s_cursorHidden = false;
+                    if (hide && !s_cursorHidden) {
+                        ShowCursor(FALSE);
+                        s_cursorHidden = true;
+                    } else if (!hide && s_cursorHidden) {
+                        ShowCursor(TRUE);
+                        s_cursorHidden = false;
+                    }
+                });
+                return true;
+            }
+
             // Renderer health status from ghostty. UNHEALTHY means the
             // generic renderer detected a problem (texture allocation
             // failure, shader compile fault, etc.) and switched into a
