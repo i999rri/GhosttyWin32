@@ -794,12 +794,18 @@ namespace winrt::GhosttyWin32::implementation
                 return true;
             }
 
-            // Toggle the always-on-top state of the window.
-            // ghostty exposes ON / OFF / TOGGLE; SetWindowPos with
-            // HWND_TOPMOST / HWND_NOTOPMOST is the standard Win32
-            // way to flip WS_EX_TOPMOST without recreating the
-            // window. SWP_NOMOVE | SWP_NOSIZE keeps the window in
-            // place while only the z-order flag changes.
+            // FLOAT_WINDOW (always-on-top toggle) — DISABLED.
+            // No keybind we tried reached this branch: ctrl+shift+f
+            // hits the ghostty-default start_search, ctrl+shift+alt+f
+            // is swallowed by the WinUI Alt-menu accelerator before
+            // ghostty sees it, and ctrl+shift+backslash produced no
+            // observable action_cb call either. The Win32 side of the
+            // implementation (SetWindowPos with HWND_TOPMOST /
+            // HWND_NOTOPMOST) is straightforward and preserved below
+            // for when the dispatch path is understood; the gate is
+            // figuring out why ghostty isn't dispatching the action
+            // to action_cb. Re-enable after that is resolved.
+#if 0
             if (action.tag == GHOSTTY_ACTION_FLOAT_WINDOW) {
                 auto mode = action.action.float_window;
                 if (g_mainWindow) {
@@ -823,6 +829,7 @@ namespace winrt::GhosttyWin32::implementation
                 }
                 return true;
             }
+#endif
 
             // Reload the configuration. ghostty fires RELOAD_CONFIG
             // when the user hits the default ctrl+shift+, keybind
