@@ -55,7 +55,7 @@
              the class declaration is what unblocks Register. -->
         <com:Extension Category="windows.comServer">
           <com:ComServer>
-            <com:ExeServer Executable="GhosttyWin32.exe" DisplayName="Ghostty Toast Activator">
+            <com:ExeServer Executable="GhosttyWin32.exe" Arguments="----AppNotificationActivated:" DisplayName="Ghostty Toast Activator">
               <com:Class Id="60457F0F-1240-411A-B45D-957479F5AAFD" DisplayName="Ghostty Toast Activator" />
             </com:ExeServer>
           </com:ComServer>
