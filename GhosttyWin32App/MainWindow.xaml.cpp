@@ -918,6 +918,32 @@ namespace winrt::GhosttyWin32::implementation
                 return true;
             }
 
+            // CONFIG_CHANGE sync. ghostty has already applied the new
+            // config internally by the time this fires; it's a
+            // notification, not a request. Without grabbing the new
+            // pointer here our stored m_config would diverge from
+            // what libghostty is actually using — soft-reload would
+            // re-apply the stale copy and any future host-side
+            // config query (color theme, padding, etc.) would lie.
+            // Clone because ghostty owns the passed-in pointer; the
+            // UI-thread swap mirrors the reload_config path so we
+            // don't free while another tick could be reading.
+            if (action.tag == GHOSTTY_ACTION_CONFIG_CHANGE) {
+                auto newCfg = action.action.config_change.config;
+                if (!g_mainWindow || !g_mainWindow->m_ghostty || !newCfg) return true;
+                auto mw = g_mainWindow;
+                auto cloned = ghostty_config_clone(newCfg);
+                if (!cloned) return true;
+                mw->DispatcherQueue().TryEnqueue([mw, cloned]() {
+                    if (!mw->m_ghostty) {
+                        ghostty_config_free(cloned);
+                        return;
+                    }
+                    mw->m_ghostty->ReplaceConfig(cloned);
+                });
+                return true;
+            }
+
             // Auto-hide the cursor while the user is typing — the
             // ghostty convention (matching Vim / Helix / Kitty) is
             // to fire HIDDEN on first keystroke after motion and
