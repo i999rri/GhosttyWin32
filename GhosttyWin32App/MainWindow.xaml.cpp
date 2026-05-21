@@ -918,6 +918,24 @@ namespace winrt::GhosttyWin32::implementation
                 return true;
             }
 
+            // SHOW_CHILD_EXITED — ghostty notifies us the surface's
+            // shell process exited. With confirm-close-surface=false
+            // (our default) the surface tears itself down via
+            // close_surface_cb almost immediately, so this is mostly
+            // a diagnostic breadcrumb: when a shell crashes during
+            // development, the exit code in stderr is the fastest
+            // path to "what failed". An in-terminal overlay would be
+            // the proper UI but needs its own design pass — for now,
+            // log and move on.
+            if (action.tag == GHOSTTY_ACTION_SHOW_CHILD_EXITED) {
+                auto ce = action.action.child_exited;
+                std::fprintf(stderr, "[child_exited] exit_code=%u after_ms=%llu\n",
+                             ce.exit_code,
+                             static_cast<unsigned long long>(ce.timetime_ms));
+                std::fflush(stderr);
+                return true;
+            }
+
             // RENDER — ghostty is asking for an explicit repaint
             // outside the natural wakeup_cb -> tick cadence. The
             // dispatcher used by wakeup_cb already serialises ticks
