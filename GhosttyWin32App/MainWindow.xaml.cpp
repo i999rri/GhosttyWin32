@@ -12,7 +12,6 @@
 #include <shellapi.h>
 #include <algorithm>
 #include <cmath>
-#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <limits>
@@ -462,16 +461,6 @@ namespace winrt::GhosttyWin32::implementation
             });
         };
         rtConfig.action_cb = [](ghostty_app_t, ghostty_target_s target, ghostty_action_s action) -> bool {
-            // Diagnostic: log every action that arrives at the host so we can
-            // verify whether a keybind is registered + dispatched.
-            // Remove once batch 1 actions are verified.
-            {
-                char dbgbuf[80];
-                std::snprintf(dbgbuf, sizeof(dbgbuf),
-                    "[action_cb] tag=%d target=%d\n",
-                    static_cast<int>(action.tag), static_cast<int>(target.tag));
-                OutputDebugStringA(dbgbuf);
-            }
             // Tab lifecycle / navigation actions. ghostty's default keybinds
             // (Ctrl+Shift+T new tab, Ctrl+Shift+W close, Ctrl+Tab/Ctrl+PageDown
             // next, etc.) are matched on the renderer thread inside
