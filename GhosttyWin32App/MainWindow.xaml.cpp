@@ -921,6 +921,55 @@ namespace winrt::GhosttyWin32::implementation
                 return true;
             }
 
+            // TOGGLE_FULLSCREEN — borderless fullscreen toggle. The
+            // ghostty enum carries NATIVE + three macOS-specific
+            // NON_NATIVE variants; on Windows they all collapse to
+            // the same "remove WS_OVERLAPPEDWINDOW + cover the
+            // monitor" behavior, so the value is ignored. Track the
+            // toggle state plus the previous WINDOWPLACEMENT and
+            // style on MainWindow so leaving fullscreen lands back
+            // where the user started (preserving a maximised state
+            // if they were maximised before entering FS — RECT alone
+            // would lose that).
+            //
+            // Caveat: our custom title bar lives in the XAML content
+            // tree, so it stays visible at the top of the surface
+            // even in fullscreen. Hiding it is a follow-up; the
+            // window itself does fill the monitor correctly.
+            if (action.tag == GHOSTTY_ACTION_TOGGLE_FULLSCREEN) {
+                if (!g_mainWindow) return true;
+                auto mw = g_mainWindow;
+                mw->DispatcherQueue().TryEnqueue([mw]() {
+                    HWND hwnd = mw->m_hwnd;
+                    if (!hwnd) return;
+                    if (!mw->m_fullscreen) {
+                        mw->m_prevPlacement.length = sizeof(WINDOWPLACEMENT);
+                        GetWindowPlacement(hwnd, &mw->m_prevPlacement);
+                        mw->m_prevStyle = GetWindowLongPtrW(hwnd, GWL_STYLE);
+
+                        HMONITOR mon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+                        MONITORINFO mi{ sizeof(MONITORINFO) };
+                        if (!GetMonitorInfoW(mon, &mi)) return;
+
+                        SetWindowLongPtrW(hwnd, GWL_STYLE,
+                                          mw->m_prevStyle & ~WS_OVERLAPPEDWINDOW);
+                        SetWindowPos(hwnd, HWND_TOP,
+                                     mi.rcMonitor.left, mi.rcMonitor.top,
+                                     mi.rcMonitor.right - mi.rcMonitor.left,
+                                     mi.rcMonitor.bottom - mi.rcMonitor.top,
+                                     SWP_NOZORDER | SWP_FRAMECHANGED);
+                        mw->m_fullscreen = true;
+                    } else {
+                        SetWindowLongPtrW(hwnd, GWL_STYLE, mw->m_prevStyle);
+                        SetWindowPlacement(hwnd, &mw->m_prevPlacement);
+                        SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
+                                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+                        mw->m_fullscreen = false;
+                    }
+                });
+                return true;
+            }
+
             // DESKTOP_NOTIFICATION — surface ghostty's bell-and-toast
             // notifications via the Windows native toast layer. Builds
             // a minimal two-line payload (title + body) and hands it

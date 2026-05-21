@@ -111,6 +111,14 @@ namespace winrt::GhosttyWin32::implementation
         // (e.g., snap-to-cell resize feedback) has the current value.
         uint32_t m_cellWidth = 0;
         uint32_t m_cellHeight = 0;
+        // Fullscreen toggle state — TOGGLE_FULLSCREEN flips m_fullscreen
+        // and uses m_prevPlacement / m_prevStyle to restore the original
+        // window when leaving fullscreen. We save WINDOWPLACEMENT instead
+        // of a RECT because it round-trips maximised state correctly
+        // (toggling FS from a maximised window should return to maximised).
+        bool m_fullscreen = false;
+        WINDOWPLACEMENT m_prevPlacement{};
+        LONG_PTR m_prevStyle = 0;
         PaneIdAllocator m_paneIds;
         Tabs m_tabs;
         // Focus-tracked active surface. Set by NotifySurfaceFocused
