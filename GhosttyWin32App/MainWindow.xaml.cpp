@@ -11,6 +11,7 @@
 #include <dwmapi.h>
 #include <shellapi.h>
 #include <shobjidl_core.h>
+#include <commctrl.h>
 #include <winrt/Microsoft.Windows.AppNotifications.h>
 #include <winrt/Microsoft.Windows.AppNotifications.Builder.h>
 #include <algorithm>
@@ -21,6 +22,7 @@
 #include <vector>
 #pragma comment(lib, "dwmapi.lib")
 #pragma comment(lib, "shell32.lib")
+#pragma comment(lib, "comctl32.lib")
 
 namespace {
     // Flag file used to detect that the previous process didn't exit cleanly.
@@ -918,6 +920,72 @@ namespace winrt::GhosttyWin32::implementation
             // don't start logging "unhandled action" for an action
             // we've intentionally ignored.
             if (action.tag == GHOSTTY_ACTION_QUIT_TIMER) {
+                return true;
+            }
+
+            // MOUSE_OVER_LINK — show a tooltip with the URL under the
+            // cursor whenever ghostty detects the mouse is hovering a
+            // link, hide it when the hover leaves. The cursor shape
+            // change (hand) is already wired via MOUSE_SHAPE; this
+            // adds the discoverable "where will I land if I click"
+            // text the user expects from a browser-grade link UI.
+            //
+            // The tooltip is a Win32 TOOLTIPS_CLASS popup in TRACK
+            // mode — TRACK lets us position it manually next to the
+            // cursor instead of relying on the default delay / tool
+            // rect mechanics, which don't map to a DComp surface
+            // anyway. Both the HWND and the text-backing wstring are
+            // function-local statics so the lazy init survives across
+            // hovers without leaking the string under TTM_UPDATETIPTEXT.
+            if (action.tag == GHOSTTY_ACTION_MOUSE_OVER_LINK) {
+                auto& ml = action.action.mouse_over_link;
+                std::wstring url = (ml.url && ml.len > 0)
+                    ? Encoding::toUtf16(ml.url, static_cast<int>(ml.len))
+                    : L"";
+                if (!g_mainWindow) return true;
+                auto mw = g_mainWindow;
+                mw->DispatcherQueue().TryEnqueue([mw, url = std::move(url)]() {
+                    HWND hwnd = mw->m_hwnd;
+                    if (!hwnd) return;
+                    static HWND s_toolTip = nullptr;
+                    static TOOLINFOW s_ti{};
+                    static std::wstring s_urlBuf;
+                    if (!s_toolTip) {
+                        s_toolTip = CreateWindowExW(
+                            WS_EX_TOPMOST,
+                            TOOLTIPS_CLASSW, nullptr,
+                            WS_POPUP | TTS_NOPREFIX | TTS_ALWAYSTIP,
+                            CW_USEDEFAULT, CW_USEDEFAULT,
+                            CW_USEDEFAULT, CW_USEDEFAULT,
+                            nullptr, nullptr,
+                            GetModuleHandleW(nullptr), nullptr);
+                        if (!s_toolTip) return;
+                        s_ti.cbSize = sizeof(TOOLINFOW);
+                        s_ti.uFlags = TTF_TRACK | TTF_ABSOLUTE;
+                        s_ti.hwnd = hwnd;
+                        s_ti.uId = 1;
+                        s_urlBuf = L"";
+                        s_ti.lpszText = s_urlBuf.data();
+                        SendMessageW(s_toolTip, TTM_ADDTOOL, 0,
+                                     reinterpret_cast<LPARAM>(&s_ti));
+                        SendMessageW(s_toolTip, TTM_SETMAXTIPWIDTH, 0, 1024);
+                    }
+                    if (url.empty()) {
+                        SendMessageW(s_toolTip, TTM_TRACKACTIVATE, FALSE,
+                                     reinterpret_cast<LPARAM>(&s_ti));
+                    } else {
+                        s_urlBuf = url;
+                        s_ti.lpszText = s_urlBuf.data();
+                        SendMessageW(s_toolTip, TTM_UPDATETIPTEXTW, 0,
+                                     reinterpret_cast<LPARAM>(&s_ti));
+                        POINT pt;
+                        GetCursorPos(&pt);
+                        SendMessageW(s_toolTip, TTM_TRACKPOSITION, 0,
+                                     MAKELONG(pt.x + 20, pt.y + 20));
+                        SendMessageW(s_toolTip, TTM_TRACKACTIVATE, TRUE,
+                                     reinterpret_cast<LPARAM>(&s_ti));
+                    }
+                });
                 return true;
             }
 
