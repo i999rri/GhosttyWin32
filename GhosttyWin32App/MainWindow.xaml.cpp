@@ -918,6 +918,22 @@ namespace winrt::GhosttyWin32::implementation
                 return true;
             }
 
+            // CHECK_FOR_UPDATES — ghostty has no built-in updater on
+            // Windows; the action just lets the host decide what
+            // "check for updates" means. Sending the user to the
+            // GitHub releases page is the lowest-friction option
+            // while we don't ship a Sparkle-equivalent updater.
+            // ShellExecuteW dispatches to the user's default browser
+            // without spawning a visible cmd/rundll32 flash, matching
+            // the OPEN_URL path.
+            if (action.tag == GHOSTTY_ACTION_CHECK_FOR_UPDATES) {
+                HWND hwnd = g_mainWindow ? g_mainWindow->m_hwnd : nullptr;
+                ShellExecuteW(hwnd, L"open",
+                              L"https://github.com/i999rri/GhosttyWin32/releases",
+                              nullptr, nullptr, SW_SHOWNORMAL);
+                return true;
+            }
+
             // SHOW_CHILD_EXITED — ghostty notifies us the surface's
             // shell process exited. With confirm-close-surface=false
             // (our default) the surface tears itself down via
