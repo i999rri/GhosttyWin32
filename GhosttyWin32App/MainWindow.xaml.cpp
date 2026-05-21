@@ -1002,6 +1002,15 @@ namespace winrt::GhosttyWin32::implementation
             // hovers without leaking the string under TTM_UPDATETIPTEXT.
             if (action.tag == GHOSTTY_ACTION_MOUSE_OVER_LINK) {
                 auto& ml = action.action.mouse_over_link;
+                {
+                    char buf[96];
+                    std::snprintf(buf, sizeof(buf),
+                                  "[mouse_over_link] fired url_len=%zu has_ptr=%d\n",
+                                  ml.len, ml.url ? 1 : 0);
+                    std::fputs(buf, stderr);
+                    std::fflush(stderr);
+                    OutputDebugStringA(buf);
+                }
                 std::wstring url = (ml.url && ml.len > 0)
                     ? Encoding::toUtf16(ml.url, static_cast<int>(ml.len))
                     : L"";
@@ -1409,6 +1418,13 @@ namespace winrt::GhosttyWin32::implementation
             // that fires VISIBLE) restores the normal cursor.
             if (action.tag == GHOSTTY_ACTION_MOUSE_VISIBILITY) {
                 bool hide = action.action.mouse_visibility == GHOSTTY_MOUSE_HIDDEN;
+                {
+                    char buf[64];
+                    std::snprintf(buf, sizeof(buf), "[mouse_visibility] fired hide=%d\n", hide ? 1 : 0);
+                    std::fputs(buf, stderr);
+                    std::fflush(stderr);
+                    OutputDebugStringA(buf);
+                }
                 if (!g_mainWindow) return true;
                 auto mw = g_mainWindow;
                 mw->DispatcherQueue().TryEnqueue([mw, hide]() {
