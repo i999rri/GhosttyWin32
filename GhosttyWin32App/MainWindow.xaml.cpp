@@ -1339,10 +1339,6 @@ namespace winrt::GhosttyWin32::implementation
             // fresh-window default and gives an 80-ish column / 24-
             // row terminal at common font sizes.
             if (action.tag == GHOSTTY_ACTION_RESET_WINDOW_SIZE) {
-                std::fprintf(stderr, "[reset_window_size] fired init=%ux%u\n",
-                             g_mainWindow ? g_mainWindow->m_initialWidth : 0,
-                             g_mainWindow ? g_mainWindow->m_initialHeight : 0);
-                std::fflush(stderr);
                 if (!g_mainWindow) return true;
                 auto mw = g_mainWindow;
                 mw->DispatcherQueue().TryEnqueue([mw]() {
@@ -1357,11 +1353,8 @@ namespace winrt::GhosttyWin32::implementation
                         width = MulDiv(1280, dpi, 96);
                         height = MulDiv(720, dpi, 96);
                     }
-                    BOOL ok = SetWindowPos(hwnd, nullptr, 0, 0, width, height,
-                                           SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
-                    std::fprintf(stderr, "[reset_window_size] SetWindowPos w=%d h=%d ok=%d err=%lu\n",
-                                 width, height, ok ? 1 : 0, ok ? 0UL : GetLastError());
-                    std::fflush(stderr);
+                    SetWindowPos(hwnd, nullptr, 0, 0, width, height,
+                                 SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
                 });
                 return true;
             }
