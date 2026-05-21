@@ -10,6 +10,7 @@
 #include <microsoft.ui.xaml.window.h>
 #include <dwmapi.h>
 #include <shellapi.h>
+#include <shobjidl_core.h>
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
@@ -915,6 +916,58 @@ namespace winrt::GhosttyWin32::implementation
             // don't start logging "unhandled action" for an action
             // we've intentionally ignored.
             if (action.tag == GHOSTTY_ACTION_QUIT_TIMER) {
+                return true;
+            }
+
+            // PROGRESS_REPORT — OSC 9;4 progress reports from the
+            // shell (pnpm, make, large copies, etc.). Without a host
+            // handler the percentage just gets dropped on the floor.
+            // Map ghostty's state machine onto ITaskbarList3 so the
+            // user sees the progress bar on the taskbar button — the
+            // standard Windows surface for background-task progress.
+            // The ITaskbarList3 instance is cached on the UI thread
+            // (where COM is STA-initialized) since CoCreateInstance +
+            // HrInit aren't cheap to redo per OSC sequence.
+            if (action.tag == GHOSTTY_ACTION_PROGRESS_REPORT) {
+                auto pr = action.action.progress_report;
+                if (!g_mainWindow) return true;
+                auto mw = g_mainWindow;
+                mw->DispatcherQueue().TryEnqueue([mw, pr]() {
+                    HWND hwnd = mw->m_hwnd;
+                    if (!hwnd) return;
+                    static winrt::com_ptr<ITaskbarList3> s_taskbar;
+                    if (!s_taskbar) {
+                        if (FAILED(CoCreateInstance(CLSID_TaskbarList, nullptr,
+                                                    CLSCTX_INPROC_SERVER,
+                                                    IID_PPV_ARGS(s_taskbar.put())))) {
+                            return;
+                        }
+                        if (FAILED(s_taskbar->HrInit())) {
+                            s_taskbar = nullptr;
+                            return;
+                        }
+                    }
+                    TBPFLAG flag = TBPF_NOPROGRESS;
+                    switch (pr.state) {
+                        case GHOSTTY_PROGRESS_STATE_REMOVE:        flag = TBPF_NOPROGRESS;    break;
+                        case GHOSTTY_PROGRESS_STATE_SET:           flag = TBPF_NORMAL;        break;
+                        case GHOSTTY_PROGRESS_STATE_ERROR:         flag = TBPF_ERROR;         break;
+                        case GHOSTTY_PROGRESS_STATE_INDETERMINATE: flag = TBPF_INDETERMINATE; break;
+                        case GHOSTTY_PROGRESS_STATE_PAUSE:         flag = TBPF_PAUSED;        break;
+                    }
+                    s_taskbar->SetProgressState(hwnd, flag);
+                    // SetProgressValue is meaningless under
+                    // INDETERMINATE / NOPROGRESS and the percentage
+                    // is -1 when no value was reported — skip the
+                    // call so the bar doesn't snap to 0% on a
+                    // bare state change.
+                    if (pr.progress >= 0
+                        && (flag == TBPF_NORMAL || flag == TBPF_ERROR || flag == TBPF_PAUSED)) {
+                        s_taskbar->SetProgressValue(hwnd,
+                                                    static_cast<ULONGLONG>(pr.progress),
+                                                    100ULL);
+                    }
+                });
                 return true;
             }
 
