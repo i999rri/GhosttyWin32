@@ -918,6 +918,20 @@ namespace winrt::GhosttyWin32::implementation
                 return true;
             }
 
+            // Cache the glyph cell dimensions ghostty derives from the
+            // active font + size. ghostty fires this whenever the cell
+            // metrics change (font reload, DPI change, config edit);
+            // without caching, any future host-side logic that wants
+            // to snap a resize / split ratio to a whole-cell boundary
+            // would have to round-trip through libghostty each time.
+            if (action.tag == GHOSTTY_ACTION_CELL_SIZE) {
+                if (!g_mainWindow) return true;
+                auto cs = action.action.cell_size;
+                g_mainWindow->m_cellWidth = cs.width;
+                g_mainWindow->m_cellHeight = cs.height;
+                return true;
+            }
+
             // Record the desired startup window dimensions ghostty
             // computes from config (`window-width` × `cell-width-px`,
             // etc.). Stored as physical pixels — ghostty already did

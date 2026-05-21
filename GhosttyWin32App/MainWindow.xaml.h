@@ -105,6 +105,12 @@ namespace winrt::GhosttyWin32::implementation
         // falls back to a DPI-scaled 1280x720 in that case.
         uint32_t m_initialWidth = 0;
         uint32_t m_initialHeight = 0;
+        // Glyph cell dimensions (pixels) from GHOSTTY_ACTION_CELL_SIZE.
+        // Updated whenever ghostty's font / cell metrics change so any
+        // future host-side sizing logic that wants whole-cell rounding
+        // (e.g., snap-to-cell resize feedback) has the current value.
+        uint32_t m_cellWidth = 0;
+        uint32_t m_cellHeight = 0;
         PaneIdAllocator m_paneIds;
         Tabs m_tabs;
         // Focus-tracked active surface. Set by NotifySurfaceFocused
