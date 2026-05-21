@@ -11,6 +11,8 @@
 #include <dwmapi.h>
 #include <shellapi.h>
 #include <shobjidl_core.h>
+#include <winrt/Microsoft.Windows.AppNotifications.h>
+#include <winrt/Microsoft.Windows.AppNotifications.Builder.h>
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
@@ -916,6 +918,40 @@ namespace winrt::GhosttyWin32::implementation
             // don't start logging "unhandled action" for an action
             // we've intentionally ignored.
             if (action.tag == GHOSTTY_ACTION_QUIT_TIMER) {
+                return true;
+            }
+
+            // DESKTOP_NOTIFICATION — surface ghostty's bell-and-toast
+            // notifications via the Windows native toast layer. Builds
+            // a minimal two-line payload (title + body) and hands it
+            // to AppNotificationManager; the manager was registered
+            // in App::OnLaunched so Show won't be silently dropped.
+            // Dispatch to the UI thread because the AppNotifications
+            // WinRT projection is happiest on the STA-initialised UI
+            // thread and we already cross that boundary for every
+            // other Win32 surface call.
+            if (action.tag == GHOSTTY_ACTION_DESKTOP_NOTIFICATION) {
+                auto& dn = action.action.desktop_notification;
+                std::wstring title = (dn.title && dn.title[0]) ? Encoding::toUtf16(dn.title) : L"";
+                std::wstring body  = (dn.body  && dn.body[0])  ? Encoding::toUtf16(dn.body)  : L"";
+                if (title.empty() && body.empty()) return true;
+                if (!g_mainWindow) return true;
+                auto mw = g_mainWindow;
+                mw->DispatcherQueue().TryEnqueue([title = std::move(title),
+                                                  body = std::move(body)]() {
+                    try {
+                        using namespace winrt::Microsoft::Windows::AppNotifications;
+                        using namespace winrt::Microsoft::Windows::AppNotifications::Builder;
+                        AppNotificationBuilder builder;
+                        if (!title.empty()) builder.AddText(title);
+                        if (!body.empty())  builder.AddText(body);
+                        AppNotificationManager::Default().Show(builder.BuildNotification());
+                    } catch (winrt::hresult_error const&) {
+                        // Either the manager wasn't registered (App startup
+                        // logged it) or the OS refused. Nothing actionable
+                        // host-side; the message just doesn't appear.
+                    }
+                });
                 return true;
             }
 

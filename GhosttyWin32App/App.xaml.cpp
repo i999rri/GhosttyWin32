@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <fstream>
 #include <windows.h>
+#include <winrt/Microsoft.Windows.AppNotifications.h>
 
 using namespace winrt;
 using namespace Microsoft::UI::Xaml;
@@ -63,6 +64,18 @@ namespace winrt::GhosttyWin32::implementation
                 Sleep(2000);
             }
             std::ofstream(flag).close();
+        }
+
+        // Register with the AppNotifications service so the
+        // GHOSTTY_ACTION_DESKTOP_NOTIFICATION handler can later call
+        // AppNotificationManager::Show without being silently dropped.
+        // Register is idempotent; the catch is a belt-and-suspenders
+        // hedge against MSIX activation edge cases that throw here on
+        // some Windows builds.
+        try {
+            Microsoft::Windows::AppNotifications::AppNotificationManager::Default().Register();
+        } catch (winrt::hresult_error const&) {
+            OutputDebugStringA("GhosttyWin32: AppNotificationManager::Register failed; desktop notifications disabled\n");
         }
 
         window = make<MainWindow>();
