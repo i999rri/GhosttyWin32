@@ -22,6 +22,14 @@ namespace winrt::GhosttyWin32::implementation
         // NVIDIA state.
         static long __stdcall OnUnhandledException(struct _EXCEPTION_POINTERS* info) noexcept;
 
+        // WM_GETMINMAXINFO subclass proc installed lazily on first
+        // SIZE_LIMIT. dwRefData carries the MainWindow*; the proc
+        // reads m_sizeLimit and clamps ptMin/MaxTrackSize before
+        // forwarding to DefSubclassProc.
+        static LRESULT CALLBACK SizeLimitSubclassProc(
+            HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
+            UINT_PTR id, DWORD_PTR ref) noexcept;
+
         // Caption button click handlers, referenced from MainWindow.xaml.
         // Routed through Win32 messages (WM_SYSCOMMAND / WM_CLOSE / ShowWindow)
         // rather than OverlappedPresenter state changes, which have
@@ -119,6 +127,12 @@ namespace winrt::GhosttyWin32::implementation
         bool m_fullscreen = false;
         WINDOWPLACEMENT m_prevPlacement{};
         LONG_PTR m_prevStyle = 0;
+        // SIZE_LIMIT — min / max window size in pixels. The values are
+        // applied in WM_GETMINMAXINFO via SizeLimitSubclassProc, which
+        // is installed lazily on the first SIZE_LIMIT so apps that
+        // never set a size limit don't pay the subclass cost.
+        ghostty_action_size_limit_s m_sizeLimit{};
+        bool m_sizeLimitSubclassed = false;
         PaneIdAllocator m_paneIds;
         Tabs m_tabs;
         // Focus-tracked active surface. Set by NotifySurfaceFocused

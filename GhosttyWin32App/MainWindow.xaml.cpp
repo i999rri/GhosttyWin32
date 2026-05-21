@@ -437,6 +437,26 @@ namespace winrt::GhosttyWin32::implementation
         return EXCEPTION_CONTINUE_SEARCH;
     }
 
+    LRESULT CALLBACK MainWindow::SizeLimitSubclassProc(
+        HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
+        UINT_PTR /*id*/, DWORD_PTR ref) noexcept
+    {
+        if (msg == WM_GETMINMAXINFO) {
+            auto* mw = reinterpret_cast<MainWindow*>(ref);
+            if (mw) {
+                auto& sl = mw->m_sizeLimit;
+                auto* mmi = reinterpret_cast<MINMAXINFO*>(lp);
+                // Zero in any field means "no limit" — leave the
+                // default. Only the populated fields override.
+                if (sl.min_width)  mmi->ptMinTrackSize.x = static_cast<LONG>(sl.min_width);
+                if (sl.min_height) mmi->ptMinTrackSize.y = static_cast<LONG>(sl.min_height);
+                if (sl.max_width)  mmi->ptMaxTrackSize.x = static_cast<LONG>(sl.max_width);
+                if (sl.max_height) mmi->ptMaxTrackSize.y = static_cast<LONG>(sl.max_height);
+            }
+        }
+        return DefSubclassProc(hwnd, msg, wp, lp);
+    }
+
     Tab* MainWindow::ActiveTab()
     {
         return m_tabs.Active(TabView());
@@ -920,6 +940,32 @@ namespace winrt::GhosttyWin32::implementation
             // don't start logging "unhandled action" for an action
             // we've intentionally ignored.
             if (action.tag == GHOSTTY_ACTION_QUIT_TIMER) {
+                return true;
+            }
+
+            // SIZE_LIMIT — ghostty wants the window to refuse drags
+            // below / above certain pixel dimensions (e.g., "don't
+            // shrink past 10x5 cells", "don't grow past 200x80"). The
+            // canonical Win32 hook for this is WM_GETMINMAXINFO, which
+            // means subclassing the top-level WndProc. Install the
+            // subclass lazily on first SIZE_LIMIT so apps that never
+            // set a limit don't pay the subclass cost, and cache the
+            // limits on MainWindow so the subclass proc can read them
+            // without re-entering the dispatcher.
+            if (action.tag == GHOSTTY_ACTION_SIZE_LIMIT) {
+                if (!g_mainWindow) return true;
+                auto mw = g_mainWindow;
+                mw->m_sizeLimit = action.action.size_limit;
+                mw->DispatcherQueue().TryEnqueue([mw]() {
+                    HWND hwnd = mw->m_hwnd;
+                    if (!hwnd || mw->m_sizeLimitSubclassed) return;
+                    if (SetWindowSubclass(hwnd,
+                                          &MainWindow::SizeLimitSubclassProc,
+                                          1,
+                                          reinterpret_cast<DWORD_PTR>(mw))) {
+                        mw->m_sizeLimitSubclassed = true;
+                    }
+                });
                 return true;
             }
 
