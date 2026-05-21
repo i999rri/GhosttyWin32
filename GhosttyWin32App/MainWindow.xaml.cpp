@@ -918,6 +918,16 @@ namespace winrt::GhosttyWin32::implementation
                 return true;
             }
 
+            // SCROLLBAR — ghostty exports scrollback total / offset /
+            // visible-len whenever the scroll position moves. We don't
+            // render a scrollbar (the terminal surface fills the
+            // available area without one), so the data has nowhere to
+            // go. Acknowledge anyway so the action doesn't fall
+            // through to the unhandled-default branch.
+            if (action.tag == GHOSTTY_ACTION_SCROLLBAR) {
+                return true;
+            }
+
             // Cache the glyph cell dimensions ghostty derives from the
             // active font + size. ghostty fires this whenever the cell
             // metrics change (font reload, DPI change, config edit);
