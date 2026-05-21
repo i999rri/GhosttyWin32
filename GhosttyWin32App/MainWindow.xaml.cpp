@@ -905,6 +905,19 @@ namespace winrt::GhosttyWin32::implementation
                 return true;
             }
 
+            // Quit-timer ack. macOS apprts use this to manage the
+            // "wait N seconds after the last window closes before
+            // actually quitting" countdown — Cmd+Q behavior carries
+            // through that on macOS. Windows quits as soon as the
+            // last top-level HWND goes away (which our CLOSE_WINDOW
+            // path already does), so neither START nor STOP needs
+            // any wiring. Return true so future libghostty versions
+            // don't start logging "unhandled action" for an action
+            // we've intentionally ignored.
+            if (action.tag == GHOSTTY_ACTION_QUIT_TIMER) {
+                return true;
+            }
+
             // Renderer health status from ghostty. UNHEALTHY means the
             // generic renderer detected a problem (texture allocation
             // failure, shader compile fault, etc.) and switched into a
