@@ -57,8 +57,14 @@ TEST(FullscreenTest, ToggleTwiceRestoresStyle) {
 
     // Leaving fullscreen must put back the same style we
     // snapshotted on entry — that's the whole reason
-    // FullscreenController stores m_prevStyle.
-    EXPECT_EQ(GetWindowLongPtrW(hwnd, GWL_STYLE), before);
+    // FullscreenController stores m_prevStyle. WS_VISIBLE is
+    // masked out of the comparison because SetWindowPlacement
+    // on exit honours showCmd=SW_SHOWNORMAL (the default for a
+    // freshly-created window), which flips the bit on; in
+    // production the window was already visible going in, so
+    // this is a test-fixture artefact, not a Fullscreen bug.
+    EXPECT_EQ(GetWindowLongPtrW(hwnd, GWL_STYLE) & ~WS_VISIBLE,
+              before & ~WS_VISIBLE);
 
     DestroyWindow(hwnd);
 }

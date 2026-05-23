@@ -271,6 +271,12 @@ TEST(GhosttyActionsTest, OnConfigChangeClonesBeforeHandoff) {
 
     ghostty_config_t cfg = ghostty_config_new();
     ASSERT_NE(cfg, nullptr);
+    // ghostty_config_clone refuses to operate on an unfinalised
+    // config (AV deep in libghostty when we tried — discovered by
+    // SEH 0xc0000005 in the original version of this test). The
+    // real CONFIG_CHANGE callback always hands us a finalised
+    // pointer, so the test should mirror that.
+    ghostty_config_finalize(cfg);
 
     EXPECT_TRUE(actions.OnConfigChange(cfg));
     EXPECT_EQ(view.replaceConfigCalls, 1);
