@@ -278,8 +278,6 @@ TEST(GhosttyActionsTest, OnConfigChangeClonesBeforeHandoff) {
     ghostty_init(0, nullptr);
     ghostty_config_t cfg = ghostty_config_new();
     ASSERT_NE(cfg, nullptr);
-    ghostty_config_load_default_files(cfg);
-    ghostty_config_finalize(cfg);
 
     EXPECT_TRUE(actions.OnConfigChange(cfg));
     EXPECT_EQ(view.replaceConfigCalls, 1);
