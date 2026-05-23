@@ -106,6 +106,21 @@ void SplitPanel::UpdateChildVisibility() {
     }
 }
 
+void SplitPanel::SetDividerColor(winrt::Windows::UI::Color color) noexcept {
+    using namespace winrt::Microsoft::UI::Xaml::Controls;
+    using namespace winrt::Microsoft::UI::Xaml::Media;
+    m_dividerBrush = SolidColorBrush(color);
+    // Repaint every existing splitter so a reload-driven colour
+    // change shows up without waiting for a tree rebuild. New
+    // splitters created after this point pick the brush up via
+    // MakeSplitter's check on m_dividerBrush.
+    for (auto const& entry : m_splitters) {
+        if (auto border = entry.element.try_as<Border>()) {
+            border.Background(m_dividerBrush);
+        }
+    }
+}
+
 void SplitPanel::EqualizeAll() {
     // m_splitters already holds one entry per internal node, so reuse
     // it instead of re-walking the tree. The vector is rebuilt on
@@ -163,11 +178,16 @@ Microsoft::UI::Xaml::Controls::Border SplitPanel::MakeSplitter(Pane* node) {
     using namespace winrt::Microsoft::UI::Xaml::Media;
 
     Border border{};
-    // Semi-transparent gray, visible on both light- and dark-themed
-    // terminal backgrounds without dominating. Refined theming can
-    // come later; the priority here is "the user can see it and grab
-    // it" rather than "it matches the palette".
-    border.Background(SolidColorBrush(winrt::Windows::UI::Color{ 96, 128, 128, 128 }));
+    // Prefer the SetDividerColor-supplied brush (TabFactory resolves
+    // it from ghostty config) over the built-in fallback. Fallback
+    // is a semi-transparent gray, visible on both light- and dark-
+    // themed terminal backgrounds without dominating — used only
+    // when the factory hasn't called SetDividerColor yet.
+    if (m_dividerBrush) {
+        border.Background(m_dividerBrush);
+    } else {
+        border.Background(SolidColorBrush(winrt::Windows::UI::Color{ 96, 128, 128, 128 }));
+    }
 
     // No resize cursor for now — ProtectedCursor is protected on
     // UIElement and Border is sealed, so we can't set the per-element

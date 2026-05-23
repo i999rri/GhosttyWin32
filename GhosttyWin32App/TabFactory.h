@@ -38,7 +38,8 @@ public:
                PaneIdAllocator& idAllocator,
                std::function<void(ghostty_surface_t)> onLeafFocused = {}) noexcept
         : m_app(app), m_config(config), m_hwnd(hwnd), m_idAllocator(idAllocator),
-          m_onLeafFocused(std::move(onLeafFocused)) {}
+          m_onLeafFocused(std::move(onLeafFocused)),
+          m_dividerColor(ResolveDividerColor(config)) {}
 
     TabFactory(const TabFactory&) = delete;
     TabFactory& operator=(const TabFactory&) = delete;
@@ -88,6 +89,10 @@ public:
             DetachLeaf(*leaf);
             return nullptr;
         }
+        // Apply the divider colour before any tree exists so the
+        // first splitter Border built by SetRoot already paints
+        // with the correct brush.
+        splitPanelImpl->SetDividerColor(m_dividerColor);
         splitPanelImpl->SetRoot(std::move(leaf));
         item.Content(splitPanel);
 
@@ -225,6 +230,40 @@ public:
     }
 
 private:
+    // Resolve split-divider-color from config the way upstream does
+    // (macOS Ghostty.Config.swift `splitDividerColor`): prefer the
+    // user-set `split-divider-color`; otherwise derive from the
+    // background by darkening it — 8% if the background is light,
+    // 40% if it's dark. Falls back to a neutral mid-grey if config
+    // is null or even `background` isn't readable (shouldn't happen
+    // in normal startup but keeps the brush valid).
+    static winrt::Windows::UI::Color ResolveDividerColor(ghostty_config_t config) noexcept {
+        ghostty_config_color_s c{ 128, 128, 128 };
+        bool resolved = false;
+        if (config) {
+            constexpr const char* keyDivider = "split-divider-color";
+            resolved = ghostty_config_get(config, &c, keyDivider, sizeof(c));
+            if (!resolved) {
+                ghostty_config_color_s bg{};
+                if (ghostty_config_get(config, &bg, "background", sizeof(bg))) {
+                    const bool light = (static_cast<int>(bg.r)
+                                        + static_cast<int>(bg.g)
+                                        + static_cast<int>(bg.b)) / 3 > 128;
+                    const double factor = light ? 0.08 : 0.40;
+                    c.r = static_cast<uint8_t>(bg.r * (1.0 - factor));
+                    c.g = static_cast<uint8_t>(bg.g * (1.0 - factor));
+                    c.b = static_cast<uint8_t>(bg.b * (1.0 - factor));
+                    resolved = true;
+                }
+            }
+        }
+        // Use alpha=255: the divider is a 1 DIP opaque hairline.
+        // Letting the brush be translucent would let the colour
+        // beneath bleed through, which on a dark background reads
+        // as "blurry edge" rather than "clean separator".
+        return winrt::Windows::UI::Color{ 255, c.r, c.g, c.b };
+    }
+
     // Synchronously detach every TerminalControl under `node` so the
     // surface / DComp handle don't leak when an error path discards a
     // partially-constructed tree. Mirrors Tab::DetachAllLeaves but is
@@ -248,6 +287,12 @@ private:
     // Optional. Fires with the leaf's ghostty_surface_t whenever the
     // leaf's TerminalControl receives keyboard focus.
     std::function<void(ghostty_surface_t)> m_onLeafFocused;
+    // Resolved once in the ctor (config is read-only-here) and
+    // stamped onto every SplitPanel built by Make. Reload-time
+    // updates would require re-running ResolveDividerColor and
+    // pushing the new colour into existing SplitPanels via
+    // SetDividerColor — wired but not yet triggered by anyone.
+    winrt::Windows::UI::Color m_dividerColor;
 };
 
 }  // namespace winrt::GhosttyWin32::implementation

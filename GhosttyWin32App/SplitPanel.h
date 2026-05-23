@@ -101,6 +101,14 @@ struct SplitPanel : SplitPanelT<SplitPanel> {
     // practice.
     static constexpr double kSplitterThickness = 1.0;
 
+    // Set the brush used to paint the splitter strip. Called once
+    // by the factory right after the SplitPanel is constructed
+    // (before any tree exists), and re-callable later if a config
+    // reload changes split-divider-color. Refreshes the Background
+    // of any already-laid-out splitter Borders so the change shows
+    // up without rebuilding the tree.
+    void SetDividerColor(winrt::Windows::UI::Color color) noexcept;
+
 private:
     // Recursive measure — caps each subtree at its share of `available`
     // along the split axis. Called by MeasureOverride.
@@ -154,6 +162,12 @@ private:
 
     std::unique_ptr<Pane> m_root;
     std::vector<SplitterEntry> m_splitters;
+    // Cached brush handed to every splitter Border. Set by
+    // SetDividerColor; if null, MakeSplitter falls back to a
+    // neutral semi-transparent gray so brand-new SplitPanels are
+    // still visible before the factory hooks up the config-derived
+    // colour.
+    winrt::Microsoft::UI::Xaml::Media::SolidColorBrush m_dividerBrush{ nullptr };
     // Set while a splitter drag is in progress (PointerPressed →
     // PointerReleased / CaptureLost). Identifies which internal node's
     // ratio is being updated by PointerMoved.
