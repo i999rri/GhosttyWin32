@@ -1,5 +1,6 @@
 #pragma once
 
+#include "GhosttyConfig.h"
 #include "Pane.h"
 #include "PaneId.h"
 #include "PaneIdAllocator.h"
@@ -34,12 +35,12 @@ namespace winrt::GhosttyWin32::implementation {
 // borrows it.
 class TabFactory {
 public:
-    TabFactory(ghostty_app_t app, ghostty_config_t config, HWND hwnd,
+    TabFactory(ghostty_app_t app, GhosttyConfig const& cfg, HWND hwnd,
                PaneIdAllocator& idAllocator,
                std::function<void(ghostty_surface_t)> onLeafFocused = {}) noexcept
-        : m_app(app), m_config(config), m_hwnd(hwnd), m_idAllocator(idAllocator),
+        : m_app(app), m_cfg(cfg), m_hwnd(hwnd), m_idAllocator(idAllocator),
           m_onLeafFocused(std::move(onLeafFocused)),
-          m_dividerColor(ResolveDividerColor(config)) {}
+          m_dividerColor(cfg.SplitDividerColor()) {}
 
     TabFactory(const TabFactory&) = delete;
     TabFactory& operator=(const TabFactory&) = delete;
@@ -205,85 +206,20 @@ public:
         // taking a hard dependency on MainWindow.
         if (m_onLeafFocused) controlImpl->SetOnFocused(m_onLeafFocused);
 
-        // Resolve the unfocused-split appearance from ghostty config
-        // and stamp it onto the control. unfocused-split-opacity is
-        // ghostty's "how visible the unfocused side should be" (0.7
-        // by default), so the overlay alpha is 1 - that. fill falls
-        // back to the terminal background, matching upstream.
-        //
-        // ghostty_config_get's 4th parameter is the LENGTH OF THE
-        // KEY STRING, not the size of the output buffer (see upstream
-        // Ghostty.Config.swift which passes key.lengthOfBytes). We
-        // were passing sizeof(out) which made every lookup miss on a
-        // 2-3 char prefix of the key. The constexpr-string-literal
-        // sizeof minus the null terminator is the smallest way to
-        // compute the key length without a runtime strlen.
-        double opacity = 0.7;
-        ghostty_config_color_s fill{};
-        bool gotFill = false;
-        if (m_config) {
-            ghostty_config_get(m_config, &opacity,
-                               "unfocused-split-opacity",
-                               sizeof("unfocused-split-opacity") - 1);
-            gotFill = ghostty_config_get(m_config, &fill,
-                                         "unfocused-split-fill",
-                                         sizeof("unfocused-split-fill") - 1);
-            if (!gotFill) {
-                gotFill = ghostty_config_get(m_config, &fill,
-                                             "background",
-                                             sizeof("background") - 1);
-            }
-        }
-        if (!gotFill) { fill.r = 0; fill.g = 0; fill.b = 0; }
-        winrt::Windows::UI::Color overlayFill{ 255, fill.r, fill.g, fill.b };
-        controlImpl->SetUnfocusedAppearance(1.0 - opacity, overlayFill);
+        // Stamp the unfocused-split appearance onto the control.
+        // GhosttyConfig owns the key-length convention and the
+        // background fallback so this call site just asks for what
+        // it wants. ghostty's `unfocused-split-opacity` measures
+        // "how visible the unfocused side should be", so the
+        // overlay alpha is (1 - that).
+        controlImpl->SetUnfocusedAppearance(
+            1.0 - m_cfg.UnfocusedSplitOpacity(),
+            m_cfg.UnfocusedSplitFill());
 
         return Pane::MakeLeaf(control, paneId);
     }
 
 private:
-    // Resolve split-divider-color from config the way upstream does
-    // (macOS Ghostty.Config.swift `splitDividerColor`): prefer the
-    // user-set `split-divider-color`; otherwise derive from the
-    // background by darkening it — 8% if the background is light,
-    // 40% if it's dark. Falls back to a neutral mid-grey if config
-    // is null or even `background` isn't readable (shouldn't happen
-    // in normal startup but keeps the brush valid).
-    static winrt::Windows::UI::Color ResolveDividerColor(ghostty_config_t config) noexcept {
-        // ghostty_config_get's 4th argument is the length of the key
-        // string (see upstream Ghostty.Config.swift), not the size of
-        // the output buffer. Passing sizeof(out) silently truncates
-        // the key and the lookup fails for everything longer than
-        // a couple of characters.
-        ghostty_config_color_s c{ 128, 128, 128 };
-        bool resolved = false;
-        if (config) {
-            resolved = ghostty_config_get(config, &c,
-                                          "split-divider-color",
-                                          sizeof("split-divider-color") - 1);
-            if (!resolved) {
-                ghostty_config_color_s bg{};
-                if (ghostty_config_get(config, &bg,
-                                       "background",
-                                       sizeof("background") - 1)) {
-                    const bool light = (static_cast<int>(bg.r)
-                                        + static_cast<int>(bg.g)
-                                        + static_cast<int>(bg.b)) / 3 > 128;
-                    const double factor = light ? 0.08 : 0.40;
-                    c.r = static_cast<uint8_t>(bg.r * (1.0 - factor));
-                    c.g = static_cast<uint8_t>(bg.g * (1.0 - factor));
-                    c.b = static_cast<uint8_t>(bg.b * (1.0 - factor));
-                    resolved = true;
-                }
-            }
-        }
-        // Use alpha=255: the divider is a 1 DIP opaque hairline.
-        // Letting the brush be translucent would let the colour
-        // beneath bleed through, which on a dark background reads
-        // as "blurry edge" rather than "clean separator".
-        return winrt::Windows::UI::Color{ 255, c.r, c.g, c.b };
-    }
-
     // Synchronously detach every TerminalControl under `node` so the
     // surface / DComp handle don't leak when an error path discards a
     // partially-constructed tree. Mirrors Tab::DetachAllLeaves but is
@@ -301,17 +237,17 @@ private:
     }
 
     ghostty_app_t m_app;
-    ghostty_config_t m_config;
+    GhosttyConfig m_cfg;
     HWND m_hwnd;
     PaneIdAllocator& m_idAllocator;
     // Optional. Fires with the leaf's ghostty_surface_t whenever the
     // leaf's TerminalControl receives keyboard focus.
     std::function<void(ghostty_surface_t)> m_onLeafFocused;
-    // Resolved once in the ctor (config is read-only-here) and
+    // Resolved once in the ctor (config is read-only here) and
     // stamped onto every SplitPanel built by Make. Reload-time
-    // updates would require re-running ResolveDividerColor and
-    // pushing the new colour into existing SplitPanels via
-    // SetDividerColor — wired but not yet triggered by anyone.
+    // updates would re-run m_cfg.SplitDividerColor() and push the
+    // new value into existing SplitPanels via SetDividerColor —
+    // wired but not yet triggered by anyone on this branch.
     winrt::Windows::UI::Color m_dividerColor;
 };
 

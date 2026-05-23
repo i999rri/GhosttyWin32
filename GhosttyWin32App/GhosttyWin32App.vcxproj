@@ -120,6 +120,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Encoding.h" />
+    <ClInclude Include="GhosttyConfig.h" />
     <ClInclude Include="ImeBuffer.h" />
     <ClInclude Include="KeyModifiers.h" />
     <ClInclude Include="pch.h" />
