@@ -3,7 +3,7 @@
 #include "Ghostty/CallbackDispatcher.h"
 #include "Clipboard.h"
 #include "Host/KeyModifiers.h"
-#include "Util/Encoding.h"
+#include "Interop/Encoding.h"
 #include "SEHGuard.h"
 #if __has_include("MainWindow.g.cpp")
 #include "MainWindow.g.cpp"
@@ -514,7 +514,7 @@ namespace winrt::GhosttyWin32::implementation
             if (!g_mainWindow) return false;
             auto* tc = g_mainWindow->ActiveControl();
             if (!tc || !tc->Surface()) return false;
-            auto utf8 = util::Encoding::toUtf8(Clipboard::read(g_mainWindow->m_hwnd));
+            auto utf8 = interop::Encoding::toUtf8(Clipboard::read(g_mainWindow->m_hwnd));
             if (utf8.empty()) return false;
             ghostty_surface_complete_clipboard_request(tc->Surface(), utf8.c_str(), state, false);
             return true;
@@ -531,7 +531,7 @@ namespace winrt::GhosttyWin32::implementation
         rtConfig.write_clipboard_cb = [](void*, ghostty_clipboard_e, const ghostty_clipboard_content_s* content, size_t count, bool) {
             if (!content || count == 0 || !content[0].data) return;
             HWND hwnd = g_mainWindow ? g_mainWindow->m_hwnd : nullptr;
-            Clipboard::write(hwnd, util::Encoding::toUtf16(content[0].data));
+            Clipboard::write(hwnd, interop::Encoding::toUtf16(content[0].data));
         };
         // Shell exited (e.g. user typed `exit`), or ghostty asked to close
         // the surface for any other reason. The userdata is the PaneId

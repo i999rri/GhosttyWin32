@@ -1,5 +1,5 @@
 #include "Actions.h"
-#include "Util/Encoding.h"
+#include "Interop/Encoding.h"
 #include <windows.h>
 #include <shellapi.h>
 #include <cstdio>

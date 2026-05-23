@@ -19,7 +19,7 @@ namespace winrt::GhosttyWin32::implementation
     // accurate but unreadable at every member declaration.
     namespace ghostty = core::ghostty;
     namespace host    = core::host;
-    namespace util    = core::util;
+    namespace interop = core::interop;
 
     struct MainWindow : MainWindowT<MainWindow>, host::IWindow
     {

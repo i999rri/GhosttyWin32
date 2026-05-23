@@ -1,7 +1,7 @@
 #include "pch.h"
 #include "TerminalControl.xaml.h"
 #include "Clipboard.h"
-#include "Util/Encoding.h"
+#include "Interop/Encoding.h"
 #include "Host/KeyModifiers.h"
 #if __has_include("TerminalControl.g.cpp")
 #include "TerminalControl.g.cpp"
@@ -129,7 +129,7 @@ namespace winrt::GhosttyWin32::implementation
                 if (ghostty_surface_has_selection(self->m_surface)) {
                     ghostty_text_s text = {};
                     if (ghostty_surface_read_selection(self->m_surface, &text) && text.text && text.text_len > 0) {
-                        Clipboard::write(self->m_hostHwnd, util::Encoding::toUtf16(text.text, static_cast<int>(text.text_len)));
+                        Clipboard::write(self->m_hostHwnd, interop::Encoding::toUtf16(text.text, static_cast<int>(text.text_len)));
                         ghostty_surface_free_text(self->m_surface, &text);
                     }
                     // Click-then-release without modifiers clears the
@@ -190,7 +190,7 @@ namespace winrt::GhosttyWin32::implementation
                 if (ghostty_surface_has_selection(self->m_surface)) {
                     ghostty_text_s text = {};
                     if (ghostty_surface_read_selection(self->m_surface, &text) && text.text && text.text_len > 0) {
-                        Clipboard::write(self->m_hostHwnd, util::Encoding::toUtf16(text.text, static_cast<int>(text.text_len)));
+                        Clipboard::write(self->m_hostHwnd, interop::Encoding::toUtf16(text.text, static_cast<int>(text.text_len)));
                         ghostty_surface_free_text(self->m_surface, &text);
                     }
                     ghostty_surface_mouse_button(self->m_surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, (ghostty_input_mods_e)0);
@@ -202,7 +202,7 @@ namespace winrt::GhosttyWin32::implementation
 
             // Ctrl+V: paste from clipboard.
             if (ctrl && !shift && vk == 'V') {
-                auto utf8 = util::Encoding::toUtf8(Clipboard::read(self->m_hostHwnd));
+                auto utf8 = interop::Encoding::toUtf8(Clipboard::read(self->m_hostHwnd));
                 if (!utf8.empty()) {
                     ghostty_surface_text(self->m_surface, utf8.c_str(), utf8.size());
                 }
@@ -498,7 +498,7 @@ namespace winrt::GhosttyWin32::implementation
                 if (self->m_ime.text().empty()) {
                     ghostty_surface_preedit(self->m_surface, nullptr, 0);
                 } else {
-                    auto utf8 = util::Encoding::toUtf8(self->m_ime.text());
+                    auto utf8 = interop::Encoding::toUtf8(self->m_ime.text());
                     if (!utf8.empty())
                         ghostty_surface_preedit(self->m_surface, utf8.c_str(), utf8.size());
                 }
@@ -522,7 +522,7 @@ namespace winrt::GhosttyWin32::implementation
             if (!self) return;
             if (self->m_surface) {
                 ghostty_surface_preedit(self->m_surface, nullptr, 0);
-                auto utf8 = util::Encoding::toUtf8(self->m_ime.text());
+                auto utf8 = interop::Encoding::toUtf8(self->m_ime.text());
                 if (!utf8.empty()) {
                     ghostty_surface_text(self->m_surface, utf8.c_str(), utf8.size());
                 }
