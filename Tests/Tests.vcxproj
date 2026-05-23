@@ -39,7 +39,6 @@
       share x64\Release\ with App (used to trip MSBuild's
       "intermediate directory shared" warning).
     -->
-    <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\$(ProjectName)\</OutDir>
     <IntDir>$(Platform)\$(Configuration)\$(ProjectName)\</IntDir>
   </PropertyGroup>
   <ItemDefinitionGroup />

@@ -96,7 +96,6 @@
       Core don't share x64\Release\ (which used to trip MSBuild's
       "intermediate directory shared between projects" warning).
     -->
-    <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\$(ProjectName)\</OutDir>
     <IntDir>$(Platform)\$(Configuration)\$(ProjectName)\</IntDir>
   </PropertyGroup>
   <ItemDefinitionGroup>
