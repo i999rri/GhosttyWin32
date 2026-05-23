@@ -59,6 +59,15 @@ public:
     bool OnSetTitle(ghostty_surface_t surface, const char* utf8Title);
     bool OnCopyTitleToClipboard(ghostty_surface_t surface);
 
+    // ----- terminal-driven appearance + lifecycle -----
+    bool OnColorChange(ghostty_action_color_change_s cc);
+    bool OnMouseShape(ghostty_surface_t surface,
+                      ghostty_action_mouse_shape_e shape);
+    bool OnReloadConfig(bool soft);
+    bool OnConfigChange(ghostty_config_t newCfg);
+    bool OnDesktopNotification(ghostty_action_desktop_notification_s dn);
+    bool OnProgressReport(ghostty_action_progress_report_s pr);
+
     // ----- window state -----
     // Both delegate the actual mutation to a dedicated state owner
     // on the view (SizeLimit / Fullscreen); the action

@@ -3,6 +3,7 @@
 #include "ghostty.h"
 #include <winrt/Microsoft.UI.Dispatching.h>
 #include <windows.h>
+#include <cstdint>
 #include <string>
 
 namespace winrt::GhosttyWin32::implementation {
@@ -114,6 +115,41 @@ struct IMainWindowView {
     // Toggle borderless fullscreen on/off. Restores the exact
     // pre-fullscreen placement + style when leaving.
     virtual void ToggleFullscreen() = 0;
+
+    // ----- terminal-driven appearance + lifecycle -----
+
+    // Apply a new background colour (caption bar + XAML root) in
+    // response to COLOR_CHANGE / DECCC. R/G/B are 0-255.
+    virtual void ApplyBackgroundColor(uint8_t r, uint8_t g, uint8_t b) = 0;
+
+    // Set the pointer cursor shape on the pane owning `surface`.
+    // (Currently routes to the active leaf of the tab — issue #65
+    // tracks moving this to the originating leaf.)
+    virtual void SetCursorShapeForSurface(ghostty_surface_t surface,
+                                          ghostty_action_mouse_shape_e shape) = 0;
+
+    // Replace the GhosttyApp's stored config with `cloned`. Takes
+    // ownership: the implementation is responsible for freeing it
+    // when superseded. Pass a clone from CONFIG_CHANGE (ghostty
+    // owns the original) — RELOAD_CONFIG goes through ReloadConfig
+    // below instead.
+    virtual void ReplaceConfig(ghostty_config_t cloned) = 0;
+
+    // Reload the user config. soft=true re-applies the currently
+    // stored config; soft=false re-parses from disk on a 4MB-stack
+    // worker thread (ghostty's parser blows the default 1MB
+    // stack) and swaps the result in on the UI thread.
+    virtual void ReloadConfig(bool soft) = 0;
+
+    // Show a Windows toast for the given two-line payload. Either
+    // string may be empty; if both are empty the call is a no-op.
+    virtual void ShowDesktopNotification(std::wstring title,
+                                         std::wstring body) = 0;
+
+    // Update the host window's taskbar progress indicator. The
+    // taskbar surface is window-global, not per-pane, so no
+    // surface argument is needed.
+    virtual void ReportProgress(ghostty_action_progress_report_s pr) = 0;
 };
 
 }  // namespace winrt::GhosttyWin32::implementation

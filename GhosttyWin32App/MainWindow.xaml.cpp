@@ -438,23 +438,6 @@ namespace winrt::GhosttyWin32::implementation
         return EXCEPTION_CONTINUE_SEARCH;
     }
 
-    LRESULT CALLBACK MainWindow::CursorVisibilitySubclassProc(
-        HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
-        UINT_PTR /*id*/, DWORD_PTR ref) noexcept
-    {
-        if (msg == WM_SETCURSOR) {
-            auto* mw = reinterpret_cast<MainWindow*>(ref);
-            if (mw && mw->m_cursorHidden) {
-                // Force the cursor null and tell Windows we handled
-                // the message so DefWindowProc / XAML doesn't reset
-                // it to the default arrow on every mouse move.
-                SetCursor(nullptr);
-                return TRUE;
-            }
-        }
-        return DefSubclassProc(hwnd, msg, wp, lp);
-    }
-
     Tab* MainWindow::ActiveTab()
     {
         return m_tabs.Active(TabView());
@@ -518,386 +501,12 @@ namespace winrt::GhosttyWin32::implementation
             });
         };
         rtConfig.action_cb = [](ghostty_app_t, ghostty_target_s target, ghostty_action_s action) -> bool {
-            // Lifted-out handlers first. Anything the dispatcher
-            // already owns short-circuits here; only handlers that
-            // still live inline below see the action.
-            if (g_mainWindow && g_mainWindow->m_ghosttyDispatcher
-                && g_mainWindow->m_ghosttyDispatcher->DispatchAction(target, action)) {
-                return true;
-            }
-
-            // Tab lifecycle / navigation actions. ghostty's default keybinds
-            // (Ctrl+Shift+T new tab, Ctrl+Shift+W close, Ctrl+Tab/Ctrl+PageDown
-            // next, etc.) are matched on the renderer thread inside
-            // ghostty_surface_key and surfaced here as actions; the actual
-            // TabView mutation has to happen on the UI thread.
-            //
-            // NEW_WINDOW is folded into NEW_TAB for now since multi-window
-            // isn't implemented — this matches how other shells fall back
-            // when they get a "new window" request without a window manager.
-            // Title bar and tab strip color matches terminal background
-            if (action.tag == GHOSTTY_ACTION_COLOR_CHANGE && g_mainWindow && g_mainWindow->m_hwnd) {
-                auto& cc = action.action.color_change;
-                if (cc.kind == GHOSTTY_ACTION_COLOR_KIND_BACKGROUND) {
-                    HWND hwnd = g_mainWindow->m_hwnd;
-                    COLORREF color = RGB(cc.r, cc.g, cc.b);
-                    DwmSetWindowAttribute(hwnd, DWMWA_CAPTION_COLOR, &color, sizeof(color));
-                    float luminance = 0.299f * cc.r + 0.587f * cc.g + 0.114f * cc.b;
-                    COLORREF textColor = (luminance < 128) ? RGB(255, 255, 255) : RGB(0, 0, 0);
-                    DwmSetWindowAttribute(hwnd, DWMWA_TEXT_COLOR, &textColor, sizeof(textColor));
-
-                    // Update XAML background to match
-                    auto mw = g_mainWindow;
-                    uint8_t r = cc.r, g = cc.g, b = cc.b;
-                    mw->DispatcherQueue().TryEnqueue([mw, r, g, b]() {
-                        auto brush = winrt::Microsoft::UI::Xaml::Media::SolidColorBrush(
-                            winrt::Windows::UI::Color{ 255, r, g, b });
-                        mw->Content().as<winrt::Microsoft::UI::Xaml::Controls::Panel>().Background(brush);
-                    });
-                }
-                return true;
-            }
-
-            // Pointer cursor shape requests — IBeam over cells, Hand
-            // when Ctrl-hovering a link, resize arrows on split borders
-            // (not yet exposed), etc. Per-surface so multi-tab windows
-            // can have different cursors per tab.
-            if (action.tag == GHOSTTY_ACTION_MOUSE_SHAPE
-                && target.tag == GHOSTTY_TARGET_SURFACE) {
-                auto surface = target.target.surface;
-                auto shape = action.action.mouse_shape;
-                if (g_mainWindow && surface) {
-                    auto mw = g_mainWindow;
-                    mw->DispatcherQueue().TryEnqueue([mw, surface, shape]() {
-                        if (auto* t = mw->m_tabs.FindBySurface(surface)) {
-                            if (auto* tc = t->ActiveControl()) {
-                                tc->SetCursorShape(shape);
-                            }
-                        }
-                    });
-                }
-                return true;
-            }
-
-            // FLOAT_WINDOW (always-on-top toggle) — DISABLED.
-            // No keybind we tried reached this branch: ctrl+shift+f
-            // hits the ghostty-default start_search, ctrl+shift+alt+f
-            // is swallowed by the WinUI Alt-menu accelerator before
-            // ghostty sees it, and ctrl+shift+backslash produced no
-            // observable action_cb call either. The Win32 side of the
-            // implementation (SetWindowPos with HWND_TOPMOST /
-            // HWND_NOTOPMOST) is straightforward and preserved below
-            // for when the dispatch path is understood; the gate is
-            // figuring out why ghostty isn't dispatching the action
-            // to action_cb. Re-enable after that is resolved.
-#if 0
-            if (action.tag == GHOSTTY_ACTION_FLOAT_WINDOW) {
-                auto mode = action.action.float_window;
-                if (g_mainWindow) {
-                    auto mw = g_mainWindow;
-                    mw->DispatcherQueue().TryEnqueue([mw, mode]() {
-                        HWND hwnd = mw->m_hwnd;
-                        if (!hwnd) return;
-                        bool wantTop;
-                        switch (mode) {
-                            case GHOSTTY_FLOAT_WINDOW_ON:  wantTop = true; break;
-                            case GHOSTTY_FLOAT_WINDOW_OFF: wantTop = false; break;
-                            case GHOSTTY_FLOAT_WINDOW_TOGGLE:
-                            default:
-                                wantTop = (GetWindowLongPtrW(hwnd, GWL_EXSTYLE) & WS_EX_TOPMOST) == 0;
-                                break;
-                        }
-                        SetWindowPos(hwnd, wantTop ? HWND_TOPMOST : HWND_NOTOPMOST,
-                                     0, 0, 0, 0,
-                                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-                    });
-                }
-                return true;
-            }
-#endif
-
-            // Reload the configuration. ghostty fires RELOAD_CONFIG
-            // when the user hits the default ctrl+shift+, keybind
-            // (or when a soft reload is requested internally, e.g.
-            // after a CONFIG_CHANGE notification). For soft reloads
-            // we just re-apply the config we already hold; for hard
-            // reloads we re-parse the file on a 4MB-stack worker
-            // thread (same reason GhosttyApp::Create uses one — the
-            // config parser stack-overflows the default 1MB) and
-            // hand the result to the UI thread for swap, since
-            // that's where ghostty_app_tick lives.
-            if (action.tag == GHOSTTY_ACTION_RELOAD_CONFIG) {
-                bool soft = action.action.reload_config.soft;
-                if (!g_mainWindow || !g_mainWindow->m_ghostty) return true;
-                auto mw = g_mainWindow;
-
-                if (soft) {
-                    mw->DispatcherQueue().TryEnqueue([mw]() {
-                        if (!mw->m_ghostty) return;
-                        auto app = mw->m_ghostty->Handle();
-                        auto cfg = mw->m_ghostty->ConfigHandle();
-                        if (app && cfg) ghostty_app_update_config(app, cfg);
-                    });
-                    return true;
-                }
-
-                struct ReloadCtx { MainWindow* mw; };
-                auto* ctx = new ReloadCtx{ mw };
-                HANDLE hThread = CreateThread(nullptr, 4 * 1024 * 1024,
-                    [](LPVOID p) -> DWORD {
-                        auto* c = static_cast<ReloadCtx*>(p);
-                        auto mwLocal = c->mw;
-                        delete c;
-                        ghostty_config_t newCfg = ghostty_config_new();
-                        if (newCfg) {
-                            ghostty_config_load_default_files(newCfg);
-                            ghostty_config_finalize(newCfg);
-                        }
-                        if (!mwLocal || !newCfg) {
-                            if (newCfg) ghostty_config_free(newCfg);
-                            return 0;
-                        }
-                        mwLocal->DispatcherQueue().TryEnqueue([mwLocal, newCfg]() {
-                            if (!mwLocal->m_ghostty) {
-                                ghostty_config_free(newCfg);
-                                return;
-                            }
-                            ghostty_app_update_config(mwLocal->m_ghostty->Handle(), newCfg);
-                            mwLocal->m_ghostty->ReplaceConfig(newCfg);
-                        });
-                        return 0;
-                    }, ctx, 0, nullptr);
-                if (hThread) CloseHandle(hThread); else delete ctx;
-                return true;
-            }
-
-            // MOUSE_OVER_LINK — TEMPORARILY DISABLED.
-            // The Win32 TOOLTIPS_CLASS popup approach below caused
-            // GhosttyWin32 to crash on URL click (process exit code
-            // 3 with no diagnostic), even though the action handler
-            // itself was firing correctly (verified via the
-            // [mouse_over_link] log line, ~16 fires per hover before
-            // the crash). The interaction between TTM_TRACKACTIVATE
-            // / SetWindowPos and the DComp surface's click routing
-            // needs more investigation before re-enabling. Until
-            // then, ack the action with a return-true and ship the
-            // URL click path unbroken.
-            if (action.tag == GHOSTTY_ACTION_MOUSE_OVER_LINK) {
-                return true;
-            }
-#if 0
-            if (action.tag == GHOSTTY_ACTION_MOUSE_OVER_LINK) {
-                auto& ml = action.action.mouse_over_link;
-                std::wstring url = (ml.url && ml.len > 0)
-                    ? Encoding::toUtf16(ml.url, static_cast<int>(ml.len))
-                    : L"";
-                if (!g_mainWindow) return true;
-                auto mw = g_mainWindow;
-                mw->DispatcherQueue().TryEnqueue([mw, url = std::move(url)]() {
-                    HWND hwnd = mw->m_hwnd;
-                    if (!hwnd) return;
-                    static HWND s_toolTip = nullptr;
-                    static TOOLINFOW s_ti{};
-                    static std::wstring s_urlBuf;
-                    if (!s_toolTip) {
-                        s_toolTip = CreateWindowExW(
-                            WS_EX_TOPMOST,
-                            TOOLTIPS_CLASSW, nullptr,
-                            WS_POPUP | TTS_NOPREFIX | TTS_ALWAYSTIP,
-                            CW_USEDEFAULT, CW_USEDEFAULT,
-                            CW_USEDEFAULT, CW_USEDEFAULT,
-                            nullptr, nullptr,
-                            GetModuleHandleW(nullptr), nullptr);
-                        if (!s_toolTip) return;
-                        s_ti.cbSize = sizeof(TOOLINFOW);
-                        s_ti.uFlags = TTF_TRACK | TTF_ABSOLUTE;
-                        s_ti.hwnd = hwnd;
-                        s_ti.uId = 1;
-                        s_urlBuf = L"";
-                        s_ti.lpszText = s_urlBuf.data();
-                        SendMessageW(s_toolTip, TTM_ADDTOOL, 0,
-                                     reinterpret_cast<LPARAM>(&s_ti));
-                        SendMessageW(s_toolTip, TTM_SETMAXTIPWIDTH, 0, 1024);
-                    }
-                    if (url.empty()) {
-                        SendMessageW(s_toolTip, TTM_TRACKACTIVATE, FALSE,
-                                     reinterpret_cast<LPARAM>(&s_ti));
-                    } else {
-                        s_urlBuf = url;
-                        s_ti.lpszText = s_urlBuf.data();
-                        SendMessageW(s_toolTip, TTM_UPDATETIPTEXTW, 0,
-                                     reinterpret_cast<LPARAM>(&s_ti));
-                        POINT pt;
-                        GetCursorPos(&pt);
-                        SendMessageW(s_toolTip, TTM_TRACKPOSITION, 0,
-                                     MAKELONG(pt.x + 20, pt.y + 20));
-                        SendMessageW(s_toolTip, TTM_TRACKACTIVATE, TRUE,
-                                     reinterpret_cast<LPARAM>(&s_ti));
-                    }
-                });
-                return true;
-            }
-#endif
-
-            // DESKTOP_NOTIFICATION — surface ghostty's bell-and-toast
-            // notifications via the Windows native toast layer. Builds
-            // a minimal two-line payload (title + body) and hands it
-            // to AppNotificationManager; the manager was registered
-            // in App::OnLaunched so Show won't be silently dropped.
-            // Dispatch to the UI thread because the AppNotifications
-            // WinRT projection is happiest on the STA-initialised UI
-            // thread and we already cross that boundary for every
-            // other Win32 surface call.
-            if (action.tag == GHOSTTY_ACTION_DESKTOP_NOTIFICATION) {
-                auto& dn = action.action.desktop_notification;
-                std::wstring title = (dn.title && dn.title[0]) ? Encoding::toUtf16(dn.title) : L"";
-                std::wstring body  = (dn.body  && dn.body[0])  ? Encoding::toUtf16(dn.body)  : L"";
-                if (title.empty() && body.empty()) return true;
-                if (!g_mainWindow) return true;
-                auto mw = g_mainWindow;
-                mw->DispatcherQueue().TryEnqueue([title = std::move(title),
-                                                  body = std::move(body)]() {
-                    try {
-                        using namespace winrt::Microsoft::Windows::AppNotifications;
-                        using namespace winrt::Microsoft::Windows::AppNotifications::Builder;
-                        AppNotificationBuilder builder;
-                        if (!title.empty()) builder.AddText(title);
-                        if (!body.empty())  builder.AddText(body);
-                        AppNotificationManager::Default().Show(builder.BuildNotification());
-                    } catch (winrt::hresult_error const&) {
-                        // Either the manager wasn't registered (App startup
-                        // logged it) or the OS refused. Nothing actionable
-                        // host-side; the message just doesn't appear.
-                    }
-                });
-                return true;
-            }
-
-            // PROGRESS_REPORT — OSC 9;4 progress reports from the
-            // shell (pnpm, make, large copies, etc.). Without a host
-            // handler the percentage just gets dropped on the floor.
-            // Map ghostty's state machine onto ITaskbarList3 so the
-            // user sees the progress bar on the taskbar button — the
-            // standard Windows surface for background-task progress.
-            // The ITaskbarList3 instance is cached on the UI thread
-            // (where COM is STA-initialized) since CoCreateInstance +
-            // HrInit aren't cheap to redo per OSC sequence.
-            if (action.tag == GHOSTTY_ACTION_PROGRESS_REPORT) {
-                auto pr = action.action.progress_report;
-                if (!g_mainWindow) return true;
-                auto mw = g_mainWindow;
-                mw->DispatcherQueue().TryEnqueue([mw, pr]() {
-                    HWND hwnd = mw->m_hwnd;
-                    if (!hwnd) return;
-                    static winrt::com_ptr<ITaskbarList3> s_taskbar;
-                    if (!s_taskbar) {
-                        if (FAILED(CoCreateInstance(CLSID_TaskbarList, nullptr,
-                                                    CLSCTX_INPROC_SERVER,
-                                                    IID_PPV_ARGS(s_taskbar.put())))) {
-                            return;
-                        }
-                        if (FAILED(s_taskbar->HrInit())) {
-                            s_taskbar = nullptr;
-                            return;
-                        }
-                    }
-                    TBPFLAG flag = TBPF_NOPROGRESS;
-                    switch (pr.state) {
-                        case GHOSTTY_PROGRESS_STATE_REMOVE:        flag = TBPF_NOPROGRESS;    break;
-                        case GHOSTTY_PROGRESS_STATE_SET:           flag = TBPF_NORMAL;        break;
-                        case GHOSTTY_PROGRESS_STATE_ERROR:         flag = TBPF_ERROR;         break;
-                        case GHOSTTY_PROGRESS_STATE_INDETERMINATE: flag = TBPF_INDETERMINATE; break;
-                        case GHOSTTY_PROGRESS_STATE_PAUSE:         flag = TBPF_PAUSED;        break;
-                    }
-                    s_taskbar->SetProgressState(hwnd, flag);
-                    // SetProgressValue is meaningless under
-                    // INDETERMINATE / NOPROGRESS and the percentage
-                    // is -1 when no value was reported — skip the
-                    // call so the bar doesn't snap to 0% on a
-                    // bare state change.
-                    if (pr.progress >= 0
-                        && (flag == TBPF_NORMAL || flag == TBPF_ERROR || flag == TBPF_PAUSED)) {
-                        s_taskbar->SetProgressValue(hwnd,
-                                                    static_cast<ULONGLONG>(pr.progress),
-                                                    100ULL);
-                    }
-                });
-                return true;
-            }
-
-            // CONFIG_CHANGE sync. ghostty has already applied the new
-            // config internally by the time this fires; it's a
-            // notification, not a request. Without grabbing the new
-            // pointer here our stored m_config would diverge from
-            // what libghostty is actually using — soft-reload would
-            // re-apply the stale copy and any future host-side
-            // config query (color theme, padding, etc.) would lie.
-            // Clone because ghostty owns the passed-in pointer; the
-            // UI-thread swap mirrors the reload_config path so we
-            // don't free while another tick could be reading.
-            if (action.tag == GHOSTTY_ACTION_CONFIG_CHANGE) {
-                auto newCfg = action.action.config_change.config;
-                if (!g_mainWindow || !g_mainWindow->m_ghostty || !newCfg) return true;
-                auto mw = g_mainWindow;
-                auto cloned = ghostty_config_clone(newCfg);
-                if (!cloned) return true;
-                mw->DispatcherQueue().TryEnqueue([mw, cloned]() {
-                    if (!mw->m_ghostty) {
-                        ghostty_config_free(cloned);
-                        return;
-                    }
-                    mw->m_ghostty->ReplaceConfig(cloned);
-                });
-                return true;
-            }
-
-            // MOUSE_VISIBILITY — DISABLED pending #60.
-            // The action never reached action_cb during verification
-            // even with mouse-hide-while-typing=true in config. The
-            // most likely cause is our ghostty_surface_key call site
-            // not populating event.utf8 for printable keystrokes,
-            // which is one of the four conditions ghostty checks
-            // before firing the action (Surface.zig:2686). On top of
-            // that, the implementation below uses a WM_SETCURSOR
-            // subclass + SetCursor(NULL), which would lose to
-            // WinUI 3's ProtectedCursor / InputSystemCursor every
-            // mouse move anyway — see #60 for the full diagnosis
-            // and the planned fix path. Body kept verbatim so the
-            // eventual re-enable is a straight unguard.
-#if 0
-            if (action.tag == GHOSTTY_ACTION_MOUSE_VISIBILITY) {
-                bool hide = action.action.mouse_visibility == GHOSTTY_MOUSE_HIDDEN;
-                {
-                    char buf[64];
-                    std::snprintf(buf, sizeof(buf), "[mouse_visibility] fired hide=%d\n", hide ? 1 : 0);
-                    std::fputs(buf, stderr);
-                    std::fflush(stderr);
-                    OutputDebugStringA(buf);
-                }
-                if (!g_mainWindow) return true;
-                auto mw = g_mainWindow;
-                mw->DispatcherQueue().TryEnqueue([mw, hide]() {
-                    HWND hwnd = mw->m_hwnd;
-                    if (!hwnd) return;
-                    if (!mw->m_cursorSubclassed) {
-                        if (SetWindowSubclass(hwnd,
-                                              &MainWindow::CursorVisibilitySubclassProc,
-                                              2,
-                                              reinterpret_cast<DWORD_PTR>(mw))) {
-                            mw->m_cursorSubclassed = true;
-                        }
-                    }
-                    if (mw->m_cursorHidden == hide) return;
-                    mw->m_cursorHidden = hide;
-                    if (hide) {
-                        SetCursor(nullptr);
-                    }
-                });
-                return true;
-            }
-#endif
-
-            return false;
+            // Thin forwarder. All dispatch + handler bodies live in
+            // GhosttyCallbackDispatcher / GhosttyActions; the lambda
+            // only exists because ghostty's runtime config wants a
+            // C function pointer.
+            if (!g_mainWindow || !g_mainWindow->m_ghosttyDispatcher) return false;
+            return g_mainWindow->m_ghosttyDispatcher->DispatchAction(target, action);
         };
         rtConfig.read_clipboard_cb = [](void*, ghostty_clipboard_e, void* state) -> bool {
             if (!g_mainWindow) return false;
@@ -1175,6 +784,153 @@ namespace winrt::GhosttyWin32::implementation
     void MainWindow::ToggleFullscreen()
     {
         m_fullscreen.Toggle(m_hwnd);
+    }
+
+    // ----- IMainWindowView: terminal-driven appearance + lifecycle -----
+
+    void MainWindow::ApplyBackgroundColor(uint8_t r, uint8_t g, uint8_t b)
+    {
+        if (m_hwnd) {
+            COLORREF color = RGB(r, g, b);
+            DwmSetWindowAttribute(m_hwnd, DWMWA_CAPTION_COLOR, &color, sizeof(color));
+            float luminance = 0.299f * r + 0.587f * g + 0.114f * b;
+            COLORREF textColor = (luminance < 128) ? RGB(255, 255, 255) : RGB(0, 0, 0);
+            DwmSetWindowAttribute(m_hwnd, DWMWA_TEXT_COLOR, &textColor, sizeof(textColor));
+        }
+        auto brush = winrt::Microsoft::UI::Xaml::Media::SolidColorBrush(
+            winrt::Windows::UI::Color{ 255, r, g, b });
+        if (auto content = Content()) {
+            content.as<winrt::Microsoft::UI::Xaml::Controls::Panel>().Background(brush);
+        }
+    }
+
+    void MainWindow::SetCursorShapeForSurface(ghostty_surface_t surface,
+                                              ghostty_action_mouse_shape_e shape)
+    {
+        // Known: routes to the tab's active leaf rather than the
+        // pane owning `surface` — tracked in #65 because split
+        // panes get the wrong cursor. Behaviour preserved on this
+        // refactor; the fix is a separate PR.
+        if (auto* t = m_tabs.FindBySurface(surface)) {
+            if (auto* tc = t->ActiveControl()) {
+                tc->SetCursorShape(shape);
+            }
+        }
+    }
+
+    void MainWindow::ReplaceConfig(ghostty_config_t cloned)
+    {
+        if (!m_ghostty) {
+            ghostty_config_free(cloned);
+            return;
+        }
+        m_ghostty->ReplaceConfig(cloned);
+    }
+
+    void MainWindow::ReloadConfig(bool soft)
+    {
+        if (!m_ghostty) return;
+        if (soft) {
+            // Soft reload: re-apply the config we already hold.
+            // Runs on whichever thread called us — m_ghostty's
+            // handles are stable, and ghostty_app_update_config
+            // is thread-safe on its own state.
+            DispatcherQueue().TryEnqueue([this]() {
+                if (!m_ghostty) return;
+                auto app = m_ghostty->Handle();
+                auto cfg = m_ghostty->ConfigHandle();
+                if (app && cfg) ghostty_app_update_config(app, cfg);
+            });
+            return;
+        }
+        // Hard reload: ghostty's config parser stack-overflows the
+        // default 1MB CreateThread stack on debug builds, so the
+        // re-parse runs on a 4MB worker (same as GhosttyApp::Create).
+        // Result hand-off through the UI dispatcher matches the
+        // CONFIG_CHANGE path.
+        struct ReloadCtx { MainWindow* mw; };
+        auto* ctx = new ReloadCtx{ this };
+        HANDLE hThread = CreateThread(nullptr, 4 * 1024 * 1024,
+            [](LPVOID p) -> DWORD {
+                auto* c = static_cast<ReloadCtx*>(p);
+                auto mwLocal = c->mw;
+                delete c;
+                ghostty_config_t newCfg = ghostty_config_new();
+                if (newCfg) {
+                    ghostty_config_load_default_files(newCfg);
+                    ghostty_config_finalize(newCfg);
+                }
+                if (!mwLocal || !newCfg) {
+                    if (newCfg) ghostty_config_free(newCfg);
+                    return 0;
+                }
+                mwLocal->DispatcherQueue().TryEnqueue([mwLocal, newCfg]() {
+                    if (!mwLocal->m_ghostty) {
+                        ghostty_config_free(newCfg);
+                        return;
+                    }
+                    ghostty_app_update_config(mwLocal->m_ghostty->Handle(), newCfg);
+                    mwLocal->m_ghostty->ReplaceConfig(newCfg);
+                });
+                return 0;
+            }, ctx, 0, nullptr);
+        if (hThread) CloseHandle(hThread); else delete ctx;
+    }
+
+    void MainWindow::ShowDesktopNotification(std::wstring title, std::wstring body)
+    {
+        if (title.empty() && body.empty()) return;
+        try {
+            using namespace winrt::Microsoft::Windows::AppNotifications;
+            using namespace winrt::Microsoft::Windows::AppNotifications::Builder;
+            AppNotificationBuilder builder;
+            if (!title.empty()) builder.AddText(title);
+            if (!body.empty())  builder.AddText(body);
+            AppNotificationManager::Default().Show(builder.BuildNotification());
+        } catch (winrt::hresult_error const&) {
+            // Either the manager wasn't registered (App startup
+            // logged it) or the OS refused. Nothing actionable
+            // host-side; the message just doesn't appear.
+        }
+    }
+
+    void MainWindow::ReportProgress(ghostty_action_progress_report_s pr)
+    {
+        if (!m_hwnd) return;
+        // ITaskbarList3 is cached on the UI thread (where COM is
+        // STA-initialized) since CoCreateInstance + HrInit aren't
+        // cheap to redo per OSC sequence.
+        static winrt::com_ptr<ITaskbarList3> s_taskbar;
+        if (!s_taskbar) {
+            if (FAILED(CoCreateInstance(CLSID_TaskbarList, nullptr,
+                                        CLSCTX_INPROC_SERVER,
+                                        IID_PPV_ARGS(s_taskbar.put())))) {
+                return;
+            }
+            if (FAILED(s_taskbar->HrInit())) {
+                s_taskbar = nullptr;
+                return;
+            }
+        }
+        TBPFLAG flag = TBPF_NOPROGRESS;
+        switch (pr.state) {
+            case GHOSTTY_PROGRESS_STATE_REMOVE:        flag = TBPF_NOPROGRESS;    break;
+            case GHOSTTY_PROGRESS_STATE_SET:           flag = TBPF_NORMAL;        break;
+            case GHOSTTY_PROGRESS_STATE_ERROR:         flag = TBPF_ERROR;         break;
+            case GHOSTTY_PROGRESS_STATE_INDETERMINATE: flag = TBPF_INDETERMINATE; break;
+            case GHOSTTY_PROGRESS_STATE_PAUSE:         flag = TBPF_PAUSED;        break;
+        }
+        s_taskbar->SetProgressState(m_hwnd, flag);
+        // SetProgressValue is meaningless under INDETERMINATE /
+        // NOPROGRESS and the percentage is -1 when no value was
+        // reported — skip the call so the bar doesn't snap to 0%
+        // on a bare state change.
+        if (pr.progress >= 0
+            && (flag == TBPF_NORMAL || flag == TBPF_ERROR || flag == TBPF_PAUSED)) {
+            s_taskbar->SetProgressValue(m_hwnd,
+                                        static_cast<ULONGLONG>(pr.progress),
+                                        100ULL);
+        }
     }
 
     namespace {

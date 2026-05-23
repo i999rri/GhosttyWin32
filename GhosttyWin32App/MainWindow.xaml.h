@@ -27,15 +27,6 @@ namespace winrt::GhosttyWin32::implementation
         // NVIDIA state.
         static long __stdcall OnUnhandledException(struct _EXCEPTION_POINTERS* info) noexcept;
 
-        // WM_SETCURSOR subclass proc for MOUSE_VISIBILITY. WinUI 3
-        // ignores ShowCursor (the cursor goes through ProtectedCursor
-        // / InputSystemCursor instead), so the only reliable hide
-        // path is to short-circuit WM_SETCURSOR with SetCursor(NULL)
-        // while m_cursorHidden is true.
-        static LRESULT CALLBACK CursorVisibilitySubclassProc(
-            HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
-            UINT_PTR id, DWORD_PTR ref) noexcept;
-
         // Caption button click handlers, referenced from MainWindow.xaml.
         // Routed through Win32 messages (WM_SYSCOMMAND / WM_CLOSE / ShowWindow)
         // rather than OverlappedPresenter state changes, which have
@@ -104,6 +95,18 @@ namespace winrt::GhosttyWin32::implementation
         void ApplySizeLimit(ghostty_action_size_limit_s limit) override;
         void ToggleFullscreen() override;
 
+        // Terminal-driven appearance / lifecycle overrides. Bodies
+        // are in MainWindow.xaml.cpp; the logic moved verbatim
+        // from the old inline action_cb chunks.
+        void ApplyBackgroundColor(uint8_t r, uint8_t g, uint8_t b) override;
+        void SetCursorShapeForSurface(ghostty_surface_t surface,
+                                      ghostty_action_mouse_shape_e shape) override;
+        void ReplaceConfig(ghostty_config_t cloned) override;
+        void ReloadConfig(bool soft) override;
+        void ShowDesktopNotification(std::wstring title,
+                                     std::wstring body) override;
+        void ReportProgress(ghostty_action_progress_report_s pr) override;
+
     private:
         void InitGhostty();
         Tab* ActiveTab();
@@ -127,13 +130,6 @@ namespace winrt::GhosttyWin32::implementation
         // destroyed, so no explicit teardown ordering is needed.
         SizeLimit m_sizeLimit;
         Fullscreen m_fullscreen;
-        // MOUSE_VISIBILITY — when true, WM_SETCURSOR returns NULL so
-        // the cursor stays hidden until the next VISIBLE transition.
-        // Subclass installed lazily on the first MOUSE_VISIBILITY so
-        // the WM_SETCURSOR interception doesn't happen for apps that
-        // never fire the action.
-        bool m_cursorHidden = false;
-        bool m_cursorSubclassed = false;
         PaneIdAllocator m_paneIds;
         Tabs m_tabs;
         // Focus-tracked active surface. Set by NotifySurfaceFocused

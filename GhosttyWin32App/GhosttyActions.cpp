@@ -243,6 +243,70 @@ bool GhosttyActions::OnCopyTitleToClipboard(ghostty_surface_t surface) {
     return true;
 }
 
+// ===== terminal-driven appearance + lifecycle =====
+
+bool GhosttyActions::OnColorChange(ghostty_action_color_change_s cc) {
+    // Only background colour drives our title/XAML chrome; the
+    // other kinds (cursor, palette indices, etc.) are surface-
+    // visible only and ghostty handles them internally.
+    if (cc.kind != GHOSTTY_ACTION_COLOR_KIND_BACKGROUND) return true;
+    uint8_t r = cc.r, g = cc.g, b = cc.b;
+    m_view.Dispatcher().TryEnqueue([this, r, g, b]() {
+        m_view.ApplyBackgroundColor(r, g, b);
+    });
+    return true;
+}
+
+bool GhosttyActions::OnMouseShape(ghostty_surface_t surface,
+                                  ghostty_action_mouse_shape_e shape) {
+    if (!surface) return true;
+    m_view.Dispatcher().TryEnqueue([this, surface, shape]() {
+        m_view.SetCursorShapeForSurface(surface, shape);
+    });
+    return true;
+}
+
+bool GhosttyActions::OnReloadConfig(bool soft) {
+    // The view-side implementation handles thread placement
+    // (soft re-uses UI thread, hard spins a 4MB-stack worker
+    // because ghostty's config parser blows the default 1MB).
+    m_view.ReloadConfig(soft);
+    return true;
+}
+
+bool GhosttyActions::OnConfigChange(ghostty_config_t newCfg) {
+    // Clone here because ghostty owns the incoming pointer.
+    // The view takes ownership of the clone and either swaps it
+    // in or frees it on the UI thread.
+    if (!newCfg) return true;
+    auto cloned = ghostty_config_clone(newCfg);
+    if (!cloned) return true;
+    m_view.Dispatcher().TryEnqueue([this, cloned]() {
+        m_view.ReplaceConfig(cloned);
+    });
+    return true;
+}
+
+bool GhosttyActions::OnDesktopNotification(ghostty_action_desktop_notification_s dn) {
+    // Convert UTF-8 to UTF-16 on the renderer thread so the
+    // captured lambda carries native strings.
+    std::wstring title = (dn.title && dn.title[0]) ? Encoding::toUtf16(dn.title) : L"";
+    std::wstring body  = (dn.body  && dn.body[0])  ? Encoding::toUtf16(dn.body)  : L"";
+    if (title.empty() && body.empty()) return true;
+    m_view.Dispatcher().TryEnqueue([this, title = std::move(title),
+                                    body = std::move(body)]() mutable {
+        m_view.ShowDesktopNotification(std::move(title), std::move(body));
+    });
+    return true;
+}
+
+bool GhosttyActions::OnProgressReport(ghostty_action_progress_report_s pr) {
+    m_view.Dispatcher().TryEnqueue([this, pr]() {
+        m_view.ReportProgress(pr);
+    });
+    return true;
+}
+
 // ===== window state =====
 
 bool GhosttyActions::OnSizeLimit(ghostty_action_size_limit_s limit) {

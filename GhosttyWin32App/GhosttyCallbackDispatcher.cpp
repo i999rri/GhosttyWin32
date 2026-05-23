@@ -73,6 +73,23 @@ bool GhosttyCallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_
                 return m_actions.OnCopyTitleToClipboard(target.target.surface);
             return false;
 
+        // ----- terminal-driven appearance + lifecycle -----
+        case GHOSTTY_ACTION_COLOR_CHANGE:
+            return m_actions.OnColorChange(action.action.color_change);
+        case GHOSTTY_ACTION_MOUSE_SHAPE:
+            if (target.tag == GHOSTTY_TARGET_SURFACE)
+                return m_actions.OnMouseShape(target.target.surface,
+                                              action.action.mouse_shape);
+            return false;
+        case GHOSTTY_ACTION_RELOAD_CONFIG:
+            return m_actions.OnReloadConfig(action.action.reload_config.soft);
+        case GHOSTTY_ACTION_CONFIG_CHANGE:
+            return m_actions.OnConfigChange(action.action.config_change.config);
+        case GHOSTTY_ACTION_DESKTOP_NOTIFICATION:
+            return m_actions.OnDesktopNotification(action.action.desktop_notification);
+        case GHOSTTY_ACTION_PROGRESS_REPORT:
+            return m_actions.OnProgressReport(action.action.progress_report);
+
         // ----- window state -----
         case GHOSTTY_ACTION_SIZE_LIMIT:
             return m_actions.OnSizeLimit(action.action.size_limit);
@@ -142,6 +159,20 @@ bool GhosttyCallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_
         case GHOSTTY_ACTION_QUIT_TIMER:
         // Cell metrics — no host-side consumer today:
         case GHOSTTY_ACTION_CELL_SIZE:
+        // MOUSE_OVER_LINK is acked while the TOOLTIPS popup is
+        // disabled (issue #61: a TTM_TRACKACTIVATE / SetWindowPos
+        // interaction with the DComp surface crashed the process
+        // on URL click); the URL click path itself still works.
+        case GHOSTTY_ACTION_MOUSE_OVER_LINK:
+        // FLOAT_WINDOW: no keybind reaches us yet; ghostty's
+        // dispatch path for it isn't understood on this port.
+        // Acking avoids "unhandled action" noise once that's
+        // fixed and the keybind starts firing.
+        case GHOSTTY_ACTION_FLOAT_WINDOW:
+        // MOUSE_VISIBILITY disabled pending #60 (the renderer-
+        // side ghostty_surface_key call doesn't populate the
+        // event fields ghostty checks before firing this).
+        case GHOSTTY_ACTION_MOUSE_VISIBILITY:
             return true;
 
         default:
