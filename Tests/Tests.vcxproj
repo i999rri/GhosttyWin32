@@ -159,6 +159,20 @@
     <None Include="packages.config" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <!--
+    Tests.exe links against ghostty.lib (import library) and loads
+    ghostty.dll at run time. The App project ships ghostty.dll via
+    the MSIX packaging path; standalone Tests.exe doesn't, so the
+    OutDir stays missing the dll and the EXE fails at startup with
+    "cannot open shared object file: ghostty.dll". Copy the dll
+    next to the test EXE after every build so direct execution
+    (and Test Explorer's runner) finds it.
+  -->
+  <Target Name="CopyGhosttyDllToOutput" AfterTargets="Build">
+    <Copy SourceFiles="$(ProjectDir)..\ghostty\ghostty.dll"
+          DestinationFolder="$(OutDir)"
+          SkipUnchangedFiles="true" />
+  </Target>
   <ImportGroup Label="ExtensionTargets">
     <Import Project="..\packages\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.1.8.1.8\build\native\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.targets" Condition="Exists('..\packages\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.1.8.1.8\build\native\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.targets')" />
   </ImportGroup>
