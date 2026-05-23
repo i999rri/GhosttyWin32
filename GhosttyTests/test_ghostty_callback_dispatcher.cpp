@@ -21,9 +21,11 @@ bool DispatchTag(GhosttyCallbackDispatcher& d, ghostty_action_tag_e tag) {
 // ----- ack-only group -----
 // Every tag in the dispatcher's ack-only branch must return true
 // (libghostty treats false as "unhandled" and will eventually log
-// it) without touching the view. Dispatcher() returning null on
-// the mock means any TryEnqueue path would crash — that's the
-// guard against an ack-only case silently growing a handler.
+// it). The mock's view methods are all no-ops, so a regression
+// that promotes a tag from ack to a real handler wouldn't fail
+// these assertions on its own — but it would change behaviour
+// elsewhere; the value here is documenting which tags belong in
+// the "intentionally silent" set.
 
 TEST(GhosttyCallbackDispatcherTest, InformationalAcksReturnTrue) {
     MockMainWindowView view;

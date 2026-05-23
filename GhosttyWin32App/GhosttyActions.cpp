@@ -56,7 +56,7 @@ bool GhosttyActions::OnRender() {
     // serialises ticks on the UI thread, so we go through the
     // same path. ghostty_app_tick is idempotent — calling it
     // when nothing is dirty is a cheap no-op.
-    m_view.Dispatcher().TryEnqueue([this]() {
+    m_view.Dispatch([this]() {
         m_view.Tick();
     });
     return true;
@@ -97,7 +97,7 @@ bool GhosttyActions::OnCloseWindow() {
     // CLOSE_ALL_WINDOWS into the same effect — close the one
     // window we have, which terminates the app. Multi-window
     // (#55) will need to give these three distinct behaviours.
-    m_view.Dispatcher().TryEnqueue([this]() {
+    m_view.Dispatch([this]() {
         m_view.RequestClose();
     });
     return true;
@@ -111,7 +111,7 @@ bool GhosttyActions::OnToggleVisibility() {
     // window with no taskbar entry can only be recovered by
     // relaunching. Minimizing keeps the window reachable via
     // taskbar click / alt-tab.
-    m_view.Dispatcher().TryEnqueue([this]() {
+    m_view.Dispatch([this]() {
         HWND hwnd = m_view.Hwnd();
         if (!hwnd) return;
         if (IsIconic(hwnd)) {
@@ -130,7 +130,7 @@ bool GhosttyActions::OnToggleMaximize() {
     // SendMessage runs on the UI thread; dispatch through
     // Dispatcher() because action_cb fires from the renderer
     // thread.
-    m_view.Dispatcher().TryEnqueue([this]() {
+    m_view.Dispatch([this]() {
         HWND hwnd = m_view.Hwnd();
         if (!hwnd) return;
         SendMessageW(hwnd, WM_SYSCOMMAND,
@@ -180,7 +180,7 @@ bool GhosttyActions::OnResetWindowSize() {
     // 80×24-ish terminal at common font sizes.
     uint32_t w = m_initialWidth;
     uint32_t h = m_initialHeight;
-    m_view.Dispatcher().TryEnqueue([this, w, h]() {
+    m_view.Dispatch([this, w, h]() {
         HWND hwnd = m_view.Hwnd();
         if (!hwnd) return;
         int width, height;
@@ -201,7 +201,7 @@ bool GhosttyActions::OnResetWindowSize() {
 // ===== tab lifecycle / navigation / title =====
 
 bool GhosttyActions::OnNewTab() {
-    m_view.Dispatcher().TryEnqueue([this]() {
+    m_view.Dispatch([this]() {
         m_view.CreateTab();
     });
     return true;
@@ -209,14 +209,14 @@ bool GhosttyActions::OnNewTab() {
 
 bool GhosttyActions::OnCloseTab(ghostty_surface_t surface) {
     if (!surface) return true;
-    m_view.Dispatcher().TryEnqueue([this, surface]() {
+    m_view.Dispatch([this, surface]() {
         m_view.CloseTabBySurface(surface);
     });
     return true;
 }
 
 bool GhosttyActions::OnGotoTab(int requested) {
-    m_view.Dispatcher().TryEnqueue([this, requested]() {
+    m_view.Dispatch([this, requested]() {
         m_view.GoToTab(requested);
     });
     return true;
@@ -229,7 +229,7 @@ bool GhosttyActions::OnSetTitle(ghostty_surface_t surface, const char* utf8Title
     if (!surface || !utf8Title) return true;
     std::wstring wide = Encoding::toUtf16(utf8Title);
     if (wide.empty()) return true;
-    m_view.Dispatcher().TryEnqueue([this, surface, wide = std::move(wide)]() mutable {
+    m_view.Dispatch([this, surface, wide = std::move(wide)]() mutable {
         m_view.SetTabTitleForSurface(surface, std::move(wide));
     });
     return true;
@@ -237,7 +237,7 @@ bool GhosttyActions::OnSetTitle(ghostty_surface_t surface, const char* utf8Title
 
 bool GhosttyActions::OnCopyTitleToClipboard(ghostty_surface_t surface) {
     if (!surface) return true;
-    m_view.Dispatcher().TryEnqueue([this, surface]() {
+    m_view.Dispatch([this, surface]() {
         m_view.CopyTabTitleForSurface(surface);
     });
     return true;
@@ -251,7 +251,7 @@ bool GhosttyActions::OnColorChange(ghostty_action_color_change_s cc) {
     // visible only and ghostty handles them internally.
     if (cc.kind != GHOSTTY_ACTION_COLOR_KIND_BACKGROUND) return true;
     uint8_t r = cc.r, g = cc.g, b = cc.b;
-    m_view.Dispatcher().TryEnqueue([this, r, g, b]() {
+    m_view.Dispatch([this, r, g, b]() {
         m_view.ApplyBackgroundColor(r, g, b);
     });
     return true;
@@ -260,7 +260,7 @@ bool GhosttyActions::OnColorChange(ghostty_action_color_change_s cc) {
 bool GhosttyActions::OnMouseShape(ghostty_surface_t surface,
                                   ghostty_action_mouse_shape_e shape) {
     if (!surface) return true;
-    m_view.Dispatcher().TryEnqueue([this, surface, shape]() {
+    m_view.Dispatch([this, surface, shape]() {
         m_view.SetCursorShapeForSurface(surface, shape);
     });
     return true;
@@ -281,7 +281,7 @@ bool GhosttyActions::OnConfigChange(ghostty_config_t newCfg) {
     if (!newCfg) return true;
     auto cloned = ghostty_config_clone(newCfg);
     if (!cloned) return true;
-    m_view.Dispatcher().TryEnqueue([this, cloned]() {
+    m_view.Dispatch([this, cloned]() {
         m_view.ReplaceConfig(cloned);
     });
     return true;
@@ -293,7 +293,7 @@ bool GhosttyActions::OnDesktopNotification(ghostty_action_desktop_notification_s
     std::wstring title = (dn.title && dn.title[0]) ? Encoding::toUtf16(dn.title) : L"";
     std::wstring body  = (dn.body  && dn.body[0])  ? Encoding::toUtf16(dn.body)  : L"";
     if (title.empty() && body.empty()) return true;
-    m_view.Dispatcher().TryEnqueue([this, title = std::move(title),
+    m_view.Dispatch([this, title = std::move(title),
                                     body = std::move(body)]() mutable {
         m_view.ShowDesktopNotification(std::move(title), std::move(body));
     });
@@ -301,7 +301,7 @@ bool GhosttyActions::OnDesktopNotification(ghostty_action_desktop_notification_s
 }
 
 bool GhosttyActions::OnProgressReport(ghostty_action_progress_report_s pr) {
-    m_view.Dispatcher().TryEnqueue([this, pr]() {
+    m_view.Dispatch([this, pr]() {
         m_view.ReportProgress(pr);
     });
     return true;
@@ -310,7 +310,7 @@ bool GhosttyActions::OnProgressReport(ghostty_action_progress_report_s pr) {
 // ===== window state =====
 
 bool GhosttyActions::OnSizeLimit(ghostty_action_size_limit_s limit) {
-    m_view.Dispatcher().TryEnqueue([this, limit]() {
+    m_view.Dispatch([this, limit]() {
         m_view.ApplySizeLimit(limit);
     });
     return true;
@@ -322,7 +322,7 @@ bool GhosttyActions::OnToggleFullscreen() {
     // same borderless-fullscreen behaviour, so the value is
     // ignored here. The Fullscreen value on the view side
     // owns the placement/style snapshot for restore.
-    m_view.Dispatcher().TryEnqueue([this]() {
+    m_view.Dispatch([this]() {
         m_view.ToggleFullscreen();
     });
     return true;
@@ -336,7 +336,7 @@ bool GhosttyActions::OnToggleFullscreen() {
 bool GhosttyActions::OnNewSplit(ghostty_surface_t surface,
                                 ghostty_action_split_direction_e direction) {
     if (!surface) return true;
-    m_view.Dispatcher().TryEnqueue([this, surface, direction]() {
+    m_view.Dispatch([this, surface, direction]() {
         m_view.SplitActivePane(surface, direction);
     });
     return true;
@@ -345,7 +345,7 @@ bool GhosttyActions::OnNewSplit(ghostty_surface_t surface,
 bool GhosttyActions::OnResizeSplit(ghostty_surface_t surface,
                                    ghostty_action_resize_split_s resize) {
     if (!surface) return true;
-    m_view.Dispatcher().TryEnqueue([this, surface, resize]() {
+    m_view.Dispatch([this, surface, resize]() {
         m_view.ResizeSplitFromAction(surface, resize);
     });
     return true;
@@ -354,7 +354,7 @@ bool GhosttyActions::OnResizeSplit(ghostty_surface_t surface,
 bool GhosttyActions::OnGotoSplit(ghostty_surface_t surface,
                                  ghostty_action_goto_split_e direction) {
     if (!surface) return true;
-    m_view.Dispatcher().TryEnqueue([this, surface, direction]() {
+    m_view.Dispatch([this, surface, direction]() {
         m_view.GotoSplitFromAction(surface, direction);
     });
     return true;
@@ -362,7 +362,7 @@ bool GhosttyActions::OnGotoSplit(ghostty_surface_t surface,
 
 bool GhosttyActions::OnEqualizeSplits(ghostty_surface_t surface) {
     if (!surface) return true;
-    m_view.Dispatcher().TryEnqueue([this, surface]() {
+    m_view.Dispatch([this, surface]() {
         m_view.EqualizeSplitsForSurface(surface);
     });
     return true;
@@ -370,7 +370,7 @@ bool GhosttyActions::OnEqualizeSplits(ghostty_surface_t surface) {
 
 bool GhosttyActions::OnToggleSplitZoom(ghostty_surface_t surface) {
     if (!surface) return true;
-    m_view.Dispatcher().TryEnqueue([this, surface]() {
+    m_view.Dispatch([this, surface]() {
         m_view.ToggleSplitZoomForSurface(surface);
     });
     return true;

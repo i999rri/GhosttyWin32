@@ -456,13 +456,15 @@ namespace winrt::GhosttyWin32::implementation
 
     // ----- IMainWindowView -----
 
-    winrt::Microsoft::UI::Dispatching::DispatcherQueue MainWindow::Dispatcher() const
+    void MainWindow::Dispatch(std::function<void()> fn)
     {
-        // Forward to the Window-provided DispatcherQueue. Wrapper
-        // exists so the callback dispatcher / GhosttyActions can
-        // depend on the abstract IMainWindowView rather than the
-        // WinUI Window base type.
-        return DispatcherQueue();
+        // Translate the winrt-free IMainWindowView::Dispatch seam
+        // into a WinUI DispatcherQueue::TryEnqueue. Keeping winrt
+        // confined to MainWindow (the only WinUI-aware piece) lets
+        // GhosttyActions / GhosttyCallbackDispatcher / tests
+        // depend on IMainWindowView without pulling in the
+        // WindowsAppSDK projection headers.
+        DispatcherQueue().TryEnqueue([fn = std::move(fn)]() { fn(); });
     }
 
     void MainWindow::Tick()

@@ -60,7 +60,7 @@ namespace winrt::GhosttyWin32::implementation
         // a virtual interface rather than being looked up off
         // MainWindow directly.
         HWND Hwnd() const noexcept override { return m_hwnd; }
-        winrt::Microsoft::UI::Dispatching::DispatcherQueue Dispatcher() const override;
+        void Dispatch(std::function<void()> fn) override;
         void Tick() override;
         void RequestClose() override;
 

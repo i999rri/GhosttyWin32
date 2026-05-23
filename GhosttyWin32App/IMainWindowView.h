@@ -1,9 +1,9 @@
 #pragma once
 
 #include "ghostty.h"
-#include <winrt/Microsoft.UI.Dispatching.h>
 #include <windows.h>
 #include <cstdint>
+#include <functional>
 #include <string>
 
 namespace winrt::GhosttyWin32::implementation {
@@ -28,10 +28,16 @@ struct IMainWindowView {
     // any Win32 message-pump round-trip a handler needs.
     virtual HWND Hwnd() const noexcept = 0;
 
-    // UI thread DispatcherQueue. action_cb fires from ghostty's
-    // renderer thread, so any WinUI / DComp mutation has to bounce
-    // through here before touching the visual tree.
-    virtual winrt::Microsoft::UI::Dispatching::DispatcherQueue Dispatcher() const = 0;
+    // Queue a function for execution on the UI thread. action_cb
+    // fires from ghostty's renderer thread, so any WinUI / DComp
+    // mutation has to bounce through here before touching the
+    // visual tree.
+    //
+    // Returning std::function (rather than the underlying WinUI
+    // DispatcherQueue) keeps the interface winrt-free so test
+    // doubles don't need a WinAppSDK runtime — see the production
+    // override on MainWindow for the WinUI translation.
+    virtual void Dispatch(std::function<void()> fn) = 0;
 
     // Forwarder to GhosttyApp::Tick. The underlying ghostty_app_tick
     // call is wrapped with the SEH guard / NVIDIA presenter workaround

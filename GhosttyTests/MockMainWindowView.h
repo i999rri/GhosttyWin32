@@ -3,16 +3,19 @@
 #include "../GhosttyWin32App/IMainWindowView.h"
 
 // Minimal IMainWindowView for tests. Every method is a no-op
-// (and Dispatcher() returns a null DispatcherQueue) so the test
-// surface is "the dispatcher routes the action without touching
-// the view". Tests that need to observe a specific view call
-// don't fit here — Dispatcher() returning null means any
-// TryEnqueue path will fail loudly rather than silently swallow
-// the call.
+// except Dispatch, which runs the queued function inline so
+// GhosttyActions paths that bounce through the UI thread can
+// still be observed end-to-end without needing a real
+// DispatcherQueue.
 struct MockMainWindowView : winrt::GhosttyWin32::implementation::IMainWindowView {
     HWND Hwnd() const noexcept override { return nullptr; }
-    winrt::Microsoft::UI::Dispatching::DispatcherQueue Dispatcher() const override {
-        return nullptr;
+    void Dispatch(std::function<void()> fn) override {
+        // Run immediately. Production translates this to
+        // DispatcherQueue::TryEnqueue; in the test the only thing
+        // that matters is that the queued work eventually runs,
+        // and "immediately" is the simplest schedule that gives
+        // tests synchronous observability.
+        if (fn) fn();
     }
     void Tick() override {}
     void RequestClose() override {}
