@@ -82,7 +82,7 @@ bool Actions::OnOpenUrl(ghostty_action_open_url_s ou) {
     // verb opener so the user's default browser / mail client /
     // etc. handles it.
     if (ou.url && ou.len > 0) {
-        std::wstring wurl = Encoding::toUtf16(ou.url, static_cast<int>(ou.len));
+        std::wstring wurl = interop::Encoding::toUtf16(ou.url, static_cast<int>(ou.len));
         if (!wurl.empty()) {
             ShellExecuteW(m_view.Hwnd(), L"open", wurl.c_str(),
                           nullptr, nullptr, SW_SHOWNORMAL);
@@ -228,7 +228,7 @@ bool Actions::OnSetTitle(ghostty_surface_t surface, const char* utf8Title) {
     // only thing the captured lambda carries. The lambda copy then
     // makes a single hstring on the UI side.
     if (!surface || !utf8Title) return true;
-    std::wstring wide = Encoding::toUtf16(utf8Title);
+    std::wstring wide = interop::Encoding::toUtf16(utf8Title);
     if (wide.empty()) return true;
     m_view.Dispatch([this, surface, wide = std::move(wide)]() mutable {
         m_view.SetTabTitleForSurface(surface, std::move(wide));
@@ -291,8 +291,8 @@ bool Actions::OnConfigChange(ghostty_config_t newCfg) {
 bool Actions::OnDesktopNotification(ghostty_action_desktop_notification_s dn) {
     // Convert UTF-8 to UTF-16 on the renderer thread so the
     // captured lambda carries native strings.
-    std::wstring title = (dn.title && dn.title[0]) ? Encoding::toUtf16(dn.title) : L"";
-    std::wstring body  = (dn.body  && dn.body[0])  ? Encoding::toUtf16(dn.body)  : L"";
+    std::wstring title = (dn.title && dn.title[0]) ? interop::Encoding::toUtf16(dn.title) : L"";
+    std::wstring body  = (dn.body  && dn.body[0])  ? interop::Encoding::toUtf16(dn.body)  : L"";
     if (title.empty() && body.empty()) return true;
     m_view.Dispatch([this, title = std::move(title),
                                     body = std::move(body)]() mutable {
