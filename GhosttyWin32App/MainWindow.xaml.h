@@ -92,9 +92,19 @@ namespace winrt::GhosttyWin32::implementation
         void EqualizeSplitsForSurface(ghostty_surface_t surface) override;
         void ToggleSplitZoomForSurface(ghostty_surface_t surface) override;
 
+        // Tab lifecycle / navigation / title operations from
+        // IMainWindowView. Same shape as the split overrides: the
+        // tree / TabView live on this class so the body stays here;
+        // dispatcher reaches them through the interface.
+        void CreateTab() override;
+        void CloseTabBySurface(ghostty_surface_t surface) override;
+        void GoToTab(int requested) override;
+        void SetTabTitleForSurface(ghostty_surface_t surface,
+                                   std::wstring title) override;
+        void CopyTabTitleForSurface(ghostty_surface_t surface) override;
+
     private:
         void InitGhostty();
-        void CreateTab();
         Tab* ActiveTab();
         // Convenience wrapper around ActiveTab()->ActiveControl(). Most
         // input/IME paths only care about the focused TerminalControl,

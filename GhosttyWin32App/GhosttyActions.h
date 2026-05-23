@@ -48,6 +48,17 @@ public:
     bool OnInitialSize(ghostty_action_initial_size_s size);
     bool OnResetWindowSize();
 
+    // ----- tab lifecycle / navigation / title -----
+    // NEW_TAB and NEW_WINDOW both land here in the single-window
+    // build; multi-window (#55) will route NEW_WINDOW elsewhere.
+    bool OnNewTab();
+    bool OnCloseTab(ghostty_surface_t surface);
+    bool OnGotoTab(int requested);
+    // SET_TITLE and SET_TAB_TITLE collapse to the same handler —
+    // this port has one title surface per tab.
+    bool OnSetTitle(ghostty_surface_t surface, const char* utf8Title);
+    bool OnCopyTitleToClipboard(ghostty_surface_t surface);
+
     // ----- split-pane -----
     bool OnNewSplit(ghostty_surface_t surface,
                     ghostty_action_split_direction_e direction);

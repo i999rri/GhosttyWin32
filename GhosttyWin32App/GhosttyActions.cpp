@@ -198,6 +198,51 @@ bool GhosttyActions::OnResetWindowSize() {
     return true;
 }
 
+// ===== tab lifecycle / navigation / title =====
+
+bool GhosttyActions::OnNewTab() {
+    m_view.Dispatcher().TryEnqueue([this]() {
+        m_view.CreateTab();
+    });
+    return true;
+}
+
+bool GhosttyActions::OnCloseTab(ghostty_surface_t surface) {
+    if (!surface) return true;
+    m_view.Dispatcher().TryEnqueue([this, surface]() {
+        m_view.CloseTabBySurface(surface);
+    });
+    return true;
+}
+
+bool GhosttyActions::OnGotoTab(int requested) {
+    m_view.Dispatcher().TryEnqueue([this, requested]() {
+        m_view.GoToTab(requested);
+    });
+    return true;
+}
+
+bool GhosttyActions::OnSetTitle(ghostty_surface_t surface, const char* utf8Title) {
+    // Convert on the renderer thread so the UTF-16 string is the
+    // only thing the captured lambda carries. The lambda copy then
+    // makes a single hstring on the UI side.
+    if (!surface || !utf8Title) return true;
+    std::wstring wide = Encoding::toUtf16(utf8Title);
+    if (wide.empty()) return true;
+    m_view.Dispatcher().TryEnqueue([this, surface, wide = std::move(wide)]() mutable {
+        m_view.SetTabTitleForSurface(surface, std::move(wide));
+    });
+    return true;
+}
+
+bool GhosttyActions::OnCopyTitleToClipboard(ghostty_surface_t surface) {
+    if (!surface) return true;
+    m_view.Dispatcher().TryEnqueue([this, surface]() {
+        m_view.CopyTabTitleForSurface(surface);
+    });
+    return true;
+}
+
 // ===== split-pane =====
 // All five surface-target split operations share the same shape:
 // bounce through the UI dispatcher, then hand off to the view

@@ -47,6 +47,32 @@ bool GhosttyCallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_
         case GHOSTTY_ACTION_RESET_WINDOW_SIZE:
             return m_actions.OnResetWindowSize();
 
+        // ----- tab lifecycle / navigation / title -----
+        // NEW_WINDOW collapses to NEW_TAB on the single-window
+        // build; multi-window (#55) will split them again.
+        case GHOSTTY_ACTION_NEW_TAB:
+        case GHOSTTY_ACTION_NEW_WINDOW:
+            return m_actions.OnNewTab();
+        case GHOSTTY_ACTION_CLOSE_TAB:
+            if (target.tag == GHOSTTY_TARGET_SURFACE)
+                return m_actions.OnCloseTab(target.target.surface);
+            return false;
+        case GHOSTTY_ACTION_GOTO_TAB:
+            return m_actions.OnGotoTab(static_cast<int>(action.action.goto_tab));
+        // SET_TITLE / SET_TAB_TITLE: this port treats them
+        // identically (one title surface per tab); the action union
+        // happens to share `set_title` for both tags.
+        case GHOSTTY_ACTION_SET_TITLE:
+        case GHOSTTY_ACTION_SET_TAB_TITLE:
+            if (target.tag == GHOSTTY_TARGET_SURFACE)
+                return m_actions.OnSetTitle(target.target.surface,
+                                            action.action.set_title.title);
+            return false;
+        case GHOSTTY_ACTION_COPY_TITLE_TO_CLIPBOARD:
+            if (target.tag == GHOSTTY_TARGET_SURFACE)
+                return m_actions.OnCopyTitleToClipboard(target.target.surface);
+            return false;
+
         // ----- split-pane (surface-targeted) -----
         case GHOSTTY_ACTION_NEW_SPLIT:
             if (target.tag == GHOSTTY_TARGET_SURFACE)

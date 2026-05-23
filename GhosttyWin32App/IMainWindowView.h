@@ -3,6 +3,7 @@
 #include "ghostty.h"
 #include <winrt/Microsoft.UI.Dispatching.h>
 #include <windows.h>
+#include <string>
 
 namespace winrt::GhosttyWin32::implementation {
 
@@ -72,6 +73,35 @@ struct IMainWindowView {
     // Expand the source leaf to fill its tab; a second call restores
     // the regular split layout.
     virtual void ToggleSplitZoomForSurface(ghostty_surface_t surface) = 0;
+
+    // ----- tab lifecycle / navigation / title -----
+    // UI thread only.
+
+    // Create a new tab and select it. Used by both NEW_TAB and
+    // NEW_WINDOW (the single-window build collapses NEW_WINDOW to
+    // NEW_TAB; multi-window #55 will give them distinct entries).
+    virtual void CreateTab() = 0;
+
+    // Close the tab containing `surface`. Mirrors the
+    // TabCloseRequested path (detach every leaf -> RemoveAt ->
+    // Close the window when the last tab goes).
+    virtual void CloseTabBySurface(ghostty_surface_t surface) = 0;
+
+    // Select a tab by ghostty's goto_tab encoding: PREVIOUS / NEXT /
+    // LAST live as negative sentinels, non-negative values are
+    // direct indices. Out-of-range indices are ignored.
+    virtual void GoToTab(int requested) = 0;
+
+    // Set the header on the tab containing `surface`. Used by both
+    // SET_TITLE and SET_TAB_TITLE (this port collapses them; macOS
+    // ghostty keeps them distinct because the macOS window title
+    // and the in-window tab title aren't the same surface).
+    virtual void SetTabTitleForSurface(ghostty_surface_t surface,
+                                       std::wstring title) = 0;
+
+    // Copy the header of the tab containing `surface` to the
+    // system clipboard. No-op when the tab has no title yet.
+    virtual void CopyTabTitleForSurface(ghostty_surface_t surface) = 0;
 };
 
 }  // namespace winrt::GhosttyWin32::implementation

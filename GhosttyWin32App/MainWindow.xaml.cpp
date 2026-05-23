@@ -555,102 +555,6 @@ namespace winrt::GhosttyWin32::implementation
             // NEW_WINDOW is folded into NEW_TAB for now since multi-window
             // isn't implemented — this matches how other shells fall back
             // when they get a "new window" request without a window manager.
-            if (action.tag == GHOSTTY_ACTION_NEW_TAB ||
-                action.tag == GHOSTTY_ACTION_NEW_WINDOW) {
-                if (g_mainWindow) {
-                    auto mw = g_mainWindow;
-                    mw->DispatcherQueue().TryEnqueue([mw]() {
-                        if (g_mainWindow) g_mainWindow->CreateTab();
-                    });
-                }
-                return true;
-            }
-
-            if (action.tag == GHOSTTY_ACTION_CLOSE_TAB &&
-                target.tag == GHOSTTY_TARGET_SURFACE) {
-                auto surface = target.target.surface;
-                if (g_mainWindow && surface) {
-                    auto mw = g_mainWindow;
-                    mw->DispatcherQueue().TryEnqueue([mw, surface]() {
-                        // Mirror the TabCloseRequested handler — see
-                        // there for why Detach runs before RemoveAt and
-                        // why the last tab's Tab destruction is deferred
-                        // to ~MainWindow.
-                        auto* t = mw->m_tabs.FindBySurface(surface);
-                        if (!t) return;
-                        auto item = t->Item();
-                        // CLOSE_TAB closes the whole tab regardless of
-                        // pane count — detach every leaf so each swap
-                        // chain handle is cleared before unparent.
-                        t->DetachAll();
-                        auto tv = mw->TabView();
-                        uint32_t idx = 0;
-                        if (tv.TabItems().IndexOf(item, idx)) {
-                            tv.TabItems().RemoveAt(idx);
-                        }
-                        DwmFlush();
-                        if (tv.TabItems().Size() == 0) {
-                            mw->Close();
-                        } else {
-                            mw->m_tabs.Remove(item);
-                        }
-                    });
-                }
-                return true;
-            }
-
-            if (action.tag == GHOSTTY_ACTION_GOTO_TAB) {
-                int requested = static_cast<int>(action.action.goto_tab);
-                if (g_mainWindow) {
-                    auto mw = g_mainWindow;
-                    mw->DispatcherQueue().TryEnqueue([mw, requested]() {
-                        auto tv = mw->TabView();
-                        int count = static_cast<int>(tv.TabItems().Size());
-                        if (count == 0) return;
-                        int next = -1;
-                        switch (requested) {
-                            case GHOSTTY_GOTO_TAB_PREVIOUS: {
-                                int cur = tv.SelectedIndex();
-                                next = (cur - 1 + count) % count;
-                                break;
-                            }
-                            case GHOSTTY_GOTO_TAB_NEXT: {
-                                int cur = tv.SelectedIndex();
-                                next = (cur + 1) % count;
-                                break;
-                            }
-                            case GHOSTTY_GOTO_TAB_LAST:
-                                next = count - 1;
-                                break;
-                            default:
-                                if (requested >= 0 && requested < count) {
-                                    next = requested;
-                                }
-                                break;
-                        }
-                        if (next >= 0) tv.SelectedIndex(next);
-                    });
-                }
-                return true;
-            }
-
-            if ((action.tag == GHOSTTY_ACTION_SET_TITLE || action.tag == GHOSTTY_ACTION_SET_TAB_TITLE)
-                && target.tag == GHOSTTY_TARGET_SURFACE) {
-                const char* title = action.action.set_title.title;
-                auto surface = target.target.surface;
-                if (title && g_mainWindow) {
-                    auto wstr = std::make_shared<std::wstring>(Encoding::toUtf16(title));
-                    if (!wstr->empty()) {
-                        auto mw = g_mainWindow;
-                        mw->DispatcherQueue().TryEnqueue([mw, wstr, surface]() {
-                            if (auto* t = mw->m_tabs.FindBySurface(surface)) {
-                                t->Item().Header(box_value(winrt::hstring(*wstr)));
-                            }
-                        });
-                    }
-                }
-            }
-
             // Title bar and tab strip color matches terminal background
             if (action.tag == GHOSTTY_ACTION_COLOR_CHANGE && g_mainWindow && g_mainWindow->m_hwnd) {
                 auto& cc = action.action.color_change;
@@ -690,29 +594,6 @@ namespace winrt::GhosttyWin32::implementation
                                 tc->SetCursorShape(shape);
                             }
                         }
-                    });
-                }
-                return true;
-            }
-
-            // Copy the active tab/surface title to the system
-            // clipboard. The title lives on the TabViewItem.Header
-            // (set by SET_TITLE / SET_TAB_TITLE earlier), so we
-            // unbox it back to hstring and round-trip it through
-            // the same Clipboard::write the selection-copy path
-            // uses.
-            if (action.tag == GHOSTTY_ACTION_COPY_TITLE_TO_CLIPBOARD
-                && target.tag == GHOSTTY_TARGET_SURFACE) {
-                auto surface = target.target.surface;
-                if (g_mainWindow && surface) {
-                    auto mw = g_mainWindow;
-                    mw->DispatcherQueue().TryEnqueue([mw, surface]() {
-                        auto* t = mw->m_tabs.FindBySurface(surface);
-                        if (!t) return;
-                        auto title = winrt::unbox_value_or<winrt::hstring>(
-                            t->Item().Header(), winrt::hstring{});
-                        if (title.empty()) return;
-                        Clipboard::write(mw->m_hwnd, std::wstring(title));
                     });
                 }
                 return true;
@@ -1302,6 +1183,81 @@ namespace winrt::GhosttyWin32::implementation
         // frame; focus + IME activation chain off SelectedItem via the
         // TerminalControl's Loaded → Focus → GotFocus path.
         m_tabs.Add(std::move(tab));
+    }
+
+    // ----- IMainWindowView: tab lifecycle / navigation / title -----
+    // Callers (GhosttyActions) bounce through Dispatcher() before
+    // entering these so the WinUI mutations land on the UI thread.
+
+    void MainWindow::CloseTabBySurface(ghostty_surface_t surface)
+    {
+        // Mirror the TabCloseRequested handler — see there for why
+        // Detach runs before RemoveAt and why the last tab's Tab
+        // destruction is deferred to ~MainWindow.
+        auto* t = m_tabs.FindBySurface(surface);
+        if (!t) return;
+        auto item = t->Item();
+        // CLOSE_TAB closes the whole tab regardless of pane count —
+        // detach every leaf so each swap chain handle is cleared
+        // before unparent.
+        t->DetachAll();
+        auto tv = TabView();
+        uint32_t idx = 0;
+        if (tv.TabItems().IndexOf(item, idx)) {
+            tv.TabItems().RemoveAt(idx);
+        }
+        DwmFlush();
+        if (tv.TabItems().Size() == 0) {
+            RequestClose();
+        } else {
+            m_tabs.Remove(item);
+        }
+    }
+
+    void MainWindow::GoToTab(int requested)
+    {
+        auto tv = TabView();
+        int count = static_cast<int>(tv.TabItems().Size());
+        if (count == 0) return;
+        int next = -1;
+        switch (requested) {
+            case GHOSTTY_GOTO_TAB_PREVIOUS: {
+                int cur = tv.SelectedIndex();
+                next = (cur - 1 + count) % count;
+                break;
+            }
+            case GHOSTTY_GOTO_TAB_NEXT: {
+                int cur = tv.SelectedIndex();
+                next = (cur + 1) % count;
+                break;
+            }
+            case GHOSTTY_GOTO_TAB_LAST:
+                next = count - 1;
+                break;
+            default:
+                if (requested >= 0 && requested < count) {
+                    next = requested;
+                }
+                break;
+        }
+        if (next >= 0) tv.SelectedIndex(next);
+    }
+
+    void MainWindow::SetTabTitleForSurface(ghostty_surface_t surface, std::wstring title)
+    {
+        if (auto* t = m_tabs.FindBySurface(surface)) {
+            t->Item().Header(box_value(winrt::hstring(title)));
+        }
+    }
+
+    void MainWindow::CopyTabTitleForSurface(ghostty_surface_t surface)
+    {
+        auto* t = m_tabs.FindBySurface(surface);
+        if (!t) return;
+        auto title = winrt::unbox_value_or<winrt::hstring>(
+            t->Item().Header(), winrt::hstring{});
+        if (title.empty()) return;
+        Clipboard::write(m_hwnd, std::wstring(title));
     }
 
     namespace {
