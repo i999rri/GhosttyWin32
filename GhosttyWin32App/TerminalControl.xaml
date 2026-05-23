@@ -9,7 +9,24 @@
     IsTabStop="True"
     AllowFocusOnInteraction="True"
     IsHitTestVisible="True">
-    <SwapChainPanel x:Name="Panel"
-                    IsTabStop="False"
-                    AllowFocusOnInteraction="False" />
+    <!--
+      UnfocusedDim is an overlay sibling, hit-test transparent so
+      pointer events still reach the SwapChainPanel underneath. When
+      the control loses focus we show the rectangle filled with the
+      `unfocused-split-fill` color (defaulting to the terminal
+      background) at (1 - `unfocused-split-opacity`) alpha; the
+      underlying surface stays at full brightness, the unfocused
+      pane gets dimmed by the overlay. This mirrors how upstream
+      ghostty (macOS SurfaceView, GTK unfocused-split style) marks
+      the active leaf — the bright pane reads as "active" without
+      the user having to find an explicit border.
+    -->
+    <Grid>
+        <SwapChainPanel x:Name="Panel"
+                        IsTabStop="False"
+                        AllowFocusOnInteraction="False" />
+        <Rectangle x:Name="UnfocusedDim"
+                   IsHitTestVisible="False"
+                   Visibility="Collapsed" />
+    </Grid>
 </UserControl>

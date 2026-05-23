@@ -3,9 +3,9 @@
 #include "MainWindow.g.h"
 #include "ghostty.h"
 #include "GhosttyApp.h"
+#include "PaneIdAllocator.h"
 #include "Tab.h"
 #include "TabFactory.h"
-#include "TabIdAllocator.h"
 #include "Tabs.h"
 
 namespace winrt::GhosttyWin32::implementation
@@ -33,6 +33,22 @@ namespace winrt::GhosttyWin32::implementation
         void OnCloseClick(winrt::Windows::Foundation::IInspectable const&,
                           winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
 
+        // Called by every TerminalControl when it receives keyboard
+        // focus (wired by TabFactory). Updates m_activeSurface so any
+        // future caller — APP-target action handlers, multi-window
+        // focus delivery, IPC / scripting bridges — can ask "which
+        // surface is the user looking at right now" without a
+        // separate tree walk. Public because TerminalControl needs to
+        // reach in via the host-supplied callback. UI thread only.
+        void NotifySurfaceFocused(ghostty_surface_t surface) noexcept;
+
+        // Last surface to receive keyboard focus inside this window.
+        // Null until the first focus delivery (typically the very
+        // first tab's TerminalControl GotFocus right after launch).
+        // Stays valid across alt-tab — we only clear it when the
+        // surface itself is torn down.
+        ghostty_surface_t GetActiveSurface() const noexcept { return m_activeSurface; }
+
     private:
         void InitGhostty();
         void CreateTab();
@@ -45,10 +61,51 @@ namespace winrt::GhosttyWin32::implementation
         // depending on the current OverlappedPresenter state.
         void UpdateMaximizeGlyph();
 
+        // Handle GHOSTTY_ACTION_NEW_SPLIT: locate the source pane for
+        // `surface`, create a new TerminalControl + ghostty surface,
+        // and insert it next to the source according to `direction`.
+        // The new pane becomes the active leaf and takes focus. UI
+        // thread only.
+        void SplitActivePane(ghostty_surface_t surface,
+                             ghostty_action_split_direction_e direction);
+
+        // Tear down the pane carrying `id` and update the tree / tab
+        // list. Dispatched from close_surface_cb. UI thread only.
+        void CloseSurfaceByPaneId(PaneId id);
+
+        // Handle GHOSTTY_ACTION_RESIZE_SPLIT: walk up from the active
+        // pane to the nearest ancestor split whose axis matches the
+        // direction, then nudge that split's ratio by `amount` DIPs
+        // in the requested direction. UI thread only.
+        void ResizeSplitFromAction(ghostty_surface_t surface,
+                                   ghostty_action_resize_split_s resize);
+
+        // Handle GHOSTTY_ACTION_GOTO_SPLIT: move focus to another
+        // pane in the same tab. PREVIOUS/NEXT cycle the tree in
+        // depth-first order; UP/DOWN/LEFT/RIGHT pick the leaf whose
+        // arranged rect is adjacent in that direction. UI thread only.
+        void GotoSplitFromAction(ghostty_surface_t surface,
+                                 ghostty_action_goto_split_e direction);
+
+        // Handle GHOSTTY_ACTION_EQUALIZE_SPLITS: reset every split
+        // ratio in the active tab to 0.5 so each pane occupies an
+        // even share of its parent split. UI thread only.
+        void EqualizeSplitsForSurface(ghostty_surface_t surface);
+
+        // Handle GHOSTTY_ACTION_TOGGLE_SPLIT_ZOOM: if no leaf is
+        // currently zoomed in the source surface's tab, expand the
+        // source leaf to fill the panel; if a leaf is already zoomed
+        // there, restore the regular split layout. UI thread only.
+        void ToggleSplitZoomForSurface(ghostty_surface_t surface);
+
         std::unique_ptr<GhosttyApp> m_ghostty;
         HWND m_hwnd = nullptr;
-        TabIdAllocator m_tabIds;
+        PaneIdAllocator m_paneIds;
         Tabs m_tabs;
+        // Focus-tracked active surface. Set by NotifySurfaceFocused
+        // when a TerminalControl gains focus, cleared when the
+        // matching surface is torn down through CloseSurfaceByPaneId.
+        ghostty_surface_t m_activeSurface = nullptr;
         // Constructed once ghostty is initialized — needs the app handle
         // and HWND, neither available until InitGhostty has run.
         std::unique_ptr<TabFactory> m_tabFactory;

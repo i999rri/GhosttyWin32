@@ -76,14 +76,24 @@ namespace winrt::GhosttyWin32::implementation
         // for that case.
         GotFocus([weakSelf](auto&&, auto&&) {
             auto self = weakSelf.get();
-            if (!self || !self->m_editContext) return;
-            self->m_editContext.NotifyFocusEnter();
+            if (!self) return;
+            if (self->m_editContext) self->m_editContext.NotifyFocusEnter();
+            self->ApplyFocusVisual(true);
+            // Surface-level focus event for the host. Mirrors the
+            // upstream getActiveSurface pattern (#62): the host uses
+            // this to track "currently focused surface" without us
+            // reaching into MainWindow globals from inside the
+            // control.
+            if (self->m_onFocused && self->m_surface) {
+                self->m_onFocused(self->m_surface);
+            }
         });
 
         LostFocus([weakSelf](auto&&, auto&&) {
             auto self = weakSelf.get();
-            if (!self || !self->m_editContext) return;
-            self->m_editContext.NotifyFocusLeave();
+            if (!self) return;
+            if (self->m_editContext) self->m_editContext.NotifyFocusLeave();
+            self->ApplyFocusVisual(false);
         });
 
         PointerMoved([weakSelf](auto&&, muxi::PointerRoutedEventArgs const& args) {
@@ -307,6 +317,47 @@ namespace winrt::GhosttyWin32::implementation
             default:                                   mapped = muxi::Arrow; break;
         }
         ProtectedCursor(winrt::Microsoft::UI::Input::InputSystemCursor::Create(mapped));
+    }
+
+    void TerminalControl::SetUnfocusedAppearance(double overlayOpacity,
+                                                  winrt::Windows::UI::Color overlayFill) noexcept
+    {
+        m_unfocusedOpacity = overlayOpacity;
+        // Build the brush eagerly so ApplyFocusVisual is allocation-
+        // free on every focus toggle. Recreate (rather than mutate
+        // the existing brush's Color) so config reloads pick up the
+        // new value with a single assignment.
+        m_unfocusedFillBrush = winrt::Microsoft::UI::Xaml::Media::SolidColorBrush(overlayFill);
+        // If we're currently unfocused, refresh the live overlay so a
+        // reload doesn't wait until the next focus toggle to take
+        // effect.
+        if (auto dim = UnfocusedDim();
+            dim && dim.Visibility() == winrt::Microsoft::UI::Xaml::Visibility::Visible)
+        {
+            dim.Fill(m_unfocusedFillBrush);
+            dim.Opacity(m_unfocusedOpacity);
+        }
+    }
+
+    void TerminalControl::ApplyFocusVisual(bool focused)
+    {
+        auto dim = UnfocusedDim();
+        if (!dim) return;
+        if (focused) {
+            dim.Visibility(winrt::Microsoft::UI::Xaml::Visibility::Collapsed);
+            return;
+        }
+        // Lazy fall-back: if the factory never called
+        // SetUnfocusedAppearance (e.g. config-less unit test paths)
+        // we still want something visible. Black @ 30 % matches the
+        // upstream default of 0.7 opacity over a dark background.
+        if (!m_unfocusedFillBrush) {
+            winrt::Windows::UI::Color fallback{ 255, 0, 0, 0 };
+            m_unfocusedFillBrush = winrt::Microsoft::UI::Xaml::Media::SolidColorBrush(fallback);
+        }
+        dim.Fill(m_unfocusedFillBrush);
+        dim.Opacity(m_unfocusedOpacity);
+        dim.Visibility(winrt::Microsoft::UI::Xaml::Visibility::Visible);
     }
 
     TerminalControl::~TerminalControl()
