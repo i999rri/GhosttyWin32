@@ -115,6 +115,32 @@
     <ClCompile Include="test_key_modifiers.cpp" />
     <ClCompile Include="test_encoding.cpp" />
     <ClCompile Include="test_ghostty_config.cpp" />
+    <ClCompile Include="test_ghostty_callback_dispatcher.cpp" />
+    <ClCompile Include="test_size_limit.cpp" />
+    <ClCompile Include="test_fullscreen.cpp" />
+    <!--
+      Production .cpp units pulled in so the test EXE can link
+      directly without making the production project a static lib.
+      PrecompiledHeader=NotUsing because each one starts with
+      `#include "pch.h"` resolving to the GhosttyWin32App pch via
+      the AdditionalIncludeDirectories above — we don't want msvc
+      to also try generating a pch from them on the test side.
+    -->
+    <ClCompile Include="..\GhosttyWin32App\GhosttyActions.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\GhosttyWin32App\GhosttyCallbackDispatcher.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\GhosttyWin32App\SizeLimit.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="..\GhosttyWin32App\Fullscreen.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="MockMainWindowView.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
