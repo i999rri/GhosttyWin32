@@ -1169,12 +1169,12 @@ namespace winrt::GhosttyWin32::implementation
 
     void MainWindow::ApplySizeLimit(ghostty_action_size_limit_s limit)
     {
-        m_sizeLimiter.Apply(m_hwnd, limit);
+        m_sizeLimit.Apply(m_hwnd, limit);
     }
 
     void MainWindow::ToggleFullscreen()
     {
-        m_fullscreenController.Toggle(m_hwnd);
+        m_fullscreen.Toggle(m_hwnd);
     }
 
     namespace {

@@ -1,9 +1,9 @@
 #include "pch.h"
-#include "FullscreenController.h"
+#include "Fullscreen.h"
 
 namespace winrt::GhosttyWin32::implementation {
 
-void FullscreenController::Toggle(HWND hwnd) noexcept
+void Fullscreen::Toggle(HWND hwnd) noexcept
 {
     if (!hwnd) return;
     if (!m_active) {

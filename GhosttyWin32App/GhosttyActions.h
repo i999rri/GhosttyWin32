@@ -61,7 +61,7 @@ public:
 
     // ----- window state -----
     // Both delegate the actual mutation to a dedicated state owner
-    // on the view (SizeLimiter / FullscreenController); the action
+    // on the view (SizeLimit / Fullscreen); the action
     // method just bounces through the UI dispatcher.
     bool OnSizeLimit(ghostty_action_size_limit_s limit);
     bool OnToggleFullscreen();

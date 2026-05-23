@@ -2,11 +2,11 @@
 
 #include "MainWindow.g.h"
 #include "ghostty.h"
-#include "FullscreenController.h"
+#include "Fullscreen.h"
 #include "GhosttyApp.h"
 #include "IMainWindowView.h"
 #include "PaneIdAllocator.h"
-#include "SizeLimiter.h"
+#include "SizeLimit.h"
 #include "Tab.h"
 #include "TabFactory.h"
 #include "Tabs.h"
@@ -98,8 +98,8 @@ namespace winrt::GhosttyWin32::implementation
         void CopyTabTitleForSurface(ghostty_surface_t surface) override;
 
         // State-owner delegating overrides. Each is a one-liner;
-        // the actual logic lives in the dedicated owner (m_sizeLimiter,
-        // m_fullscreenController) so MainWindow doesn't accrete fields
+        // the actual logic lives in the dedicated value (m_sizeLimit,
+        // m_fullscreen) so MainWindow doesn't accrete fields
         // that nothing outside one specific handler reads.
         void ApplySizeLimit(ghostty_action_size_limit_s limit) override;
         void ToggleFullscreen() override;
@@ -121,13 +121,12 @@ namespace winrt::GhosttyWin32::implementation
 
         std::unique_ptr<GhosttyApp> m_ghostty;
         HWND m_hwnd = nullptr;
-        // SIZE_LIMIT / TOGGLE_FULLSCREEN state owners. Default
-        // constructed (no limit set, not in fullscreen). Subclasses
-        // installed by SizeLimiter are auto-removed by Win32 when
-        // m_hwnd is destroyed, so no explicit teardown ordering is
-        // needed.
-        SizeLimiter m_sizeLimiter;
-        FullscreenController m_fullscreenController;
+        // SIZE_LIMIT / TOGGLE_FULLSCREEN state. Default constructed
+        // (no limit set, not in fullscreen). Subclasses installed
+        // by SizeLimit are auto-removed by Win32 when m_hwnd is
+        // destroyed, so no explicit teardown ordering is needed.
+        SizeLimit m_sizeLimit;
+        Fullscreen m_fullscreen;
         // MOUSE_VISIBILITY — when true, WM_SETCURSOR returns NULL so
         // the cursor stays hidden until the next VISIBLE transition.
         // Subclass installed lazily on the first MOUSE_VISIBILITY so
