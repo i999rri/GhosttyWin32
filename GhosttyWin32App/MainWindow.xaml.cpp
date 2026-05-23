@@ -443,6 +443,11 @@ namespace winrt::GhosttyWin32::implementation
         return tab ? tab->ActiveControl() : nullptr;
     }
 
+    void MainWindow::NotifySurfaceFocused(ghostty_surface_t surface) noexcept
+    {
+        m_activeSurface = surface;
+    }
+
     void MainWindow::InitGhostty()
     {
         ghostty_runtime_config_s rtConfig{};
@@ -751,7 +756,15 @@ namespace winrt::GhosttyWin32::implementation
 
         m_ghostty = GhosttyApp::Create(rtConfig);
         if (m_ghostty && m_hwnd) {
-            m_tabFactory = std::make_unique<TabFactory>(m_ghostty->Handle(), m_hwnd, m_paneIds);
+            // Capture by raw `this`: MainWindow outlives every
+            // TerminalControl it owns (the controls are destroyed
+            // through Tabs, which is a MainWindow member), so the
+            // lambda staying alive on the factory is safe.
+            auto onLeafFocused = [this](ghostty_surface_t surface) noexcept {
+                NotifySurfaceFocused(surface);
+            };
+            m_tabFactory = std::make_unique<TabFactory>(
+                m_ghostty->Handle(), m_hwnd, m_paneIds, std::move(onLeafFocused));
         }
     }
 
@@ -1268,6 +1281,12 @@ namespace winrt::GhosttyWin32::implementation
         // synchronously, before the Pane node holding the
         // TerminalControl is destroyed.
         if (auto* tc = Tab::LeafToTerminalControl(*leaf)) {
+            // Clear m_activeSurface if it pointed at the surface we're
+            // about to free — the focused-surface cache must never
+            // outlive the underlying ghostty_surface_t. The next
+            // TerminalControl::GotFocus on the retargeted sibling (or
+            // a new tab) will refill the slot.
+            if (tc->Surface() == m_activeSurface) m_activeSurface = nullptr;
             tc->Detach();
         }
 

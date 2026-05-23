@@ -100,6 +100,14 @@ namespace winrt::GhosttyWin32::implementation
             if (!self) return;
             if (self->m_editContext) self->m_editContext.NotifyFocusEnter();
             self->ShowFocusBorder(true);
+            // Surface-level focus event for the host. Mirrors the
+            // upstream getActiveSurface pattern (#62): the host uses
+            // this to track "currently focused surface" without us
+            // reaching into MainWindow globals from inside the
+            // control.
+            if (self->m_onFocused && self->m_surface) {
+                self->m_onFocused(self->m_surface);
+            }
         });
 
         LostFocus([weakSelf](auto&&, auto&&) {

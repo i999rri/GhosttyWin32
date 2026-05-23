@@ -19,17 +19,25 @@
 namespace winrt::GhosttyWin32::implementation {
 
 // Builds Tabs. Holds the cross-cutting context (ghostty app handle, the
-// HWND for DPI/initial-size, and the PaneIdAllocator that produces fresh
-// per-leaf IDs) so callers don't have to thread those through every
-// Make() call.
+// HWND for DPI/initial-size, the PaneIdAllocator that produces fresh
+// per-leaf IDs, and an optional "leaf gained focus" callback that
+// every TerminalControl this factory creates will fire) so callers
+// don't have to thread those through every Make() call.
+//
+// The focus callback is the one piece of MainWindow-side context that
+// needs to reach into each leaf without each leaf knowing about
+// MainWindow directly. Wiring it here keeps the dependency direction
+// host -> control (the inverse would be a layering violation).
 //
 // Stateless beyond the injected references — no mutable state of its
 // own. ID counter mutation lives in PaneIdAllocator; the factory only
 // borrows it.
 class TabFactory {
 public:
-    TabFactory(ghostty_app_t app, HWND hwnd, PaneIdAllocator& idAllocator) noexcept
-        : m_app(app), m_hwnd(hwnd), m_idAllocator(idAllocator) {}
+    TabFactory(ghostty_app_t app, HWND hwnd, PaneIdAllocator& idAllocator,
+               std::function<void(ghostty_surface_t)> onLeafFocused = {}) noexcept
+        : m_app(app), m_hwnd(hwnd), m_idAllocator(idAllocator),
+          m_onLeafFocused(std::move(onLeafFocused)) {}
 
     TabFactory(const TabFactory&) = delete;
     TabFactory& operator=(const TabFactory&) = delete;
@@ -186,6 +194,11 @@ public:
         // and closing the handle.
         controlImpl->Attach(m_app, surface, handle, m_hwnd, attach);
 
+        // Wire the host-supplied focus callback so the control can
+        // notify MainWindow whenever it gains keyboard focus without
+        // taking a hard dependency on MainWindow.
+        if (m_onLeafFocused) controlImpl->SetOnFocused(m_onLeafFocused);
+
         return Pane::MakeLeaf(control, paneId);
     }
 
@@ -209,6 +222,9 @@ private:
     ghostty_app_t m_app;
     HWND m_hwnd;
     PaneIdAllocator& m_idAllocator;
+    // Optional. Fires with the leaf's ghostty_surface_t whenever the
+    // leaf's TerminalControl receives keyboard focus.
+    std::function<void(ghostty_surface_t)> m_onLeafFocused;
 };
 
 }  // namespace winrt::GhosttyWin32::implementation

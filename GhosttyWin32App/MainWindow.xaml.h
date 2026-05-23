@@ -33,6 +33,22 @@ namespace winrt::GhosttyWin32::implementation
         void OnCloseClick(winrt::Windows::Foundation::IInspectable const&,
                           winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
 
+        // Called by every TerminalControl when it receives keyboard
+        // focus (wired by TabFactory). Updates m_activeSurface so any
+        // future caller — APP-target action handlers, multi-window
+        // focus delivery, IPC / scripting bridges — can ask "which
+        // surface is the user looking at right now" without a
+        // separate tree walk. Public because TerminalControl needs to
+        // reach in via the host-supplied callback. UI thread only.
+        void NotifySurfaceFocused(ghostty_surface_t surface) noexcept;
+
+        // Last surface to receive keyboard focus inside this window.
+        // Null until the first focus delivery (typically the very
+        // first tab's TerminalControl GotFocus right after launch).
+        // Stays valid across alt-tab — we only clear it when the
+        // surface itself is torn down.
+        ghostty_surface_t GetActiveSurface() const noexcept { return m_activeSurface; }
+
     private:
         void InitGhostty();
         void CreateTab();
@@ -86,6 +102,10 @@ namespace winrt::GhosttyWin32::implementation
         HWND m_hwnd = nullptr;
         PaneIdAllocator m_paneIds;
         Tabs m_tabs;
+        // Focus-tracked active surface. Set by NotifySurfaceFocused
+        // when a TerminalControl gains focus, cleared when the
+        // matching surface is torn down through CloseSurfaceByPaneId.
+        ghostty_surface_t m_activeSurface = nullptr;
         // Constructed once ghostty is initialized — needs the app handle
         // and HWND, neither available until InitGhostty has run.
         std::unique_ptr<TabFactory> m_tabFactory;

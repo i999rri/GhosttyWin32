@@ -118,6 +118,17 @@ namespace winrt::GhosttyWin32::implementation
         // TerminalControl.xaml.
         void ShowFocusBorder(bool visible);
 
+        // Set the callback that fires when this control receives
+        // keyboard focus. Passed the underlying ghostty surface so
+        // the host can update its "currently focused surface"
+        // tracking without reaching into MainWindow globals from
+        // here. The callback is invoked on the UI thread (XAML
+        // GotFocus delivery path). Setting an empty function clears
+        // the registration.
+        void SetOnFocused(std::function<void(ghostty_surface_t)> cb) noexcept {
+            m_onFocused = std::move(cb);
+        }
+
     private:
         // Builds the per-control CoreTextEditContext and wires its
         // seven event handlers (TextRequested / SelectionRequested /
@@ -153,6 +164,10 @@ namespace winrt::GhosttyWin32::implementation
         // the interval so the border stays visible for the full
         // 1.5 s after the most recent focus change.
         winrt::Microsoft::UI::Xaml::DispatcherTimer m_focusBorderTimer{ nullptr };
+
+        // Notify-on-focus callback registered by the factory that built
+        // this control. See SetOnFocused().
+        std::function<void(ghostty_surface_t)> m_onFocused;
     };
 }
 
