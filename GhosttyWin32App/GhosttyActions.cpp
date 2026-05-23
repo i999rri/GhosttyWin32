@@ -19,7 +19,7 @@ bool GhosttyActions::OnRingBell() {
     return true;
 }
 
-bool GhosttyActions::OnShowChildExited(ghostty_action_child_exited_s ce) {
+bool GhosttyActions::OnShowChildExited(ghostty_surface_message_childexited_s ce) {
     // Shell process for a surface exited. With confirm-close-
     // surface=false (our default) the surface tears itself down
     // via close_surface_cb almost immediately, so this is a

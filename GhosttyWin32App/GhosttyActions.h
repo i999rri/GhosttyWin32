@@ -28,7 +28,7 @@ public:
 
     // ----- terminal events -----
     bool OnRingBell();
-    bool OnShowChildExited(ghostty_action_child_exited_s child);
+    bool OnShowChildExited(ghostty_surface_message_childexited_s child);
     bool OnRendererHealth(ghostty_action_renderer_health_e health);
     bool OnRender();
 
