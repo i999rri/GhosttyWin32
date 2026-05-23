@@ -30,7 +30,7 @@ namespace winrt::GhosttyWin32::implementation::core::ghostty {
 // call site — the option-value is the signature, not the body.
 class CallbackDispatcher {
 public:
-    static std::unique_ptr<GhosttyCallbackDispatcher> Create(host::IWindow& view);
+    static std::unique_ptr<CallbackDispatcher> Create(host::IWindow& view);
 
     // Route a ghostty action_cb invocation. Returns true when the
     // action was handled (matches the ghostty action_cb contract:

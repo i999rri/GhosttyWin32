@@ -2,9 +2,9 @@
 
 namespace winrt::GhosttyWin32::implementation::core::ghostty {
 
-std::unique_ptr<GhosttyCallbackDispatcher>
+std::unique_ptr<CallbackDispatcher>
 CallbackDispatcher::Create(host::IWindow& view) {
-    return std::unique_ptr<GhosttyCallbackDispatcher>(new CallbackDispatcher(view));
+    return std::unique_ptr<CallbackDispatcher>(new CallbackDispatcher(view));
 }
 
 bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_s action) {

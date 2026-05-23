@@ -2,6 +2,7 @@
 
 #include "TerminalControl.g.h"
 #include "Host/ImeBuffer.h"
+#include "Interop/Encoding.h"
 #include "ghostty.h"
 #include <microsoft.ui.xaml.media.dxinterop.h>
 #include <winrt/Windows.UI.Text.Core.h>

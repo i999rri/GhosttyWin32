@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "../Core/Interop/Encoding.h"
 
+using namespace winrt::GhosttyWin32::implementation::core::interop;
 TEST(EncodingTest, Utf16ToUtf8Ascii) {
     auto result = Encoding::toUtf8(L"hello", 5);
     EXPECT_EQ(result, "hello");

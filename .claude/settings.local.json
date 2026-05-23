@@ -263,7 +263,14 @@
       "Bash(sed -i 's|\"Util/Encoding.h\"|\"Interop/Encoding.h\"|g' Core/Ghostty/Actions/Actions.cpp)",
       "Bash(sed -i -e 's|\"Util/Encoding.h\"|\"Interop/Encoding.h\"|g' -e 's|namespace util    = core::util;|namespace interop = core::interop;|' -e 's|namespace util = core::util;|namespace interop = core::interop;|' -e 's|util::Encoding::|interop::Encoding::|g' App/MainWindow.xaml.h App/MainWindow.xaml.cpp App/TerminalControl.xaml.h App/TerminalControl.xaml.cpp)",
       "Bash(sed -i 's|Util\\\\\\\\Encoding\\\\.h|Interop\\\\\\\\Encoding.h|g' Core/Core.vcxproj)",
-      "Bash(sed -i -e 's|\"../Core/Util/Encoding.h\"|\"../Core/Interop/Encoding.h\"|g' -e 's|winrt::GhosttyWin32::implementation::core::util|winrt::GhosttyWin32::implementation::core::interop|g' Tests/test_encoding.cpp Tests/test_*.cpp)"
+      "Bash(sed -i -e 's|\"../Core/Util/Encoding.h\"|\"../Core/Interop/Encoding.h\"|g' -e 's|winrt::GhosttyWin32::implementation::core::util|winrt::GhosttyWin32::implementation::core::interop|g' Tests/test_encoding.cpp Tests/test_*.cpp)",
+      "Bash(sed -i 's|<GhosttyCallbackDispatcher>|<CallbackDispatcher>|g' Core/Ghostty/CallbackDispatcher.h Core/Ghostty/CallbackDispatcher.cpp)",
+      "Bash(sed -i 's|\\\\bGhosttyActions actions\\\\b|Actions actions|g' Tests/test_ghostty_actions.cpp)",
+      "Bash(sed -i '3a using namespace winrt::GhosttyWin32::implementation::core::interop;' Tests/test_encoding.cpp)",
+      "Bash(sed -i '3a using winrt::GhosttyWin32::implementation::core::host::ImeBuffer;' Tests/test_ime_buffer.cpp)",
+      "Bash(sed -i '3a using namespace winrt::GhosttyWin32::implementation::core::host;' Tests/test_key_modifiers.cpp)",
+      "Bash(sed -i 's|\\\\bGhosttyCallbackDispatcher\\\\b|CallbackDispatcher|g' Tests/test_ghostty_callback_dispatcher.cpp)",
+      "Bash(sed -i 's|\\\\bGhosttyConfig::|Config::|g' Tests/test_ghostty_config.cpp)"
     ]
   }
 }

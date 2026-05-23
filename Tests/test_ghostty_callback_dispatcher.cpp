@@ -9,7 +9,7 @@ namespace {
 // Helper: build an empty target/action pair, set the tag, dispatch.
 // The ack-only routing doesn't read target.target or action.action,
 // so leaving them default-zeroed is safe.
-bool DispatchTag(GhosttyCallbackDispatcher& d, ghostty_action_tag_e tag) {
+bool DispatchTag(CallbackDispatcher& d, ghostty_action_tag_e tag) {
     ghostty_target_s target{};
     ghostty_action_s action{};
     action.tag = tag;
@@ -29,7 +29,7 @@ bool DispatchTag(GhosttyCallbackDispatcher& d, ghostty_action_tag_e tag) {
 
 TEST(GhosttyCallbackDispatcherTest, InformationalAcksReturnTrue) {
     MockMainWindowView view;
-    auto d = GhosttyCallbackDispatcher::Create(view);
+    auto d = CallbackDispatcher::Create(view);
 
     EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_READONLY));
     EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_SECURE_INPUT));
@@ -42,7 +42,7 @@ TEST(GhosttyCallbackDispatcherTest, InformationalAcksReturnTrue) {
 
 TEST(GhosttyCallbackDispatcherTest, FeatureSurfaceAcksReturnTrue) {
     MockMainWindowView view;
-    auto d = GhosttyCallbackDispatcher::Create(view);
+    auto d = CallbackDispatcher::Create(view);
 
     EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_UNDO));
     EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_REDO));
@@ -59,7 +59,7 @@ TEST(GhosttyCallbackDispatcherTest, FeatureSurfaceAcksReturnTrue) {
 
 TEST(GhosttyCallbackDispatcherTest, NoConsumerAcksReturnTrue) {
     MockMainWindowView view;
-    auto d = GhosttyCallbackDispatcher::Create(view);
+    auto d = CallbackDispatcher::Create(view);
 
     // SCROLLBAR: no scrollbar UI to feed.
     EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_SCROLLBAR));
@@ -71,7 +71,7 @@ TEST(GhosttyCallbackDispatcherTest, NoConsumerAcksReturnTrue) {
 
 TEST(GhosttyCallbackDispatcherTest, DisabledFeaturesAckedNotDropped) {
     MockMainWindowView view;
-    auto d = GhosttyCallbackDispatcher::Create(view);
+    auto d = CallbackDispatcher::Create(view);
 
     // MOUSE_OVER_LINK: TOOLTIPS popup disabled per #61.
     EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_MOUSE_OVER_LINK));
@@ -89,7 +89,7 @@ TEST(GhosttyCallbackDispatcherTest, RingBellDispatchesWithoutTouchingView) {
     // all — the dispatcher should hand it off and return true even
     // with a null-Dispatcher mock.
     MockMainWindowView view;
-    auto d = GhosttyCallbackDispatcher::Create(view);
+    auto d = CallbackDispatcher::Create(view);
 
     EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_RING_BELL));
 }
@@ -102,7 +102,7 @@ TEST(GhosttyCallbackDispatcherTest, UnknownTagReturnsFalse) {
     // value high enough that no near-term GHOSTTY_ACTION_* enum
     // entry could collide.
     MockMainWindowView view;
-    auto d = GhosttyCallbackDispatcher::Create(view);
+    auto d = CallbackDispatcher::Create(view);
 
     EXPECT_FALSE(DispatchTag(*d, static_cast<ghostty_action_tag_e>(9999)));
 }

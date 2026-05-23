@@ -7,6 +7,7 @@
 #include "Ghostty/CallbackDispatcher.h"
 #include "GhosttyApp.h"
 #include "Host/IWindow.h"
+#include "Interop/Encoding.h"
 #include "PaneIdAllocator.h"
 #include "Tab.h"
 #include "TabFactory.h"

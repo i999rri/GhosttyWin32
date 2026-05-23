@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "../Core/Host/ImeBuffer.h"
 
+using winrt::GhosttyWin32::implementation::core::host::ImeBuffer;
 // Unicode constants for Japanese characters used in tests
 static const wchar_t A[] = L"\x3042";           // あ
 static const wchar_t AI[] = L"\x3042\x3044";     // あい
