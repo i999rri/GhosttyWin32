@@ -1,6 +1,6 @@
 #include "pch.h"
 #include "MainWindow.xaml.h"
-#include "ActionDispatcher.h"
+#include "GhosttyCallbackDispatcher.h"
 #include "Clipboard.h"
 #include "KeyModifiers.h"
 #include "Encoding.h"
@@ -496,8 +496,9 @@ namespace winrt::GhosttyWin32::implementation
     winrt::Microsoft::UI::Dispatching::DispatcherQueue MainWindow::Dispatcher() const
     {
         // Forward to the Window-provided DispatcherQueue. Wrapper
-        // exists so ActionDispatcher can depend on the abstract
-        // IMainWindowView rather than the WinUI Window base type.
+        // exists so the callback dispatcher / GhosttyActions can
+        // depend on the abstract IMainWindowView rather than the
+        // WinUI Window base type.
         return DispatcherQueue();
     }
 
@@ -524,7 +525,7 @@ namespace winrt::GhosttyWin32::implementation
         // Bring the dispatcher up before the runtime config so the
         // action_cb forwarder below can rely on it being ready by
         // the time ghostty fires its first action.
-        m_actionDispatcher = ActionDispatcher::Create(*this);
+        m_ghosttyDispatcher = GhosttyCallbackDispatcher::Create(*this);
 
         ghostty_runtime_config_s rtConfig{};
         rtConfig.userdata = this;
@@ -537,11 +538,11 @@ namespace winrt::GhosttyWin32::implementation
             });
         };
         rtConfig.action_cb = [](ghostty_app_t, ghostty_target_s target, ghostty_action_s action) -> bool {
-            // Lifted-out handlers first. Anything ActionDispatcher
+            // Lifted-out handlers first. Anything the dispatcher
             // already owns short-circuits here; only handlers that
             // still live inline below see the action.
-            if (g_mainWindow && g_mainWindow->m_actionDispatcher
-                && g_mainWindow->m_actionDispatcher->Dispatch(target, action)) {
+            if (g_mainWindow && g_mainWindow->m_ghosttyDispatcher
+                && g_mainWindow->m_ghosttyDispatcher->DispatchAction(target, action)) {
                 return true;
             }
 

@@ -11,7 +11,7 @@
 
 namespace winrt::GhosttyWin32::implementation
 {
-    class ActionDispatcher;
+    class GhosttyCallbackDispatcher;
 
     struct MainWindow : MainWindowT<MainWindow>, IMainWindowView
     {
@@ -70,10 +70,10 @@ namespace winrt::GhosttyWin32::implementation
         ghostty_surface_t GetActiveSurface() const noexcept { return m_activeSurface; }
 
         // ----- IMainWindowView -----
-        // Narrow surface ActionDispatcher consumes; see
-        // IMainWindowView.h for why these live behind a virtual
-        // interface rather than being looked up off MainWindow
-        // directly.
+        // Narrow surface the callback dispatcher / GhosttyActions
+        // consume; see IMainWindowView.h for why these live behind
+        // a virtual interface rather than being looked up off
+        // MainWindow directly.
         HWND Hwnd() const noexcept override { return m_hwnd; }
         winrt::Microsoft::UI::Dispatching::DispatcherQueue Dispatcher() const override;
         void Tick() override;
@@ -140,10 +140,12 @@ namespace winrt::GhosttyWin32::implementation
         // Constructed once ghostty is initialized — needs the app handle
         // and HWND, neither available until InitGhostty has run.
         std::unique_ptr<TabFactory> m_tabFactory;
-        // action_cb dispatch table. Built in InitGhostty after the
-        // GhosttyApp handle is available; destroyed before m_ghostty
-        // so handlers can't observe a half-torn-down app on shutdown.
-        std::unique_ptr<ActionDispatcher> m_actionDispatcher;
+        // ghostty runtime callback dispatcher (today: action_cb;
+        // future: clipboard / surface). Built in InitGhostty after
+        // the GhosttyApp handle is available; destroyed before
+        // m_ghostty so handlers can't observe a half-torn-down app
+        // on shutdown.
+        std::unique_ptr<GhosttyCallbackDispatcher> m_ghosttyDispatcher;
     };
 }
 

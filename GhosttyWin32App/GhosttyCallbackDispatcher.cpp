@@ -1,13 +1,14 @@
 #include "pch.h"
-#include "ActionDispatcher.h"
+#include "GhosttyCallbackDispatcher.h"
 
 namespace winrt::GhosttyWin32::implementation {
 
-std::unique_ptr<ActionDispatcher> ActionDispatcher::Create(IMainWindowView& view) {
-    return std::unique_ptr<ActionDispatcher>(new ActionDispatcher(view));
+std::unique_ptr<GhosttyCallbackDispatcher>
+GhosttyCallbackDispatcher::Create(IMainWindowView& view) {
+    return std::unique_ptr<GhosttyCallbackDispatcher>(new GhosttyCallbackDispatcher(view));
 }
 
-bool ActionDispatcher::Dispatch(ghostty_target_s target, ghostty_action_s action) {
+bool GhosttyCallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_s action) {
     switch (action.tag) {
         // ----- terminal events -----
         case GHOSTTY_ACTION_RING_BELL:

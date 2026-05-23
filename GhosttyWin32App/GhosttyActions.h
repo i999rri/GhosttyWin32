@@ -7,8 +7,9 @@
 namespace winrt::GhosttyWin32::implementation {
 
 // Host-side implementations of every ghostty action this port
-// handles. ActionDispatcher routes incoming `ghostty_action_s`
-// values here; the routing layer stays a pure switch / lookup,
+// handles. GhosttyCallbackDispatcher routes incoming
+// `ghostty_action_s` values here; the routing layer stays a pure
+// switch / lookup,
 // and the handlers themselves live in one place that can be
 // unit-tested against a mock IMainWindowView without ghostty
 // running.

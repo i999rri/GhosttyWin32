@@ -6,8 +6,9 @@
 
 namespace winrt::GhosttyWin32::implementation {
 
-// Narrow view-side surface that ActionDispatcher depends on. Lets
-// the dispatcher reach the bits of MainWindow it actually needs
+// Narrow view-side surface that GhosttyCallbackDispatcher (and
+// the GhosttyActions handlers it routes to) depends on. Lets the
+// dispatcher reach the bits of MainWindow it actually needs
 // (HWND, UI dispatcher, ghostty tick) without taking a hard
 // dependency on the full MainWindow type — keeps the dispatcher
 // testable in isolation and stops it from quietly accreting more
