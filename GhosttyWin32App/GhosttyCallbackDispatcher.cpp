@@ -1,4 +1,3 @@
-#include "pch.h"
 #include "GhosttyCallbackDispatcher.h"
 
 namespace winrt::GhosttyWin32::implementation {

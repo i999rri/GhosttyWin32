@@ -1,9 +1,10 @@
-#include "pch.h"
 #include "GhosttyActions.h"
 #include "Encoding.h"
+#include <windows.h>
 #include <shellapi.h>
 #include <cstdio>
 #include <string>
+#include <utility>
 
 namespace winrt::GhosttyWin32::implementation {
 

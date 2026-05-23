@@ -155,10 +155,26 @@
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader>Create</PrecompiledHeader>
     </ClCompile>
-    <ClCompile Include="GhosttyCallbackDispatcher.cpp" />
-    <ClCompile Include="Fullscreen.cpp" />
-    <ClCompile Include="GhosttyActions.cpp" />
-    <ClCompile Include="SizeLimit.cpp" />
+    <!--
+      These four are deliberately winrt-free so the test EXE can
+      pick them up directly without pulling WindowsAppSDK into
+      GhosttyTests. Skipping the pch is what keeps the
+      no-winrt-headers contract on the test side; the cost on the
+      production side is negligible (each file only includes a
+      handful of headers).
+    -->
+    <ClCompile Include="GhosttyCallbackDispatcher.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="Fullscreen.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="GhosttyActions.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="SizeLimit.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="App.xaml.cpp">
       <DependentUpon>App.xaml</DependentUpon>
     </ClCompile>
