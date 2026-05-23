@@ -59,6 +59,13 @@ public:
     bool OnSetTitle(ghostty_surface_t surface, const char* utf8Title);
     bool OnCopyTitleToClipboard(ghostty_surface_t surface);
 
+    // ----- window state -----
+    // Both delegate the actual mutation to a dedicated state owner
+    // on the view (SizeLimiter / FullscreenController); the action
+    // method just bounces through the UI dispatcher.
+    bool OnSizeLimit(ghostty_action_size_limit_s limit);
+    bool OnToggleFullscreen();
+
     // ----- split-pane -----
     bool OnNewSplit(ghostty_surface_t surface,
                     ghostty_action_split_direction_e direction);

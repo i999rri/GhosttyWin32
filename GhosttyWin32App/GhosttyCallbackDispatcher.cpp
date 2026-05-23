@@ -73,6 +73,12 @@ bool GhosttyCallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_
                 return m_actions.OnCopyTitleToClipboard(target.target.surface);
             return false;
 
+        // ----- window state -----
+        case GHOSTTY_ACTION_SIZE_LIMIT:
+            return m_actions.OnSizeLimit(action.action.size_limit);
+        case GHOSTTY_ACTION_TOGGLE_FULLSCREEN:
+            return m_actions.OnToggleFullscreen();
+
         // ----- split-pane (surface-targeted) -----
         case GHOSTTY_ACTION_NEW_SPLIT:
             if (target.tag == GHOSTTY_TARGET_SURFACE)

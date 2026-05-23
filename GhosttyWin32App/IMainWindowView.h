@@ -102,6 +102,18 @@ struct IMainWindowView {
     // Copy the header of the tab containing `surface` to the
     // system clipboard. No-op when the tab has no title yet.
     virtual void CopyTabTitleForSurface(ghostty_surface_t surface) = 0;
+
+    // ----- window state helpers (delegated to dedicated state
+    // owners on MainWindow's side) -----
+
+    // Update the SIZE_LIMIT constraint. The first call also
+    // installs the WM_GETMINMAXINFO subclass; subsequent calls
+    // just refresh the stored limit.
+    virtual void ApplySizeLimit(ghostty_action_size_limit_s limit) = 0;
+
+    // Toggle borderless fullscreen on/off. Restores the exact
+    // pre-fullscreen placement + style when leaving.
+    virtual void ToggleFullscreen() = 0;
 };
 
 }  // namespace winrt::GhosttyWin32::implementation

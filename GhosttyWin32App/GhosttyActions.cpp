@@ -243,6 +243,27 @@ bool GhosttyActions::OnCopyTitleToClipboard(ghostty_surface_t surface) {
     return true;
 }
 
+// ===== window state =====
+
+bool GhosttyActions::OnSizeLimit(ghostty_action_size_limit_s limit) {
+    m_view.Dispatcher().TryEnqueue([this, limit]() {
+        m_view.ApplySizeLimit(limit);
+    });
+    return true;
+}
+
+bool GhosttyActions::OnToggleFullscreen() {
+    // The ghostty enum carries NATIVE + three macOS-specific
+    // NON_NATIVE variants; on Windows they all collapse to the
+    // same borderless-fullscreen behaviour, so the value is
+    // ignored here. The FullscreenController on the view side
+    // owns the placement/style snapshot for restore.
+    m_view.Dispatcher().TryEnqueue([this]() {
+        m_view.ToggleFullscreen();
+    });
+    return true;
+}
+
 // ===== split-pane =====
 // All five surface-target split operations share the same shape:
 // bounce through the UI dispatcher, then hand off to the view

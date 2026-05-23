@@ -2,9 +2,11 @@
 
 #include "MainWindow.g.h"
 #include "ghostty.h"
+#include "FullscreenController.h"
 #include "GhosttyApp.h"
 #include "IMainWindowView.h"
 #include "PaneIdAllocator.h"
+#include "SizeLimiter.h"
 #include "Tab.h"
 #include "TabFactory.h"
 #include "Tabs.h"
@@ -24,14 +26,6 @@ namespace winrt::GhosttyWin32::implementation
         // process — reduces the chance the next launch inherits corrupted
         // NVIDIA state.
         static long __stdcall OnUnhandledException(struct _EXCEPTION_POINTERS* info) noexcept;
-
-        // WM_GETMINMAXINFO subclass proc installed lazily on first
-        // SIZE_LIMIT. dwRefData carries the MainWindow*; the proc
-        // reads m_sizeLimit and clamps ptMin/MaxTrackSize before
-        // forwarding to DefSubclassProc.
-        static LRESULT CALLBACK SizeLimitSubclassProc(
-            HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
-            UINT_PTR id, DWORD_PTR ref) noexcept;
 
         // WM_SETCURSOR subclass proc for MOUSE_VISIBILITY. WinUI 3
         // ignores ShowCursor (the cursor goes through ProtectedCursor
@@ -103,6 +97,13 @@ namespace winrt::GhosttyWin32::implementation
                                    std::wstring title) override;
         void CopyTabTitleForSurface(ghostty_surface_t surface) override;
 
+        // State-owner delegating overrides. Each is a one-liner;
+        // the actual logic lives in the dedicated owner (m_sizeLimiter,
+        // m_fullscreenController) so MainWindow doesn't accrete fields
+        // that nothing outside one specific handler reads.
+        void ApplySizeLimit(ghostty_action_size_limit_s limit) override;
+        void ToggleFullscreen() override;
+
     private:
         void InitGhostty();
         Tab* ActiveTab();
@@ -120,20 +121,13 @@ namespace winrt::GhosttyWin32::implementation
 
         std::unique_ptr<GhosttyApp> m_ghostty;
         HWND m_hwnd = nullptr;
-        // Fullscreen toggle state — TOGGLE_FULLSCREEN flips m_fullscreen
-        // and uses m_prevPlacement / m_prevStyle to restore the original
-        // window when leaving fullscreen. We save WINDOWPLACEMENT instead
-        // of a RECT because it round-trips maximised state correctly
-        // (toggling FS from a maximised window should return to maximised).
-        bool m_fullscreen = false;
-        WINDOWPLACEMENT m_prevPlacement{};
-        LONG_PTR m_prevStyle = 0;
-        // SIZE_LIMIT — min / max window size in pixels. The values are
-        // applied in WM_GETMINMAXINFO via SizeLimitSubclassProc, which
-        // is installed lazily on the first SIZE_LIMIT so apps that
-        // never set a size limit don't pay the subclass cost.
-        ghostty_action_size_limit_s m_sizeLimit{};
-        bool m_sizeLimitSubclassed = false;
+        // SIZE_LIMIT / TOGGLE_FULLSCREEN state owners. Default
+        // constructed (no limit set, not in fullscreen). Subclasses
+        // installed by SizeLimiter are auto-removed by Win32 when
+        // m_hwnd is destroyed, so no explicit teardown ordering is
+        // needed.
+        SizeLimiter m_sizeLimiter;
+        FullscreenController m_fullscreenController;
         // MOUSE_VISIBILITY — when true, WM_SETCURSOR returns NULL so
         // the cursor stays hidden until the next VISIBLE transition.
         // Subclass installed lazily on the first MOUSE_VISIBILITY so

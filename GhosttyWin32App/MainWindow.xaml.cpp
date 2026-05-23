@@ -438,26 +438,6 @@ namespace winrt::GhosttyWin32::implementation
         return EXCEPTION_CONTINUE_SEARCH;
     }
 
-    LRESULT CALLBACK MainWindow::SizeLimitSubclassProc(
-        HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
-        UINT_PTR /*id*/, DWORD_PTR ref) noexcept
-    {
-        if (msg == WM_GETMINMAXINFO) {
-            auto* mw = reinterpret_cast<MainWindow*>(ref);
-            if (mw) {
-                auto& sl = mw->m_sizeLimit;
-                auto* mmi = reinterpret_cast<MINMAXINFO*>(lp);
-                // Zero in any field means "no limit" — leave the
-                // default. Only the populated fields override.
-                if (sl.min_width)  mmi->ptMinTrackSize.x = static_cast<LONG>(sl.min_width);
-                if (sl.min_height) mmi->ptMinTrackSize.y = static_cast<LONG>(sl.min_height);
-                if (sl.max_width)  mmi->ptMaxTrackSize.x = static_cast<LONG>(sl.max_width);
-                if (sl.max_height) mmi->ptMaxTrackSize.y = static_cast<LONG>(sl.max_height);
-            }
-        }
-        return DefSubclassProc(hwnd, msg, wp, lp);
-    }
-
     LRESULT CALLBACK MainWindow::CursorVisibilitySubclassProc(
         HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
         UINT_PTR /*id*/, DWORD_PTR ref) noexcept
@@ -691,32 +671,6 @@ namespace winrt::GhosttyWin32::implementation
                 return true;
             }
 
-            // SIZE_LIMIT — ghostty wants the window to refuse drags
-            // below / above certain pixel dimensions (e.g., "don't
-            // shrink past 10x5 cells", "don't grow past 200x80"). The
-            // canonical Win32 hook for this is WM_GETMINMAXINFO, which
-            // means subclassing the top-level WndProc. Install the
-            // subclass lazily on first SIZE_LIMIT so apps that never
-            // set a limit don't pay the subclass cost, and cache the
-            // limits on MainWindow so the subclass proc can read them
-            // without re-entering the dispatcher.
-            if (action.tag == GHOSTTY_ACTION_SIZE_LIMIT) {
-                if (!g_mainWindow) return true;
-                auto mw = g_mainWindow;
-                mw->m_sizeLimit = action.action.size_limit;
-                mw->DispatcherQueue().TryEnqueue([mw]() {
-                    HWND hwnd = mw->m_hwnd;
-                    if (!hwnd || mw->m_sizeLimitSubclassed) return;
-                    if (SetWindowSubclass(hwnd,
-                                          &MainWindow::SizeLimitSubclassProc,
-                                          1,
-                                          reinterpret_cast<DWORD_PTR>(mw))) {
-                        mw->m_sizeLimitSubclassed = true;
-                    }
-                });
-                return true;
-            }
-
             // MOUSE_OVER_LINK — TEMPORARILY DISABLED.
             // The Win32 TOOLTIPS_CLASS popup approach below caused
             // GhosttyWin32 to crash on URL click (process exit code
@@ -784,55 +738,6 @@ namespace winrt::GhosttyWin32::implementation
                 return true;
             }
 #endif
-
-            // TOGGLE_FULLSCREEN — borderless fullscreen toggle. The
-            // ghostty enum carries NATIVE + three macOS-specific
-            // NON_NATIVE variants; on Windows they all collapse to
-            // the same "remove WS_OVERLAPPEDWINDOW + cover the
-            // monitor" behavior, so the value is ignored. Track the
-            // toggle state plus the previous WINDOWPLACEMENT and
-            // style on MainWindow so leaving fullscreen lands back
-            // where the user started (preserving a maximised state
-            // if they were maximised before entering FS — RECT alone
-            // would lose that).
-            //
-            // Caveat: our custom title bar lives in the XAML content
-            // tree, so it stays visible at the top of the surface
-            // even in fullscreen. Hiding it is a follow-up; the
-            // window itself does fill the monitor correctly.
-            if (action.tag == GHOSTTY_ACTION_TOGGLE_FULLSCREEN) {
-                if (!g_mainWindow) return true;
-                auto mw = g_mainWindow;
-                mw->DispatcherQueue().TryEnqueue([mw]() {
-                    HWND hwnd = mw->m_hwnd;
-                    if (!hwnd) return;
-                    if (!mw->m_fullscreen) {
-                        mw->m_prevPlacement.length = sizeof(WINDOWPLACEMENT);
-                        GetWindowPlacement(hwnd, &mw->m_prevPlacement);
-                        mw->m_prevStyle = GetWindowLongPtrW(hwnd, GWL_STYLE);
-
-                        HMONITOR mon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
-                        MONITORINFO mi{ sizeof(MONITORINFO) };
-                        if (!GetMonitorInfoW(mon, &mi)) return;
-
-                        SetWindowLongPtrW(hwnd, GWL_STYLE,
-                                          mw->m_prevStyle & ~WS_OVERLAPPEDWINDOW);
-                        SetWindowPos(hwnd, HWND_TOP,
-                                     mi.rcMonitor.left, mi.rcMonitor.top,
-                                     mi.rcMonitor.right - mi.rcMonitor.left,
-                                     mi.rcMonitor.bottom - mi.rcMonitor.top,
-                                     SWP_NOZORDER | SWP_FRAMECHANGED);
-                        mw->m_fullscreen = true;
-                    } else {
-                        SetWindowLongPtrW(hwnd, GWL_STYLE, mw->m_prevStyle);
-                        SetWindowPlacement(hwnd, &mw->m_prevPlacement);
-                        SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
-                                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
-                        mw->m_fullscreen = false;
-                    }
-                });
-                return true;
-            }
 
             // DESKTOP_NOTIFICATION — surface ghostty's bell-and-toast
             // notifications via the Windows native toast layer. Builds
@@ -1258,6 +1163,18 @@ namespace winrt::GhosttyWin32::implementation
             t->Item().Header(), winrt::hstring{});
         if (title.empty()) return;
         Clipboard::write(m_hwnd, std::wstring(title));
+    }
+
+    // ----- IMainWindowView: state-owner delegating overrides -----
+
+    void MainWindow::ApplySizeLimit(ghostty_action_size_limit_s limit)
+    {
+        m_sizeLimiter.Apply(m_hwnd, limit);
+    }
+
+    void MainWindow::ToggleFullscreen()
+    {
+        m_fullscreenController.Toggle(m_hwnd);
     }
 
     namespace {

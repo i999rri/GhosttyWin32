@@ -121,6 +121,7 @@
   <ItemGroup>
     <ClInclude Include="GhosttyCallbackDispatcher.h" />
     <ClInclude Include="Encoding.h" />
+    <ClInclude Include="FullscreenController.h" />
     <ClInclude Include="GhosttyActions.h" />
     <ClInclude Include="GhosttyConfig.h" />
     <ClInclude Include="ImeBuffer.h" />
@@ -137,6 +138,7 @@
     <ClInclude Include="Pane.h" />
     <ClInclude Include="PaneId.h" />
     <ClInclude Include="PaneIdAllocator.h" />
+    <ClInclude Include="SizeLimiter.h" />
     <ClInclude Include="SplitPanel.h" />
     <ClInclude Include="Tab.h" />
     <ClInclude Include="TabFactory.h" />
@@ -154,7 +156,9 @@
       <PrecompiledHeader>Create</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="GhosttyCallbackDispatcher.cpp" />
+    <ClCompile Include="FullscreenController.cpp" />
     <ClCompile Include="GhosttyActions.cpp" />
+    <ClCompile Include="SizeLimiter.cpp" />
     <ClCompile Include="App.xaml.cpp">
       <DependentUpon>App.xaml</DependentUpon>
     </ClCompile>
