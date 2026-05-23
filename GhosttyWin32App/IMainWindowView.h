@@ -34,6 +34,13 @@ struct IMainWindowView {
     // from issue #26, so handlers should not be tempted to invoke
     // ghostty_app_tick directly.
     virtual void Tick() = 0;
+
+    // Tear the window down. Named "Request" because the WinUI
+    // Window::Close already takes that slot in the projection and
+    // can't be marked override; this thin wrapper swallows the
+    // hresult_error WinUI throws when the window is already torn
+    // down, so handlers can call it unconditionally.
+    virtual void RequestClose() = 0;
 };
 
 }  // namespace winrt::GhosttyWin32::implementation

@@ -68,6 +68,13 @@ bool ActionDispatcher::Dispatch(ghostty_target_s target, ghostty_action_s action
         // HWND goes away (CLOSE_WINDOW already does that), so
         // neither START nor STOP needs wiring.
         case GHOSTTY_ACTION_QUIT_TIMER:
+
+        // Cell metrics broadcast (font reload, DPI change, config
+        // edit). No host-side consumer today — future snap-to-cell
+        // resize feedback would care, but bringing the state in
+        // before a caller exists just makes a value to keep stale.
+        // Ack so libghostty doesn't log it as missing.
+        case GHOSTTY_ACTION_CELL_SIZE:
             return true;
 
         // ----- diagnostic-only -----
@@ -142,6 +149,112 @@ bool ActionDispatcher::Dispatch(ghostty_target_s target, ghostty_action_s action
                                   nullptr, nullptr, SW_SHOWNORMAL);
                 }
             }
+            return true;
+        }
+
+        // ----- window lifecycle / sizing -----
+
+        // Single-window builds collapse CLOSE_WINDOW, QUIT, and
+        // CLOSE_ALL_WINDOWS into the same effect — close the one
+        // window we have, which terminates the app. Multi-window
+        // (#55) will need to give these three distinct behaviours.
+        case GHOSTTY_ACTION_CLOSE_WINDOW:
+        case GHOSTTY_ACTION_CLOSE_ALL_WINDOWS:
+        case GHOSTTY_ACTION_QUIT:
+            m_view.Dispatcher().TryEnqueue([this]() {
+                m_view.RequestClose();
+            });
+            return true;
+
+        // Toggle minimize / restore. We use SW_MINIMIZE / SW_RESTORE
+        // instead of SW_HIDE because hiding from the taskbar leaves
+        // Windows users with no discoverable way back — ghostty's
+        // `global:` keybind qualifier isn't wired to RegisterHotKey
+        // on this port yet, so a SW_HIDE'd window with no taskbar
+        // entry can only be recovered by relaunching. Minimizing
+        // keeps the window reachable via taskbar click / alt-tab.
+        case GHOSTTY_ACTION_TOGGLE_VISIBILITY:
+            m_view.Dispatcher().TryEnqueue([this]() {
+                HWND hwnd = m_view.Hwnd();
+                if (!hwnd) return;
+                if (IsIconic(hwnd)) {
+                    ShowWindow(hwnd, SW_RESTORE);
+                    SetForegroundWindow(hwnd);
+                } else {
+                    ShowWindow(hwnd, SW_MINIMIZE);
+                }
+            });
+            return true;
+
+        // Toggle maximize / restore via the same WM_SYSCOMMAND path
+        // the caption-button click uses, so the NVIDIA presenter AV
+        // from issue #26 stays out of the picture. SendMessage runs
+        // on the UI thread; dispatch through Dispatcher() because
+        // action_cb fires from the renderer thread.
+        case GHOSTTY_ACTION_TOGGLE_MAXIMIZE:
+            m_view.Dispatcher().TryEnqueue([this]() {
+                HWND hwnd = m_view.Hwnd();
+                if (!hwnd) return;
+                SendMessageW(hwnd, WM_SYSCOMMAND,
+                             IsZoomed(hwnd) ? SC_RESTORE : SC_MAXIMIZE, 0);
+            });
+            return true;
+
+        // Open the user's ghostty config in their default editor.
+        // The Windows config path is %LOCALAPPDATA%\ghostty\config
+        // (no extension); without an association Windows shows the
+        // "Open With" dialog, which is the right OS-native behaviour
+        // for first run. GetEnvironmentVariableW over _wgetenv: the
+        // CRT helper is marked deprecated under MSVC /W4, the Win32
+        // API is the documented modern path with a caller-supplied
+        // buffer.
+        case GHOSTTY_ACTION_OPEN_CONFIG: {
+            wchar_t appdata[MAX_PATH];
+            DWORD len = GetEnvironmentVariableW(L"LOCALAPPDATA", appdata,
+                                                static_cast<DWORD>(std::size(appdata)));
+            if (len > 0 && len < std::size(appdata)) {
+                std::wstring path = std::wstring(appdata) + L"\\ghostty\\config";
+                ShellExecuteW(nullptr, L"open", path.c_str(),
+                              nullptr, nullptr, SW_SHOWNORMAL);
+            }
+            return true;
+        }
+
+        // Record the desired startup window dimensions ghostty
+        // computes from config (`window-width` × `cell-width-px`,
+        // etc.). Stored as physical pixels — ghostty already did
+        // the cell-to-pixel math, so RESET_WINDOW_SIZE can hand the
+        // value to SetWindowPos directly without re-scaling.
+        case GHOSTTY_ACTION_INITIAL_SIZE: {
+            auto sz = action.action.initial_size;
+            m_initialWidth = sz.width;
+            m_initialHeight = sz.height;
+            return true;
+        }
+
+        // Restore the window to its startup footprint. Prefer the
+        // size INITIAL_SIZE recorded (honoring the user's config);
+        // if INITIAL_SIZE never fired, fall back to 1280x720 DIPs —
+        // matches the WinUI 3 fresh-window default and lands an
+        // 80×24-ish terminal at common font sizes.
+        case GHOSTTY_ACTION_RESET_WINDOW_SIZE: {
+            uint32_t w = m_initialWidth;
+            uint32_t h = m_initialHeight;
+            m_view.Dispatcher().TryEnqueue([this, w, h]() {
+                HWND hwnd = m_view.Hwnd();
+                if (!hwnd) return;
+                int width, height;
+                if (w && h) {
+                    width = static_cast<int>(w);
+                    height = static_cast<int>(h);
+                } else {
+                    UINT dpi = GetDpiForWindow(hwnd);
+                    width = MulDiv(1280, dpi, 96);
+                    height = MulDiv(720, dpi, 96);
+                }
+                SetWindowPos(hwnd, nullptr, 0, 0, width, height,
+                             SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+            });
             return true;
         }
 

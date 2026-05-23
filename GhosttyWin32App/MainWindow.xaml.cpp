@@ -509,6 +509,16 @@ namespace winrt::GhosttyWin32::implementation
         if (m_ghostty) m_ghostty->Tick();
     }
 
+    void MainWindow::RequestClose()
+    {
+        // WinUI's Window::Close throws when the window has already
+        // begun tearing down; swallow so callers can fire and
+        // forget. The hresult_error variant is the only one that
+        // surfaces in practice (RPC_E_DISCONNECTED via the dispose
+        // path).
+        try { Close(); } catch (winrt::hresult_error const&) {}
+    }
+
     void MainWindow::InitGhostty()
     {
         // Bring the dispatcher up before the runtime config so the
@@ -763,24 +773,6 @@ namespace winrt::GhosttyWin32::implementation
                 return true;
             }
 
-            // Single-window builds collapse CLOSE_WINDOW, QUIT, and
-            // CLOSE_ALL_WINDOWS into the same effect — close the one
-            // window we have, which terminates the app. Multi-window
-            // support (#55) will need to give these three distinct
-            // behaviours.
-            if (action.tag == GHOSTTY_ACTION_CLOSE_WINDOW
-                || action.tag == GHOSTTY_ACTION_CLOSE_ALL_WINDOWS
-                || action.tag == GHOSTTY_ACTION_QUIT) {
-                if (g_mainWindow) {
-                    auto mw = g_mainWindow;
-                    mw->DispatcherQueue().TryEnqueue([mw]() {
-                        try { mw->Close(); }
-                        catch (winrt::hresult_error const&) {}
-                    });
-                }
-                return true;
-            }
-
             // Copy the active tab/surface title to the system
             // clipboard. The title lives on the TabViewItem.Header
             // (set by SET_TITLE / SET_TAB_TITLE earlier), so we
@@ -799,57 +791,6 @@ namespace winrt::GhosttyWin32::implementation
                             t->Item().Header(), winrt::hstring{});
                         if (title.empty()) return;
                         Clipboard::write(mw->m_hwnd, std::wstring(title));
-                    });
-                }
-                return true;
-            }
-
-            // Open the user's ghostty config in their default editor.
-            // The Windows config path is %LOCALAPPDATA%\ghostty\config
-            // (no extension); if the user has no association for
-            // extension-less files Windows shows the "Open With"
-            // dialog, which is the right OS-native behaviour for
-            // first run.
-            //
-            // GetEnvironmentVariableW over _wgetenv: the CRT helper
-            // is marked deprecated under MSVC /W4, the Win32 API is
-            // the documented modern path and writes into a caller-
-            // supplied buffer so there's no heap-allocation cleanup.
-            if (action.tag == GHOSTTY_ACTION_OPEN_CONFIG) {
-                wchar_t appdata[MAX_PATH];
-                DWORD len = GetEnvironmentVariableW(L"LOCALAPPDATA", appdata,
-                                                   static_cast<DWORD>(std::size(appdata)));
-                if (len > 0 && len < std::size(appdata)) {
-                    std::wstring path = std::wstring(appdata) + L"\\ghostty\\config";
-                    ShellExecuteW(nullptr, L"open", path.c_str(),
-                                  nullptr, nullptr, SW_SHOWNORMAL);
-                }
-                return true;
-            }
-
-            // Toggle minimize / restore. We use SW_MINIMIZE /
-            // SW_RESTORE instead of SW_HIDE here because hiding the
-            // window from the taskbar leaves Windows users without a
-            // discoverable way back — ghostty's `global:` keybind
-            // qualifier isn't wired to RegisterHotKey on this port
-            // yet, so a SW_HIDE'd window with no taskbar entry can
-            // only be recovered by relaunching. Minimizing keeps
-            // the window reachable via taskbar click / alt-tab,
-            // which matches what Windows users expect from a
-            // "toggle visibility" bind. The Mac-style full hide
-            // semantics can come back once global hotkeys land.
-            if (action.tag == GHOSTTY_ACTION_TOGGLE_VISIBILITY) {
-                if (g_mainWindow) {
-                    auto mw = g_mainWindow;
-                    mw->DispatcherQueue().TryEnqueue([mw]() {
-                        HWND hwnd = mw->m_hwnd;
-                        if (!hwnd) return;
-                        if (IsIconic(hwnd)) {
-                            ShowWindow(hwnd, SW_RESTORE);
-                            SetForegroundWindow(hwnd);
-                        } else {
-                            ShowWindow(hwnd, SW_MINIMIZE);
-                        }
                     });
                 }
                 return true;
@@ -944,25 +885,6 @@ namespace winrt::GhosttyWin32::implementation
                         return 0;
                     }, ctx, 0, nullptr);
                 if (hThread) CloseHandle(hThread); else delete ctx;
-                return true;
-            }
-
-            // Toggle maximize/restore via the same WM_SYSCOMMAND
-            // path the caption-button click already uses, so the
-            // NVIDIA OverlappedPresenter AV from issue #26 stays out
-            // of the picture. SendMessage runs on the UI thread;
-            // dispatch to it because action_cb fires from the
-            // renderer thread.
-            if (action.tag == GHOSTTY_ACTION_TOGGLE_MAXIMIZE) {
-                if (g_mainWindow) {
-                    auto mw = g_mainWindow;
-                    mw->DispatcherQueue().TryEnqueue([mw]() {
-                        HWND hwnd = mw->m_hwnd;
-                        if (!hwnd) return;
-                        SendMessageW(hwnd, WM_SYSCOMMAND,
-                                     IsZoomed(hwnd) ? SC_RESTORE : SC_MAXIMIZE, 0);
-                    });
-                }
                 return true;
             }
 
@@ -1191,64 +1113,6 @@ namespace winrt::GhosttyWin32::implementation
                                                     static_cast<ULONGLONG>(pr.progress),
                                                     100ULL);
                     }
-                });
-                return true;
-            }
-
-            // Cache the glyph cell dimensions ghostty derives from the
-            // active font + size. ghostty fires this whenever the cell
-            // metrics change (font reload, DPI change, config edit);
-            // without caching, any future host-side logic that wants
-            // to snap a resize / split ratio to a whole-cell boundary
-            // would have to round-trip through libghostty each time.
-            if (action.tag == GHOSTTY_ACTION_CELL_SIZE) {
-                if (!g_mainWindow) return true;
-                auto cs = action.action.cell_size;
-                g_mainWindow->m_cellWidth = cs.width;
-                g_mainWindow->m_cellHeight = cs.height;
-                return true;
-            }
-
-            // Record the desired startup window dimensions ghostty
-            // computes from config (`window-width` × `cell-width-px`,
-            // etc.). Stored as physical pixels — ghostty already did
-            // the cell-to-pixel math, so RESET_WINDOW_SIZE can hand
-            // the value to SetWindowPos directly without re-scaling.
-            // Without this the reset target stays the hardcoded
-            // 1280x720 fallback below, which ignores the user's
-            // config-defined window size.
-            if (action.tag == GHOSTTY_ACTION_INITIAL_SIZE) {
-                if (!g_mainWindow) return true;
-                auto sz = action.action.initial_size;
-                g_mainWindow->m_initialWidth = sz.width;
-                g_mainWindow->m_initialHeight = sz.height;
-                return true;
-            }
-
-            // RESET_WINDOW_SIZE — restore the window to its startup
-            // footprint. Prefer the size INITIAL_SIZE recorded (which
-            // honors the user's config); if INITIAL_SIZE never fired
-            // (e.g., default config, no startup size override) fall
-            // back to 1280x720 DIPs, which lines up with the WinUI 3
-            // fresh-window default and gives an 80-ish column / 24-
-            // row terminal at common font sizes.
-            if (action.tag == GHOSTTY_ACTION_RESET_WINDOW_SIZE) {
-                if (!g_mainWindow) return true;
-                auto mw = g_mainWindow;
-                mw->DispatcherQueue().TryEnqueue([mw]() {
-                    HWND hwnd = mw->m_hwnd;
-                    if (!hwnd) return;
-                    int width, height;
-                    if (mw->m_initialWidth && mw->m_initialHeight) {
-                        width = static_cast<int>(mw->m_initialWidth);
-                        height = static_cast<int>(mw->m_initialHeight);
-                    } else {
-                        UINT dpi = GetDpiForWindow(hwnd);
-                        width = MulDiv(1280, dpi, 96);
-                        height = MulDiv(720, dpi, 96);
-                    }
-                    SetWindowPos(hwnd, nullptr, 0, 0, width, height,
-                                 SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
                 });
                 return true;
             }

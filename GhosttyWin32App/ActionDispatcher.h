@@ -34,6 +34,14 @@ private:
     explicit ActionDispatcher(IMainWindowView& view) noexcept : m_view(view) {}
 
     IMainWindowView& m_view;
+
+    // Initial window size from GHOSTTY_ACTION_INITIAL_SIZE (physical
+    // pixels). Zero means "not yet received" — RESET_WINDOW_SIZE
+    // falls back to a DPI-scaled 1280x720 in that case. Lives on the
+    // dispatcher because INITIAL_SIZE writes it and RESET_WINDOW_SIZE
+    // reads it; no other code outside this class participates.
+    uint32_t m_initialWidth = 0;
+    uint32_t m_initialHeight = 0;
 };
 
 }  // namespace winrt::GhosttyWin32::implementation

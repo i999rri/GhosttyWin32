@@ -77,6 +77,7 @@ namespace winrt::GhosttyWin32::implementation
         HWND Hwnd() const noexcept override { return m_hwnd; }
         winrt::Microsoft::UI::Dispatching::DispatcherQueue Dispatcher() const override;
         void Tick() override;
+        void RequestClose() override;
 
     private:
         void InitGhostty();
@@ -129,17 +130,6 @@ namespace winrt::GhosttyWin32::implementation
 
         std::unique_ptr<GhosttyApp> m_ghostty;
         HWND m_hwnd = nullptr;
-        // Initial window size from GHOSTTY_ACTION_INITIAL_SIZE (physical
-        // pixels). Zero means "not yet received" — RESET_WINDOW_SIZE
-        // falls back to a DPI-scaled 1280x720 in that case.
-        uint32_t m_initialWidth = 0;
-        uint32_t m_initialHeight = 0;
-        // Glyph cell dimensions (pixels) from GHOSTTY_ACTION_CELL_SIZE.
-        // Updated whenever ghostty's font / cell metrics change so any
-        // future host-side sizing logic that wants whole-cell rounding
-        // (e.g., snap-to-cell resize feedback) has the current value.
-        uint32_t m_cellWidth = 0;
-        uint32_t m_cellHeight = 0;
         // Fullscreen toggle state — TOGGLE_FULLSCREEN flips m_fullscreen
         // and uses m_prevPlacement / m_prevStyle to restore the original
         // window when leaving fullscreen. We save WINDOWPLACEMENT instead
