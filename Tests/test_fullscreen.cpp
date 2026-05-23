@@ -1,5 +1,5 @@
 #include "pch.h"
-#include "../GhosttyWin32App/Fullscreen.h"
+#include "../App/Fullscreen.h"
 #include <windows.h>
 
 using winrt::GhosttyWin32::implementation::Fullscreen;

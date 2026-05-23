@@ -1,5 +1,5 @@
 #include "pch.h"
-#include "../GhosttyWin32App/SizeLimit.h"
+#include "../App/SizeLimit.h"
 #include <windows.h>
 
 using winrt::GhosttyWin32::implementation::SizeLimit;

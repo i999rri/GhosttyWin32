@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../GhosttyWin32App/IMainWindowView.h"
+#include "../App/IMainWindowView.h"
 #include <cstdint>
 #include <string>
 

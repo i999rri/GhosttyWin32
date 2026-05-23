@@ -1,6 +1,6 @@
 #include "pch.h"
 #include "MockMainWindowView.h"
-#include "../GhosttyWin32App/GhosttyActions.h"
+#include "../App/GhosttyActions.h"
 
 using winrt::GhosttyWin32::implementation::GhosttyActions;
 

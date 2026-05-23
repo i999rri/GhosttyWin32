@@ -1,5 +1,5 @@
 #include "pch.h"
-#include "../GhosttyWin32App/Encoding.h"
+#include "../App/Encoding.h"
 
 TEST(EncodingTest, Utf16ToUtf8Ascii) {
     auto result = Encoding::toUtf8(L"hello", 5);

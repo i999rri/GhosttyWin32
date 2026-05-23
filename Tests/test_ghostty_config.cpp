@@ -1,5 +1,5 @@
 #include "pch.h"
-#include "../GhosttyWin32App/GhosttyConfig.h"
+#include "../App/GhosttyConfig.h"
 
 using winrt::GhosttyWin32::implementation::GhosttyConfig;
 

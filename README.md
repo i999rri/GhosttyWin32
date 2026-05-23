@@ -73,7 +73,7 @@ A WinUI 3 + C++/WinRT shell that hosts the libghostty C API. Each tab owns its o
 ## Architecture
 
 ```
-GhosttyWin32App.exe (WinUI 3 / C++/WinRT)
+GhosttyWin32.exe (WinUI 3 / C++/WinRT)
   ├── App.xaml — application entry, XAML Controls Resources
   ├── MainWindow
   │   ├── Custom title bar + caption buttons
@@ -154,7 +154,7 @@ git switch windows-port
 zig build -Doptimize=ReleaseSafe -Drenderer=directx
 ```
 
-Copy the following into `GhosttyWin32App/`:
+Copy the following into `App/`:
 
 - `zig-out/lib/ghostty.dll`
 - `zig-out/lib/ghostty.lib`
@@ -163,9 +163,9 @@ Copy the following into `GhosttyWin32App/`:
 ### Build GhosttyWin32
 
 Open `GhosttyWin32.slnx` in Visual Studio, select **Release | x64**, and
-build the `GhosttyWin32App` project. F5 deploys as a packaged MSIX into
+build the `App` project. F5 deploys as a packaged MSIX into
 the local appx registry; `Release | x64` build artifacts land under
-`x64/Release/GhosttyWin32App/`.
+`x64/Release/App/`.
 
 ## Configuration
 

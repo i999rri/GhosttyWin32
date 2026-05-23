@@ -1,5 +1,5 @@
 #include "pch.h"
-#include "../GhosttyWin32App/KeyModifiers.h"
+#include "../App/KeyModifiers.h"
 
 TEST(KeyModifiersTest, NoKeys) {
     auto mods = buildMods(false, false, false);
