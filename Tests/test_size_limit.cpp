@@ -1,8 +1,8 @@
 #include "pch.h"
-#include "../App/SizeLimit.h"
+#include "../Core/Ghostty/Actions/Tags/SizeLimit.h"
 #include <windows.h>
 
-using winrt::GhosttyWin32::implementation::SizeLimit;
+using winrt::GhosttyWin32::implementation::core::ghostty::actions::tags::SizeLimit;
 
 namespace {
 

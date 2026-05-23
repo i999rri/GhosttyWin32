@@ -1,6 +1,6 @@
 #include "Fullscreen.h"
 
-namespace winrt::GhosttyWin32::implementation {
+namespace winrt::GhosttyWin32::implementation::core::ghostty::actions::tags {
 
 void Fullscreen::Toggle(HWND hwnd) noexcept
 {
@@ -31,4 +31,4 @@ void Fullscreen::Toggle(HWND hwnd) noexcept
     }
 }
 
-}  // namespace winrt::GhosttyWin32::implementation
+}  // namespace winrt::GhosttyWin32::implementation::core::ghostty::actions::tags

@@ -1,13 +1,13 @@
-#include "GhosttyCallbackDispatcher.h"
+#include "CallbackDispatcher.h"
 
-namespace winrt::GhosttyWin32::implementation {
+namespace winrt::GhosttyWin32::implementation::core::ghostty {
 
 std::unique_ptr<GhosttyCallbackDispatcher>
-GhosttyCallbackDispatcher::Create(IMainWindowView& view) {
-    return std::unique_ptr<GhosttyCallbackDispatcher>(new GhosttyCallbackDispatcher(view));
+CallbackDispatcher::Create(host::IWindow& view) {
+    return std::unique_ptr<GhosttyCallbackDispatcher>(new CallbackDispatcher(view));
 }
 
-bool GhosttyCallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_s action) {
+bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_s action) {
     switch (action.tag) {
         // ----- terminal events -----
         case GHOSTTY_ACTION_RING_BELL:
@@ -183,4 +183,4 @@ bool GhosttyCallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_
     }
 }
 
-}  // namespace winrt::GhosttyWin32::implementation
+}  // namespace winrt::GhosttyWin32::implementation::core::ghostty

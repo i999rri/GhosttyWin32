@@ -1,5 +1,5 @@
 #include "pch.h"
-#include "../App/Encoding.h"
+#include "../Core/Util/Encoding.h"
 
 TEST(EncodingTest, Utf16ToUtf8Ascii) {
     auto result = Encoding::toUtf8(L"hello", 5);

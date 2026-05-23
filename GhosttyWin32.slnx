@@ -11,4 +11,5 @@
     <Deploy />
   </Project>
   <Project Path="App/App.vcxproj" Id="c94e582b-f837-42cc-93d6-8409c4d5a0c7" />
+  <Project Path="Core/Core.vcxproj" Id="1ef672e9-812a-4f4b-ab42-02b2f655febe" />
 </Solution>

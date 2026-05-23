@@ -1,16 +1,16 @@
-#include "GhosttyActions.h"
-#include "Encoding.h"
+#include "Actions.h"
+#include "Util/Encoding.h"
 #include <windows.h>
 #include <shellapi.h>
 #include <cstdio>
 #include <string>
 #include <utility>
 
-namespace winrt::GhosttyWin32::implementation {
+namespace winrt::GhosttyWin32::implementation::core::ghostty::actions {
 
 // ===== terminal events =====
 
-bool GhosttyActions::OnRingBell() {
+bool Actions::OnRingBell() {
     // Terminal sent BEL (\x07). MessageBeep plays the user's
     // configured "Default Beep" sound asynchronously and is
     // thread-safe, so we don't bounce through the UI dispatcher.
@@ -20,7 +20,7 @@ bool GhosttyActions::OnRingBell() {
     return true;
 }
 
-bool GhosttyActions::OnShowChildExited(ghostty_surface_message_childexited_s ce) {
+bool Actions::OnShowChildExited(ghostty_surface_message_childexited_s ce) {
     // Shell process for a surface exited. With confirm-close-
     // surface=false (our default) the surface tears itself down
     // via close_surface_cb almost immediately, so this is a
@@ -38,7 +38,7 @@ bool GhosttyActions::OnShowChildExited(ghostty_surface_message_childexited_s ce)
     return true;
 }
 
-bool GhosttyActions::OnRendererHealth(ghostty_action_renderer_health_e health) {
+bool Actions::OnRendererHealth(ghostty_action_renderer_health_e health) {
     // UNHEALTHY means the generic renderer hit a problem (texture
     // allocation, shader compile, etc.) and dropped into a
     // degraded mode. One stderr line keeps the root cause findable
@@ -51,7 +51,7 @@ bool GhosttyActions::OnRendererHealth(ghostty_action_renderer_health_e health) {
     return true;
 }
 
-bool GhosttyActions::OnRender() {
+bool Actions::OnRender() {
     // ghostty wants a repaint outside the natural wakeup_cb ->
     // tick cadence. The dispatcher used by wakeup_cb already
     // serialises ticks on the UI thread, so we go through the
@@ -65,7 +65,7 @@ bool GhosttyActions::OnRender() {
 
 // ===== shell-verb passthroughs =====
 
-bool GhosttyActions::OnCheckForUpdates() {
+bool Actions::OnCheckForUpdates() {
     // No built-in updater on Windows; hand the user off to the
     // GitHub releases page. ShellExecuteW dispatches via the
     // default browser without the rundll32 child-process flash
@@ -77,7 +77,7 @@ bool GhosttyActions::OnCheckForUpdates() {
     return true;
 }
 
-bool GhosttyActions::OnOpenUrl(ghostty_action_open_url_s ou) {
+bool Actions::OnOpenUrl(ghostty_action_open_url_s ou) {
     // Ctrl+click on a URL in the terminal. Hand off to the shell
     // verb opener so the user's default browser / mail client /
     // etc. handles it.
@@ -93,7 +93,7 @@ bool GhosttyActions::OnOpenUrl(ghostty_action_open_url_s ou) {
 
 // ===== window lifecycle =====
 
-bool GhosttyActions::OnCloseWindow() {
+bool Actions::OnCloseWindow() {
     // Single-window builds collapse CLOSE_WINDOW, QUIT, and
     // CLOSE_ALL_WINDOWS into the same effect — close the one
     // window we have, which terminates the app. Multi-window
@@ -104,7 +104,7 @@ bool GhosttyActions::OnCloseWindow() {
     return true;
 }
 
-bool GhosttyActions::OnToggleVisibility() {
+bool Actions::OnToggleVisibility() {
     // SW_MINIMIZE / SW_RESTORE instead of SW_HIDE because hiding
     // from the taskbar leaves Windows users with no discoverable
     // way back — ghostty's `global:` keybind qualifier isn't
@@ -125,7 +125,7 @@ bool GhosttyActions::OnToggleVisibility() {
     return true;
 }
 
-bool GhosttyActions::OnToggleMaximize() {
+bool Actions::OnToggleMaximize() {
     // WM_SYSCOMMAND path used by the caption-button click — keeps
     // the NVIDIA presenter AV from issue #26 out of the picture.
     // SendMessage runs on the UI thread; dispatch through
@@ -140,7 +140,7 @@ bool GhosttyActions::OnToggleMaximize() {
     return true;
 }
 
-bool GhosttyActions::OnOpenConfig() {
+bool Actions::OnOpenConfig() {
     // Open the user's ghostty config in their default editor.
     // The Windows config path is %LOCALAPPDATA%\ghostty\config
     // (no extension); without an association Windows shows the
@@ -162,7 +162,7 @@ bool GhosttyActions::OnOpenConfig() {
 
 // ===== sizing =====
 
-bool GhosttyActions::OnInitialSize(ghostty_action_initial_size_s size) {
+bool Actions::OnInitialSize(ghostty_action_initial_size_s size) {
     // Record the desired startup window dimensions ghostty
     // computes from config (`window-width` × `cell-width-px`,
     // etc.). Stored as physical pixels — ghostty already did the
@@ -173,7 +173,7 @@ bool GhosttyActions::OnInitialSize(ghostty_action_initial_size_s size) {
     return true;
 }
 
-bool GhosttyActions::OnResetWindowSize() {
+bool Actions::OnResetWindowSize() {
     // Restore the window to its startup footprint. Prefer the
     // size OnInitialSize recorded (honoring the user's config);
     // if INITIAL_SIZE never fired, fall back to 1280×720 DIPs —
@@ -201,14 +201,14 @@ bool GhosttyActions::OnResetWindowSize() {
 
 // ===== tab lifecycle / navigation / title =====
 
-bool GhosttyActions::OnNewTab() {
+bool Actions::OnNewTab() {
     m_view.Dispatch([this]() {
         m_view.CreateTab();
     });
     return true;
 }
 
-bool GhosttyActions::OnCloseTab(ghostty_surface_t surface) {
+bool Actions::OnCloseTab(ghostty_surface_t surface) {
     if (!surface) return true;
     m_view.Dispatch([this, surface]() {
         m_view.CloseTabBySurface(surface);
@@ -216,14 +216,14 @@ bool GhosttyActions::OnCloseTab(ghostty_surface_t surface) {
     return true;
 }
 
-bool GhosttyActions::OnGotoTab(int requested) {
+bool Actions::OnGotoTab(int requested) {
     m_view.Dispatch([this, requested]() {
         m_view.GoToTab(requested);
     });
     return true;
 }
 
-bool GhosttyActions::OnSetTitle(ghostty_surface_t surface, const char* utf8Title) {
+bool Actions::OnSetTitle(ghostty_surface_t surface, const char* utf8Title) {
     // Convert on the renderer thread so the UTF-16 string is the
     // only thing the captured lambda carries. The lambda copy then
     // makes a single hstring on the UI side.
@@ -236,7 +236,7 @@ bool GhosttyActions::OnSetTitle(ghostty_surface_t surface, const char* utf8Title
     return true;
 }
 
-bool GhosttyActions::OnCopyTitleToClipboard(ghostty_surface_t surface) {
+bool Actions::OnCopyTitleToClipboard(ghostty_surface_t surface) {
     if (!surface) return true;
     m_view.Dispatch([this, surface]() {
         m_view.CopyTabTitleForSurface(surface);
@@ -246,7 +246,7 @@ bool GhosttyActions::OnCopyTitleToClipboard(ghostty_surface_t surface) {
 
 // ===== terminal-driven appearance + lifecycle =====
 
-bool GhosttyActions::OnColorChange(ghostty_action_color_change_s cc) {
+bool Actions::OnColorChange(ghostty_action_color_change_s cc) {
     // Only background colour drives our title/XAML chrome; the
     // other kinds (cursor, palette indices, etc.) are surface-
     // visible only and ghostty handles them internally.
@@ -258,7 +258,7 @@ bool GhosttyActions::OnColorChange(ghostty_action_color_change_s cc) {
     return true;
 }
 
-bool GhosttyActions::OnMouseShape(ghostty_surface_t surface,
+bool Actions::OnMouseShape(ghostty_surface_t surface,
                                   ghostty_action_mouse_shape_e shape) {
     if (!surface) return true;
     m_view.Dispatch([this, surface, shape]() {
@@ -267,7 +267,7 @@ bool GhosttyActions::OnMouseShape(ghostty_surface_t surface,
     return true;
 }
 
-bool GhosttyActions::OnReloadConfig(bool soft) {
+bool Actions::OnReloadConfig(bool soft) {
     // The view-side implementation handles thread placement
     // (soft re-uses UI thread, hard spins a 4MB-stack worker
     // because ghostty's config parser blows the default 1MB).
@@ -275,7 +275,7 @@ bool GhosttyActions::OnReloadConfig(bool soft) {
     return true;
 }
 
-bool GhosttyActions::OnConfigChange(ghostty_config_t newCfg) {
+bool Actions::OnConfigChange(ghostty_config_t newCfg) {
     // Clone here because ghostty owns the incoming pointer.
     // The view takes ownership of the clone and either swaps it
     // in or frees it on the UI thread.
@@ -288,7 +288,7 @@ bool GhosttyActions::OnConfigChange(ghostty_config_t newCfg) {
     return true;
 }
 
-bool GhosttyActions::OnDesktopNotification(ghostty_action_desktop_notification_s dn) {
+bool Actions::OnDesktopNotification(ghostty_action_desktop_notification_s dn) {
     // Convert UTF-8 to UTF-16 on the renderer thread so the
     // captured lambda carries native strings.
     std::wstring title = (dn.title && dn.title[0]) ? Encoding::toUtf16(dn.title) : L"";
@@ -301,7 +301,7 @@ bool GhosttyActions::OnDesktopNotification(ghostty_action_desktop_notification_s
     return true;
 }
 
-bool GhosttyActions::OnProgressReport(ghostty_action_progress_report_s pr) {
+bool Actions::OnProgressReport(ghostty_action_progress_report_s pr) {
     m_view.Dispatch([this, pr]() {
         m_view.ReportProgress(pr);
     });
@@ -310,14 +310,14 @@ bool GhosttyActions::OnProgressReport(ghostty_action_progress_report_s pr) {
 
 // ===== window state =====
 
-bool GhosttyActions::OnSizeLimit(ghostty_action_size_limit_s limit) {
+bool Actions::OnSizeLimit(ghostty_action_size_limit_s limit) {
     m_view.Dispatch([this, limit]() {
         m_view.ApplySizeLimit(limit);
     });
     return true;
 }
 
-bool GhosttyActions::OnToggleFullscreen() {
+bool Actions::OnToggleFullscreen() {
     // The ghostty enum carries NATIVE + three macOS-specific
     // NON_NATIVE variants; on Windows they all collapse to the
     // same borderless-fullscreen behaviour, so the value is
@@ -334,7 +334,7 @@ bool GhosttyActions::OnToggleFullscreen() {
 // bounce through the UI dispatcher, then hand off to the view
 // which owns the pane tree.
 
-bool GhosttyActions::OnNewSplit(ghostty_surface_t surface,
+bool Actions::OnNewSplit(ghostty_surface_t surface,
                                 ghostty_action_split_direction_e direction) {
     if (!surface) return true;
     m_view.Dispatch([this, surface, direction]() {
@@ -343,7 +343,7 @@ bool GhosttyActions::OnNewSplit(ghostty_surface_t surface,
     return true;
 }
 
-bool GhosttyActions::OnResizeSplit(ghostty_surface_t surface,
+bool Actions::OnResizeSplit(ghostty_surface_t surface,
                                    ghostty_action_resize_split_s resize) {
     if (!surface) return true;
     m_view.Dispatch([this, surface, resize]() {
@@ -352,7 +352,7 @@ bool GhosttyActions::OnResizeSplit(ghostty_surface_t surface,
     return true;
 }
 
-bool GhosttyActions::OnGotoSplit(ghostty_surface_t surface,
+bool Actions::OnGotoSplit(ghostty_surface_t surface,
                                  ghostty_action_goto_split_e direction) {
     if (!surface) return true;
     m_view.Dispatch([this, surface, direction]() {
@@ -361,7 +361,7 @@ bool GhosttyActions::OnGotoSplit(ghostty_surface_t surface,
     return true;
 }
 
-bool GhosttyActions::OnEqualizeSplits(ghostty_surface_t surface) {
+bool Actions::OnEqualizeSplits(ghostty_surface_t surface) {
     if (!surface) return true;
     m_view.Dispatch([this, surface]() {
         m_view.EqualizeSplitsForSurface(surface);
@@ -369,7 +369,7 @@ bool GhosttyActions::OnEqualizeSplits(ghostty_surface_t surface) {
     return true;
 }
 
-bool GhosttyActions::OnToggleSplitZoom(ghostty_surface_t surface) {
+bool Actions::OnToggleSplitZoom(ghostty_surface_t surface) {
     if (!surface) return true;
     m_view.Dispatch([this, surface]() {
         m_view.ToggleSplitZoomForSurface(surface);
@@ -377,4 +377,4 @@ bool GhosttyActions::OnToggleSplitZoom(ghostty_surface_t surface) {
     return true;
 }
 
-}  // namespace winrt::GhosttyWin32::implementation
+}  // namespace winrt::GhosttyWin32::implementation::core::ghostty::actions

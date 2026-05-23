@@ -1,7 +1,7 @@
 #pragma once
 
 #include "TerminalControl.g.h"
-#include "ImeBuffer.h"
+#include "Host/host::ImeBuffer.h"
 #include "ghostty.h"
 #include <microsoft.ui.xaml.media.dxinterop.h>
 #include <winrt/Windows.UI.Text.Core.h>
@@ -11,6 +11,9 @@
 
 namespace winrt::GhosttyWin32::implementation
 {
+    namespace host = core::host;
+    namespace util = core::util;
+
     // Pending UI-thread "attach this swap chain handle to the panel"
     // request. Created on the UI thread inside TabFactory::Make, kept
     // alive by both the TerminalControl (so it can cancel on teardown)
@@ -163,7 +166,7 @@ namespace winrt::GhosttyWin32::implementation
         // single view; only one receives input at a time, controlled
         // via NotifyFocusEnter/Leave on tab switches and window
         // activation.
-        ImeBuffer m_ime;
+        host::ImeBuffer m_ime;
         winrt::Windows::UI::Text::Core::CoreTextEditContext m_editContext{ nullptr };
 
         // Notify-on-focus callback registered by the factory that built

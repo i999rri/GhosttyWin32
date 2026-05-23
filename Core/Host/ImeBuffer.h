@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <cstdint>
 
+namespace winrt::GhosttyWin32::implementation::core::host {
+
 // Pure IME buffer logic, separated from UI for testability.
 // Tracks the composition buffer and an offset that accounts for
 // CoreTextEditContext's accumulated caret positions across compositions.
@@ -63,3 +65,5 @@ private:
     int32_t m_baseOffset = 0;
     bool m_composing = false;
 };
+
+}  // namespace winrt::GhosttyWin32::implementation::core::host

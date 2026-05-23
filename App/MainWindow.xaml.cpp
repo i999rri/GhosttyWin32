@@ -1,9 +1,9 @@
 #include "pch.h"
 #include "MainWindow.xaml.h"
-#include "GhosttyCallbackDispatcher.h"
+#include "Ghostty/CallbackDispatcher.h"
 #include "Clipboard.h"
-#include "KeyModifiers.h"
-#include "Encoding.h"
+#include "Host/KeyModifiers.h"
+#include "Util/Encoding.h"
 #include "SEHGuard.h"
 #if __has_include("MainWindow.g.cpp")
 #include "MainWindow.g.cpp"
@@ -490,7 +490,7 @@ namespace winrt::GhosttyWin32::implementation
         // Bring the dispatcher up before the runtime config so the
         // action_cb forwarder below can rely on it being ready by
         // the time ghostty fires its first action.
-        m_ghosttyDispatcher = GhosttyCallbackDispatcher::Create(*this);
+        m_ghosttyDispatcher = ghostty::CallbackDispatcher::Create(*this);
 
         ghostty_runtime_config_s rtConfig{};
         rtConfig.userdata = this;
@@ -514,7 +514,7 @@ namespace winrt::GhosttyWin32::implementation
             if (!g_mainWindow) return false;
             auto* tc = g_mainWindow->ActiveControl();
             if (!tc || !tc->Surface()) return false;
-            auto utf8 = Encoding::toUtf8(Clipboard::read(g_mainWindow->m_hwnd));
+            auto utf8 = util::Encoding::toUtf8(Clipboard::read(g_mainWindow->m_hwnd));
             if (utf8.empty()) return false;
             ghostty_surface_complete_clipboard_request(tc->Surface(), utf8.c_str(), state, false);
             return true;
@@ -531,7 +531,7 @@ namespace winrt::GhosttyWin32::implementation
         rtConfig.write_clipboard_cb = [](void*, ghostty_clipboard_e, const ghostty_clipboard_content_s* content, size_t count, bool) {
             if (!content || count == 0 || !content[0].data) return;
             HWND hwnd = g_mainWindow ? g_mainWindow->m_hwnd : nullptr;
-            Clipboard::write(hwnd, Encoding::toUtf16(content[0].data));
+            Clipboard::write(hwnd, util::Encoding::toUtf16(content[0].data));
         };
         // Shell exited (e.g. user typed `exit`), or ghostty asked to close
         // the surface for any other reason. The userdata is the PaneId
@@ -567,7 +567,7 @@ namespace winrt::GhosttyWin32::implementation
             // typed, fallback-aware accessors so TabFactory (and
             // future callers) stop reimplementing the key-length /
             // fallback dance every time they need a config value.
-            GhosttyConfig cfg(m_ghostty->ConfigHandle());
+            ghostty::Config cfg(m_ghostty->ConfigHandle());
             m_tabFactory = std::make_unique<TabFactory>(
                 m_ghostty->Handle(),
                 cfg,

@@ -1,8 +1,8 @@
 #include "pch.h"
-#include "../App/Fullscreen.h"
+#include "../Core/Ghostty/Actions/Tags/Fullscreen.h"
 #include <windows.h>
 
-using winrt::GhosttyWin32::implementation::Fullscreen;
+using winrt::GhosttyWin32::implementation::core::ghostty::actions::tags::Fullscreen;
 
 namespace {
 

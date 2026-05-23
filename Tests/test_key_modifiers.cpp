@@ -1,5 +1,5 @@
 #include "pch.h"
-#include "../App/KeyModifiers.h"
+#include "../Core/Host/KeyModifiers.h"
 
 TEST(KeyModifiersTest, NoKeys) {
     auto mods = buildMods(false, false, false);

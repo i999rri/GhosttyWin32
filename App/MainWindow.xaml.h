@@ -2,20 +2,26 @@
 
 #include "MainWindow.g.h"
 #include "ghostty.h"
-#include "Fullscreen.h"
+#include "Ghostty/Actions/Tags/Fullscreen.h"
+#include "Ghostty/Actions/Tags/SizeLimit.h"
+#include "Ghostty/CallbackDispatcher.h"
 #include "GhosttyApp.h"
-#include "IMainWindowView.h"
+#include "Host/IWindow.h"
 #include "PaneIdAllocator.h"
-#include "SizeLimit.h"
 #include "Tab.h"
 #include "TabFactory.h"
 #include "Tabs.h"
 
 namespace winrt::GhosttyWin32::implementation
 {
-    class GhosttyCallbackDispatcher;
+    // Shorthand aliases for the Core namespaces — the full
+    // winrt::GhosttyWin32::implementation::core::* paths are
+    // accurate but unreadable at every member declaration.
+    namespace ghostty = core::ghostty;
+    namespace host    = core::host;
+    namespace util    = core::util;
 
-    struct MainWindow : MainWindowT<MainWindow>, IMainWindowView
+    struct MainWindow : MainWindowT<MainWindow>, host::IWindow
     {
         MainWindow();
         ~MainWindow();
@@ -128,8 +134,8 @@ namespace winrt::GhosttyWin32::implementation
         // (no limit set, not in fullscreen). Subclasses installed
         // by SizeLimit are auto-removed by Win32 when m_hwnd is
         // destroyed, so no explicit teardown ordering is needed.
-        SizeLimit m_sizeLimit;
-        Fullscreen m_fullscreen;
+        ghostty::actions::tags::SizeLimit  m_sizeLimit;
+        ghostty::actions::tags::Fullscreen m_fullscreen;
         PaneIdAllocator m_paneIds;
         Tabs m_tabs;
         // Focus-tracked active surface. Set by NotifySurfaceFocused
@@ -144,7 +150,7 @@ namespace winrt::GhosttyWin32::implementation
         // the GhosttyApp handle is available; destroyed before
         // m_ghostty so handlers can't observe a half-torn-down app
         // on shutdown.
-        std::unique_ptr<GhosttyCallbackDispatcher> m_ghosttyDispatcher;
+        std::unique_ptr<ghostty::CallbackDispatcher> m_ghosttyDispatcher;
     };
 }
 

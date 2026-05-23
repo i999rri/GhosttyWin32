@@ -62,7 +62,7 @@
       <WarningLevel>Level3</WarningLevel>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <AdditionalOptions>/utf-8 /Zc:__cplusplus %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalIncludeDirectories>$(ProjectDir)..\App;$(ProjectDir)..\ghostty;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\Core;$(ProjectDir)..\App;$(ProjectDir)..\ghostty;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -105,7 +105,7 @@
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <AdditionalOptions>/utf-8 /Zc:__cplusplus %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalIncludeDirectories>$(ProjectDir)..\App;$(ProjectDir)..\ghostty;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\Core;$(ProjectDir)..\App;$(ProjectDir)..\ghostty;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -131,29 +131,21 @@
     <ClCompile Include="test_ghostty_callback_dispatcher.cpp" />
     <ClCompile Include="test_size_limit.cpp" />
     <ClCompile Include="test_fullscreen.cpp" />
-    <!--
-      Production .cpp units pulled in so the test EXE can link
-      directly without making the production project a static lib.
-      PrecompiledHeader=NotUsing because each one starts with
-      `#include "pch.h"` resolving to the App pch via
-      the AdditionalIncludeDirectories above — we don't want msvc
-      to also try generating a pch from them on the test side.
-    -->
-    <ClCompile Include="..\App\GhosttyActions.cpp">
-      <PrecompiledHeader>NotUsing</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="..\App\GhosttyCallbackDispatcher.cpp">
-      <PrecompiledHeader>NotUsing</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="..\App\SizeLimit.cpp">
-      <PrecompiledHeader>NotUsing</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="..\App\Fullscreen.cpp">
-      <PrecompiledHeader>NotUsing</PrecompiledHeader>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="MockMainWindowView.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <!--
+      Core static library replaces the per-file ClCompile dance
+      that used to pull production cpps directly. ProjectReference
+      drags the linker into Core.lib, so the test EXE picks up
+      GhosttyActions / CallbackDispatcher / SizeLimit / Fullscreen
+      symbols without re-compiling them.
+    -->
+    <ProjectReference Include="..\Core\Core.vcxproj">
+      <Project>{1EF672E9-812A-4F4B-AB42-02B2F655FEBE}</Project>
+    </ProjectReference>
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

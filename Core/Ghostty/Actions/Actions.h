@@ -1,10 +1,10 @@
 #pragma once
 
-#include "IMainWindowView.h"
+#include "Host/IWindow.h"
 #include "ghostty.h"
 #include <cstdint>
 
-namespace winrt::GhosttyWin32::implementation {
+namespace winrt::GhosttyWin32::implementation::core::ghostty::actions {
 
 // Host-side implementations of every ghostty action this port
 // handles. GhosttyCallbackDispatcher routes incoming
@@ -22,9 +22,9 @@ namespace winrt::GhosttyWin32::implementation {
 //
 // Each method returns true iff the action was handled, matching
 // the ghostty action_cb contract.
-class GhosttyActions {
+class Actions {
 public:
-    explicit GhosttyActions(IMainWindowView& view) noexcept : m_view(view) {}
+    explicit Actions(host::IWindow& view) noexcept : m_view(view) {}
 
     // ----- terminal events -----
     bool OnRingBell();
@@ -86,7 +86,7 @@ public:
     bool OnToggleSplitZoom(ghostty_surface_t surface);
 
 private:
-    IMainWindowView& m_view;
+    host::IWindow& m_view;
 
     // Initial window size from GHOSTTY_ACTION_INITIAL_SIZE
     // (physical pixels). Zero means "not yet received" —
@@ -96,4 +96,4 @@ private:
     uint32_t m_initialHeight = 0;
 };
 
-}  // namespace winrt::GhosttyWin32::implementation
+}  // namespace winrt::GhosttyWin32::implementation::core::ghostty::actions

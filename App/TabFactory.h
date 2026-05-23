@@ -1,6 +1,6 @@
 #pragma once
 
-#include "GhosttyConfig.h"
+#include "Ghostty/Config.h"
 #include "Pane.h"
 #include "PaneId.h"
 #include "PaneIdAllocator.h"
@@ -19,6 +19,9 @@
 
 namespace winrt::GhosttyWin32::implementation {
 
+namespace ghostty = core::ghostty;
+
+
 // Builds Tabs. Holds the cross-cutting context (ghostty app handle, the
 // HWND for DPI/initial-size, the PaneIdAllocator that produces fresh
 // per-leaf IDs, and an optional "leaf gained focus" callback that
@@ -35,7 +38,7 @@ namespace winrt::GhosttyWin32::implementation {
 // borrows it.
 class TabFactory {
 public:
-    TabFactory(ghostty_app_t app, GhosttyConfig const& cfg, HWND hwnd,
+    TabFactory(ghostty_app_t app, ghostty::Config const& cfg, HWND hwnd,
                PaneIdAllocator& idAllocator,
                std::function<void(ghostty_surface_t)> onLeafFocused = {}) noexcept
         : m_app(app), m_cfg(cfg), m_hwnd(hwnd), m_idAllocator(idAllocator),
@@ -237,7 +240,7 @@ private:
     }
 
     ghostty_app_t m_app;
-    GhosttyConfig m_cfg;
+    ghostty::Config m_cfg;
     HWND m_hwnd;
     PaneIdAllocator& m_idAllocator;
     // Optional. Fires with the leaf's ghostty_surface_t whenever the

@@ -1,5 +1,5 @@
 #include "pch.h"
-#include "../App/ImeBuffer.h"
+#include "../Core/Host/ImeBuffer.h"
 
 // Unicode constants for Japanese characters used in tests
 static const wchar_t A[] = L"\x3042";           // あ

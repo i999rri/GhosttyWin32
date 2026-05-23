@@ -1,8 +1,8 @@
 #include "pch.h"
 #include "MockMainWindowView.h"
-#include "../App/GhosttyActions.h"
+#include "../Core/Ghostty/Actions/Actions.h"
 
-using winrt::GhosttyWin32::implementation::GhosttyActions;
+using winrt::GhosttyWin32::implementation::core::ghostty::actions::Actions;
 
 namespace {
 

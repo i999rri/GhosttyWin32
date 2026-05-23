@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <winrt/Windows.UI.h>
 
-namespace winrt::GhosttyWin32::implementation {
+namespace winrt::GhosttyWin32::implementation::core::ghostty {
 
 // Typed, fallback-aware read-only view over `ghostty_config_t`.
 //
@@ -33,9 +33,9 @@ namespace winrt::GhosttyWin32::implementation {
 //
 // Borrows the config handle; ownership lives on `GhosttyApp`. Cheap
 // to construct, copy and pass by value.
-class GhosttyConfig {
+class Config {
 public:
-    explicit GhosttyConfig(ghostty_config_t config) noexcept
+    explicit Config(ghostty_config_t config) noexcept
         : m_config(config) {}
 
     // The terminal background colour as the user / theme configured
@@ -142,4 +142,4 @@ private:
     ghostty_config_t m_config;
 };
 
-}  // namespace winrt::GhosttyWin32::implementation
+}  // namespace winrt::GhosttyWin32::implementation::core::ghostty

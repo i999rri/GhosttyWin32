@@ -6,7 +6,7 @@
 #include <functional>
 #include <string>
 
-namespace winrt::GhosttyWin32::implementation {
+namespace winrt::GhosttyWin32::implementation::core::host {
 
 // Narrow view-side surface that GhosttyCallbackDispatcher (and
 // the GhosttyActions handlers it routes to) depends on. Lets the
@@ -20,8 +20,8 @@ namespace winrt::GhosttyWin32::implementation {
 // MainWindow::action_cb adds the one or two methods here that
 // it actually uses. The narrow surface is the design value; a
 // full-MainWindow facade would defeat the point of the split.
-struct IMainWindowView {
-    virtual ~IMainWindowView() = default;
+struct IWindow {
+    virtual ~IWindow() = default;
 
     // Top-level HWND for the host window. Borrowed; valid for the
     // lifetime of the view. Used for ShellExecuteW parenting and
@@ -158,4 +158,4 @@ struct IMainWindowView {
     virtual void ReportProgress(ghostty_action_progress_report_s pr) = 0;
 };
 
-}  // namespace winrt::GhosttyWin32::implementation
+}  // namespace winrt::GhosttyWin32::implementation::core::host

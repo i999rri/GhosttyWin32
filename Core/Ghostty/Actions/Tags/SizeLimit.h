@@ -3,7 +3,7 @@
 #include "ghostty.h"
 #include <windows.h>
 
-namespace winrt::GhosttyWin32::implementation {
+namespace winrt::GhosttyWin32::implementation::core::ghostty::actions::tags {
 
 // SIZE_LIMIT action value (min/max window track size) plus the
 // WM_GETMINMAXINFO subclass that enforces it. Named after the
@@ -35,4 +35,4 @@ private:
     bool m_subclassed = false;
 };
 
-}  // namespace winrt::GhosttyWin32::implementation
+}  // namespace winrt::GhosttyWin32::implementation::core::ghostty::actions::tags

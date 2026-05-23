@@ -1,8 +1,8 @@
 #include "pch.h"
 #include "MockMainWindowView.h"
-#include "../App/GhosttyCallbackDispatcher.h"
+#include "../Core/Ghostty/CallbackDispatcher.h"
 
-using winrt::GhosttyWin32::implementation::GhosttyCallbackDispatcher;
+using winrt::GhosttyWin32::implementation::core::ghostty::CallbackDispatcher;
 
 namespace {
 

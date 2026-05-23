@@ -1,8 +1,8 @@
 #include "pch.h"
 #include "TerminalControl.xaml.h"
 #include "Clipboard.h"
-#include "Encoding.h"
-#include "KeyModifiers.h"
+#include "Util/Encoding.h"
+#include "Host/KeyModifiers.h"
 #if __has_include("TerminalControl.g.cpp")
 #include "TerminalControl.g.cpp"
 #endif
@@ -101,7 +101,7 @@ namespace winrt::GhosttyWin32::implementation
             if (!self || !self->m_surface) return;
             muix::PointerPoint point = args.GetCurrentPoint(self->Panel());
             auto pos = point.Position();
-            ghostty_surface_mouse_pos(self->m_surface, pos.X, pos.Y, currentMods());
+            ghostty_surface_mouse_pos(self->m_surface, pos.X, pos.Y, host::currentMods());
         });
 
         PointerPressed([weakSelf](auto&&, muxi::PointerRoutedEventArgs const& args) {
@@ -129,7 +129,7 @@ namespace winrt::GhosttyWin32::implementation
                 if (ghostty_surface_has_selection(self->m_surface)) {
                     ghostty_text_s text = {};
                     if (ghostty_surface_read_selection(self->m_surface, &text) && text.text && text.text_len > 0) {
-                        Clipboard::write(self->m_hostHwnd, Encoding::toUtf16(text.text, static_cast<int>(text.text_len)));
+                        Clipboard::write(self->m_hostHwnd, util::Encoding::toUtf16(text.text, static_cast<int>(text.text_len)));
                         ghostty_surface_free_text(self->m_surface, &text);
                     }
                     // Click-then-release without modifiers clears the
@@ -142,13 +142,13 @@ namespace winrt::GhosttyWin32::implementation
             } else {
                 return;
             }
-            ghostty_surface_mouse_button(self->m_surface, GHOSTTY_MOUSE_PRESS, btn, currentMods());
+            ghostty_surface_mouse_button(self->m_surface, GHOSTTY_MOUSE_PRESS, btn, host::currentMods());
         });
 
         PointerReleased([weakSelf](auto&&, muxi::PointerRoutedEventArgs const& args) {
             auto self = weakSelf.get();
             if (!self || !self->m_surface) return;
-            ghostty_surface_mouse_button(self->m_surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, currentMods());
+            ghostty_surface_mouse_button(self->m_surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, host::currentMods());
             args.Handled(true);
         });
 
@@ -190,7 +190,7 @@ namespace winrt::GhosttyWin32::implementation
                 if (ghostty_surface_has_selection(self->m_surface)) {
                     ghostty_text_s text = {};
                     if (ghostty_surface_read_selection(self->m_surface, &text) && text.text && text.text_len > 0) {
-                        Clipboard::write(self->m_hostHwnd, Encoding::toUtf16(text.text, static_cast<int>(text.text_len)));
+                        Clipboard::write(self->m_hostHwnd, util::Encoding::toUtf16(text.text, static_cast<int>(text.text_len)));
                         ghostty_surface_free_text(self->m_surface, &text);
                     }
                     ghostty_surface_mouse_button(self->m_surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, (ghostty_input_mods_e)0);
@@ -202,7 +202,7 @@ namespace winrt::GhosttyWin32::implementation
 
             // Ctrl+V: paste from clipboard.
             if (ctrl && !shift && vk == 'V') {
-                auto utf8 = Encoding::toUtf8(Clipboard::read(self->m_hostHwnd));
+                auto utf8 = util::Encoding::toUtf8(Clipboard::read(self->m_hostHwnd));
                 if (!utf8.empty()) {
                     ghostty_surface_text(self->m_surface, utf8.c_str(), utf8.size());
                 }
@@ -238,7 +238,7 @@ namespace winrt::GhosttyWin32::implementation
             keyEvent.action = GHOSTTY_ACTION_PRESS;
             keyEvent.keycode = scanCode;
             if (args.KeyStatus().IsExtendedKey) keyEvent.keycode |= 0xE000;
-            keyEvent.mods = currentMods();
+            keyEvent.mods = host::currentMods();
             if (unshiftedCount > 0 && unshiftedChars[0] >= 0x20) {
                 keyEvent.unshifted_codepoint = static_cast<uint32_t>(unshiftedChars[0]);
             }
@@ -274,7 +274,7 @@ namespace winrt::GhosttyWin32::implementation
             keyEvent.action = GHOSTTY_ACTION_RELEASE;
             keyEvent.keycode = args.KeyStatus().ScanCode;
             if (args.KeyStatus().IsExtendedKey) keyEvent.keycode |= 0xE000;
-            keyEvent.mods = currentMods();
+            keyEvent.mods = host::currentMods();
             ghostty_surface_key(self->m_surface, keyEvent);
         });
 
@@ -498,7 +498,7 @@ namespace winrt::GhosttyWin32::implementation
                 if (self->m_ime.text().empty()) {
                     ghostty_surface_preedit(self->m_surface, nullptr, 0);
                 } else {
-                    auto utf8 = Encoding::toUtf8(self->m_ime.text());
+                    auto utf8 = util::Encoding::toUtf8(self->m_ime.text());
                     if (!utf8.empty())
                         ghostty_surface_preedit(self->m_surface, utf8.c_str(), utf8.size());
                 }
@@ -522,7 +522,7 @@ namespace winrt::GhosttyWin32::implementation
             if (!self) return;
             if (self->m_surface) {
                 ghostty_surface_preedit(self->m_surface, nullptr, 0);
-                auto utf8 = Encoding::toUtf8(self->m_ime.text());
+                auto utf8 = util::Encoding::toUtf8(self->m_ime.text());
                 if (!utf8.empty()) {
                     ghostty_surface_text(self->m_surface, utf8.c_str(), utf8.size());
                 }

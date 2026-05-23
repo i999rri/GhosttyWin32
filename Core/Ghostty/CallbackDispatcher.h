@@ -1,11 +1,11 @@
 #pragma once
 
-#include "GhosttyActions.h"
-#include "IMainWindowView.h"
+#include "Actions/Actions.h"
+#include "Host/IWindow.h"
 #include "ghostty.h"
 #include <memory>
 
-namespace winrt::GhosttyWin32::implementation {
+namespace winrt::GhosttyWin32::implementation::core::ghostty {
 
 // Routing layer for ghostty's runtime callbacks. Today only
 // covers action_cb via DispatchAction; the class is named for
@@ -28,9 +28,9 @@ namespace winrt::GhosttyWin32::implementation {
 // Construction via Create() so future fixture variants (test
 // mocks, mode switches) can be added without rewriting every
 // call site — the option-value is the signature, not the body.
-class GhosttyCallbackDispatcher {
+class CallbackDispatcher {
 public:
-    static std::unique_ptr<GhosttyCallbackDispatcher> Create(IMainWindowView& view);
+    static std::unique_ptr<GhosttyCallbackDispatcher> Create(host::IWindow& view);
 
     // Route a ghostty action_cb invocation. Returns true when the
     // action was handled (matches the ghostty action_cb contract:
@@ -39,10 +39,10 @@ public:
     bool DispatchAction(ghostty_target_s target, ghostty_action_s action);
 
 private:
-    explicit GhosttyCallbackDispatcher(IMainWindowView& view) noexcept
+    explicit CallbackDispatcher(host::IWindow& view) noexcept
         : m_actions(view) {}
 
-    GhosttyActions m_actions;
+    actions::Actions m_actions;
 };
 
-}  // namespace winrt::GhosttyWin32::implementation
+}  // namespace winrt::GhosttyWin32::implementation::core::ghostty

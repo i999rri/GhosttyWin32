@@ -98,7 +98,7 @@
       <WarningLevel>Level4</WarningLevel>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <AdditionalOptions>%(AdditionalOptions) /bigobj /utf-8</AdditionalOptions>
-      <AdditionalIncludeDirectories>$(ProjectDir)..\ghostty;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\Core;$(ProjectDir)..\ghostty;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <AdditionalLibraryDirectories>$(ProjectDir)..\ghostty;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
@@ -123,14 +123,18 @@
     <Manifest Include="app.manifest" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="GhosttyCallbackDispatcher.h" />
-    <ClInclude Include="Encoding.h" />
-    <ClInclude Include="Fullscreen.h" />
-    <ClInclude Include="GhosttyActions.h" />
-    <ClInclude Include="GhosttyConfig.h" />
-    <ClInclude Include="ImeBuffer.h" />
-    <ClInclude Include="IMainWindowView.h" />
-    <ClInclude Include="KeyModifiers.h" />
+    <!--
+      Core static library holds the winrt-free implementation
+      (action handlers, callback dispatch, value objects, host-side
+      input adapters, encoding util). App links it directly; Tests
+      links the same lib so test sources don't have to re-compile
+      the production cpps.
+    -->
+    <ProjectReference Include="..\Core\Core.vcxproj">
+      <Project>{1EF672E9-812A-4F4B-AB42-02B2F655FEBE}</Project>
+    </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
     <ClInclude Include="pch.h" />
     <ClInclude Include="SEHGuard.h" />
     <ClInclude Include="App.xaml.h">
@@ -142,7 +146,6 @@
     <ClInclude Include="Pane.h" />
     <ClInclude Include="PaneId.h" />
     <ClInclude Include="PaneIdAllocator.h" />
-    <ClInclude Include="SizeLimit.h" />
     <ClInclude Include="SplitPanel.h" />
     <ClInclude Include="Tab.h" />
     <ClInclude Include="TabFactory.h" />
@@ -158,26 +161,6 @@
   <ItemGroup>
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader>Create</PrecompiledHeader>
-    </ClCompile>
-    <!--
-      These four are deliberately winrt-free so the test EXE can
-      pick them up directly without pulling WindowsAppSDK into
-      GhosttyTests. Skipping the pch is what keeps the
-      no-winrt-headers contract on the test side; the cost on the
-      production side is negligible (each file only includes a
-      handful of headers).
-    -->
-    <ClCompile Include="GhosttyCallbackDispatcher.cpp">
-      <PrecompiledHeader>NotUsing</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="Fullscreen.cpp">
-      <PrecompiledHeader>NotUsing</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="GhosttyActions.cpp">
-      <PrecompiledHeader>NotUsing</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="SizeLimit.cpp">
-      <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="App.xaml.cpp">
       <DependentUpon>App.xaml</DependentUpon>

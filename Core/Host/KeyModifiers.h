@@ -6,6 +6,8 @@
 #include <windows.h>
 #include "ghostty.h"
 
+namespace winrt::GhosttyWin32::implementation::core::host {
+
 // Build ghostty modifier flags from individual key states.
 inline ghostty_input_mods_e buildMods(bool shift, bool ctrl, bool alt) {
     int mods = 0;
@@ -23,3 +25,5 @@ inline ghostty_input_mods_e currentMods() {
         GetKeyState(VK_MENU) & 0x8000
     );
 }
+
+}  // namespace winrt::GhosttyWin32::implementation::core::host

@@ -7,6 +7,8 @@
 #endif
 #include <windows.h>
 
+namespace winrt::GhosttyWin32::implementation::core::util {
+
 // UTF-16 <-> UTF-8 conversion utilities.
 namespace Encoding {
 
@@ -38,3 +40,5 @@ namespace Encoding {
     }
 
 } // namespace Encoding
+
+}  // namespace winrt::GhosttyWin32::implementation::core::util

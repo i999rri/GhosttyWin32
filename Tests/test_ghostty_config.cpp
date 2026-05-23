@@ -1,7 +1,7 @@
 #include "pch.h"
-#include "../App/GhosttyConfig.h"
+#include "../Core/Ghostty/Config.h"
 
-using winrt::GhosttyWin32::implementation::GhosttyConfig;
+using winrt::GhosttyWin32::implementation::core::ghostty::Config;
 
 // ----- Darken -----
 // Linear per-channel multiply by (1 - factor). No gamma; the
