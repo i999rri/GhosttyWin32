@@ -95,11 +95,11 @@ struct SplitPanel : SplitPanelT<SplitPanel> {
     Windows::Foundation::Size MeasureOverride(Windows::Foundation::Size availableSize);
     Windows::Foundation::Size ArrangeOverride(Windows::Foundation::Size finalSize);
 
-    // Width of the splitter strip in DIPs. Visible as a thin line
-    // between panes — narrow enough to avoid taking visible gap
-    // space between pane content, wide enough to land a click on
-    // for drag-resize.
-    static constexpr double kSplitterThickness = 2.0;
+    // Width of the splitter strip in DIPs. Doubles as the click
+    // hit-target for drag-resize — at 1 DIP the click area is
+    // small but precise; bump if drag becomes too finicky in
+    // practice.
+    static constexpr double kSplitterThickness = 1.0;
 
 private:
     // Recursive measure — caps each subtree at its share of `available`
