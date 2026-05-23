@@ -210,16 +210,28 @@ public:
         // ghostty's "how visible the unfocused side should be" (0.7
         // by default), so the overlay alpha is 1 - that. fill falls
         // back to the terminal background, matching upstream.
+        //
+        // ghostty_config_get's 4th parameter is the LENGTH OF THE
+        // KEY STRING, not the size of the output buffer (see upstream
+        // Ghostty.Config.swift which passes key.lengthOfBytes). We
+        // were passing sizeof(out) which made every lookup miss on a
+        // 2-3 char prefix of the key. The constexpr-string-literal
+        // sizeof minus the null terminator is the smallest way to
+        // compute the key length without a runtime strlen.
         double opacity = 0.7;
         ghostty_config_color_s fill{};
         bool gotFill = false;
         if (m_config) {
-            ghostty_config_get(m_config, &opacity, "unfocused-split-opacity", sizeof(opacity));
+            ghostty_config_get(m_config, &opacity,
+                               "unfocused-split-opacity",
+                               sizeof("unfocused-split-opacity") - 1);
             gotFill = ghostty_config_get(m_config, &fill,
-                                         "unfocused-split-fill", sizeof(fill));
+                                         "unfocused-split-fill",
+                                         sizeof("unfocused-split-fill") - 1);
             if (!gotFill) {
                 gotFill = ghostty_config_get(m_config, &fill,
-                                             "background", sizeof(fill));
+                                             "background",
+                                             sizeof("background") - 1);
             }
         }
         if (!gotFill) { fill.r = 0; fill.g = 0; fill.b = 0; }
@@ -238,14 +250,22 @@ private:
     // is null or even `background` isn't readable (shouldn't happen
     // in normal startup but keeps the brush valid).
     static winrt::Windows::UI::Color ResolveDividerColor(ghostty_config_t config) noexcept {
+        // ghostty_config_get's 4th argument is the length of the key
+        // string (see upstream Ghostty.Config.swift), not the size of
+        // the output buffer. Passing sizeof(out) silently truncates
+        // the key and the lookup fails for everything longer than
+        // a couple of characters.
         ghostty_config_color_s c{ 128, 128, 128 };
         bool resolved = false;
         if (config) {
-            constexpr const char* keyDivider = "split-divider-color";
-            resolved = ghostty_config_get(config, &c, keyDivider, sizeof(c));
+            resolved = ghostty_config_get(config, &c,
+                                          "split-divider-color",
+                                          sizeof("split-divider-color") - 1);
             if (!resolved) {
                 ghostty_config_color_s bg{};
-                if (ghostty_config_get(config, &bg, "background", sizeof(bg))) {
+                if (ghostty_config_get(config, &bg,
+                                       "background",
+                                       sizeof("background") - 1)) {
                     const bool light = (static_cast<int>(bg.r)
                                         + static_cast<int>(bg.g)
                                         + static_cast<int>(bg.b)) / 3 > 128;
