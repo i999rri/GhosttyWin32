@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "MainWindow.xaml.h"
+#include "ActionDispatcher.h"
 #include "Clipboard.h"
 #include "KeyModifiers.h"
 #include "Encoding.h"
@@ -490,8 +491,31 @@ namespace winrt::GhosttyWin32::implementation
         m_activeSurface = surface;
     }
 
+    // ----- IMainWindowView -----
+
+    winrt::Microsoft::UI::Dispatching::DispatcherQueue MainWindow::Dispatcher() const
+    {
+        // Forward to the Window-provided DispatcherQueue. Wrapper
+        // exists so ActionDispatcher can depend on the abstract
+        // IMainWindowView rather than the WinUI Window base type.
+        return DispatcherQueue();
+    }
+
+    void MainWindow::Tick()
+    {
+        // Guard against the inert window state — Tick can fire from
+        // a queued RENDER action after the window has begun tearing
+        // down (m_ghostty already released). No-op in that case.
+        if (m_ghostty) m_ghostty->Tick();
+    }
+
     void MainWindow::InitGhostty()
     {
+        // Bring the dispatcher up before the runtime config so the
+        // action_cb forwarder below can rely on it being ready by
+        // the time ghostty fires its first action.
+        m_actionDispatcher = ActionDispatcher::Create(*this);
+
         ghostty_runtime_config_s rtConfig{};
         rtConfig.userdata = this;
         rtConfig.wakeup_cb = [](void*) {
@@ -503,6 +527,14 @@ namespace winrt::GhosttyWin32::implementation
             });
         };
         rtConfig.action_cb = [](ghostty_app_t, ghostty_target_s target, ghostty_action_s action) -> bool {
+            // Lifted-out handlers first. Anything ActionDispatcher
+            // already owns short-circuits here; only handlers that
+            // still live inline below see the action.
+            if (g_mainWindow && g_mainWindow->m_actionDispatcher
+                && g_mainWindow->m_actionDispatcher->Dispatch(target, action)) {
+                return true;
+            }
+
             // Tab lifecycle / navigation actions. ghostty's default keybinds
             // (Ctrl+Shift+T new tab, Ctrl+Shift+W close, Ctrl+Tab/Ctrl+PageDown
             // next, etc.) are matched on the renderer thread inside
@@ -731,19 +763,6 @@ namespace winrt::GhosttyWin32::implementation
                 return true;
             }
 
-            // Terminal sent BEL (\x07). MessageBeep is the obvious
-            // Windows-native equivalent — it plays whatever the user
-            // has bound to the "Default Beep" system sound, runs
-            // asynchronously, and is thread-safe (so we don't need
-            // to bounce through the dispatcher queue). Honouring the
-            // ghostty `bell-features` config (audio / attention /
-            // title / unread) is a follow-up; this gets the audible
-            // path working.
-            if (action.tag == GHOSTTY_ACTION_RING_BELL) {
-                MessageBeep(MB_OK);
-                return true;
-            }
-
             // Single-window builds collapse CLOSE_WINDOW, QUIT, and
             // CLOSE_ALL_WINDOWS into the same effect — close the one
             // window we have, which terminates the app. Multi-window
@@ -944,19 +963,6 @@ namespace winrt::GhosttyWin32::implementation
                                      IsZoomed(hwnd) ? SC_RESTORE : SC_MAXIMIZE, 0);
                     });
                 }
-                return true;
-            }
-
-            // Quit-timer ack. macOS apprts use this to manage the
-            // "wait N seconds after the last window closes before
-            // actually quitting" countdown — Cmd+Q behavior carries
-            // through that on macOS. Windows quits as soon as the
-            // last top-level HWND goes away (which our CLOSE_WINDOW
-            // path already does), so neither START nor STOP needs
-            // any wiring. Return true so future libghostty versions
-            // don't start logging "unhandled action" for an action
-            // we've intentionally ignored.
-            if (action.tag == GHOSTTY_ACTION_QUIT_TIMER) {
                 return true;
             }
 
@@ -1189,118 +1195,6 @@ namespace winrt::GhosttyWin32::implementation
                 return true;
             }
 
-            // Acknowledge informational actions we don't have UI for
-            // yet. Each of these would deserve its own surface-side
-            // element in a fully-featured port — a read-only banner,
-            // a secure-input padlock, a pending-chord indicator, a
-            // modal-key-table label, a shell-supplied title source
-            // flag, a PWD breadcrumb, a post-command summary — but
-            // none of that UI exists today, and letting the action
-            // fall through to action_cb's unhandled-default branch
-            // would leave the door open to libghostty logging it as
-            // missing in a future audit. Returning true keeps that
-            // signal quiet; the proper UI work is tracked in #57.
-            if (action.tag == GHOSTTY_ACTION_READONLY
-                || action.tag == GHOSTTY_ACTION_SECURE_INPUT
-                || action.tag == GHOSTTY_ACTION_KEY_SEQUENCE
-                || action.tag == GHOSTTY_ACTION_KEY_TABLE
-                || action.tag == GHOSTTY_ACTION_PROMPT_TITLE
-                || action.tag == GHOSTTY_ACTION_PWD
-                || action.tag == GHOSTTY_ACTION_COMMAND_FINISHED) {
-                return true;
-            }
-
-            // Acknowledge actions whose feature surface is a separate
-            // design problem and is intentionally not on this PR's
-            // plate. Each is conceptually a real feature — a search
-            // bar (START/END/TOTAL/SELECTED), an ImGui inspector
-            // window (INSPECTOR + the render hook RENDER_INSPECTOR),
-            // a visual tab picker, a sliding hotkey terminal, a
-            // searchable command palette, terminal-level undo/redo.
-            // Routing them through a single ack today keeps the
-            // unhandled-default branch quiet so libghostty's future
-            // audit isn't full of false-positive missing entries; the
-            // proper feature work stays tracked in #57.
-            if (action.tag == GHOSTTY_ACTION_UNDO
-                || action.tag == GHOSTTY_ACTION_REDO
-                || action.tag == GHOSTTY_ACTION_START_SEARCH
-                || action.tag == GHOSTTY_ACTION_END_SEARCH
-                || action.tag == GHOSTTY_ACTION_SEARCH_TOTAL
-                || action.tag == GHOSTTY_ACTION_SEARCH_SELECTED
-                || action.tag == GHOSTTY_ACTION_INSPECTOR
-                || action.tag == GHOSTTY_ACTION_RENDER_INSPECTOR
-                || action.tag == GHOSTTY_ACTION_TOGGLE_TAB_OVERVIEW
-                || action.tag == GHOSTTY_ACTION_TOGGLE_QUICK_TERMINAL
-                || action.tag == GHOSTTY_ACTION_TOGGLE_COMMAND_PALETTE) {
-                return true;
-            }
-
-            // CHECK_FOR_UPDATES — ghostty has no built-in updater on
-            // Windows; the action just lets the host decide what
-            // "check for updates" means. Sending the user to the
-            // GitHub releases page is the lowest-friction option
-            // while we don't ship a Sparkle-equivalent updater.
-            // ShellExecuteW dispatches to the user's default browser
-            // without spawning a visible cmd/rundll32 flash, matching
-            // the OPEN_URL path.
-            if (action.tag == GHOSTTY_ACTION_CHECK_FOR_UPDATES) {
-                HWND hwnd = g_mainWindow ? g_mainWindow->m_hwnd : nullptr;
-                ShellExecuteW(hwnd, L"open",
-                              L"https://github.com/i999rri/GhosttyWin32/releases",
-                              nullptr, nullptr, SW_SHOWNORMAL);
-                return true;
-            }
-
-            // SHOW_CHILD_EXITED — ghostty notifies us the surface's
-            // shell process exited. With confirm-close-surface=false
-            // (our default) the surface tears itself down via
-            // close_surface_cb almost immediately, so this is mostly
-            // a diagnostic breadcrumb: when a shell crashes during
-            // development, the exit code in the debug output is the
-            // fastest path to "what failed". An in-terminal overlay
-            // would be the proper UI but needs its own design pass —
-            // for now, log and move on. Mirror to OutputDebugString
-            // so the line survives even when stderr was buffered
-            // through the surface teardown.
-            if (action.tag == GHOSTTY_ACTION_SHOW_CHILD_EXITED) {
-                auto ce = action.action.child_exited;
-                char buf[128];
-                std::snprintf(buf, sizeof(buf),
-                              "[child_exited] exit_code=%u after_ms=%llu\n",
-                              ce.exit_code,
-                              static_cast<unsigned long long>(ce.timetime_ms));
-                std::fputs(buf, stderr);
-                std::fflush(stderr);
-                OutputDebugStringA(buf);
-                return true;
-            }
-
-            // RENDER — ghostty is asking for an explicit repaint
-            // outside the natural wakeup_cb -> tick cadence. The
-            // dispatcher used by wakeup_cb already serialises ticks
-            // on the UI thread; route through the same path so the
-            // frame lands without us needing a separate per-surface
-            // draw entry. ghostty_app_tick is idempotent — calling it
-            // when nothing is dirty is a cheap no-op.
-            if (action.tag == GHOSTTY_ACTION_RENDER) {
-                if (!g_mainWindow || !g_mainWindow->m_ghostty) return true;
-                auto mw = g_mainWindow;
-                mw->DispatcherQueue().TryEnqueue([mw]() {
-                    if (mw->m_ghostty) mw->m_ghostty->Tick();
-                });
-                return true;
-            }
-
-            // SCROLLBAR — ghostty exports scrollback total / offset /
-            // visible-len whenever the scroll position moves. We don't
-            // render a scrollbar (the terminal surface fills the
-            // available area without one), so the data has nowhere to
-            // go. Acknowledge anyway so the action doesn't fall
-            // through to the unhandled-default branch.
-            if (action.tag == GHOSTTY_ACTION_SCROLLBAR) {
-                return true;
-            }
-
             // Cache the glyph cell dimensions ghostty derives from the
             // active font + size. ghostty fires this whenever the cell
             // metrics change (font reload, DPI change, config edit);
@@ -1430,41 +1324,6 @@ namespace winrt::GhosttyWin32::implementation
                 return true;
             }
 #endif
-
-            // Renderer health status from ghostty. UNHEALTHY means the
-            // generic renderer detected a problem (texture allocation
-            // failure, shader compile fault, etc.) and switched into a
-            // degraded mode. Surfacing this as a single stderr line
-            // makes the underlying cause findable in the debugger
-            // output without committing to a user-facing surface
-            // (toast, status bar) just yet — those can layer on top
-            // later if we want recovery UX.
-            if (action.tag == GHOSTTY_ACTION_RENDERER_HEALTH) {
-                bool healthy = action.action.renderer_health == GHOSTTY_RENDERER_HEALTH_HEALTHY;
-                std::fprintf(stderr, "[renderer_health] %s\n",
-                             healthy ? "healthy" : "unhealthy");
-                std::fflush(stderr);
-                return true;
-            }
-
-            // Ctrl+click on a URL in the terminal. Hand off to the shell
-            // verb opener so the user's default browser / mail client /
-            // etc. handles it. Without this, libghostty falls back to
-            // spawning `rundll32 url.dll,FileProtocolHandler` via
-            // std.process.Child, which works but is slower and leaves a
-            // brief child-process flash visible in tools like Process
-            // Hacker.
-            if (action.tag == GHOSTTY_ACTION_OPEN_URL) {
-                auto& ou = action.action.open_url;
-                if (ou.url && ou.len > 0) {
-                    std::wstring wurl = Encoding::toUtf16(ou.url, static_cast<int>(ou.len));
-                    if (!wurl.empty()) {
-                        HWND hwnd = g_mainWindow ? g_mainWindow->m_hwnd : nullptr;
-                        ShellExecuteW(hwnd, L"open", wurl.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-                    }
-                }
-                return true;
-            }
 
             return false;
         };

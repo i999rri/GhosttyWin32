@@ -119,9 +119,11 @@
     <Manifest Include="app.manifest" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="ActionDispatcher.h" />
     <ClInclude Include="Encoding.h" />
     <ClInclude Include="GhosttyConfig.h" />
     <ClInclude Include="ImeBuffer.h" />
+    <ClInclude Include="IMainWindowView.h" />
     <ClInclude Include="KeyModifiers.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="SEHGuard.h" />
@@ -150,6 +152,7 @@
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader>Create</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="ActionDispatcher.cpp" />
     <ClCompile Include="App.xaml.cpp">
       <DependentUpon>App.xaml</DependentUpon>
     </ClCompile>

@@ -3,6 +3,7 @@
 #include "MainWindow.g.h"
 #include "ghostty.h"
 #include "GhosttyApp.h"
+#include "IMainWindowView.h"
 #include "PaneIdAllocator.h"
 #include "Tab.h"
 #include "TabFactory.h"
@@ -10,7 +11,9 @@
 
 namespace winrt::GhosttyWin32::implementation
 {
-    struct MainWindow : MainWindowT<MainWindow>
+    class ActionDispatcher;
+
+    struct MainWindow : MainWindowT<MainWindow>, IMainWindowView
     {
         MainWindow();
         ~MainWindow();
@@ -65,6 +68,15 @@ namespace winrt::GhosttyWin32::implementation
         // Stays valid across alt-tab — we only clear it when the
         // surface itself is torn down.
         ghostty_surface_t GetActiveSurface() const noexcept { return m_activeSurface; }
+
+        // ----- IMainWindowView -----
+        // Narrow surface ActionDispatcher consumes; see
+        // IMainWindowView.h for why these live behind a virtual
+        // interface rather than being looked up off MainWindow
+        // directly.
+        HWND Hwnd() const noexcept override { return m_hwnd; }
+        winrt::Microsoft::UI::Dispatching::DispatcherQueue Dispatcher() const override;
+        void Tick() override;
 
     private:
         void InitGhostty();
@@ -158,6 +170,10 @@ namespace winrt::GhosttyWin32::implementation
         // Constructed once ghostty is initialized — needs the app handle
         // and HWND, neither available until InitGhostty has run.
         std::unique_ptr<TabFactory> m_tabFactory;
+        // action_cb dispatch table. Built in InitGhostty after the
+        // GhosttyApp handle is available; destroyed before m_ghostty
+        // so handlers can't observe a half-torn-down app on shutdown.
+        std::unique_ptr<ActionDispatcher> m_actionDispatcher;
     };
 }
 
