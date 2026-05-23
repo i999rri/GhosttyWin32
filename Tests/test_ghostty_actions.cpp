@@ -269,13 +269,16 @@ TEST(GhosttyActionsTest, OnConfigChangeClonesBeforeHandoff) {
     MockMainWindowView view;
     Actions actions(view);
 
+    // libghostty needs its global init before any *_new — production
+    // calls ghostty_init() inside GhosttyApp::Create before
+    // ghostty_config_new(). Skipping it leaves libghostty's globals
+    // (logger, etc.) zeroed and the subsequent clone AVs with
+    // SEH 0xc0000005. ghostty_init is idempotent so calling it from
+    // the test setup is safe even if a prior test already did.
+    ghostty_init(0, nullptr);
     ghostty_config_t cfg = ghostty_config_new();
     ASSERT_NE(cfg, nullptr);
-    // ghostty_config_clone refuses to operate on an unfinalised
-    // config (AV deep in libghostty when we tried — discovered by
-    // SEH 0xc0000005 in the original version of this test). The
-    // real CONFIG_CHANGE callback always hands us a finalised
-    // pointer, so the test should mirror that.
+    ghostty_config_load_default_files(cfg);
     ghostty_config_finalize(cfg);
 
     EXPECT_TRUE(actions.OnConfigChange(cfg));
