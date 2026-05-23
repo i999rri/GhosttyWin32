@@ -9,27 +9,6 @@
 
 namespace winrt::GhosttyWin32::implementation
 {
-    namespace {
-        // Focus-border palette. Brush colours are flipped in
-        // ShowFocusBorder() between these two values; the constant
-        // names make the call sites self-documenting and put the
-        // visual tuning knobs in one place.
-        //
-        // kFocusBorderAccent — Windows-blue-ish, ARGB. Saturated
-        // enough to stand out against most terminal palettes
-        // (foreground text + background fill) without bleeding into
-        // the cell area when the border flashes.
-        // kFocusBorderHidden — fully transparent, restores the
-        // no-chrome resting state.
-        constexpr winrt::Windows::UI::Color kFocusBorderAccent{ 255, 0, 120, 215 };
-        constexpr winrt::Windows::UI::Color kFocusBorderHidden{   0, 0,   0,   0 };
-
-        // How long the accent stays visible after the most recent
-        // GotFocus. Subsequent focus changes restart the timer, so
-        // rapid pane hops keep the border up through the sequence.
-        constexpr auto kFocusBorderHideDelay = std::chrono::milliseconds(1500);
-    }
-
     TerminalControl::TerminalControl()
     {
         InitializeComponent();
@@ -99,7 +78,7 @@ namespace winrt::GhosttyWin32::implementation
             auto self = weakSelf.get();
             if (!self) return;
             if (self->m_editContext) self->m_editContext.NotifyFocusEnter();
-            self->ShowFocusBorder(true);
+            self->ApplyFocusVisual(true);
             // Surface-level focus event for the host. Mirrors the
             // upstream getActiveSurface pattern (#62): the host uses
             // this to track "currently focused surface" without us
@@ -114,7 +93,7 @@ namespace winrt::GhosttyWin32::implementation
             auto self = weakSelf.get();
             if (!self) return;
             if (self->m_editContext) self->m_editContext.NotifyFocusLeave();
-            self->ShowFocusBorder(false);
+            self->ApplyFocusVisual(false);
         });
 
         PointerMoved([weakSelf](auto&&, muxi::PointerRoutedEventArgs const& args) {
@@ -340,36 +319,45 @@ namespace winrt::GhosttyWin32::implementation
         ProtectedCursor(winrt::Microsoft::UI::Input::InputSystemCursor::Create(mapped));
     }
 
-    void TerminalControl::ShowFocusBorder(bool visible)
+    void TerminalControl::SetUnfocusedAppearance(double overlayOpacity,
+                                                  winrt::Windows::UI::Color overlayFill) noexcept
     {
-        auto border = FocusBorder();
-        if (!border) return;
-        if (visible) {
-            border.BorderBrush(winrt::Microsoft::UI::Xaml::Media::SolidColorBrush(
-                kFocusBorderAccent));
-            // Lazy-init the auto-hide timer the first time the border
-            // goes visible. Capturing get_weak() and resolving inside
-            // the Tick handler keeps the timer-held lambda safe across
-            // TerminalControl destruction.
-            if (!m_focusBorderTimer) {
-                m_focusBorderTimer = winrt::Microsoft::UI::Xaml::DispatcherTimer{};
-                m_focusBorderTimer.Interval(kFocusBorderHideDelay);
-                auto weakSelf = get_weak();
-                m_focusBorderTimer.Tick([weakSelf](auto&&, auto&&) {
-                    if (auto self = weakSelf.get()) {
-                        self->ShowFocusBorder(false);
-                    }
-                });
-            }
-            // Restart so the border stays visible for the full
-            // interval after the most recent focus change.
-            m_focusBorderTimer.Stop();
-            m_focusBorderTimer.Start();
-        } else {
-            border.BorderBrush(winrt::Microsoft::UI::Xaml::Media::SolidColorBrush(
-                kFocusBorderHidden));
-            if (m_focusBorderTimer) m_focusBorderTimer.Stop();
+        m_unfocusedOpacity = overlayOpacity;
+        // Build the brush eagerly so ApplyFocusVisual is allocation-
+        // free on every focus toggle. Recreate (rather than mutate
+        // the existing brush's Color) so config reloads pick up the
+        // new value with a single assignment.
+        m_unfocusedFillBrush = winrt::Microsoft::UI::Xaml::Media::SolidColorBrush(overlayFill);
+        // If we're currently unfocused, refresh the live overlay so a
+        // reload doesn't wait until the next focus toggle to take
+        // effect.
+        if (auto dim = UnfocusedDim();
+            dim && dim.Visibility() == winrt::Microsoft::UI::Xaml::Visibility::Visible)
+        {
+            dim.Fill(m_unfocusedFillBrush);
+            dim.Opacity(m_unfocusedOpacity);
         }
+    }
+
+    void TerminalControl::ApplyFocusVisual(bool focused)
+    {
+        auto dim = UnfocusedDim();
+        if (!dim) return;
+        if (focused) {
+            dim.Visibility(winrt::Microsoft::UI::Xaml::Visibility::Collapsed);
+            return;
+        }
+        // Lazy fall-back: if the factory never called
+        // SetUnfocusedAppearance (e.g. config-less unit test paths)
+        // we still want something visible. Black @ 30 % matches the
+        // upstream default of 0.7 opacity over a dark background.
+        if (!m_unfocusedFillBrush) {
+            winrt::Windows::UI::Color fallback{ 255, 0, 0, 0 };
+            m_unfocusedFillBrush = winrt::Microsoft::UI::Xaml::Media::SolidColorBrush(fallback);
+        }
+        dim.Fill(m_unfocusedFillBrush);
+        dim.Opacity(m_unfocusedOpacity);
+        dim.Visibility(winrt::Microsoft::UI::Xaml::Visibility::Visible);
     }
 
     TerminalControl::~TerminalControl()

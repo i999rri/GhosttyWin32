@@ -764,7 +764,11 @@ namespace winrt::GhosttyWin32::implementation
                 NotifySurfaceFocused(surface);
             };
             m_tabFactory = std::make_unique<TabFactory>(
-                m_ghostty->Handle(), m_hwnd, m_paneIds, std::move(onLeafFocused));
+                m_ghostty->Handle(),
+                m_ghostty->ConfigHandle(),
+                m_hwnd,
+                m_paneIds,
+                std::move(onLeafFocused));
         }
     }
 

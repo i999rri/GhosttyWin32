@@ -64,6 +64,11 @@ public:
     }
 
     ghostty_app_t Handle() const noexcept { return m_app; }
+    // Borrow the parsed config. Callers use ghostty_config_get against
+    // this handle for read-only lookups (e.g. unfocused-split-opacity);
+    // the GhosttyApp keeps ownership and frees it in the destructor
+    // after the app handle is released.
+    ghostty_config_t ConfigHandle() const noexcept { return m_config; }
     void Tick() noexcept { if (m_app) ghostty_app_tick(m_app); }
 
 private:

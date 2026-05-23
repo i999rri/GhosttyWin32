@@ -34,9 +34,10 @@ namespace winrt::GhosttyWin32::implementation {
 // borrows it.
 class TabFactory {
 public:
-    TabFactory(ghostty_app_t app, HWND hwnd, PaneIdAllocator& idAllocator,
+    TabFactory(ghostty_app_t app, ghostty_config_t config, HWND hwnd,
+               PaneIdAllocator& idAllocator,
                std::function<void(ghostty_surface_t)> onLeafFocused = {}) noexcept
-        : m_app(app), m_hwnd(hwnd), m_idAllocator(idAllocator),
+        : m_app(app), m_config(config), m_hwnd(hwnd), m_idAllocator(idAllocator),
           m_onLeafFocused(std::move(onLeafFocused)) {}
 
     TabFactory(const TabFactory&) = delete;
@@ -199,6 +200,27 @@ public:
         // taking a hard dependency on MainWindow.
         if (m_onLeafFocused) controlImpl->SetOnFocused(m_onLeafFocused);
 
+        // Resolve the unfocused-split appearance from ghostty config
+        // and stamp it onto the control. unfocused-split-opacity is
+        // ghostty's "how visible the unfocused side should be" (0.7
+        // by default), so the overlay alpha is 1 - that. fill falls
+        // back to the terminal background, matching upstream.
+        double opacity = 0.7;
+        ghostty_config_color_s fill{};
+        bool gotFill = false;
+        if (m_config) {
+            ghostty_config_get(m_config, &opacity, "unfocused-split-opacity", sizeof(opacity));
+            gotFill = ghostty_config_get(m_config, &fill,
+                                         "unfocused-split-fill", sizeof(fill));
+            if (!gotFill) {
+                gotFill = ghostty_config_get(m_config, &fill,
+                                             "background", sizeof(fill));
+            }
+        }
+        if (!gotFill) { fill.r = 0; fill.g = 0; fill.b = 0; }
+        winrt::Windows::UI::Color overlayFill{ 255, fill.r, fill.g, fill.b };
+        controlImpl->SetUnfocusedAppearance(1.0 - opacity, overlayFill);
+
         return Pane::MakeLeaf(control, paneId);
     }
 
@@ -220,6 +242,7 @@ private:
     }
 
     ghostty_app_t m_app;
+    ghostty_config_t m_config;
     HWND m_hwnd;
     PaneIdAllocator& m_idAllocator;
     // Optional. Fires with the leaf's ghostty_surface_t whenever the

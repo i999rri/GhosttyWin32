@@ -108,16 +108,6 @@ namespace winrt::GhosttyWin32::implementation
         // borders, etc.
         void SetCursorShape(ghostty_action_mouse_shape_e shape);
 
-        // Flash the focus border for ~1.5 s. Called from GotFocus to
-        // give a brief visual "you landed here" cue when focus moves
-        // between panes. visible=false stops the timer + clears the
-        // brush immediately (LostFocus path) so the previously-active
-        // pane's border doesn't linger past the focus change. The
-        // border is an overlay sibling in the XAML so the flash
-        // doesn't reserve permanent layout space — see
-        // TerminalControl.xaml.
-        void ShowFocusBorder(bool visible);
-
         // Set the callback that fires when this control receives
         // keyboard focus. Passed the underlying ghostty surface so
         // the host can update its "currently focused surface"
@@ -128,6 +118,23 @@ namespace winrt::GhosttyWin32::implementation
         void SetOnFocused(std::function<void(ghostty_surface_t)> cb) noexcept {
             m_onFocused = std::move(cb);
         }
+
+        // Apply the resolved unfocused-split appearance from config
+        // (fill = the dim-overlay colour, opacity = the alpha at
+        // which to draw it). Stored locally because the overlay is
+        // re-shown every time focus is lost, not just on first
+        // attach. The factory calls this right after Attach so the
+        // initial unfocused appearance (other tabs / siblings) is
+        // already correct before any focus events fire.
+        void SetUnfocusedAppearance(double overlayOpacity,
+                                    winrt::Windows::UI::Color overlayFill) noexcept;
+
+        // Toggle the unfocused-dim overlay. true = focused (overlay
+        // hidden, full brightness); false = unfocused (overlay shown
+        // with the cached fill / opacity). The XAML element stays
+        // hit-test transparent in both states so pointer routing
+        // doesn't change with focus.
+        void ApplyFocusVisual(bool focused);
 
     private:
         // Builds the per-control CoreTextEditContext and wires its
@@ -159,15 +166,16 @@ namespace winrt::GhosttyWin32::implementation
         ImeBuffer m_ime;
         winrt::Windows::UI::Text::Core::CoreTextEditContext m_editContext{ nullptr };
 
-        // Auto-hide timer for the focus border. Created lazily on
-        // first ShowFocusBorder(true); subsequent visible calls reset
-        // the interval so the border stays visible for the full
-        // 1.5 s after the most recent focus change.
-        winrt::Microsoft::UI::Xaml::DispatcherTimer m_focusBorderTimer{ nullptr };
-
         // Notify-on-focus callback registered by the factory that built
         // this control. See SetOnFocused().
         std::function<void(ghostty_surface_t)> m_onFocused;
+
+        // Cached unfocused-split overlay parameters resolved from
+        // ghostty config. See SetUnfocusedAppearance(). The
+        // SolidColorBrush is reused across hide/show transitions to
+        // avoid reallocating per focus event.
+        double m_unfocusedOpacity = 0.3;
+        winrt::Microsoft::UI::Xaml::Media::SolidColorBrush m_unfocusedFillBrush{ nullptr };
     };
 }
 
