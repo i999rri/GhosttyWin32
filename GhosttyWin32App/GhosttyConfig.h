@@ -52,12 +52,7 @@ public:
     winrt::Windows::UI::Color SplitDividerColor() const noexcept {
         ghostty_config_color_s c{};
         if (GetRaw("split-divider-color", &c)) return ColorFrom(c);
-        ghostty_config_color_s bg = BackgroundRgb();
-        bool light = (static_cast<int>(bg.r)
-                      + static_cast<int>(bg.g)
-                      + static_cast<int>(bg.b)) / 3 > 128;
-        double factor = light ? 0.08 : 0.40;
-        return ColorFrom(Darken(bg, factor));
+        return DeriveDividerFromBackground(BackgroundRgb());
     }
 
     // Unfocused-split overlay opacity as ghostty defines it: the
@@ -81,6 +76,48 @@ public:
         return ColorFrom(BackgroundRgb());
     }
 
+    // ----- pure helpers exposed for testing -----
+    // These have no dependency on ghostty_config_t and can be
+    // exercised directly by unit tests; the live config-aware
+    // accessors above ultimately delegate to them.
+
+    // Linear darken by `factor` in [0, 1]. Applied per-channel; no
+    // gamma correction because the upstream implementation doesn't
+    // do any either (`darken(by:)` in OSColor) — staying byte-equal
+    // with upstream is worth more here than colorimetric accuracy.
+    static ghostty_config_color_s Darken(ghostty_config_color_s c, double factor) noexcept {
+        const double k = 1.0 - factor;
+        return {
+            static_cast<std::uint8_t>(c.r * k),
+            static_cast<std::uint8_t>(c.g * k),
+            static_cast<std::uint8_t>(c.b * k),
+        };
+    }
+
+    // True when the channel-average of `c` exceeds 128 — the
+    // "light background" classifier upstream uses to pick the
+    // 8 % vs 40 % darken factor for the split divider fallback.
+    static bool IsLight(ghostty_config_color_s c) noexcept {
+        return (static_cast<int>(c.r)
+                + static_cast<int>(c.g)
+                + static_cast<int>(c.b)) / 3 > 128;
+    }
+
+    // Compute the divider colour fallback from a background colour
+    // alone. Pure function — the live SplitDividerColor() method
+    // first probes `split-divider-color`, then falls back here.
+    static winrt::Windows::UI::Color DeriveDividerFromBackground(ghostty_config_color_s bg) noexcept {
+        const double factor = IsLight(bg) ? 0.08 : 0.40;
+        return ColorFrom(Darken(bg, factor));
+    }
+
+    // Promote a raw RGB triple to an opaque WinUI ARGB colour. The
+    // host applies its own translucency where needed (UnfocusedDim
+    // Opacity, etc.), so every accessor returns alpha=255.
+    static winrt::Windows::UI::Color ColorFrom(ghostty_config_color_s c) noexcept {
+        return winrt::Windows::UI::Color{ 255, c.r, c.g, c.b };
+    }
+
 private:
     // Compile-time-correct key length lookup. The template parameter
     // N captures the string-literal array length (including the null
@@ -100,26 +137,6 @@ private:
         ghostty_config_color_s bg{ 0, 0, 0 };
         GetRaw("background", &bg);
         return bg;
-    }
-
-    // Linear darken by `factor` in [0, 1]. Applied per-channel; no
-    // gamma correction because the upstream implementation doesn't
-    // do any either (`darken(by:)` in OSColor) — staying byte-equal
-    // with upstream is worth more here than colorimetric accuracy.
-    static ghostty_config_color_s Darken(ghostty_config_color_s c, double factor) noexcept {
-        const double k = 1.0 - factor;
-        return {
-            static_cast<std::uint8_t>(c.r * k),
-            static_cast<std::uint8_t>(c.g * k),
-            static_cast<std::uint8_t>(c.b * k),
-        };
-    }
-
-    static winrt::Windows::UI::Color ColorFrom(ghostty_config_color_s c) noexcept {
-        // alpha=255: every accessor returns an opaque colour; the
-        // host applies its own translucency where needed
-        // (UnfocusedDim's Opacity, etc.).
-        return winrt::Windows::UI::Color{ 255, c.r, c.g, c.b };
     }
 
     ghostty_config_t m_config;
