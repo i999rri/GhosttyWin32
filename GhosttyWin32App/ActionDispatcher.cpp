@@ -12,7 +12,6 @@ std::unique_ptr<ActionDispatcher> ActionDispatcher::Create(IMainWindowView& view
 }
 
 bool ActionDispatcher::Dispatch(ghostty_target_s target, ghostty_action_s action) {
-    (void)target;  // unused until tab / surface targeted handlers move across
     switch (action.tag) {
         // ----- terminal events -----
 
@@ -257,6 +256,87 @@ bool ActionDispatcher::Dispatch(ghostty_target_s target, ghostty_action_s action
             });
             return true;
         }
+
+        // ----- split-pane operations -----
+        // All five carry the source surface in target.target.surface;
+        // the view does the tree walk + mutation. action_cb fires on
+        // the renderer thread, so we always bounce through the UI
+        // dispatcher before touching the pane tree.
+
+        // Split the source pane along the requested direction. The
+        // existing pane stays put and a new TerminalControl + ghostty
+        // surface gets inserted alongside; the active leaf shifts to
+        // the new pane so the user's next keystroke lands there.
+        case GHOSTTY_ACTION_NEW_SPLIT:
+            if (target.tag == GHOSTTY_TARGET_SURFACE) {
+                auto surface = target.target.surface;
+                auto direction = action.action.new_split;
+                if (surface) {
+                    m_view.Dispatcher().TryEnqueue([this, surface, direction]() {
+                        m_view.SplitActivePane(surface, direction);
+                    });
+                }
+                return true;
+            }
+            break;
+
+        // Keyboard-driven split resize. Same underlying ratio mutation
+        // as the splitter-drag path, just initiated from a ghostty
+        // keybind. `amount` is treated as DIPs along the split axis.
+        case GHOSTTY_ACTION_RESIZE_SPLIT:
+            if (target.tag == GHOSTTY_TARGET_SURFACE) {
+                auto surface = target.target.surface;
+                auto resize = action.action.resize_split;
+                if (surface) {
+                    m_view.Dispatcher().TryEnqueue([this, surface, resize]() {
+                        m_view.ResizeSplitFromAction(surface, resize);
+                    });
+                }
+                return true;
+            }
+            break;
+
+        // Move focus to another pane within the same tab.
+        case GHOSTTY_ACTION_GOTO_SPLIT:
+            if (target.tag == GHOSTTY_TARGET_SURFACE) {
+                auto surface = target.target.surface;
+                auto direction = action.action.goto_split;
+                if (surface) {
+                    m_view.Dispatcher().TryEnqueue([this, surface, direction]() {
+                        m_view.GotoSplitFromAction(surface, direction);
+                    });
+                }
+                return true;
+            }
+            break;
+
+        // Reset every split ratio in the source surface's tab to 0.5
+        // so each pane gets an even share of its parent split.
+        case GHOSTTY_ACTION_EQUALIZE_SPLITS:
+            if (target.tag == GHOSTTY_TARGET_SURFACE) {
+                auto surface = target.target.surface;
+                if (surface) {
+                    m_view.Dispatcher().TryEnqueue([this, surface]() {
+                        m_view.EqualizeSplitsForSurface(surface);
+                    });
+                }
+                return true;
+            }
+            break;
+
+        // Expand the source pane to fill the tab; a second press
+        // restores the regular split layout.
+        case GHOSTTY_ACTION_TOGGLE_SPLIT_ZOOM:
+            if (target.tag == GHOSTTY_TARGET_SURFACE) {
+                auto surface = target.target.surface;
+                if (surface) {
+                    m_view.Dispatcher().TryEnqueue([this, surface]() {
+                        m_view.ToggleSplitZoomForSurface(surface);
+                    });
+                }
+                return true;
+            }
+            break;
 
         default:
             // Not yet migrated; let MainWindow::action_cb's existing

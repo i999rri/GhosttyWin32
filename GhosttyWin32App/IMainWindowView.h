@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ghostty.h"
 #include <winrt/Microsoft.UI.Dispatching.h>
 #include <windows.h>
 
@@ -41,6 +42,35 @@ struct IMainWindowView {
     // hresult_error WinUI throws when the window is already torn
     // down, so handlers can call it unconditionally.
     virtual void RequestClose() = 0;
+
+    // ----- split-pane operations -----
+    // Surface-target split actions all share the same shape: find
+    // the pane owning `surface` in its tab, mutate the tree, leave
+    // the result focused. The view owns the tree, so each operation
+    // lives there and the dispatcher just forwards the request.
+    // UI thread only — callers must already be there.
+
+    // Insert a new pane next to the source pane along `direction`.
+    virtual void SplitActivePane(ghostty_surface_t surface,
+                                 ghostty_action_split_direction_e direction) = 0;
+
+    // Nudge the nearest ancestor split whose axis matches the
+    // direction by `amount` DIPs.
+    virtual void ResizeSplitFromAction(ghostty_surface_t surface,
+                                       ghostty_action_resize_split_s resize) = 0;
+
+    // Move keyboard focus to another pane. PREVIOUS/NEXT cycle the
+    // tree depth-first; directional variants pick the adjacent leaf
+    // by arranged-rect adjacency.
+    virtual void GotoSplitFromAction(ghostty_surface_t surface,
+                                     ghostty_action_goto_split_e direction) = 0;
+
+    // Reset every split ratio in the source surface's tab to 0.5.
+    virtual void EqualizeSplitsForSurface(ghostty_surface_t surface) = 0;
+
+    // Expand the source leaf to fill its tab; a second call restores
+    // the regular split layout.
+    virtual void ToggleSplitZoomForSurface(ghostty_surface_t surface) = 0;
 };
 
 }  // namespace winrt::GhosttyWin32::implementation

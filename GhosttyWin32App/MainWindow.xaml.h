@@ -79,6 +79,19 @@ namespace winrt::GhosttyWin32::implementation
         void Tick() override;
         void RequestClose() override;
 
+        // Split-pane operations from IMainWindowView. Bodies are in
+        // MainWindow.xaml.cpp; behaviour is unchanged from when these
+        // lived as private methods, only the access spec moved so the
+        // dispatcher can reach them through the interface.
+        void SplitActivePane(ghostty_surface_t surface,
+                             ghostty_action_split_direction_e direction) override;
+        void ResizeSplitFromAction(ghostty_surface_t surface,
+                                   ghostty_action_resize_split_s resize) override;
+        void GotoSplitFromAction(ghostty_surface_t surface,
+                                 ghostty_action_goto_split_e direction) override;
+        void EqualizeSplitsForSurface(ghostty_surface_t surface) override;
+        void ToggleSplitZoomForSurface(ghostty_surface_t surface) override;
+
     private:
         void InitGhostty();
         void CreateTab();
@@ -91,42 +104,9 @@ namespace winrt::GhosttyWin32::implementation
         // depending on the current OverlappedPresenter state.
         void UpdateMaximizeGlyph();
 
-        // Handle GHOSTTY_ACTION_NEW_SPLIT: locate the source pane for
-        // `surface`, create a new TerminalControl + ghostty surface,
-        // and insert it next to the source according to `direction`.
-        // The new pane becomes the active leaf and takes focus. UI
-        // thread only.
-        void SplitActivePane(ghostty_surface_t surface,
-                             ghostty_action_split_direction_e direction);
-
         // Tear down the pane carrying `id` and update the tree / tab
         // list. Dispatched from close_surface_cb. UI thread only.
         void CloseSurfaceByPaneId(PaneId id);
-
-        // Handle GHOSTTY_ACTION_RESIZE_SPLIT: walk up from the active
-        // pane to the nearest ancestor split whose axis matches the
-        // direction, then nudge that split's ratio by `amount` DIPs
-        // in the requested direction. UI thread only.
-        void ResizeSplitFromAction(ghostty_surface_t surface,
-                                   ghostty_action_resize_split_s resize);
-
-        // Handle GHOSTTY_ACTION_GOTO_SPLIT: move focus to another
-        // pane in the same tab. PREVIOUS/NEXT cycle the tree in
-        // depth-first order; UP/DOWN/LEFT/RIGHT pick the leaf whose
-        // arranged rect is adjacent in that direction. UI thread only.
-        void GotoSplitFromAction(ghostty_surface_t surface,
-                                 ghostty_action_goto_split_e direction);
-
-        // Handle GHOSTTY_ACTION_EQUALIZE_SPLITS: reset every split
-        // ratio in the active tab to 0.5 so each pane occupies an
-        // even share of its parent split. UI thread only.
-        void EqualizeSplitsForSurface(ghostty_surface_t surface);
-
-        // Handle GHOSTTY_ACTION_TOGGLE_SPLIT_ZOOM: if no leaf is
-        // currently zoomed in the source surface's tab, expand the
-        // source leaf to fill the panel; if a leaf is already zoomed
-        // there, restore the regular split layout. UI thread only.
-        void ToggleSplitZoomForSurface(ghostty_surface_t surface);
 
         std::unique_ptr<GhosttyApp> m_ghostty;
         HWND m_hwnd = nullptr;
