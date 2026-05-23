@@ -23,4 +23,3 @@ ghostty/ghostty.pdb
 obj/
 *.dll
 *.lib
-GhosttyWin32App/ghostty.h
