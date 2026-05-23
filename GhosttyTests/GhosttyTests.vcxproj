@@ -66,6 +66,15 @@
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <SubSystem>Console</SubSystem>
+      <!--
+        ghostty.lib is the import lib for ghostty.dll; the four
+        production cpps we pull in (notably GhosttyActions::
+        OnConfigChange via ghostty_config_clone / _free, and the
+        test itself via _new) link straight against it. Same path
+        production uses.
+      -->
+      <AdditionalLibraryDirectories>$(ProjectDir)..\GhosttyWin32App;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>ghostty.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -102,6 +111,8 @@
       <SubSystem>Console</SubSystem>
       <OptimizeReferences>true</OptimizeReferences>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <AdditionalLibraryDirectories>$(ProjectDir)..\GhosttyWin32App;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>ghostty.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
