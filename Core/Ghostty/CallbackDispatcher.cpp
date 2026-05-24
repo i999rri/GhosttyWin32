@@ -37,6 +37,10 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
             return m_actions.OnToggleVisibility();
         case GHOSTTY_ACTION_TOGGLE_MAXIMIZE:
             return m_actions.OnToggleMaximize();
+        case GHOSTTY_ACTION_PRESENT_TERMINAL:
+            return m_actions.OnPresentTerminal();
+        case GHOSTTY_ACTION_SHOW_ON_SCREEN_KEYBOARD:
+            return m_actions.OnShowOnScreenKeyboard();
         case GHOSTTY_ACTION_OPEN_CONFIG:
             return m_actions.OnOpenConfig();
 
@@ -58,6 +62,8 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
             return false;
         case GHOSTTY_ACTION_GOTO_TAB:
             return m_actions.OnGotoTab(static_cast<int>(action.action.goto_tab));
+        case GHOSTTY_ACTION_MOVE_TAB:
+            return m_actions.OnMoveTab(action.action.move_tab);
         // SET_TITLE / SET_TAB_TITLE: this port treats them
         // identically (one title surface per tab); the action union
         // happens to share `set_title` for both tags.
@@ -168,6 +174,16 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
         // Acking avoids "unhandled action" noise once that's
         // fixed and the keybind starts firing.
         case GHOSTTY_ACTION_FLOAT_WINDOW:
+        // TOGGLE_WINDOW_DECORATIONS / TOGGLE_BACKGROUND_OPACITY:
+        // dispatched but not yet implemented to match upstream
+        // semantics — tracked separately so the action_cb stays
+        // quiet until the real implementations land:
+        //   #68 — TOGGLE_WINDOW_DECORATIONS (per-window override,
+        //         3-state, mirroring upstream GTK)
+        //   #69 — TOGGLE_BACKGROUND_OPACITY (layered-alpha flip
+        //         against config value, with macOS-style guards)
+        case GHOSTTY_ACTION_TOGGLE_WINDOW_DECORATIONS:
+        case GHOSTTY_ACTION_TOGGLE_BACKGROUND_OPACITY:
         // MOUSE_VISIBILITY disabled pending #60 (the renderer-
         // side ghostty_surface_key call doesn't populate the
         // event fields ghostty checks before firing this).

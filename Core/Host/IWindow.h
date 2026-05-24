@@ -110,6 +110,13 @@ struct IWindow {
     // system clipboard. No-op when the tab has no title yet.
     virtual void CopyTabTitleForSurface(ghostty_surface_t surface) = 0;
 
+    // Move the currently-selected tab by `amount` positions (signed).
+    // Positive shifts toward higher indices, negative toward lower.
+    // The value is clamped to the TabView's bounds; out-of-range
+    // values are a no-op rather than a wrap-around — matches the
+    // upstream MoveTab semantics.
+    virtual void MoveActiveTabBy(ssize_t amount) = 0;
+
     // ----- window state helpers (delegated to dedicated state
     // owners on MainWindow's side) -----
 
@@ -121,6 +128,17 @@ struct IWindow {
     // Toggle borderless fullscreen on/off. Restores the exact
     // pre-fullscreen placement + style when leaving.
     virtual void ToggleFullscreen() = 0;
+
+    // Bring the window to the foreground (restoring it from a
+    // minimized state first) and give it focus. Used by
+    // PRESENT_TERMINAL — typically triggered by an external
+    // notification "click me" path.
+    virtual void PresentTerminal() = 0;
+
+    // Show the Windows on-screen keyboard so a touch / pen user can
+    // type without a physical keyboard. The OSK is its own top-level
+    // window; we don't track it and the user dismisses it normally.
+    virtual void ShowOnScreenKeyboard() = 0;
 
     // ----- terminal-driven appearance + lifecycle -----
 

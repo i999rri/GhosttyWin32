@@ -65,7 +65,9 @@ A WinUI 3 + C++/WinRT shell that hosts the libghostty C API. Each tab owns its o
 - `COLOR_CHANGE`: sync title bar tint with terminal background
 - `TOGGLE_FULLSCREEN` / `TOGGLE_MAXIMIZE`
 - `SIZE_LIMIT` / `INITIAL_SIZE` / `RESET_WINDOW_SIZE`
-- `NEW_TAB` / `CLOSE_TAB` / `GOTO_TAB`
+- `NEW_TAB` / `CLOSE_TAB` / `GOTO_TAB` / `MOVE_TAB`
+- `PRESENT_TERMINAL`: restore + foreground the window
+- `SHOW_ON_SCREEN_KEYBOARD`: launch the Windows OSK
 - `QUIT`: clean shutdown
 - Clipboard read / write
 - Wakeup: thread-safe `PostMessage` to the UI thread

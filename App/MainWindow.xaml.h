@@ -96,6 +96,7 @@ namespace winrt::GhosttyWin32::implementation
         void SetTabTitleForSurface(ghostty_surface_t surface,
                                    std::wstring title) override;
         void CopyTabTitleForSurface(ghostty_surface_t surface) override;
+        void MoveActiveTabBy(ssize_t amount) override;
 
         // State-owner delegating overrides. Each is a one-liner;
         // the actual logic lives in the dedicated value (m_sizeLimit,
@@ -103,6 +104,8 @@ namespace winrt::GhosttyWin32::implementation
         // that nothing outside one specific handler reads.
         void ApplySizeLimit(ghostty_action_size_limit_s limit) override;
         void ToggleFullscreen() override;
+        void PresentTerminal() override;
+        void ShowOnScreenKeyboard() override;
 
         // Terminal-driven appearance / lifecycle overrides. Bodies
         // are in MainWindow.xaml.cpp; the logic moved verbatim

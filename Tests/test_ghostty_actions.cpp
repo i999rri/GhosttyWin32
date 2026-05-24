@@ -47,6 +47,20 @@ TEST(GhosttyActionsTest, OnToggleFullscreenAsksTheViewToToggle) {
     EXPECT_EQ(view.toggleFullscreenCalls, 1);
 }
 
+TEST(GhosttyActionsTest, OnPresentTerminalAsksTheView) {
+    MockMainWindowView view;
+    Actions actions(view);
+    EXPECT_TRUE(actions.OnPresentTerminal());
+    EXPECT_EQ(view.presentTerminalCalls, 1);
+}
+
+TEST(GhosttyActionsTest, OnShowOnScreenKeyboardAsksTheView) {
+    MockMainWindowView view;
+    Actions actions(view);
+    EXPECT_TRUE(actions.OnShowOnScreenKeyboard());
+    EXPECT_EQ(view.showOnScreenKeyboardCalls, 1);
+}
+
 // ----- tab lifecycle / navigation / title -----
 
 TEST(GhosttyActionsTest, OnNewTabCreatesATab) {
@@ -72,6 +86,27 @@ TEST(GhosttyActionsTest, OnCloseTabIgnoresNullSurface) {
     Actions actions(view);
     EXPECT_TRUE(actions.OnCloseTab(nullptr));
     EXPECT_EQ(view.closeTabBySurfaceCalls, 0);
+}
+
+TEST(GhosttyActionsTest, OnMoveTabForwardsTheAmount) {
+    MockMainWindowView view;
+    Actions actions(view);
+    ghostty_action_move_tab_s move{};
+    move.amount = 2;
+    EXPECT_TRUE(actions.OnMoveTab(move));
+    EXPECT_EQ(view.moveActiveTabByCalls, 1);
+    EXPECT_EQ(view.lastMoveTabAmount, 2);
+}
+
+TEST(GhosttyActionsTest, OnMoveTabAllowsNegativeAmount) {
+    // Negative amount = shift toward lower indices. The action
+    // handler itself doesn't clamp — that's the view's job.
+    MockMainWindowView view;
+    Actions actions(view);
+    ghostty_action_move_tab_s move{};
+    move.amount = -3;
+    EXPECT_TRUE(actions.OnMoveTab(move));
+    EXPECT_EQ(view.lastMoveTabAmount, -3);
 }
 
 TEST(GhosttyActionsTest, OnGotoTabForwardsTheIndex) {

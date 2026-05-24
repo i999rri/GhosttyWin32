@@ -776,6 +776,29 @@ namespace winrt::GhosttyWin32::implementation
         win32::Clipboard::write(m_hwnd, std::wstring(title));
     }
 
+    void MainWindow::MoveActiveTabBy(ssize_t amount)
+    {
+        // Shift the currently-selected tab by `amount` positions
+        // along the TabView's items collection. Clamped to the
+        // bounds — out-of-range values are a no-op rather than a
+        // wrap-around (matches the upstream MoveTab semantics).
+        auto tabView = TabView();
+        if (!tabView) return;
+        auto items = tabView.TabItems();
+        if (items.Size() == 0 || amount == 0) return;
+        int current = tabView.SelectedIndex();
+        if (current < 0) return;
+        ssize_t target = static_cast<ssize_t>(current) + amount;
+        ssize_t maxIdx = static_cast<ssize_t>(items.Size()) - 1;
+        if (target < 0) target = 0;
+        if (target > maxIdx) target = maxIdx;
+        if (target == current) return;
+        auto item = items.GetAt(static_cast<uint32_t>(current));
+        items.RemoveAt(static_cast<uint32_t>(current));
+        items.InsertAt(static_cast<uint32_t>(target), item);
+        tabView.SelectedIndex(static_cast<int>(target));
+    }
+
     // ----- IMainWindowView: state-owner delegating overrides -----
 
     void MainWindow::ApplySizeLimit(ghostty_action_size_limit_s limit)
@@ -786,6 +809,33 @@ namespace winrt::GhosttyWin32::implementation
     void MainWindow::ToggleFullscreen()
     {
         m_fullscreen.Toggle(m_hwnd);
+    }
+
+    void MainWindow::PresentTerminal()
+    {
+        // Restore from minimized first so SetForegroundWindow has
+        // something to focus. BringWindowToTop reorders the Z stack
+        // even when foreground stealing is blocked by Win32's
+        // SPI_GETFOREGROUNDLOCKTIMEOUT rule; the user notices the
+        // taskbar flash even if focus is denied.
+        if (!m_hwnd) return;
+        if (IsIconic(m_hwnd)) {
+            ShowWindow(m_hwnd, SW_RESTORE);
+        }
+        BringWindowToTop(m_hwnd);
+        SetForegroundWindow(m_hwnd);
+    }
+
+    void MainWindow::ShowOnScreenKeyboard()
+    {
+        // osk.exe (the Accessibility on-screen keyboard) ships with
+        // every supported Windows version and is the documented
+        // entry point for keyboard-less input. TabTip.exe (the
+        // touch keyboard) would be slightly nicer on tablets but
+        // its path and launch contract changed across Win10
+        // builds; osk.exe is the portable choice.
+        ShellExecuteW(m_hwnd, L"open", L"osk.exe",
+                      nullptr, nullptr, SW_SHOWNORMAL);
     }
 
     // ----- IMainWindowView: terminal-driven appearance + lifecycle -----

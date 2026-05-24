@@ -140,6 +140,28 @@ bool Actions::OnToggleMaximize() {
     return true;
 }
 
+bool Actions::OnPresentTerminal() {
+    // Used by external notification "click-to-focus" paths. The
+    // view restores minimized state and grabs foreground; raw
+    // SetForegroundWindow alone would silently fail when our
+    // window isn't already in the allowed-set per Win32's
+    // foreground rules.
+    m_view.Dispatch([this]() {
+        m_view.PresentTerminal();
+    });
+    return true;
+}
+
+bool Actions::OnShowOnScreenKeyboard() {
+    // Touch / pen users without a physical keyboard. The OSK is
+    // its own top-level window; we just launch it and let the user
+    // dismiss it normally.
+    m_view.Dispatch([this]() {
+        m_view.ShowOnScreenKeyboard();
+    });
+    return true;
+}
+
 bool Actions::OnOpenConfig() {
     // Open the user's ghostty config in their default editor.
     // The Windows config path is %LOCALAPPDATA%\ghostty\config
@@ -219,6 +241,16 @@ bool Actions::OnCloseTab(ghostty_surface_t surface) {
 bool Actions::OnGotoTab(int requested) {
     m_view.Dispatch([this, requested]() {
         m_view.GoToTab(requested);
+    });
+    return true;
+}
+
+bool Actions::OnMoveTab(ghostty_action_move_tab_s move) {
+    // ghostty hands us a signed offset; semantics are "shift the
+    // currently selected tab by N positions, clamped to the
+    // TabView's bounds" (no wrap-around — matches upstream).
+    m_view.Dispatch([this, move]() {
+        m_view.MoveActiveTabBy(move.amount);
     });
     return true;
 }

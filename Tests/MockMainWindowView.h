@@ -108,6 +108,13 @@ struct MockMainWindowView : core::host::IWindow {
         lastCopyTitleSurface = s;
     }
 
+    int moveActiveTabByCalls = 0;
+    ssize_t lastMoveTabAmount = 0;
+    void MoveActiveTabBy(ssize_t amount) override {
+        ++moveActiveTabByCalls;
+        lastMoveTabAmount = amount;
+    }
+
     // ----- window state -----
     int applySizeLimitCalls = 0;
     ghostty_action_size_limit_s lastSizeLimit{};
@@ -118,6 +125,12 @@ struct MockMainWindowView : core::host::IWindow {
 
     int toggleFullscreenCalls = 0;
     void ToggleFullscreen() override { ++toggleFullscreenCalls; }
+
+    int presentTerminalCalls = 0;
+    void PresentTerminal() override { ++presentTerminalCalls; }
+
+    int showOnScreenKeyboardCalls = 0;
+    void ShowOnScreenKeyboard() override { ++showOnScreenKeyboardCalls; }
 
     // ----- terminal-driven appearance + lifecycle -----
     int applyBackgroundColorCalls = 0;
