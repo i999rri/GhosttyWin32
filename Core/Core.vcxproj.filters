@@ -16,6 +16,9 @@
     <Filter Include="Interop">
       <UniqueIdentifier>{5924F11C-C724-4FB1-912F-C123175E936D}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Win32">
+      <UniqueIdentifier>{1A4E2C7D-B3C8-46D5-B6E0-7A5E8D9C0F1B}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Ghostty\Actions\Actions.h">
@@ -26,6 +29,9 @@
     </ClInclude>
     <ClInclude Include="Ghostty\Actions\Tags\SizeLimit.h">
       <Filter>Ghostty\Actions\Tags</Filter>
+    </ClInclude>
+    <ClInclude Include="Ghostty\App.h">
+      <Filter>Ghostty</Filter>
     </ClInclude>
     <ClInclude Include="Ghostty\CallbackDispatcher.h">
       <Filter>Ghostty</Filter>
@@ -45,6 +51,12 @@
     <ClInclude Include="Interop\Encoding.h">
       <Filter>Interop</Filter>
     </ClInclude>
+    <ClInclude Include="Win32\Clipboard.h">
+      <Filter>Win32</Filter>
+    </ClInclude>
+    <ClInclude Include="Win32\SEHGuard.h">
+      <Filter>Win32</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Ghostty\Actions\Actions.cpp">
@@ -58,6 +70,9 @@
     </ClCompile>
     <ClCompile Include="Ghostty\CallbackDispatcher.cpp">
       <Filter>Ghostty</Filter>
+    </ClCompile>
+    <ClCompile Include="Win32\SEHGuard.cpp">
+      <Filter>Win32</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

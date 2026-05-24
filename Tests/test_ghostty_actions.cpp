@@ -270,7 +270,7 @@ TEST(GhosttyActionsTest, OnConfigChangeClonesBeforeHandoff) {
     Actions actions(view);
 
     // libghostty needs its global init before any *_new — production
-    // calls ghostty_init() inside GhosttyApp::Create before
+    // calls ghostty_init() inside ghostty::App::Create before
     // ghostty_config_new(). Skipping it leaves libghostty's globals
     // (logger, etc.) zeroed and the subsequent clone AVs with
     // SEH 0xc0000005. ghostty_init is idempotent so calling it from

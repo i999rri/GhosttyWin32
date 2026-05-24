@@ -3,6 +3,7 @@
 #include "TerminalControl.g.h"
 #include "Host/ImeBuffer.h"
 #include "Interop/Encoding.h"
+#include "Win32/Clipboard.h"
 #include "ghostty.h"
 #include <microsoft.ui.xaml.media.dxinterop.h>
 #include <winrt/Windows.UI.Text.Core.h>
@@ -14,6 +15,7 @@ namespace winrt::GhosttyWin32::implementation
 {
     namespace host = core::host;
     namespace interop = core::interop;
+    namespace win32 = core::win32;
 
     // Pending UI-thread "attach this swap chain handle to the panel"
     // request. Created on the UI thread inside TabFactory::Make, kept

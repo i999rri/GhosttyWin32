@@ -2,9 +2,13 @@
 
 #include "ghostty.h"
 #include <memory>
+
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 #include <windows.h>
 
-namespace winrt::GhosttyWin32::implementation {
+namespace core::ghostty {
 
 // RAII wrapper around the global ghostty_app_t + ghostty_config_t pair.
 // Encapsulates the 4MB-stack worker thread that ghostty_init / ghostty_app_new
@@ -15,14 +19,14 @@ namespace winrt::GhosttyWin32::implementation {
 // config (callbacks + userdata) is supplied by the caller — typically wired
 // to the host's MainWindow — and copied into ghostty_app_new before the
 // caller's reference goes out of scope.
-class GhosttyApp {
+class App {
 public:
-    GhosttyApp(GhosttyApp const&) = delete;
-    GhosttyApp& operator=(GhosttyApp const&) = delete;
-    GhosttyApp(GhosttyApp&&) = delete;
-    GhosttyApp& operator=(GhosttyApp&&) = delete;
+    App(App const&) = delete;
+    App& operator=(App const&) = delete;
+    App(App&&) = delete;
+    App& operator=(App&&) = delete;
 
-    static std::unique_ptr<GhosttyApp> Create(ghostty_runtime_config_s rtConfig) {
+    static std::unique_ptr<App> Create(ghostty_runtime_config_s rtConfig) {
         // Bundle the work for the 4MB-stack thread. ghostty_init / ghostty_app_new
         // run deep enough Zig code that the default 1MB thread stack overflows.
         struct Ctx {
@@ -53,10 +57,10 @@ public:
             if (ctx.config) ghostty_config_free(ctx.config);
             return nullptr;
         }
-        return std::unique_ptr<GhosttyApp>(new GhosttyApp(ctx.app, ctx.config));
+        return std::unique_ptr<App>(new App(ctx.app, ctx.config));
     }
 
-    ~GhosttyApp() {
+    ~App() {
         // ghostty_app_free joins surface/IO threads internally and must run
         // before ghostty_config_free — the app holds a reference to config.
         if (m_app) ghostty_app_free(m_app);
@@ -66,8 +70,8 @@ public:
     ghostty_app_t Handle() const noexcept { return m_app; }
     // Borrow the parsed config. Callers use ghostty_config_get against
     // this handle for read-only lookups (e.g. unfocused-split-opacity);
-    // the GhosttyApp keeps ownership and frees it in the destructor
-    // after the app handle is released.
+    // the App keeps ownership and frees it in the destructor after the
+    // app handle is released.
     ghostty_config_t ConfigHandle() const noexcept { return m_config; }
     void Tick() noexcept { if (m_app) ghostty_app_tick(m_app); }
 
@@ -84,11 +88,11 @@ public:
     }
 
 private:
-    GhosttyApp(ghostty_app_t app, ghostty_config_t config) noexcept
+    App(ghostty_app_t app, ghostty_config_t config) noexcept
         : m_app(app), m_config(config) {}
 
     ghostty_app_t m_app{ nullptr };
     ghostty_config_t m_config{ nullptr };
 };
 
-}  // namespace winrt::GhosttyWin32::implementation
+}  // namespace core::ghostty

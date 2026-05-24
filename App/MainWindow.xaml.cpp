@@ -1,10 +1,10 @@
 #include "pch.h"
 #include "MainWindow.xaml.h"
 #include "Ghostty/CallbackDispatcher.h"
-#include "Clipboard.h"
 #include "Host/KeyModifiers.h"
 #include "Interop/Encoding.h"
-#include "SEHGuard.h"
+#include "Win32/Clipboard.h"
+#include "Win32/SEHGuard.h"
 #if __has_include("MainWindow.g.cpp")
 #include "MainWindow.g.cpp"
 #endif
@@ -514,7 +514,7 @@ namespace winrt::GhosttyWin32::implementation
             if (!g_mainWindow) return false;
             auto* tc = g_mainWindow->ActiveControl();
             if (!tc || !tc->Surface()) return false;
-            auto utf8 = interop::Encoding::toUtf8(Clipboard::read(g_mainWindow->m_hwnd));
+            auto utf8 = interop::Encoding::toUtf8(win32::Clipboard::read(g_mainWindow->m_hwnd));
             if (utf8.empty()) return false;
             ghostty_surface_complete_clipboard_request(tc->Surface(), utf8.c_str(), state, false);
             return true;
@@ -531,7 +531,7 @@ namespace winrt::GhosttyWin32::implementation
         rtConfig.write_clipboard_cb = [](void*, ghostty_clipboard_e, const ghostty_clipboard_content_s* content, size_t count, bool) {
             if (!content || count == 0 || !content[0].data) return;
             HWND hwnd = g_mainWindow ? g_mainWindow->m_hwnd : nullptr;
-            Clipboard::write(hwnd, interop::Encoding::toUtf16(content[0].data));
+            win32::Clipboard::write(hwnd, interop::Encoding::toUtf16(content[0].data));
         };
         // Shell exited (e.g. user typed `exit`), or ghostty asked to close
         // the surface for any other reason. The userdata is the PaneId
@@ -554,7 +554,7 @@ namespace winrt::GhosttyWin32::implementation
             });
         };
 
-        m_ghostty = GhosttyApp::Create(rtConfig);
+        m_ghostty = ghostty::App::Create(rtConfig);
         if (m_ghostty && m_hwnd) {
             // Capture by raw `this`: MainWindow outlives every
             // TerminalControl it owns (the controls are destroyed
@@ -773,7 +773,7 @@ namespace winrt::GhosttyWin32::implementation
         auto title = winrt::unbox_value_or<winrt::hstring>(
             t->Item().Header(), winrt::hstring{});
         if (title.empty()) return;
-        Clipboard::write(m_hwnd, std::wstring(title));
+        win32::Clipboard::write(m_hwnd, std::wstring(title));
     }
 
     // ----- IMainWindowView: state-owner delegating overrides -----
@@ -847,7 +847,7 @@ namespace winrt::GhosttyWin32::implementation
         }
         // Hard reload: ghostty's config parser stack-overflows the
         // default 1MB CreateThread stack on debug builds, so the
-        // re-parse runs on a 4MB worker (same as GhosttyApp::Create).
+        // re-parse runs on a 4MB worker (same as ghostty::App::Create).
         // Result hand-off through the UI dispatcher matches the
         // CONFIG_CHANGE path.
         struct ReloadCtx { MainWindow* mw; };

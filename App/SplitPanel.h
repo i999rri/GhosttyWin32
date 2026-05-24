@@ -1,7 +1,7 @@
 #pragma once
 
 #include "SplitPanel.g.h"
-#include "Pane.h"
+#include "Tabs/Panes/Pane.h"
 #include <memory>
 #include <vector>
 

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Pane.h"
+#include "Tabs/Panes/Pane.h"
 #include "SplitPanel.h"
 #include "TerminalControl.xaml.h"
 #include <winrt/Microsoft.UI.Xaml.h>

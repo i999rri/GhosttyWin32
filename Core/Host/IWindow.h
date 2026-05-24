@@ -39,7 +39,7 @@ struct IWindow {
     // override on MainWindow for the WinUI translation.
     virtual void Dispatch(std::function<void()> fn) = 0;
 
-    // Forwarder to GhosttyApp::Tick. The underlying ghostty_app_tick
+    // Forwarder to ghostty::App::Tick. The underlying ghostty_app_tick
     // call is wrapped with the SEH guard / NVIDIA presenter workaround
     // from issue #26, so handlers should not be tempted to invoke
     // ghostty_app_tick directly.

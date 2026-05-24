@@ -106,7 +106,7 @@
       <WarningLevel>Level4</WarningLevel>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <AdditionalOptions>%(AdditionalOptions) /bigobj /utf-8</AdditionalOptions>
-      <AdditionalIncludeDirectories>$(ProjectDir)..\Core;$(ProjectDir)..\ghostty;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)..\Core;$(ProjectDir)..\ghostty;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <AdditionalLibraryDirectories>$(ProjectDir)..\ghostty;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
@@ -144,19 +144,19 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />
-    <ClInclude Include="SEHGuard.h" />
     <ClInclude Include="App.xaml.h">
       <DependentUpon>App.xaml</DependentUpon>
     </ClInclude>
     <ClInclude Include="MainWindow.xaml.h">
       <DependentUpon>MainWindow.xaml</DependentUpon>
     </ClInclude>
-    <ClInclude Include="Pane.h" />
-    <ClInclude Include="PaneId.h" />
-    <ClInclude Include="PaneIdAllocator.h" />
     <ClInclude Include="SplitPanel.h" />
-    <ClInclude Include="Tab.h" />
-    <ClInclude Include="TabFactory.h" />
+    <ClInclude Include="Tabs\Panes\Pane.h" />
+    <ClInclude Include="Tabs\Panes\PaneId.h" />
+    <ClInclude Include="Tabs\Panes\PaneIdAllocator.h" />
+    <ClInclude Include="Tabs\Tab.h" />
+    <ClInclude Include="Tabs\TabFactory.h" />
+    <ClInclude Include="Tabs\Tabs.h" />
     <ClInclude Include="TerminalControl.xaml.h">
       <DependentUpon>TerminalControl.xaml</DependentUpon>
     </ClInclude>
@@ -176,7 +176,6 @@
     <ClCompile Include="MainWindow.xaml.cpp">
       <DependentUpon>MainWindow.xaml</DependentUpon>
     </ClCompile>
-    <ClCompile Include="SEHGuard.cpp" />
     <ClCompile Include="SplitPanel.cpp" />
     <ClCompile Include="TerminalControl.xaml.cpp">
       <DependentUpon>TerminalControl.xaml</DependentUpon>

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "PaneId.h"
+#include "Tabs/Panes/PaneId.h"
 #include <atomic>
 
 namespace winrt::GhosttyWin32::implementation {

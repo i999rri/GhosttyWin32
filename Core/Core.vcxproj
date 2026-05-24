@@ -52,7 +52,7 @@
       <AdditionalOptions>%(AdditionalOptions) /bigobj /utf-8 /Zc:__cplusplus</AdditionalOptions>
       <!--
         $(ProjectDir) = Core/ — internal cross-subdir includes go
-        "Host/IWindow.h" / "Util/Encoding.h" / etc., readable from
+        "Host/IWindow.h" / "Interop/Encoding.h" / etc., readable from
         any cpp regardless of its own subdir.
         $(ProjectDir)..\ghostty for ghostty.h.
       -->
@@ -80,18 +80,22 @@
     <ClInclude Include="Ghostty\Actions\Actions.h" />
     <ClInclude Include="Ghostty\Actions\Tags\Fullscreen.h" />
     <ClInclude Include="Ghostty\Actions\Tags\SizeLimit.h" />
+    <ClInclude Include="Ghostty\App.h" />
     <ClInclude Include="Ghostty\CallbackDispatcher.h" />
     <ClInclude Include="Ghostty\Config.h" />
     <ClInclude Include="Host\IWindow.h" />
     <ClInclude Include="Host\ImeBuffer.h" />
     <ClInclude Include="Host\KeyModifiers.h" />
-    <ClInclude Include="Util\Encoding.h" />
+    <ClInclude Include="Interop\Encoding.h" />
+    <ClInclude Include="Win32\Clipboard.h" />
+    <ClInclude Include="Win32\SEHGuard.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Ghostty\Actions\Actions.cpp" />
     <ClCompile Include="Ghostty\Actions\Tags\Fullscreen.cpp" />
     <ClCompile Include="Ghostty\Actions\Tags\SizeLimit.cpp" />
     <ClCompile Include="Ghostty\CallbackDispatcher.cpp" />
+    <ClCompile Include="Win32\SEHGuard.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />

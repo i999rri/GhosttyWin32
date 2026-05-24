@@ -1,8 +1,8 @@
 #pragma once
 
-#include "Pane.h"
+#include "Tabs/Panes/Pane.h"
 #include "SplitPanel.h"
-#include "Tab.h"
+#include "Tabs/Tab.h"
 #include "ghostty.h"
 #include <vector>
 #include <memory>

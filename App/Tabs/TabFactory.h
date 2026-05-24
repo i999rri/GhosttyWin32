@@ -1,11 +1,11 @@
 #pragma once
 
 #include "Ghostty/Config.h"
-#include "Pane.h"
-#include "PaneId.h"
-#include "PaneIdAllocator.h"
+#include "Tabs/Panes/Pane.h"
+#include "Tabs/Panes/PaneId.h"
+#include "Tabs/Panes/PaneIdAllocator.h"
 #include "SplitPanel.h"
-#include "Tab.h"
+#include "Tabs/Tab.h"
 #include "TerminalControl.xaml.h"
 #include "ghostty.h"
 #include <microsoft.ui.xaml.media.dxinterop.h>

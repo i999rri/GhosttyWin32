@@ -7,6 +7,8 @@
 #endif
 #include <windows.h>
 
+namespace core::win32 {
+
 // Win32 clipboard read/write. Handles clipboard locking and memory management.
 // All text is UTF-16 internally (Windows clipboard format).
 namespace Clipboard {
@@ -49,3 +51,5 @@ namespace Clipboard {
     }
 
 } // namespace Clipboard
+
+} // namespace core::win32

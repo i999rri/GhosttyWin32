@@ -4,14 +4,15 @@
 #include "ghostty.h"
 #include "Ghostty/Actions/Tags/Fullscreen.h"
 #include "Ghostty/Actions/Tags/SizeLimit.h"
+#include "Ghostty/App.h"
 #include "Ghostty/CallbackDispatcher.h"
-#include "GhosttyApp.h"
 #include "Host/IWindow.h"
 #include "Interop/Encoding.h"
-#include "PaneIdAllocator.h"
-#include "Tab.h"
-#include "TabFactory.h"
-#include "Tabs.h"
+#include "Win32/Clipboard.h"
+#include "Tabs/Panes/PaneIdAllocator.h"
+#include "Tabs/Tab.h"
+#include "Tabs/TabFactory.h"
+#include "Tabs/Tabs.h"
 
 namespace winrt::GhosttyWin32::implementation
 {
@@ -21,6 +22,7 @@ namespace winrt::GhosttyWin32::implementation
     namespace ghostty = core::ghostty;
     namespace host    = core::host;
     namespace interop = core::interop;
+    namespace win32   = core::win32;
 
     struct MainWindow : MainWindowT<MainWindow>, host::IWindow
     {
@@ -129,7 +131,7 @@ namespace winrt::GhosttyWin32::implementation
         // list. Dispatched from close_surface_cb. UI thread only.
         void CloseSurfaceByPaneId(PaneId id);
 
-        std::unique_ptr<GhosttyApp> m_ghostty;
+        std::unique_ptr<ghostty::App> m_ghostty;
         HWND m_hwnd = nullptr;
         // SIZE_LIMIT / TOGGLE_FULLSCREEN state. Default constructed
         // (no limit set, not in fullscreen). Subclasses installed
@@ -148,7 +150,7 @@ namespace winrt::GhosttyWin32::implementation
         std::unique_ptr<TabFactory> m_tabFactory;
         // ghostty runtime callback dispatcher (today: action_cb;
         // future: clipboard / surface). Built in InitGhostty after
-        // the GhosttyApp handle is available; destroyed before
+        // the ghostty::App handle is available; destroyed before
         // m_ghostty so handlers can't observe a half-torn-down app
         // on shutdown.
         std::unique_ptr<ghostty::CallbackDispatcher> m_ghosttyDispatcher;
