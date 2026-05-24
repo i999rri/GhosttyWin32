@@ -24,6 +24,9 @@ Package/AppPackages/
 *.msix
 *.msixbundle
 
+# MSBuild / NuGet assets cache (regenerated on every build)
+*.assets.cache
+
 # NuGet
 packages/
 Generated Files/
