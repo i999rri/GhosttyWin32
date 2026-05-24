@@ -1,0 +1,11 @@
+This directory holds the link-time artifacts (.dll / .lib / .pdb) that
+the App / Tests vcxprojs link against via $(ProjectDir)..\ghostty as
+their AdditionalLibraryDirectories. Those files are produced from the
+ghostty submodule at external/ghostty/ during build (see README's
+"Build from Source" section, and .github/actions/build-signed-msix/
+action.yml in CI).
+
+The artifacts themselves are .gitignored. This .gitkeep is here so
+git preserves the empty directory at checkout time — the build /
+CI scripts assume the directory already exists when they Copy-Item
+the freshly-built dll / lib / pdb into it.
