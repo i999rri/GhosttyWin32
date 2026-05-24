@@ -38,3 +38,7 @@ ghostty/ghostty.pdb
 obj/
 *.dll
 *.lib
+
+# ghostty.h is included directly from external/ghostty/include/ via
+# AdditionalIncludeDirectories; no copy in ghostty/ is needed.
+ghostty/ghostty.h

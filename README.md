@@ -157,19 +157,20 @@ git submodule update --init --recursive
 
 (Or pass `--recurse-submodules` to the original `git clone`.)
 
-Build and copy the artifacts the host needs:
+Build and copy the link-time artifacts the host needs:
 
 ```bash
 cd external/ghostty
 zig build -Doptimize=ReleaseSafe -Drenderer=directx
 cd ../..
 cp external/ghostty/zig-out/lib/ghostty.{dll,lib,pdb} ghostty/
-cp external/ghostty/zig-out/include/ghostty.h ghostty/
 ```
 
-`ghostty/` is gitignored — only the artifacts that the App and
-Tests projects actually link against live there; the source tree
-itself sits in `external/ghostty/`.
+`ghostty/` holds the linker artifacts (`.dll` / `.lib` / `.pdb`) and is
+gitignored. `ghostty.h` is **not** copied — App / Core / Tests include
+it directly from `external/ghostty/include/` via the vcxproj's
+`AdditionalIncludeDirectories`, so the submodule pin is always the
+source of truth for the C API.
 
 **Trying a different ghostty branch during development**: switch
 inside the submodule and rebuild — the parent repo only notices
@@ -183,7 +184,6 @@ git switch feat/dx-p3-colorspace   # or any other branch
 zig build -Doptimize=ReleaseSafe -Drenderer=directx
 cd ../..
 cp external/ghostty/zig-out/lib/ghostty.{dll,lib,pdb} ghostty/
-cp external/ghostty/zig-out/include/ghostty.h ghostty/
 ```
 
 ### Build GhosttyWin32

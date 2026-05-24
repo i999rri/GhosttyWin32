@@ -54,9 +54,11 @@
         $(ProjectDir) = Core/ — internal cross-subdir includes go
         "Host/IWindow.h" / "Interop/Encoding.h" / etc., readable from
         any cpp regardless of its own subdir.
-        $(ProjectDir)..\ghostty for ghostty.h.
+        external\ghostty\include for ghostty.h (the canonical source
+        is the submodule; the build-output ghostty/ dir holds .dll /
+        .lib / .pdb only).
       -->
-      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)..\ghostty;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)..\external\ghostty\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
   </ItemDefinitionGroup>
