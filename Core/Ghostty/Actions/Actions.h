@@ -42,6 +42,8 @@ public:
     bool OnCloseWindow();
     bool OnToggleVisibility();
     bool OnToggleMaximize();
+    bool OnPresentTerminal();
+    bool OnShowOnScreenKeyboard();
     bool OnOpenConfig();
 
     // ----- sizing -----
@@ -54,6 +56,7 @@ public:
     bool OnNewTab();
     bool OnCloseTab(ghostty_surface_t surface);
     bool OnGotoTab(int requested);
+    bool OnMoveTab(ghostty_action_move_tab_s move);
     // SET_TITLE and SET_TAB_TITLE collapse to the same handler —
     // this port has one title surface per tab.
     bool OnSetTitle(ghostty_surface_t surface, const char* utf8Title);
