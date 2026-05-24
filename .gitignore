@@ -31,14 +31,8 @@ Package/AppPackages/
 packages/
 Generated Files/
 
-# Ghostty DLL and import library (build from source)
-ghostty/ghostty.dll
-ghostty/ghostty.lib
-ghostty/ghostty.pdb
+# Ghostty artifacts now live entirely under external/ghostty/zig-out/;
+# no separate ghostty/ output dir at the repo root.
 obj/
 *.dll
 *.lib
-
-# ghostty.h is included directly from external/ghostty/include/ via
-# AdditionalIncludeDirectories; no copy in ghostty/ is needed.
-ghostty/ghostty.h

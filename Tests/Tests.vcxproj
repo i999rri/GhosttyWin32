@@ -76,14 +76,13 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <SubSystem>Console</SubSystem>
       <!--
-        ghostty.lib is the import lib for ghostty.dll; the four
-        production cpps we pull in (notably GhosttyActions::
-        OnConfigChange via ghostty_config_clone / _free, and the
-        test itself via _new) link straight against it. Same path
-        production uses.
+        ghostty-internal.lib is the import lib for ghostty-internal.dll;
+        production links the same one (see App.vcxproj). The path
+        points at the submodule's own zig-out so there's no copy step
+        between zig build and msbuild.
       -->
-      <AdditionalLibraryDirectories>$(ProjectDir)..\ghostty;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>ghostty.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(ProjectDir)..\external\ghostty\zig-out\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>ghostty-internal.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -120,8 +119,8 @@
       <SubSystem>Console</SubSystem>
       <OptimizeReferences>true</OptimizeReferences>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
-      <AdditionalLibraryDirectories>$(ProjectDir)..\ghostty;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>ghostty.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(ProjectDir)..\external\ghostty\zig-out\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>ghostty-internal.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -160,17 +159,23 @@
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <!--
-    Tests.exe links against ghostty.lib (import library) and loads
-    ghostty.dll at run time. The App project ships ghostty.dll via
-    the MSIX packaging path; standalone Tests.exe doesn't, so the
-    OutDir stays missing the dll and the EXE fails at startup with
-    "cannot open shared object file: ghostty.dll". Copy the dll
+    Tests.exe links against ghostty-internal.lib (import library)
+    and loads ghostty-internal.dll at run time. The App project
+    ships the dll via the MSIX packaging path; standalone Tests.exe
+    doesn't, so the OutDir stays missing the dll and the EXE fails
+    at startup with "cannot open shared object file". Copy the dll
     next to the test EXE after every build so direct execution
     (and Test Explorer's runner) finds it.
   -->
   <Target Name="CopyGhosttyDllToOutput" AfterTargets="Build">
-    <Copy SourceFiles="$(ProjectDir)..\ghostty\ghostty.dll"
-          DestinationFolder="$(OutDir)"
+    <!--
+      The on-disk artifact is ghostty-internal.dll but the import
+      lib's descriptor encodes the PE internal name (ghostty.dll),
+      so the EXE's import table resolves ghostty.dll at startup —
+      copy the file under that name to satisfy it.
+    -->
+    <Copy SourceFiles="$(ProjectDir)..\external\ghostty\zig-out\lib\ghostty-internal.dll"
+          DestinationFiles="$(OutDir)ghostty.dll"
           SkipUnchangedFiles="true" />
   </Target>
   <ImportGroup Label="ExtensionTargets">
