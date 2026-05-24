@@ -73,7 +73,7 @@ A WinUI 3 + C++/WinRT shell that hosts the libghostty C API. Each tab owns its o
 ## Architecture
 
 ```
-GhosttyWin32App.exe (WinUI 3 / C++/WinRT)
+GhosttyWin32.exe (WinUI 3 / C++/WinRT)
   ├── App.xaml — application entry, XAML Controls Resources
   ├── MainWindow
   │   ├── Custom title bar + caption buttons
@@ -145,27 +145,51 @@ troubleshooting: [docs/INSTALL.md](docs/INSTALL.md).
 
 ### Build ghostty.dll
 
-This requires the forked Ghostty with Windows support patches:
+The forked Ghostty source lives as a git submodule under
+`external/ghostty/`, pinned to the `windows-port` branch. Initialise
+the submodule on first clone:
 
 ```bash
-git clone https://github.com/i999rri/ghostty.git
-cd ghostty
-git switch windows-port
-zig build -Doptimize=ReleaseSafe -Drenderer=directx
+git submodule update --init --recursive
 ```
 
-Copy the following into `GhosttyWin32App/`:
+(Or pass `--recurse-submodules` to the original `git clone`.)
 
-- `zig-out/lib/ghostty.dll`
-- `zig-out/lib/ghostty.lib`
-- (`ghostty.h` is already vendored in the repo)
+Build and copy the artifacts the host needs:
+
+```bash
+cd external/ghostty
+zig build -Doptimize=ReleaseSafe -Drenderer=directx
+cd ../..
+cp external/ghostty/zig-out/lib/ghostty.{dll,lib,pdb} ghostty/
+cp external/ghostty/zig-out/include/ghostty.h ghostty/
+```
+
+`ghostty/` is gitignored — only the artifacts that the App and
+Tests projects actually link against live there; the source tree
+itself sits in `external/ghostty/`.
+
+**Trying a different ghostty branch during development**: switch
+inside the submodule and rebuild — the parent repo only notices
+the change when you `git add external/ghostty`, so you can
+experiment freely and either commit the pin update or
+`git submodule update --recursive` to snap back.
+
+```bash
+cd external/ghostty
+git switch feat/dx-p3-colorspace   # or any other branch
+zig build -Doptimize=ReleaseSafe -Drenderer=directx
+cd ../..
+cp external/ghostty/zig-out/lib/ghostty.{dll,lib,pdb} ghostty/
+cp external/ghostty/zig-out/include/ghostty.h ghostty/
+```
 
 ### Build GhosttyWin32
 
 Open `GhosttyWin32.slnx` in Visual Studio, select **Release | x64**, and
-build the `GhosttyWin32App` project. F5 deploys as a packaged MSIX into
+build the `App` project. F5 deploys as a packaged MSIX into
 the local appx registry; `Release | x64` build artifacts land under
-`x64/Release/GhosttyWin32App/`.
+`x64/Release/App/`.
 
 ## Configuration
 

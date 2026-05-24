@@ -4,11 +4,12 @@
     <Platform Name="x64" />
     <Platform Name="x86" />
   </Configurations>
-  <Project Path="GhosttyTests/GhosttyTests.vcxproj" Id="265c76cb-58a2-4632-b6fe-ec5093b04d10">
+  <Project Path="Tests/Tests.vcxproj" Id="265c76cb-58a2-4632-b6fe-ec5093b04d10">
     <Platform Solution="*|ARM64" Project="x64" />
   </Project>
-  <Project Path="GhosttyWin32 (Package)/GhosttyWin32 (Package).wapproj" Type="c7167f0d-bc9f-4e6e-afe1-012c56b48db5">
+  <Project Path="Package/Package.wapproj" Type="c7167f0d-bc9f-4e6e-afe1-012c56b48db5">
     <Deploy />
   </Project>
-  <Project Path="GhosttyWin32App/GhosttyWin32App.vcxproj" Id="c94e582b-f837-42cc-93d6-8409c4d5a0c7" />
+  <Project Path="App/App.vcxproj" Id="c94e582b-f837-42cc-93d6-8409c4d5a0c7" />
+  <Project Path="Core/Core.vcxproj" Id="1ef672e9-812a-4f4b-ab42-02b2f655febe" />
 </Solution>

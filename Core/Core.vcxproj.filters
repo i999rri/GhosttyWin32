@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Ghostty">
+      <UniqueIdentifier>{261C91C3-F586-40AD-BBC2-3F3F6F34B770}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Ghostty\Actions">
+      <UniqueIdentifier>{D37F2A5E-DE26-41CC-BA92-403020DEB6F9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Ghostty\Actions\Tags">
+      <UniqueIdentifier>{33CF4F36-BF9F-400A-87D3-DA24E1DCC2BD}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Host">
+      <UniqueIdentifier>{28EE2ED7-EE73-4B7B-8D61-EAEC92D0BFC1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Interop">
+      <UniqueIdentifier>{5924F11C-C724-4FB1-912F-C123175E936D}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Win32">
+      <UniqueIdentifier>{1A4E2C7D-B3C8-46D5-B6E0-7A5E8D9C0F1B}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Ghostty\Actions\Actions.h">
+      <Filter>Ghostty\Actions</Filter>
+    </ClInclude>
+    <ClInclude Include="Ghostty\Actions\Tags\Fullscreen.h">
+      <Filter>Ghostty\Actions\Tags</Filter>
+    </ClInclude>
+    <ClInclude Include="Ghostty\Actions\Tags\SizeLimit.h">
+      <Filter>Ghostty\Actions\Tags</Filter>
+    </ClInclude>
+    <ClInclude Include="Ghostty\App.h">
+      <Filter>Ghostty</Filter>
+    </ClInclude>
+    <ClInclude Include="Ghostty\CallbackDispatcher.h">
+      <Filter>Ghostty</Filter>
+    </ClInclude>
+    <ClInclude Include="Ghostty\Config.h">
+      <Filter>Ghostty</Filter>
+    </ClInclude>
+    <ClInclude Include="Host\IWindow.h">
+      <Filter>Host</Filter>
+    </ClInclude>
+    <ClInclude Include="Host\ImeBuffer.h">
+      <Filter>Host</Filter>
+    </ClInclude>
+    <ClInclude Include="Host\KeyModifiers.h">
+      <Filter>Host</Filter>
+    </ClInclude>
+    <ClInclude Include="Interop\Encoding.h">
+      <Filter>Interop</Filter>
+    </ClInclude>
+    <ClInclude Include="Win32\Clipboard.h">
+      <Filter>Win32</Filter>
+    </ClInclude>
+    <ClInclude Include="Win32\SEHGuard.h">
+      <Filter>Win32</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Ghostty\Actions\Actions.cpp">
+      <Filter>Ghostty\Actions</Filter>
+    </ClCompile>
+    <ClCompile Include="Ghostty\Actions\Tags\Fullscreen.cpp">
+      <Filter>Ghostty\Actions\Tags</Filter>
+    </ClCompile>
+    <ClCompile Include="Ghostty\Actions\Tags\SizeLimit.cpp">
+      <Filter>Ghostty\Actions\Tags</Filter>
+    </ClCompile>
+    <ClCompile Include="Ghostty\CallbackDispatcher.cpp">
+      <Filter>Ghostty</Filter>
+    </ClCompile>
+    <ClCompile Include="Win32\SEHGuard.cpp">
+      <Filter>Win32</Filter>
+    </ClCompile>
+  </ItemGroup>
+</Project>
