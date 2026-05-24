@@ -93,7 +93,7 @@
       <PrecompiledHeaderOutputFile>$(IntDir)pch.pch</PrecompiledHeaderOutputFile>
       <WarningLevel>Level4</WarningLevel>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalOptions>%(AdditionalOptions) /bigobj</AdditionalOptions>
+      <AdditionalOptions>%(AdditionalOptions) /bigobj /utf-8</AdditionalOptions>
       <AdditionalIncludeDirectories>$(ProjectDir)..\ghostty;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
@@ -119,8 +119,13 @@
     <Manifest Include="app.manifest" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="GhosttyCallbackDispatcher.h" />
     <ClInclude Include="Encoding.h" />
+    <ClInclude Include="Fullscreen.h" />
+    <ClInclude Include="GhosttyActions.h" />
+    <ClInclude Include="GhosttyConfig.h" />
     <ClInclude Include="ImeBuffer.h" />
+    <ClInclude Include="IMainWindowView.h" />
     <ClInclude Include="KeyModifiers.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="SEHGuard.h" />
@@ -133,6 +138,7 @@
     <ClInclude Include="Pane.h" />
     <ClInclude Include="PaneId.h" />
     <ClInclude Include="PaneIdAllocator.h" />
+    <ClInclude Include="SizeLimit.h" />
     <ClInclude Include="SplitPanel.h" />
     <ClInclude Include="Tab.h" />
     <ClInclude Include="TabFactory.h" />
@@ -148,6 +154,26 @@
   <ItemGroup>
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader>Create</PrecompiledHeader>
+    </ClCompile>
+    <!--
+      These four are deliberately winrt-free so the test EXE can
+      pick them up directly without pulling WindowsAppSDK into
+      GhosttyTests. Skipping the pch is what keeps the
+      no-winrt-headers contract on the test side; the cost on the
+      production side is negligible (each file only includes a
+      handful of headers).
+    -->
+    <ClCompile Include="GhosttyCallbackDispatcher.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="Fullscreen.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="GhosttyActions.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="SizeLimit.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="App.xaml.cpp">
       <DependentUpon>App.xaml</DependentUpon>

@@ -2,15 +2,20 @@
 
 #include "MainWindow.g.h"
 #include "ghostty.h"
+#include "Fullscreen.h"
 #include "GhosttyApp.h"
+#include "IMainWindowView.h"
 #include "PaneIdAllocator.h"
+#include "SizeLimit.h"
 #include "Tab.h"
 #include "TabFactory.h"
 #include "Tabs.h"
 
 namespace winrt::GhosttyWin32::implementation
 {
-    struct MainWindow : MainWindowT<MainWindow>
+    class GhosttyCallbackDispatcher;
+
+    struct MainWindow : MainWindowT<MainWindow>, IMainWindowView
     {
         MainWindow();
         ~MainWindow();
@@ -21,23 +26,6 @@ namespace winrt::GhosttyWin32::implementation
         // process — reduces the chance the next launch inherits corrupted
         // NVIDIA state.
         static long __stdcall OnUnhandledException(struct _EXCEPTION_POINTERS* info) noexcept;
-
-        // WM_GETMINMAXINFO subclass proc installed lazily on first
-        // SIZE_LIMIT. dwRefData carries the MainWindow*; the proc
-        // reads m_sizeLimit and clamps ptMin/MaxTrackSize before
-        // forwarding to DefSubclassProc.
-        static LRESULT CALLBACK SizeLimitSubclassProc(
-            HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
-            UINT_PTR id, DWORD_PTR ref) noexcept;
-
-        // WM_SETCURSOR subclass proc for MOUSE_VISIBILITY. WinUI 3
-        // ignores ShowCursor (the cursor goes through ProtectedCursor
-        // / InputSystemCursor instead), so the only reliable hide
-        // path is to short-circuit WM_SETCURSOR with SetCursor(NULL)
-        // while m_cursorHidden is true.
-        static LRESULT CALLBACK CursorVisibilitySubclassProc(
-            HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
-            UINT_PTR id, DWORD_PTR ref) noexcept;
 
         // Caption button click handlers, referenced from MainWindow.xaml.
         // Routed through Win32 messages (WM_SYSCOMMAND / WM_CLOSE / ShowWindow)
@@ -66,9 +54,61 @@ namespace winrt::GhosttyWin32::implementation
         // surface itself is torn down.
         ghostty_surface_t GetActiveSurface() const noexcept { return m_activeSurface; }
 
+        // ----- IMainWindowView -----
+        // Narrow surface the callback dispatcher / GhosttyActions
+        // consume; see IMainWindowView.h for why these live behind
+        // a virtual interface rather than being looked up off
+        // MainWindow directly.
+        HWND Hwnd() const noexcept override { return m_hwnd; }
+        void Dispatch(std::function<void()> fn) override;
+        void Tick() override;
+        void RequestClose() override;
+
+        // Split-pane operations from IMainWindowView. Bodies are in
+        // MainWindow.xaml.cpp; behaviour is unchanged from when these
+        // lived as private methods, only the access spec moved so the
+        // dispatcher can reach them through the interface.
+        void SplitActivePane(ghostty_surface_t surface,
+                             ghostty_action_split_direction_e direction) override;
+        void ResizeSplitFromAction(ghostty_surface_t surface,
+                                   ghostty_action_resize_split_s resize) override;
+        void GotoSplitFromAction(ghostty_surface_t surface,
+                                 ghostty_action_goto_split_e direction) override;
+        void EqualizeSplitsForSurface(ghostty_surface_t surface) override;
+        void ToggleSplitZoomForSurface(ghostty_surface_t surface) override;
+
+        // Tab lifecycle / navigation / title operations from
+        // IMainWindowView. Same shape as the split overrides: the
+        // tree / TabView live on this class so the body stays here;
+        // dispatcher reaches them through the interface.
+        void CreateTab() override;
+        void CloseTabBySurface(ghostty_surface_t surface) override;
+        void GoToTab(int requested) override;
+        void SetTabTitleForSurface(ghostty_surface_t surface,
+                                   std::wstring title) override;
+        void CopyTabTitleForSurface(ghostty_surface_t surface) override;
+
+        // State-owner delegating overrides. Each is a one-liner;
+        // the actual logic lives in the dedicated value (m_sizeLimit,
+        // m_fullscreen) so MainWindow doesn't accrete fields
+        // that nothing outside one specific handler reads.
+        void ApplySizeLimit(ghostty_action_size_limit_s limit) override;
+        void ToggleFullscreen() override;
+
+        // Terminal-driven appearance / lifecycle overrides. Bodies
+        // are in MainWindow.xaml.cpp; the logic moved verbatim
+        // from the old inline action_cb chunks.
+        void ApplyBackgroundColor(uint8_t r, uint8_t g, uint8_t b) override;
+        void SetCursorShapeForSurface(ghostty_surface_t surface,
+                                      ghostty_action_mouse_shape_e shape) override;
+        void ReplaceConfig(ghostty_config_t cloned) override;
+        void ReloadConfig(bool soft) override;
+        void ShowDesktopNotification(std::wstring title,
+                                     std::wstring body) override;
+        void ReportProgress(ghostty_action_progress_report_s pr) override;
+
     private:
         void InitGhostty();
-        void CreateTab();
         Tab* ActiveTab();
         // Convenience wrapper around ActiveTab()->ActiveControl(). Most
         // input/IME paths only care about the focused TerminalControl,
@@ -78,77 +118,18 @@ namespace winrt::GhosttyWin32::implementation
         // depending on the current OverlappedPresenter state.
         void UpdateMaximizeGlyph();
 
-        // Handle GHOSTTY_ACTION_NEW_SPLIT: locate the source pane for
-        // `surface`, create a new TerminalControl + ghostty surface,
-        // and insert it next to the source according to `direction`.
-        // The new pane becomes the active leaf and takes focus. UI
-        // thread only.
-        void SplitActivePane(ghostty_surface_t surface,
-                             ghostty_action_split_direction_e direction);
-
         // Tear down the pane carrying `id` and update the tree / tab
         // list. Dispatched from close_surface_cb. UI thread only.
         void CloseSurfaceByPaneId(PaneId id);
 
-        // Handle GHOSTTY_ACTION_RESIZE_SPLIT: walk up from the active
-        // pane to the nearest ancestor split whose axis matches the
-        // direction, then nudge that split's ratio by `amount` DIPs
-        // in the requested direction. UI thread only.
-        void ResizeSplitFromAction(ghostty_surface_t surface,
-                                   ghostty_action_resize_split_s resize);
-
-        // Handle GHOSTTY_ACTION_GOTO_SPLIT: move focus to another
-        // pane in the same tab. PREVIOUS/NEXT cycle the tree in
-        // depth-first order; UP/DOWN/LEFT/RIGHT pick the leaf whose
-        // arranged rect is adjacent in that direction. UI thread only.
-        void GotoSplitFromAction(ghostty_surface_t surface,
-                                 ghostty_action_goto_split_e direction);
-
-        // Handle GHOSTTY_ACTION_EQUALIZE_SPLITS: reset every split
-        // ratio in the active tab to 0.5 so each pane occupies an
-        // even share of its parent split. UI thread only.
-        void EqualizeSplitsForSurface(ghostty_surface_t surface);
-
-        // Handle GHOSTTY_ACTION_TOGGLE_SPLIT_ZOOM: if no leaf is
-        // currently zoomed in the source surface's tab, expand the
-        // source leaf to fill the panel; if a leaf is already zoomed
-        // there, restore the regular split layout. UI thread only.
-        void ToggleSplitZoomForSurface(ghostty_surface_t surface);
-
         std::unique_ptr<GhosttyApp> m_ghostty;
         HWND m_hwnd = nullptr;
-        // Initial window size from GHOSTTY_ACTION_INITIAL_SIZE (physical
-        // pixels). Zero means "not yet received" — RESET_WINDOW_SIZE
-        // falls back to a DPI-scaled 1280x720 in that case.
-        uint32_t m_initialWidth = 0;
-        uint32_t m_initialHeight = 0;
-        // Glyph cell dimensions (pixels) from GHOSTTY_ACTION_CELL_SIZE.
-        // Updated whenever ghostty's font / cell metrics change so any
-        // future host-side sizing logic that wants whole-cell rounding
-        // (e.g., snap-to-cell resize feedback) has the current value.
-        uint32_t m_cellWidth = 0;
-        uint32_t m_cellHeight = 0;
-        // Fullscreen toggle state — TOGGLE_FULLSCREEN flips m_fullscreen
-        // and uses m_prevPlacement / m_prevStyle to restore the original
-        // window when leaving fullscreen. We save WINDOWPLACEMENT instead
-        // of a RECT because it round-trips maximised state correctly
-        // (toggling FS from a maximised window should return to maximised).
-        bool m_fullscreen = false;
-        WINDOWPLACEMENT m_prevPlacement{};
-        LONG_PTR m_prevStyle = 0;
-        // SIZE_LIMIT — min / max window size in pixels. The values are
-        // applied in WM_GETMINMAXINFO via SizeLimitSubclassProc, which
-        // is installed lazily on the first SIZE_LIMIT so apps that
-        // never set a size limit don't pay the subclass cost.
-        ghostty_action_size_limit_s m_sizeLimit{};
-        bool m_sizeLimitSubclassed = false;
-        // MOUSE_VISIBILITY — when true, WM_SETCURSOR returns NULL so
-        // the cursor stays hidden until the next VISIBLE transition.
-        // Subclass installed lazily on the first MOUSE_VISIBILITY so
-        // the WM_SETCURSOR interception doesn't happen for apps that
-        // never fire the action.
-        bool m_cursorHidden = false;
-        bool m_cursorSubclassed = false;
+        // SIZE_LIMIT / TOGGLE_FULLSCREEN state. Default constructed
+        // (no limit set, not in fullscreen). Subclasses installed
+        // by SizeLimit are auto-removed by Win32 when m_hwnd is
+        // destroyed, so no explicit teardown ordering is needed.
+        SizeLimit m_sizeLimit;
+        Fullscreen m_fullscreen;
         PaneIdAllocator m_paneIds;
         Tabs m_tabs;
         // Focus-tracked active surface. Set by NotifySurfaceFocused
@@ -158,6 +139,12 @@ namespace winrt::GhosttyWin32::implementation
         // Constructed once ghostty is initialized — needs the app handle
         // and HWND, neither available until InitGhostty has run.
         std::unique_ptr<TabFactory> m_tabFactory;
+        // ghostty runtime callback dispatcher (today: action_cb;
+        // future: clipboard / surface). Built in InitGhostty after
+        // the GhosttyApp handle is available; destroyed before
+        // m_ghostty so handlers can't observe a half-torn-down app
+        // on shutdown.
+        std::unique_ptr<GhosttyCallbackDispatcher> m_ghosttyDispatcher;
     };
 }
 
