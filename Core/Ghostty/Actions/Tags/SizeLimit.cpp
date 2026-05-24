@@ -3,7 +3,7 @@
 
 #pragma comment(lib, "comctl32.lib")
 
-namespace winrt::GhosttyWin32::implementation::core::ghostty::actions::tags {
+namespace core::ghostty::actions::tags {
 
 void SizeLimit::Apply(HWND hwnd, ghostty_action_size_limit_s limit) noexcept
 {
@@ -35,4 +35,4 @@ LRESULT CALLBACK SizeLimit::SubclassProc(
     return DefSubclassProc(hwnd, msg, wp, lp);
 }
 
-}  // namespace winrt::GhosttyWin32::implementation::core::ghostty::actions::tags
+}  // namespace core::ghostty::actions::tags

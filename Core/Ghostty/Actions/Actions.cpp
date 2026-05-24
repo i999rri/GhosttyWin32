@@ -6,7 +6,7 @@
 #include <string>
 #include <utility>
 
-namespace winrt::GhosttyWin32::implementation::core::ghostty::actions {
+namespace core::ghostty::actions {
 
 // ===== terminal events =====
 
@@ -377,4 +377,4 @@ bool Actions::OnToggleSplitZoom(ghostty_surface_t surface) {
     return true;
 }
 
-}  // namespace winrt::GhosttyWin32::implementation::core::ghostty::actions
+}  // namespace core::ghostty::actions

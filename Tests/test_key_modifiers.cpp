@@ -1,7 +1,7 @@
 #include "pch.h"
 #include "../Core/Host/KeyModifiers.h"
 
-using namespace winrt::GhosttyWin32::implementation::core::host;
+using namespace core::host;
 TEST(KeyModifiersTest, NoKeys) {
     auto mods = buildMods(false, false, false);
     EXPECT_EQ(mods, 0);

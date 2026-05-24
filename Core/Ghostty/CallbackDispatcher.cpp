@@ -1,6 +1,6 @@
 #include "CallbackDispatcher.h"
 
-namespace winrt::GhosttyWin32::implementation::core::ghostty {
+namespace core::ghostty {
 
 std::unique_ptr<CallbackDispatcher>
 CallbackDispatcher::Create(host::IWindow& view) {
@@ -183,4 +183,4 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
     }
 }
 
-}  // namespace winrt::GhosttyWin32::implementation::core::ghostty
+}  // namespace core::ghostty

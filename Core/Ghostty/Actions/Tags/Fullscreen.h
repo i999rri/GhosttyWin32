@@ -2,7 +2,7 @@
 
 #include <windows.h>
 
-namespace winrt::GhosttyWin32::implementation::core::ghostty::actions::tags {
+namespace core::ghostty::actions::tags {
 
 // TOGGLE_FULLSCREEN action state. Named after the ghostty action
 // tag so the relationship with action_cb is obvious; the class
@@ -36,4 +36,4 @@ private:
     LONG_PTR m_prevStyle = 0;
 };
 
-}  // namespace winrt::GhosttyWin32::implementation::core::ghostty::actions::tags
+}  // namespace core::ghostty::actions::tags

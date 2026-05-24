@@ -2,7 +2,7 @@
 #include "../Core/Ghostty/Actions/Tags/SizeLimit.h"
 #include <windows.h>
 
-using winrt::GhosttyWin32::implementation::core::ghostty::actions::tags::SizeLimit;
+using core::ghostty::actions::tags::SizeLimit;
 
 namespace {
 

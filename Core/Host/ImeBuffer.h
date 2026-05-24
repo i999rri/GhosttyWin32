@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <cstdint>
 
-namespace winrt::GhosttyWin32::implementation::core::host {
+namespace core::host {
 
 // Pure IME buffer logic, separated from UI for testability.
 // Tracks the composition buffer and an offset that accounts for
@@ -66,4 +66,4 @@ private:
     bool m_composing = false;
 };
 
-}  // namespace winrt::GhosttyWin32::implementation::core::host
+}  // namespace core::host

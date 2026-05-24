@@ -2,7 +2,7 @@
 #include "../Core/Ghostty/Actions/Tags/Fullscreen.h"
 #include <windows.h>
 
-using winrt::GhosttyWin32::implementation::core::ghostty::actions::tags::Fullscreen;
+using core::ghostty::actions::tags::Fullscreen;
 
 namespace {
 

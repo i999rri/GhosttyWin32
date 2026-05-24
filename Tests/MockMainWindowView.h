@@ -15,7 +15,7 @@
 // only cares that the queued work eventually runs and
 // "immediately" is the simplest schedule that gives synchronous
 // observability.
-struct MockMainWindowView : winrt::GhosttyWin32::implementation::core::host::IWindow {
+struct MockMainWindowView : core::host::IWindow {
     // ----- base view methods -----
     int dispatchCalls = 0;
     int tickCalls = 0;

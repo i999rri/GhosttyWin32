@@ -6,7 +6,7 @@
 #include <functional>
 #include <string>
 
-namespace winrt::GhosttyWin32::implementation::core::host {
+namespace core::host {
 
 // Narrow view-side surface that GhosttyCallbackDispatcher (and
 // the GhosttyActions handlers it routes to) depends on. Lets the
@@ -158,4 +158,4 @@ struct IWindow {
     virtual void ReportProgress(ghostty_action_progress_report_s pr) = 0;
 };
 
-}  // namespace winrt::GhosttyWin32::implementation::core::host
+}  // namespace core::host

@@ -4,7 +4,7 @@
 #include "ghostty.h"
 #include <cstdint>
 
-namespace winrt::GhosttyWin32::implementation::core::ghostty::actions {
+namespace core::ghostty::actions {
 
 // Host-side implementations of every ghostty action this port
 // handles. GhosttyCallbackDispatcher routes incoming
@@ -96,4 +96,4 @@ private:
     uint32_t m_initialHeight = 0;
 };
 
-}  // namespace winrt::GhosttyWin32::implementation::core::ghostty::actions
+}  // namespace core::ghostty::actions

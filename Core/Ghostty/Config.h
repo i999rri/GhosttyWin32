@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <winrt/Windows.UI.h>
 
-namespace winrt::GhosttyWin32::implementation::core::ghostty {
+namespace core::ghostty {
 
 // Typed, fallback-aware read-only view over `ghostty_config_t`.
 //
@@ -142,4 +142,4 @@ private:
     ghostty_config_t m_config;
 };
 
-}  // namespace winrt::GhosttyWin32::implementation::core::ghostty
+}  // namespace core::ghostty

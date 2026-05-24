@@ -5,7 +5,7 @@
 #include "ghostty.h"
 #include <memory>
 
-namespace winrt::GhosttyWin32::implementation::core::ghostty {
+namespace core::ghostty {
 
 // Routing layer for ghostty's runtime callbacks. Today only
 // covers action_cb via DispatchAction; the class is named for
@@ -45,4 +45,4 @@ private:
     actions::Actions m_actions;
 };
 
-}  // namespace winrt::GhosttyWin32::implementation::core::ghostty
+}  // namespace core::ghostty

@@ -2,7 +2,7 @@
 #include "MockMainWindowView.h"
 #include "../Core/Ghostty/CallbackDispatcher.h"
 
-using winrt::GhosttyWin32::implementation::core::ghostty::CallbackDispatcher;
+using core::ghostty::CallbackDispatcher;
 
 namespace {
 

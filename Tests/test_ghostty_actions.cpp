@@ -2,7 +2,7 @@
 #include "MockMainWindowView.h"
 #include "../Core/Ghostty/Actions/Actions.h"
 
-using winrt::GhosttyWin32::implementation::core::ghostty::actions::Actions;
+using core::ghostty::actions::Actions;
 
 namespace {
 
