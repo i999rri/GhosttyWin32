@@ -11,6 +11,18 @@ Release/
 # Visual Studio
 .vs/
 *.vcxproj.user
+*.wapproj.user
+
+# Claude Code per-user settings
+.claude/
+
+# MSIX packaging output
+Package/AppPackages/
+*.appxbundle
+*.appxsym
+*.appxupload
+*.msix
+*.msixbundle
 
 # NuGet
 packages/
