@@ -32,6 +32,15 @@ namespace Clipboard {
         HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, (text.size() + 1) * sizeof(wchar_t));
         if (!hMem) { CloseClipboard(); return false; }
         wchar_t* dest = static_cast<wchar_t*>(GlobalLock(hMem));
+        // GlobalLock can fail under low memory / handle invalidation
+        // (analyzer flag C6011) — bail without holding the global
+        // memory if it does, since SetClipboardData would inherit
+        // an unwritten buffer.
+        if (!dest) {
+            GlobalFree(hMem);
+            CloseClipboard();
+            return false;
+        }
         memcpy(dest, text.c_str(), (text.size() + 1) * sizeof(wchar_t));
         GlobalUnlock(hMem);
         SetClipboardData(CF_UNICODETEXT, hMem);

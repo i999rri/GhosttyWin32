@@ -71,6 +71,18 @@ public:
     ghostty_config_t ConfigHandle() const noexcept { return m_config; }
     void Tick() noexcept { if (m_app) ghostty_app_tick(m_app); }
 
+    // Replace the owned config with newConfig and free the old one.
+    // Used by the reload_config path: the worker thread parses a fresh
+    // config off-thread, then the UI thread hands the result here AFTER
+    // ghostty_app_update_config has applied it to the app — at which
+    // point the app no longer references the previous config and we
+    // can free it without dangling reads.
+    void ReplaceConfig(ghostty_config_t newConfig) noexcept {
+        if (m_config == newConfig) return;
+        if (m_config) ghostty_config_free(m_config);
+        m_config = newConfig;
+    }
+
 private:
     GhosttyApp(ghostty_app_t app, ghostty_config_t config) noexcept
         : m_app(app), m_config(config) {}

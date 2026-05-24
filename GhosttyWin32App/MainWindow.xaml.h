@@ -22,6 +22,23 @@ namespace winrt::GhosttyWin32::implementation
         // NVIDIA state.
         static long __stdcall OnUnhandledException(struct _EXCEPTION_POINTERS* info) noexcept;
 
+        // WM_GETMINMAXINFO subclass proc installed lazily on first
+        // SIZE_LIMIT. dwRefData carries the MainWindow*; the proc
+        // reads m_sizeLimit and clamps ptMin/MaxTrackSize before
+        // forwarding to DefSubclassProc.
+        static LRESULT CALLBACK SizeLimitSubclassProc(
+            HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
+            UINT_PTR id, DWORD_PTR ref) noexcept;
+
+        // WM_SETCURSOR subclass proc for MOUSE_VISIBILITY. WinUI 3
+        // ignores ShowCursor (the cursor goes through ProtectedCursor
+        // / InputSystemCursor instead), so the only reliable hide
+        // path is to short-circuit WM_SETCURSOR with SetCursor(NULL)
+        // while m_cursorHidden is true.
+        static LRESULT CALLBACK CursorVisibilitySubclassProc(
+            HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
+            UINT_PTR id, DWORD_PTR ref) noexcept;
+
         // Caption button click handlers, referenced from MainWindow.xaml.
         // Routed through Win32 messages (WM_SYSCOMMAND / WM_CLOSE / ShowWindow)
         // rather than OverlappedPresenter state changes, which have
@@ -100,6 +117,38 @@ namespace winrt::GhosttyWin32::implementation
 
         std::unique_ptr<GhosttyApp> m_ghostty;
         HWND m_hwnd = nullptr;
+        // Initial window size from GHOSTTY_ACTION_INITIAL_SIZE (physical
+        // pixels). Zero means "not yet received" — RESET_WINDOW_SIZE
+        // falls back to a DPI-scaled 1280x720 in that case.
+        uint32_t m_initialWidth = 0;
+        uint32_t m_initialHeight = 0;
+        // Glyph cell dimensions (pixels) from GHOSTTY_ACTION_CELL_SIZE.
+        // Updated whenever ghostty's font / cell metrics change so any
+        // future host-side sizing logic that wants whole-cell rounding
+        // (e.g., snap-to-cell resize feedback) has the current value.
+        uint32_t m_cellWidth = 0;
+        uint32_t m_cellHeight = 0;
+        // Fullscreen toggle state — TOGGLE_FULLSCREEN flips m_fullscreen
+        // and uses m_prevPlacement / m_prevStyle to restore the original
+        // window when leaving fullscreen. We save WINDOWPLACEMENT instead
+        // of a RECT because it round-trips maximised state correctly
+        // (toggling FS from a maximised window should return to maximised).
+        bool m_fullscreen = false;
+        WINDOWPLACEMENT m_prevPlacement{};
+        LONG_PTR m_prevStyle = 0;
+        // SIZE_LIMIT — min / max window size in pixels. The values are
+        // applied in WM_GETMINMAXINFO via SizeLimitSubclassProc, which
+        // is installed lazily on the first SIZE_LIMIT so apps that
+        // never set a size limit don't pay the subclass cost.
+        ghostty_action_size_limit_s m_sizeLimit{};
+        bool m_sizeLimitSubclassed = false;
+        // MOUSE_VISIBILITY — when true, WM_SETCURSOR returns NULL so
+        // the cursor stays hidden until the next VISIBLE transition.
+        // Subclass installed lazily on the first MOUSE_VISIBILITY so
+        // the WM_SETCURSOR interception doesn't happen for apps that
+        // never fire the action.
+        bool m_cursorHidden = false;
+        bool m_cursorSubclassed = false;
         PaneIdAllocator m_paneIds;
         Tabs m_tabs;
         // Focus-tracked active surface. Set by NotifySurfaceFocused
