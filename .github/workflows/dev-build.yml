@@ -26,6 +26,8 @@ jobs:
     steps:
       - name: Checkout GhosttyWin32
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Compute dev version
         id: version

@@ -157,19 +157,25 @@ git submodule update --init --recursive
 
 (Or pass `--recurse-submodules` to the original `git clone`.)
 
-Build and copy the artifacts the host needs:
+Build libghostty:
 
 ```bash
 cd external/ghostty
 zig build -Doptimize=ReleaseSafe -Drenderer=directx
+# The DLL's import lib lands in .zig-cache instead of zig-out/lib/
+# on shared Windows builds; surface it next to the DLL so the
+# vcxprojs can link straight from external/ghostty/zig-out/lib/.
+find .zig-cache -path '*/o/*/ghostty.lib' -size +10k -size -100k \
+    -exec cp {} zig-out/lib/ghostty-internal.lib \;
 cd ../..
-cp external/ghostty/zig-out/lib/ghostty.{dll,lib,pdb} ghostty/
-cp external/ghostty/zig-out/include/ghostty.h ghostty/
 ```
 
-`ghostty/` is gitignored — only the artifacts that the App and
-Tests projects actually link against live there; the source tree
-itself sits in `external/ghostty/`.
+Both the App / Tests vcxprojs reference
+`$(ProjectDir)..\external\ghostty\zig-out\lib` for linker input and
+`$(ProjectDir)..\external\ghostty\include` for `ghostty.h`, so the
+submodule pin is the single source of truth for both the C API and
+the binary artifacts — no separate output directory at the repo
+root is needed.
 
 **Trying a different ghostty branch during development**: switch
 inside the submodule and rebuild — the parent repo only notices
@@ -181,9 +187,9 @@ experiment freely and either commit the pin update or
 cd external/ghostty
 git switch feat/dx-p3-colorspace   # or any other branch
 zig build -Doptimize=ReleaseSafe -Drenderer=directx
+find .zig-cache -path '*/o/*/ghostty.lib' -size +10k -size -100k \
+    -exec cp {} zig-out/lib/ghostty-internal.lib \;
 cd ../..
-cp external/ghostty/zig-out/lib/ghostty.{dll,lib,pdb} ghostty/
-cp external/ghostty/zig-out/include/ghostty.h ghostty/
 ```
 
 ### Build GhosttyWin32

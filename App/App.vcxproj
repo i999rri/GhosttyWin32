@@ -106,11 +106,11 @@
       <WarningLevel>Level4</WarningLevel>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <AdditionalOptions>%(AdditionalOptions) /bigobj /utf-8</AdditionalOptions>
-      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)..\Core;$(ProjectDir)..\ghostty;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)..\Core;$(ProjectDir)..\external\ghostty\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
-      <AdditionalLibraryDirectories>$(ProjectDir)..\ghostty;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>ghostty.lib;d3d11.lib;dxgi.lib;comctl32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(ProjectDir)..\external\ghostty\zig-out\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>ghostty-internal.lib;d3d11.lib;dxgi.lib;comctl32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
@@ -204,7 +204,14 @@
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="..\ghostty\ghostty.dll">
+    <!--
+      ghostty-internal.dll on disk is the canonical artifact, but its
+      PE internal name (and therefore the name the import lib's
+      descriptor encodes) is ghostty.dll. <Link> renames the deployed
+      copy so the App's import table resolves at startup.
+    -->
+    <None Include="..\external\ghostty\zig-out\lib\ghostty-internal.dll">
+      <Link>ghostty.dll</Link>
       <DeploymentContent>true</DeploymentContent>
     </None>
   </ItemGroup>
