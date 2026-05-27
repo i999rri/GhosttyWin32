@@ -90,8 +90,14 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
             return m_actions.OnReloadConfig(action.action.reload_config.soft);
         case GHOSTTY_ACTION_CONFIG_CHANGE:
             return m_actions.OnConfigChange(action.action.config_change.config);
-        case GHOSTTY_ACTION_DESKTOP_NOTIFICATION:
-            return m_actions.OnDesktopNotification(action.action.desktop_notification);
+        case GHOSTTY_ACTION_DESKTOP_NOTIFICATION: {
+            // ghostty sets target.surface to the pane that emitted the
+            // notification; a null surface is legal (the toast still
+            // shows, the click handler just doesn't retarget tabs).
+            ghostty_surface_t s = target.tag == GHOSTTY_TARGET_SURFACE
+                ? target.target.surface : nullptr;
+            return m_actions.OnDesktopNotification(s, action.action.desktop_notification);
+        }
         case GHOSTTY_ACTION_PROGRESS_REPORT:
             return m_actions.OnProgressReport(action.action.progress_report);
 

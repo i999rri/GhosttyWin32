@@ -929,7 +929,8 @@ namespace winrt::GhosttyWin32::implementation
         if (hThread) CloseHandle(hThread); else delete ctx;
     }
 
-    void MainWindow::ShowDesktopNotification(std::wstring title, std::wstring body)
+    void MainWindow::ShowDesktopNotification(ghostty_surface_t surface,
+                                             std::wstring title, std::wstring body)
     {
         if (title.empty() && body.empty()) return;
         try {
@@ -938,12 +939,49 @@ namespace winrt::GhosttyWin32::implementation
             AppNotificationBuilder builder;
             if (!title.empty()) builder.AddText(title);
             if (!body.empty())  builder.AddText(body);
+            // Embed the originating pane's id in the toast arguments
+            // so a later click routes back to the right pane via
+            // PresentNotification. Encoded as semicolon-separated
+            // key=value pairs to leave room for future fields.
+            if (auto lookup = m_tabs.FindLeafBySurface(surface);
+                lookup.leaf && lookup.leaf->Id())
+            {
+                auto idStr = std::to_wstring(lookup.leaf->Id().value);
+                builder.AddArgument(L"action", L"present");
+                builder.AddArgument(L"surfaceId", winrt::hstring(idStr));
+            }
             AppNotificationManager::Default().Show(builder.BuildNotification());
         } catch (winrt::hresult_error const&) {
             // Either the manager wasn't registered (App startup
             // logged it) or the OS refused. Nothing actionable
             // host-side; the message just doesn't appear.
         }
+    }
+
+    void MainWindow::PresentNotification(PaneId id)
+    {
+        // Step 1: retarget the active tab + leaf if we know which
+        // pane the notification belonged to. A zero PaneId (launch
+        // activation, missing argument, etc.) skips this and we just
+        // foreground the window.
+        if (id) {
+            auto lookup = m_tabs.FindByPaneId(id);
+            if (lookup.tab) {
+                auto tabView = TabView();
+                if (tabView) {
+                    tabView.SelectedItem(lookup.tab->Item());
+                }
+                if (lookup.leaf) {
+                    lookup.tab->SetActiveLeaf(lookup.leaf);
+                }
+                lookup.tab->Focus();
+            }
+        }
+        // Step 2: bring the window to the foreground. PresentTerminal
+        // handles the IsIconic / SW_RESTORE / SetForegroundWindow
+        // dance; reusing it keeps the foreground-rule workaround in
+        // one place.
+        PresentTerminal();
     }
 
     void MainWindow::ReportProgress(ghostty_action_progress_report_s pr)

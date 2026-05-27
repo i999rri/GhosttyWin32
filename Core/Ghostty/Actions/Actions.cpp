@@ -320,15 +320,16 @@ bool Actions::OnConfigChange(ghostty_config_t newCfg) {
     return true;
 }
 
-bool Actions::OnDesktopNotification(ghostty_action_desktop_notification_s dn) {
+bool Actions::OnDesktopNotification(ghostty_surface_t surface,
+                                    ghostty_action_desktop_notification_s dn) {
     // Convert UTF-8 to UTF-16 on the renderer thread so the
     // captured lambda carries native strings.
     std::wstring title = (dn.title && dn.title[0]) ? interop::Encoding::toUtf16(dn.title) : L"";
     std::wstring body  = (dn.body  && dn.body[0])  ? interop::Encoding::toUtf16(dn.body)  : L"";
     if (title.empty() && body.empty()) return true;
-    m_view.Dispatch([this, title = std::move(title),
+    m_view.Dispatch([this, surface, title = std::move(title),
                                     body = std::move(body)]() mutable {
-        m_view.ShowDesktopNotification(std::move(title), std::move(body));
+        m_view.ShowDesktopNotification(surface, std::move(title), std::move(body));
     });
     return true;
 }

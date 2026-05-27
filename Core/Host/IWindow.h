@@ -167,7 +167,13 @@ struct IWindow {
 
     // Show a Windows toast for the given two-line payload. Either
     // string may be empty; if both are empty the call is a no-op.
-    virtual void ShowDesktopNotification(std::wstring title,
+    // `surface` identifies the pane that requested the notification —
+    // the view side embeds it in the toast's `surfaceId` argument so
+    // a later click can route back to the originating pane. A null
+    // surface is allowed (the toast still shows; the click handler
+    // falls back to a plain foreground without retargeting tabs).
+    virtual void ShowDesktopNotification(ghostty_surface_t surface,
+                                         std::wstring title,
                                          std::wstring body) = 0;
 
     // Update the host window's taskbar progress indicator. The

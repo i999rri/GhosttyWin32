@@ -68,7 +68,8 @@ public:
                       ghostty_action_mouse_shape_e shape);
     bool OnReloadConfig(bool soft);
     bool OnConfigChange(ghostty_config_t newCfg);
-    bool OnDesktopNotification(ghostty_action_desktop_notification_s dn);
+    bool OnDesktopNotification(ghostty_surface_t surface,
+                               ghostty_action_desktop_notification_s dn);
     bool OnProgressReport(ghostty_action_progress_report_s pr);
 
     // ----- window state -----

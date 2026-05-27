@@ -115,8 +115,16 @@ namespace winrt::GhosttyWin32::implementation
                                       ghostty_action_mouse_shape_e shape) override;
         void ReplaceConfig(ghostty_config_t cloned) override;
         void ReloadConfig(bool soft) override;
-        void ShowDesktopNotification(std::wstring title,
+        void ShowDesktopNotification(ghostty_surface_t surface,
+                                     std::wstring title,
                                      std::wstring body) override;
+
+        // Notification-click entry point. Called by App's
+        // AppInstance::Activated handler after a desktop notification
+        // is clicked: locate the originating pane (when known), make
+        // its tab active, then bring the window forward. Falls back
+        // to a plain foreground if `id` is the zero sentinel.
+        void PresentNotification(PaneId id);
         void ReportProgress(ghostty_action_progress_report_s pr) override;
 
     private:
