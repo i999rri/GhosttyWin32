@@ -38,6 +38,33 @@ namespace winrt::GhosttyWin32::implementation
         std::function<void()> onActivated;
     };
 
+    // Renderer-thread context for libghostty's `swap_chain_changed_cb`.
+    // ghostty fires that callback on every (re-)bind / resize / DPI
+    // change with the IDXGISwapChain1*; we use it to install an
+    // IDXGISwapChain2::SetMatrixTransform of {1/scale, 1/scale} that
+    // cancels XAML SwapChainPanel's implicit upscale of attached
+    // content. Without that workaround text and the background image
+    // come out at ~2x size on HiDPI displays — most visibly on
+    // RDP-from-a-high-DPI-client sessions.
+    //
+    // Lifetime: heap-allocated on Attach, raw pointer is passed to
+    // libghostty as the callback's userdata, owned by TerminalControl
+    // via shared_ptr. Detach sets `cancelled` so any in-flight
+    // callback no-ops; the shared_ptr is released after
+    // ghostty_surface_free has returned (so the renderer thread is
+    // guaranteed not to fire the callback again).
+    //
+    // CompositionScale is stored as an atomic so the UI-thread
+    // CompositionScaleChanged handler can publish updates the
+    // renderer thread reads on the next callback fire without
+    // locking. Defaults to 1.0 (identity matrix) so the very first
+    // fire — before the panel's CompositionScale has settled — is a
+    // no-op rather than installing a bogus transform.
+    struct SwapChainChangedContext {
+        std::atomic<bool> cancelled{ false };
+        std::atomic<double> compositionScale{ 1.0 };
+    };
+
     // UserControl wrapper around a SwapChainPanel for one terminal surface.
     //
     // SwapChainPanel inherits from Grid (not Control) and is not a
@@ -80,7 +107,8 @@ namespace winrt::GhosttyWin32::implementation
                     ghostty_surface_t surface,
                     HANDLE compositionHandle,
                     HWND hostHwnd,
-                    std::shared_ptr<SwapChainAttachRequest> attachRequest);
+                    std::shared_ptr<SwapChainAttachRequest> attachRequest,
+                    std::shared_ptr<SwapChainChangedContext> swapChainChangedContext);
 
         // Forwarded by MainWindow's window-Activated handler. XAML's
         // GotFocus / LostFocus don't fire on window de/activation
@@ -101,6 +129,16 @@ namespace winrt::GhosttyWin32::implementation
         // Called as a free function with the SwapChainAttachRequest
         // pointer as userdata — no `this` involved.
         static void OnSwapChainReady(void* userdata) noexcept;
+
+        // Renderer-thread callback registered with ghostty as
+        // cfg.swap_chain_changed_cb. Fired after initial bind, after
+        // every dx_resize, and after every DPI / font change.
+        // userdata is a raw pointer to a SwapChainChangedContext
+        // owned by a shared_ptr on this control. Queries the swap
+        // chain to IDXGISwapChain2 and installs a (1/scale, 1/scale)
+        // SetMatrixTransform that cancels XAML SwapChainPanel's
+        // implicit upscale. No `this` involved.
+        static void OnSwapChainChanged(void* swap_chain, void* userdata) noexcept;
 
         // Implementation-only accessors used by Tab.
         ghostty_surface_t Surface() const noexcept { return m_surface; }
@@ -160,7 +198,20 @@ namespace winrt::GhosttyWin32::implementation
         // from input handlers.
         HWND m_hostHwnd{ nullptr };
         winrt::event_token m_sizeChangedToken{};
+        // SwapChainPanel composition scale (DPI / per-monitor scale)
+        // tracking. The panel's CompositionScale can lag behind the
+        // window's DPI on RDP — initially the panel reports 1.0 even
+        // when the desktop is at 200% — and only settles once the
+        // composition pipeline has picked it up. Subscribing here per-
+        // leaf is more reliable than driving everything from
+        // MainWindow's XamlRoot.Changed broadcast: it fires exactly
+        // when the panel's own display scale changes, and the value we
+        // read back is what the panel will actually composite at.
+        winrt::event_token m_compositionScaleChangedToken{};
         std::shared_ptr<SwapChainAttachRequest> m_attachRequest;
+        // Renderer-thread context for libghostty's swap_chain_changed_cb.
+        // See SwapChainChangedContext docs at the top of this file.
+        std::shared_ptr<SwapChainChangedContext> m_swapChainChangedContext;
 
         // IME plumbing. Each TerminalControl gets its own EditContext
         // so a composition started in one tab doesn't leak preedit
