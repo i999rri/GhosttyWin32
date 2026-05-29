@@ -254,21 +254,21 @@ namespace winrt::GhosttyWin32::implementation
             // itself and forwards directly to its own ghostty surface.
             // No window-level input handler is needed here.
 
-            // DPI change handling (deferred until XamlRoot is available)
+            // DPI / scale handling now lives per-leaf in TerminalControl:
+            // each control subscribes to its own
+            // SwapChainPanel.CompositionScaleChanged and pushes the
+            // current scale into ghostty via
+            // ghostty_surface_set_content_scale. The panel's
+            // composition scale is what the panel actually composites
+            // the swap chain at, so matching that (rather than
+            // GetDpiForWindow on the window) keeps the swap chain's
+            // render scale and the panel's display scale in sync. On
+            // RDP these two values transiently diverge — composition
+            // scale starts at 1.0 even when the window DPI is 192,
+            // then jumps to the real value once the composition
+            // pipeline has run — which is the case that motivated the
+            // switch.
             Content().as<winrt::Microsoft::UI::Xaml::FrameworkElement>().Loaded([this](auto&&, auto&&) {
-                Content().XamlRoot().Changed([this](auto&&, winrt::Microsoft::UI::Xaml::XamlRootChangedEventArgs const&) {
-                    if (!m_hwnd) return;
-                    UINT dpi = GetDpiForWindow(m_hwnd);
-                    double scale = (double)dpi / 96.0;
-                    // Today every tab has a single TerminalControl. With
-                    // future pane support this would walk each tab's
-                    // pane tree and apply the scale to every leaf.
-                    for (auto& t : m_tabs) {
-                        if (auto* tc = t->ActiveControl(); tc && tc->Surface()) {
-                            ghostty_surface_set_content_scale(tc->Surface(), scale, scale);
-                        }
-                    }
-                });
                 // Track window state so the maximize button glyph swaps
                 // between Maximize (E922) and Restore (E923). DidSizeChange
                 // covers the SC_MAXIMIZE / SC_RESTORE round trip we send

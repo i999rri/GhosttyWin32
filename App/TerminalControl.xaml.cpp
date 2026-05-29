@@ -3,9 +3,11 @@
 #include "Interop/Encoding.h"
 #include "Host/KeyModifiers.h"
 #include "Win32/Clipboard.h"
+#include <dxgi1_3.h>
 #if __has_include("TerminalControl.g.cpp")
 #include "TerminalControl.g.cpp"
 #endif
+
 
 namespace winrt::GhosttyWin32::implementation
 {
@@ -372,13 +374,15 @@ namespace winrt::GhosttyWin32::implementation
                                  ghostty_surface_t surface,
                                  HANDLE compositionHandle,
                                  HWND hostHwnd,
-                                 std::shared_ptr<SwapChainAttachRequest> attachRequest)
+                                 std::shared_ptr<SwapChainAttachRequest> attachRequest,
+                                 std::shared_ptr<SwapChainChangedContext> swapChainChangedContext)
     {
         m_app = app;
         m_surface = surface;
         m_compositionHandle = compositionHandle;
         m_hostHwnd = hostHwnd;
         m_attachRequest = std::move(attachRequest);
+        m_swapChainChangedContext = std::move(swapChainChangedContext);
         // IME setup is deferred to Loaded — see the Loaded handler
         // comment in the ctor. CreateEditContext only registers
         // properly when the owning element is in the live visual
@@ -393,14 +397,78 @@ namespace winrt::GhosttyWin32::implementation
         // m_surface inside the handler under a strong lock.
         auto weakSelf = get_weak();
         m_sizeChangedToken = Panel().SizeChanged(
-            [weakSelf](auto&&, Microsoft::UI::Xaml::SizeChangedEventArgs const& args) {
+            [weakSelf](Windows::Foundation::IInspectable const& sender,
+                       Microsoft::UI::Xaml::SizeChangedEventArgs const& args) {
                 auto self = weakSelf.get();
                 if (!self || !self->m_surface) return;
                 auto sz = args.NewSize();
-                uint32_t w = static_cast<uint32_t>(sz.Width);
-                uint32_t h = static_cast<uint32_t>(sz.Height);
+                // ghostty_surface_set_size takes physical pixels (the
+                // renderer creates swap-chain buffers at exactly this
+                // resolution), but SizeChangedEventArgs.NewSize is in
+                // DIPs. On 200% DPI a 1067 DIP panel needs a 2134 px
+                // swap chain; passing the DIP value through directly
+                // makes the renderer create a half-resolution buffer
+                // and the (DPI-scaled) glyphs land on it at too few
+                // pixels per cell, so text reads as ~2x oversized.
+                // Multiply by CompositionScale so the swap chain
+                // resolution matches the panel's physical pixel
+                // footprint. CompositionScale == 0 means the panel
+                // hasn't been picked up by composition yet — leave
+                // it at 1.0 and rely on the next SizeChanged once
+                // composition settles.
+                auto panel = sender.as<Microsoft::UI::Xaml::Controls::SwapChainPanel>();
+                double scaleX = panel.CompositionScaleX();
+                double scaleY = panel.CompositionScaleY();
+                if (scaleX <= 0.0) scaleX = 1.0;
+                if (scaleY <= 0.0) scaleY = 1.0;
+                uint32_t w = static_cast<uint32_t>(sz.Width * scaleX);
+                uint32_t h = static_cast<uint32_t>(sz.Height * scaleY);
                 if (w > 0 && h > 0) {
                     ghostty_surface_set_size(self->m_surface, w, h);
+                }
+            });
+
+        // Follow the panel's actual composition scale. On RDP and on
+        // first-launch this lags behind the window DPI — the panel
+        // initially reports 1.0 even when GetDpiForWindow says 192
+        // — and only settles to the real value after the composition
+        // pipeline has picked it up. Without this hook, the swap chain
+        // created by ghostty at the higher scale_factor would be
+        // composited at the panel's lower scale, causing the rendered
+        // content (in particular text) to appear at roughly double
+        // size. Same weak_ref + surface recheck guard as SizeChanged.
+        m_compositionScaleChangedToken = Panel().CompositionScaleChanged(
+            [weakSelf](Microsoft::UI::Xaml::Controls::SwapChainPanel const& panel, auto&&) {
+                auto self = weakSelf.get();
+                if (!self || !self->m_surface) return;
+                double sx = panel.CompositionScaleX();
+                double sy = panel.CompositionScaleY();
+                if (sx <= 0.0 || sy <= 0.0) return;
+                // Publish the new scale to the renderer-thread callback so
+                // the next swap_chain_changed_cb fire installs an
+                // up-to-date inverse-scale matrix. Atomic store; the
+                // callback reads it next time libghostty triggers it
+                // (e.g. via the set_content_scale below flowing into
+                // setFontGrid -> applyFontDpiToTransforms).
+                if (self->m_swapChainChangedContext) {
+                    self->m_swapChainChangedContext->compositionScale.store(
+                        sx, std::memory_order_release);
+                }
+                ghostty_surface_set_content_scale(self->m_surface, sx, sy);
+                // ghostty_surface_set_size takes physical pixels — when
+                // the composition scale changes, the panel's logical
+                // size in DIPs hasn't necessarily changed (so XAML may
+                // not fire SizeChanged) but the physical-pixel footprint
+                // has. Re-push it so the swap-chain resolution matches
+                // the new composition scale; otherwise the glyphs end up
+                // at the new font size on the old (lower-resolution)
+                // swap chain and read as oversized.
+                double dipW = panel.ActualWidth();
+                double dipH = panel.ActualHeight();
+                uint32_t pw = static_cast<uint32_t>(dipW * sx);
+                uint32_t ph = static_cast<uint32_t>(dipH * sy);
+                if (pw > 0 && ph > 0) {
+                    ghostty_surface_set_size(self->m_surface, pw, ph);
                 }
             });
     }
@@ -413,6 +481,17 @@ namespace winrt::GhosttyWin32::implementation
         if (m_attachRequest) {
             m_attachRequest->cancelled.store(true);
             m_attachRequest.reset();
+        }
+
+        // Stop the swap-chain-changed callback from touching the swap
+        // chain before libghostty drops it (ghostty_surface_free below
+        // joins the renderer thread, so any fire that races us no-ops).
+        // We deliberately hold the shared_ptr until *after* surface_free
+        // so the renderer thread can dereference the userdata safely
+        // through the in-flight call — the shared_ptr is released
+        // automatically when this TerminalControl is destroyed.
+        if (m_swapChainChangedContext) {
+            m_swapChainChangedContext->cancelled.store(true);
         }
 
         if (m_editContext) {
@@ -428,6 +507,10 @@ namespace winrt::GhosttyWin32::implementation
             if (m_sizeChangedToken.value != 0) {
                 panel.SizeChanged(m_sizeChangedToken);
                 m_sizeChangedToken = {};
+            }
+            if (m_compositionScaleChangedToken.value != 0) {
+                panel.CompositionScaleChanged(m_compositionScaleChangedToken);
+                m_compositionScaleChangedToken = {};
             }
             // We deliberately skip the symmetric
             // ISwapChainPanelNative2::SetSwapChainHandle(nullptr) that
@@ -593,5 +676,28 @@ namespace winrt::GhosttyWin32::implementation
         } catch (...) {
             // Window torn down — request is implicitly cancelled.
         }
+    }
+
+    void TerminalControl::OnSwapChainChanged(void* swap_chain, void* userdata) noexcept
+    {
+        // Renderer thread. Fired by libghostty on every (re-)bind /
+        // ResizeBuffers / DPI change. We undo XAML SwapChainPanel's
+        // implicit upscale of the attached swap chain by installing
+        // an inverse-scale matrix on the chain — the host owns this
+        // policy, libghostty itself is unaware of WinUI 3.
+        if (!swap_chain || !userdata) return;
+        auto* ctx = static_cast<SwapChainChangedContext*>(userdata);
+        if (ctx->cancelled.load(std::memory_order_acquire)) return;
+        double scale = ctx->compositionScale.load(std::memory_order_acquire);
+        if (scale <= 0.0) return;
+
+        auto* sc1 = static_cast<IDXGISwapChain1*>(swap_chain);
+        winrt::com_ptr<IDXGISwapChain2> sc2;
+        if (FAILED(sc1->QueryInterface(IID_PPV_ARGS(sc2.put())))) return;
+
+        DXGI_MATRIX_3X2_F matrix{};
+        matrix._11 = static_cast<float>(1.0 / scale);
+        matrix._22 = static_cast<float>(1.0 / scale);
+        (void)sc2->SetMatrixTransform(&matrix);
     }
 }

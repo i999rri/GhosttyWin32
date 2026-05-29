@@ -163,12 +163,27 @@ public:
         // surface_new fails).
         auto* attachOwned = new std::shared_ptr<SwapChainAttachRequest>(attach);
 
+        // SwapChainChangedContext: receives swap_chain_changed_cb on the
+        // renderer thread so the host can install an
+        // IDXGISwapChain2::SetMatrixTransform that cancels XAML
+        // SwapChainPanel's implicit upscale. Initial scale is taken
+        // from panel.CompositionScaleX (initial value used in
+        // cfg.scale_factor below; CompositionScaleChanged later
+        // publishes updates atomically). Raw pointer is handed to
+        // libghostty as userdata; TerminalControl owns the shared_ptr
+        // and releases it on Detach (after surface_free has joined the
+        // renderer thread).
+        auto swapChainChanged = std::make_shared<
+            winrt::GhosttyWin32::implementation::SwapChainChangedContext>();
+
         ghostty_surface_config_s cfg = ghostty_surface_config_new();
         cfg.platform_tag = GHOSTTY_PLATFORM_WINDOWS;
         cfg.platform.windows.hwnd = m_hwnd;
         cfg.platform.windows.composition_surface_handle = handle;
         cfg.platform.windows.swap_chain_ready_cb = &TerminalControl::OnSwapChainReady;
         cfg.platform.windows.swap_chain_ready_userdata = attachOwned;
+        cfg.platform.windows.swap_chain_changed_cb = &TerminalControl::OnSwapChainChanged;
+        cfg.platform.windows.swap_chain_changed_userdata = swapChainChanged.get();
         cfg.userdata = paneId.ToUserdata();
         // Initial swap chain size: prefer the host's caller-supplied
         // estimate (typically the active tab/pane's panel size, since
@@ -187,8 +202,31 @@ public:
                                        : static_cast<uint32_t>(panel.ActualHeight());
         cfg.platform.windows.initial_width = initW;
         cfg.platform.windows.initial_height = initH;
-        UINT dpi = GetDpiForWindow(m_hwnd);
-        cfg.scale_factor = static_cast<double>(dpi) / 96.0;
+        // Use the SwapChainPanel's own composition scale rather than
+        // GetDpiForWindow(hwnd): the panel is what actually composites
+        // the swap chain, so its scale is the value we have to match
+        // to avoid a "rendered at 2x, composited at 1x" stretch. On
+        // RDP the panel may not have settled yet at this point and
+        // can report 1.0 even when the window is at 192 DPI; that's
+        // fine — TerminalControl subscribes to CompositionScaleChanged
+        // and re-issues ghostty_surface_set_content_scale once the
+        // real value arrives. Fall back to GetDpiForWindow only when
+        // the panel reports a non-positive value (composition pipeline
+        // hasn't run at all yet); using a sane positive scale at
+        // surface_new time prevents libghostty from starting at 0/NaN.
+        double scaleX = panel.CompositionScaleX();
+        double scaleY = panel.CompositionScaleY();
+        if (scaleX <= 0.0 || scaleY <= 0.0) {
+            UINT dpi = GetDpiForWindow(m_hwnd);
+            scaleX = scaleY = static_cast<double>(dpi) / 96.0;
+        }
+        cfg.scale_factor = scaleX;
+        // Publish the same initial scale to the renderer-thread context
+        // so the very first swap_chain_changed_cb fire (during
+        // threadEnter) installs the correct matrix instead of the 1.0
+        // default. CompositionScaleChanged later publishes updates if
+        // the panel's settled scale changes.
+        swapChainChanged->compositionScale.store(scaleX, std::memory_order_release);
 
         ghostty_surface_t surface = ghostty_surface_new(m_app, &cfg);
         if (!surface) {
@@ -202,7 +240,7 @@ public:
         // Hand surface ownership to the control. From here on the
         // control's Detach() is responsible for freeing the surface
         // and closing the handle.
-        controlImpl->Attach(m_app, surface, handle, m_hwnd, attach);
+        controlImpl->Attach(m_app, surface, handle, m_hwnd, attach, std::move(swapChainChanged));
 
         // Wire the host-supplied focus callback so the control can
         // notify MainWindow whenever it gains keyboard focus without
