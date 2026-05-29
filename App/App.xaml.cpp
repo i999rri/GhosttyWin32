@@ -3,7 +3,9 @@
 #include "MainWindow.xaml.h"
 #include <filesystem>
 #include <fstream>
+#include <string>
 #include <windows.h>
+#include <winrt/Microsoft.Windows.AppLifecycle.h>
 #include <winrt/Microsoft.Windows.AppNotifications.h>
 
 using namespace winrt;
@@ -23,12 +25,15 @@ namespace {
 
 namespace winrt::GhosttyWin32::implementation
 {
+    App* App::g_app = nullptr;
+
     /// <summary>
     /// Initializes the singleton application object.  This is the first line of authored code
     /// executed, and as such is the logical equivalent of main() or WinMain().
     /// </summary>
     App::App()
     {
+        g_app = this;
         // Xaml objects should not call InitializeComponent during construction.
         // See https://github.com/microsoft/cppwinrt/tree/master/nuget#initializecomponent
 
@@ -45,12 +50,118 @@ namespace winrt::GhosttyWin32::implementation
 #endif
     }
 
+    void App::OnInstanceActivated(
+        winrt::Windows::Foundation::IInspectable const&,
+        winrt::Microsoft::Windows::AppLifecycle::AppActivationArguments const& args)
+    {
+        // Activated fires on a worker — bounce to the UI thread before
+        // touching the window. If the redirect happened before OnLaunched
+        // wired up `window`, just drop it; OnLaunched will run normally
+        // and present the terminal as a first-launch effect.
+        if (!window) return;
+        window.DispatcherQueue().TryEnqueue([weak = get_weak(), args]() {
+            if (auto self = weak.get()) {
+                self->HandleActivation(args);
+            }
+        });
+    }
+
+    void App::HandleActivation(
+        winrt::Microsoft::Windows::AppLifecycle::AppActivationArguments const&)
+    {
+        // The activation args delivered through AppInstance::Activated
+        // are a cross-process proxy back to the redirecting instance —
+        // which has already exited by the time we get here, so any
+        // Kind() / Data() call would throw RPC_S_SERVER_UNAVAILABLE.
+        // We deliberately ignore the args and just bring the window
+        // forward; the surface-targeted route (clicks on toasts we
+        // raised ourselves) is handled by OnNotificationInvoked, where
+        // the args are in-process and safe to read.
+        if (auto mwProj = window.try_as<winrt::GhosttyWin32::MainWindow>()) {
+            if (auto* mw = winrt::get_self<implementation::MainWindow>(mwProj)) {
+                mw->PresentNotification(implementation::PaneId{ 0 });
+            }
+        }
+    }
+
+    void App::RouteNotificationClick(uint64_t paneIdValue)
+    {
+        // Called from the wWinMain-side NotificationInvoked subscriber
+        // on a worker thread. Bounce to the UI thread before touching
+        // the window. If the click arrives before OnLaunched has
+        // wired `window`, drop it — the user just gets the regular
+        // foreground from AppInstance::Activated.
+        if (!window) return;
+        window.DispatcherQueue().TryEnqueue(
+            [weak = get_weak(), paneIdValue]()
+            {
+                auto self = weak.get();
+                if (!self) return;
+                if (auto mwProj = self->window.try_as<winrt::GhosttyWin32::MainWindow>()) {
+                    if (auto* mw = winrt::get_self<implementation::MainWindow>(mwProj)) {
+                        mw->PresentNotification(implementation::PaneId{ paneIdValue });
+                    }
+                }
+            });
+    }
+
+    uint64_t App::ParseSurfaceIdFromArguments(std::wstring const& arguments)
+    {
+        // Argument format is `key=value;key=value`. Today only
+        // `surfaceId=<u64>` is emitted; the generic loop lets future
+        // fields piggy-back without a rewrite.
+        uint64_t paneIdValue = 0;
+        size_t pos = 0;
+        while (pos < arguments.size()) {
+            auto sep = arguments.find(L';', pos);
+            std::wstring pair = arguments.substr(pos, sep == std::wstring::npos
+                                                 ? std::wstring::npos
+                                                 : sep - pos);
+            auto eq = pair.find(L'=');
+            if (eq != std::wstring::npos) {
+                auto key = pair.substr(0, eq);
+                auto val = pair.substr(eq + 1);
+                if (key == L"surfaceId" && !val.empty()) {
+                    try {
+                        paneIdValue = std::stoull(val);
+                    } catch (...) {
+                        paneIdValue = 0;
+                    }
+                }
+            }
+            if (sep == std::wstring::npos) break;
+            pos = sep + 1;
+        }
+        return paneIdValue;
+    }
+
     /// <summary>
     /// Invoked when the application is launched.
     /// </summary>
     /// <param name="e">Details about the launch request and process.</param>
     void App::OnLaunched([[maybe_unused]] LaunchActivatedEventArgs const& e)
     {
+        // Single-instance redirect already ran in wWinMain (see main.cpp);
+        // if we got here, we're the primary instance. Just wire the
+        // Activated event so subsequent launches (which wWinMain bounced
+        // back to us via RedirectActivationToAsync) land in
+        // HandleActivation instead of being silently dropped. We
+        // re-acquire `primary` via FindOrRegisterForKey — same key, same
+        // holder, idempotent.
+        {
+            namespace appLifecycle = winrt::Microsoft::Windows::AppLifecycle;
+            auto primary = appLifecycle::AppInstance::FindOrRegisterForKey(L"GhosttyWin32-Main");
+            auto weak = get_weak();
+            m_activatedToken = primary.Activated(
+                [weak](winrt::Windows::Foundation::IInspectable const& sender,
+                       appLifecycle::AppActivationArguments const& a)
+                {
+                    if (auto self = weak.get()) {
+                        self->OnInstanceActivated(sender, a);
+                    }
+                });
+        }
+
         // Crash recovery BEFORE creating the window: if the previous run
         // didn't reach clean shutdown, give the GPU driver time to recover
         // its kernel-side state. Doing this here (no XAML window yet) avoids
@@ -66,17 +177,12 @@ namespace winrt::GhosttyWin32::implementation
             std::ofstream(flag).close();
         }
 
-        // Register with the AppNotifications service so the
-        // GHOSTTY_ACTION_DESKTOP_NOTIFICATION handler can later call
-        // AppNotificationManager::Show without being silently dropped.
-        // Register is idempotent; the catch is a belt-and-suspenders
-        // hedge against MSIX activation edge cases that throw here on
-        // some Windows builds.
-        try {
-            Microsoft::Windows::AppNotifications::AppNotificationManager::Default().Register();
-        } catch (winrt::hresult_error const&) {
-            OutputDebugStringA("GhosttyWin32: AppNotificationManager::Register failed; desktop notifications disabled\n");
-        }
+        // AppNotificationManager::Default().Register() and the
+        // NotificationInvoked subscription both already happened in
+        // wWinMain (see main.cpp). Windows App SDK 1.8 throws and
+        // fail-fasts if we try to re-subscribe NotificationInvoked
+        // here after Register(), so the routing path goes via the
+        // wWinMain-side subscriber calling App::RouteNotificationClick.
 
         window = make<MainWindow>();
         window.Activate();

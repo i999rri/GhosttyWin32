@@ -171,10 +171,13 @@ struct MockMainWindowView : core::host::IWindow {
     }
 
     int showDesktopNotificationCalls = 0;
+    ghostty_surface_t lastNotificationSurface = nullptr;
     std::wstring lastNotificationTitle;
     std::wstring lastNotificationBody;
-    void ShowDesktopNotification(std::wstring title, std::wstring body) override {
+    void ShowDesktopNotification(ghostty_surface_t surface,
+                                 std::wstring title, std::wstring body) override {
         ++showDesktopNotificationCalls;
+        lastNotificationSurface = surface;
         lastNotificationTitle = std::move(title);
         lastNotificationBody = std::move(body);
     }

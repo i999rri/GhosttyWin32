@@ -335,11 +335,13 @@ TEST(GhosttyActionsTest, OnConfigChangeIgnoresNull) {
 TEST(GhosttyActionsTest, OnDesktopNotificationConvertsBothLines) {
     MockMainWindowView view;
     Actions actions(view);
+    auto surface = FakeSurface(0xCAFE);
     ghostty_action_desktop_notification_s dn{};
     dn.title = "Title";
     dn.body = "Body";
-    EXPECT_TRUE(actions.OnDesktopNotification(dn));
+    EXPECT_TRUE(actions.OnDesktopNotification(surface, dn));
     EXPECT_EQ(view.showDesktopNotificationCalls, 1);
+    EXPECT_EQ(view.lastNotificationSurface, surface);
     EXPECT_EQ(view.lastNotificationTitle, L"Title");
     EXPECT_EQ(view.lastNotificationBody, L"Body");
 }
@@ -351,7 +353,7 @@ TEST(GhosttyActionsTest, OnDesktopNotificationDropsAllEmpty) {
     ghostty_action_desktop_notification_s dn{};
     dn.title = "";
     dn.body = nullptr;
-    EXPECT_TRUE(actions.OnDesktopNotification(dn));
+    EXPECT_TRUE(actions.OnDesktopNotification(FakeSurface(0xCAFE), dn));
     EXPECT_EQ(view.showDesktopNotificationCalls, 0);
 }
 
