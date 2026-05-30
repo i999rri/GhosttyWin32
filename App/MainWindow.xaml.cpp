@@ -859,14 +859,17 @@ namespace winrt::GhosttyWin32::implementation
     void MainWindow::SetCursorShapeForSurface(ghostty_surface_t surface,
                                               ghostty_action_mouse_shape_e shape)
     {
-        // Known: routes to the tab's active leaf rather than the
-        // pane owning `surface` — tracked in #65 because split
-        // panes get the wrong cursor. Behaviour preserved on this
-        // refactor; the fix is a separate PR.
-        if (auto* t = m_tabs.FindBySurface(surface)) {
-            if (auto* tc = t->ActiveControl()) {
-                tc->SetCursorShape(shape);
-            }
+        // Route the shape to the leaf that actually owns `surface`, not
+        // the tab's active leaf. MOUSE_SHAPE carries the originating
+        // surface, and with split panes the pointer can be over a
+        // non-active pane — using ActiveControl() landed the shape on
+        // the wrong pane (#65). FindLeafBySurface walks the pane tree
+        // and returns the owning leaf; in the single-pane case it
+        // resolves to the same control ActiveControl() would.
+        auto lookup = m_tabs.FindLeafBySurface(surface);
+        if (!lookup.leaf) return;
+        if (auto* tc = Tab::LeafToTerminalControl(*lookup.leaf)) {
+            tc->SetCursorShape(shape);
         }
     }
 
