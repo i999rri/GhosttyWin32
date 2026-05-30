@@ -462,6 +462,24 @@ namespace winrt::GhosttyWin32::implementation
 
             InitGhostty();
             CreateTab();
+            // Honour `window-decoration` from config at startup so
+            // users who set it in their config see the chrome state
+            // they asked for without having to fire the toggle
+            // keybind first. After this, TOGGLE flips per-window
+            // overrides on top of the config baseline.
+            //
+            // Order: must run AFTER CreateTab. The first tab's swap
+            // chain takes its initial size hint from AppContent's
+            // measured bounds; collapsing AppTitleBar before the first
+            // measure leaves AppContent unresolved (no layout pass has
+            // run between Apply and CreateTab inside this synchronous
+            // activation lambda), so the very first surface starts at
+            // 0×0 and ghostty's renderer never publishes a frame.
+            // Running Apply after CreateTab lets the tab come up at
+            // the chrome-visible size, then the relayout shrinks
+            // AppTitleBar and AppContent expands — SizeChanged fires
+            // and ghostty resizes naturally.
+            ApplyWindowDecorationsAppearance();
         });
     }
 
@@ -1007,19 +1025,31 @@ namespace winrt::GhosttyWin32::implementation
 
     void MainWindow::ToggleWindowDecorations()
     {
-        // The tag owns the 3-state override; we ask it what the new
-        // effective state is and then translate that to XAML:
-        // CaptionButtons and the DragRegion border are shown when
-        // decorated, collapsed when not. ExtendsContentIntoTitleBar
-        // is left at true unconditionally — the OS native title bar
-        // was already removed at construction (#67 / MainWindow ctor),
-        // so "undecorated" here means hiding our own custom chrome.
+        // Flip the override first, then re-apply. The tag owns the
+        // 3-state override; Apply reads it back and translates the
+        // effective state into XAML Visibility.
         bool configDecorated = true;
         if (m_ghostty) {
             ghostty::Config cfg(m_ghostty->ConfigHandle());
             configDecorated = cfg.WindowDecoratedByConfig();
         }
-        bool decorated = m_windowDecorations.Toggle(configDecorated);
+        m_windowDecorations.Toggle(configDecorated);
+        ApplyWindowDecorationsAppearance();
+    }
+
+    void MainWindow::ApplyWindowDecorationsAppearance()
+    {
+        // CaptionButtons + DragRegion are shown when decorated, hidden
+        // when not. ExtendsContentIntoTitleBar stays true unconditionally
+        // — the OS native title bar was already removed at construction
+        // (#67 / MainWindow ctor), so "undecorated" here means hiding
+        // our own custom chrome.
+        bool configDecorated = true;
+        if (m_ghostty) {
+            ghostty::Config cfg(m_ghostty->ConfigHandle());
+            configDecorated = cfg.WindowDecoratedByConfig();
+        }
+        bool decorated = m_windowDecorations.Effective(configDecorated);
         auto vis = decorated
             ? winrt::Microsoft::UI::Xaml::Visibility::Visible
             : winrt::Microsoft::UI::Xaml::Visibility::Collapsed;

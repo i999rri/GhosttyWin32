@@ -106,6 +106,12 @@ namespace winrt::GhosttyWin32::implementation
         void ApplySizeLimit(ghostty_action_size_limit_s limit) override;
         void ToggleFullscreen() override;
         void ToggleWindowDecorations() override;
+        // Apply the current decoration state (config + any override
+        // installed by ToggleWindowDecorations) to the XAML caption
+        // buttons / drag region. Called once at startup so the config
+        // value is honoured even without a toggle, and re-called from
+        // ToggleWindowDecorations after flipping the tag.
+        void ApplyWindowDecorationsAppearance();
         void PresentTerminal() override;
         void ShowOnScreenKeyboard() override;
 
