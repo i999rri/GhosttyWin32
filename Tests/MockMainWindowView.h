@@ -126,6 +126,9 @@ struct MockMainWindowView : core::host::IWindow {
     int toggleFullscreenCalls = 0;
     void ToggleFullscreen() override { ++toggleFullscreenCalls; }
 
+    int toggleWindowDecorationsCalls = 0;
+    void ToggleWindowDecorations() override { ++toggleWindowDecorationsCalls; }
+
     int presentTerminalCalls = 0;
     void PresentTerminal() override { ++presentTerminalCalls; }
 

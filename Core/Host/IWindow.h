@@ -129,6 +129,13 @@ struct IWindow {
     // pre-fullscreen placement + style when leaving.
     virtual void ToggleFullscreen() = 0;
 
+    // Toggle the per-window override of the config-level
+    // `window-decoration` setting (issue #68). The view owns the
+    // override state and the visual application — show / hide the
+    // caption buttons and drag region — so this interface is just
+    // the "flip now" trigger from the dispatcher.
+    virtual void ToggleWindowDecorations() = 0;
+
     // Bring the window to the foreground (restoring it from a
     // minimized state first) and give it focus. Used by
     // PRESENT_TERMINAL — typically triggered by an external

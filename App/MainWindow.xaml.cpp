@@ -1005,6 +1005,28 @@ namespace winrt::GhosttyWin32::implementation
         m_fullscreen.Toggle(m_hwnd);
     }
 
+    void MainWindow::ToggleWindowDecorations()
+    {
+        // The tag owns the 3-state override; we ask it what the new
+        // effective state is and then translate that to XAML:
+        // CaptionButtons and the DragRegion border are shown when
+        // decorated, collapsed when not. ExtendsContentIntoTitleBar
+        // is left at true unconditionally — the OS native title bar
+        // was already removed at construction (#67 / MainWindow ctor),
+        // so "undecorated" here means hiding our own custom chrome.
+        bool configDecorated = true;
+        if (m_ghostty) {
+            ghostty::Config cfg(m_ghostty->ConfigHandle());
+            configDecorated = cfg.WindowDecoratedByConfig();
+        }
+        bool decorated = m_windowDecorations.Toggle(configDecorated);
+        auto vis = decorated
+            ? winrt::Microsoft::UI::Xaml::Visibility::Visible
+            : winrt::Microsoft::UI::Xaml::Visibility::Collapsed;
+        CaptionButtons().Visibility(vis);
+        DragRegion().Visibility(vis);
+    }
+
     void MainWindow::PresentTerminal()
     {
         // Restore from minimized first so SetForegroundWindow has

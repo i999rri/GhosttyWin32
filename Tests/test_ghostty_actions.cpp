@@ -47,6 +47,13 @@ TEST(GhosttyActionsTest, OnToggleFullscreenAsksTheViewToToggle) {
     EXPECT_EQ(view.toggleFullscreenCalls, 1);
 }
 
+TEST(GhosttyActionsTest, OnToggleWindowDecorationsAsksTheViewToToggle) {
+    MockMainWindowView view;
+    Actions actions(view);
+    EXPECT_TRUE(actions.OnToggleWindowDecorations());
+    EXPECT_EQ(view.toggleWindowDecorationsCalls, 1);
+}
+
 TEST(GhosttyActionsTest, OnPresentTerminalAsksTheView) {
     MockMainWindowView view;
     Actions actions(view);

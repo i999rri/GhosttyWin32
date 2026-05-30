@@ -78,6 +78,7 @@ public:
     // method just bounces through the UI dispatcher.
     bool OnSizeLimit(ghostty_action_size_limit_s limit);
     bool OnToggleFullscreen();
+    bool OnToggleWindowDecorations();
 
     // ----- split-pane -----
     bool OnNewSplit(ghostty_surface_t surface,
