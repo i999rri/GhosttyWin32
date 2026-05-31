@@ -51,11 +51,14 @@ public:
     TabFactory& operator=(TabFactory&&) = delete;
 
     // Build a fully-formed Tab. The caller created `item` and appended
-    // it to the TabView, but did NOT set `item.Content` — this factory
-    // creates the TerminalControl, wraps it in a single-leaf Pane
-    // tree, hosts it in a SplitPanel, and assigns the SplitPanel as
-    // the item's content. That keeps the pane-tree ownership invariant
-    // ("SplitPanel owns the tree, Tab borrows it") in one place.
+    // it to the TabView; this factory creates the TerminalControl,
+    // wraps it in a single-leaf Pane tree, and hosts it in a fresh
+    // SplitPanel. The SplitPanel is handed back via Tab.Panel() — the
+    // host is responsible for parenting it (today: under AppContent
+    // alongside the other tabs' panels, with Visibility driven by
+    // TabView selection). The factory deliberately doesn't touch
+    // item.Content or any other host-side layout: keeps the factory
+    // free of "where does the panel live" knowledge.
     //
     // Returns nullptr on failure (after cleaning up any partially-
     // acquired resources). Call on the UI thread; neither the inner
@@ -82,10 +85,11 @@ public:
         auto leaf = MakeLeaf(initialWidth, initialHeight, std::move(onActivated));
         if (!leaf) return nullptr;
 
-        // Wrap the leaf in a SplitPanel and assign as item.Content.
-        // With one leaf SplitPanel collapses to "arrange the single
-        // child at the full rect", matching the previous behaviour of
-        // placing the control directly under TabViewItem.
+        // Wrap the leaf in a SplitPanel. With one leaf the panel
+        // collapses to "arrange the single child at the full rect".
+        // The host parents the returned panel under AppContent — the
+        // factory deliberately doesn't, so it stays unaware of the
+        // host's chrome / content split.
         winrt::GhosttyWin32::SplitPanel splitPanel{};
         auto* splitPanelImpl = winrt::get_self<implementation::SplitPanel>(splitPanel);
         if (!splitPanelImpl) {
@@ -98,7 +102,6 @@ public:
         // with the correct brush.
         splitPanelImpl->SetDividerColor(m_dividerColor);
         splitPanelImpl->SetRoot(std::move(leaf));
-        item.Content(splitPanel);
 
         try {
             return std::make_unique<Tab>(std::move(splitPanel), std::move(item));

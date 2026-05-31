@@ -220,7 +220,14 @@ namespace winrt::GhosttyWin32::implementation
             });
 
             auto tv = TabView();
-            SetTitleBar(DragRegion());
+            // The OS-blessed drag region is the entire AppTitleBar grid
+            // (strip + caption-button column), not just the small Border
+            // we historically pointed it at. Anchoring it on the wrapping
+            // grid keeps the "chrome row" as one OS-recognised unit, which
+            // is what makes the planned `window-decoration=false` toggle a
+            // one-line `AppTitleBar.Visibility(Collapsed)` rather than a
+            // walk over multiple children.
+            SetTitleBar(AppTitleBar());
 
             // Title-bar click focus restore. Clicking the DragRegion
             // immediately knocks focus off the active TerminalControl
@@ -357,9 +364,19 @@ namespace winrt::GhosttyWin32::implementation
                     // teardown — same path as a normal title-bar X
                     // close, which works fine precisely because XAML
                     // finishes its own focus cleanup before our
-                    // destructors run.
+                    // destructors run. The orphan SplitPanel under
+                    // AppContent comes down with the window, no
+                    // explicit Remove needed.
                     this->Close();
                 } else {
+                    // Unparent the panel from AppContent before
+                    // destroying the Tab. ~Tab doesn't touch the
+                    // visual tree (Tab doesn't know about AppContent),
+                    // so without this the panel would leak as an
+                    // orphan child of AppContent.
+                    if (auto* t = m_tabs.FindByItem(item)) {
+                        RemoveTabPanelFromAppContent(*t);
+                    }
                     m_tabs.Remove(item);
                 }
             });
@@ -387,6 +404,14 @@ namespace winrt::GhosttyWin32::implementation
                 // window is mid-dispose, in which case TabView() throws
                 // RO_E_CLOSED. Swallow — focus restoration is moot then.
                 try {
+                    // Make the selected tab's SplitPanel the only Visible
+                    // child of AppContent. Must run before Focus() — XAML
+                    // refuses focus on a Collapsed element, so the new
+                    // active panel has to be Visible before tab->Focus()
+                    // fires. Old active panel goes Collapsed but stays
+                    // parented; the swap chain handle keeps its DComp
+                    // binding across the switch.
+                    self->UpdateActivePanelVisibility();
                     if (auto* tab = self->ActiveTab()) {
                         tab->Focus();
                     }
@@ -447,6 +472,43 @@ namespace winrt::GhosttyWin32::implementation
     {
         auto* tab = ActiveTab();
         return tab ? tab->ActiveControl() : nullptr;
+    }
+
+    void MainWindow::UpdateActivePanelVisibility()
+    {
+        // Walk AppContent.Children once: each child is a SplitPanel
+        // for one Tab. The one matching the currently-active tab's
+        // panel becomes Visible; everything else becomes Collapsed.
+        // Collapsed elements stay parented (no Unloaded fires) so the
+        // SwapChainPanel's DComp surface binding survives the switch.
+        auto* tab = ActiveTab();
+        winrt::GhosttyWin32::SplitPanel activePanel{ nullptr };
+        if (tab) activePanel = tab->Panel();
+        auto children = AppContent().Children();
+        for (uint32_t i = 0; i < children.Size(); ++i) {
+            auto child = children.GetAt(i).try_as<winrt::GhosttyWin32::SplitPanel>();
+            if (!child) continue;
+            bool isActive = activePanel && (child == activePanel);
+            child.Visibility(isActive
+                ? winrt::Microsoft::UI::Xaml::Visibility::Visible
+                : winrt::Microsoft::UI::Xaml::Visibility::Collapsed);
+        }
+    }
+
+    void MainWindow::RemoveTabPanelFromAppContent(Tab const& tab)
+    {
+        // Unparent the tab's SplitPanel from AppContent. Called by the
+        // close paths before the Tab object is destroyed — ~Tab doesn't
+        // know about AppContent (the factory deliberately keeps that
+        // knowledge in the host), so without this the panel would leak
+        // as an orphan child after Tab destruction.
+        auto panel = tab.Panel();
+        if (!panel) return;
+        auto children = AppContent().Children();
+        uint32_t idx = 0;
+        if (children.IndexOf(panel, idx)) {
+            children.RemoveAt(idx);
+        }
     }
 
     void MainWindow::NotifySurfaceFocused(ghostty_surface_t surface) noexcept
@@ -586,10 +648,11 @@ namespace winrt::GhosttyWin32::implementation
         static constexpr wchar_t kDefaultTabTitle[] = L" ";
         item.Header(box_value(kDefaultTabTitle));
         item.IsClosable(true);
-        // item.Content is set by TabFactory::Make (which wraps the
-        // control in a SplitPanel-backed Pane tree). Leaving it unset
-        // here keeps "the SplitPanel owns the pane tree" in a single
-        // place.
+        // item.Content stays unset: the SplitPanel is parented under
+        // AppContent (not under TabViewItem) so the tab strip can be
+        // hidden independently of the terminal content. See the layout
+        // comment in MainWindow.xaml. The append happens further down
+        // after TabFactory::Make returns the panel.
         // Same focus-retention story as the AddTabButton: TabViewItem is
         // a Control with IsTabStop=true by default, so clicking a tab
         // header lands focus on the header itself rather than the inner
@@ -625,19 +688,32 @@ namespace winrt::GhosttyWin32::implementation
             // race-free, while a direct Focus() call here is not.
         };
 
-        // Estimate the new panel's eventual size from the currently active
-        // tab. Both panels live in the same TabView content area, so the
-        // active tab's ActualWidth/Height is exactly what the new panel
-        // will lay out to once it becomes visible. Passing this lets
-        // ghostty create the swap chain at the right size from the start
-        // — without it, the new panel's ActualWidth is 0 (deferred
-        // SelectedItem) and ghostty falls back to the main window's full
-        // client rect, which is too tall by the tab strip height.
+        // Estimate the new panel's eventual size from the currently
+        // active tab — the new panel will lay out into the same
+        // AppContent row, so the active panel's size is the right
+        // target. Passing this lets ghostty create the swap chain at
+        // the right size from the start; without it the new panel's
+        // ActualWidth is 0 (Collapsed until the deferred activation
+        // fires) and ghostty falls back to the main window's full
+        // client rect, which causes a "stretch then resize" flash as
+        // soon as the panel becomes Visible.
+        //
+        // First-tab case: ActiveControl() is null and AppContent has
+        // already been measured (Activated fires after the first
+        // layout pass), so AppContent.ActualWidth/Height is the right
+        // fallback. Without this fallback the very first surface would
+        // be created at the bare window size — historically that
+        // produced a visible reflow on the first frame.
         uint32_t initialW = 0, initialH = 0;
         if (auto* prevControl = ActiveControl()) {
             auto prevPanel = prevControl->InnerPanel();
             initialW = static_cast<uint32_t>(prevPanel.ActualWidth());
             initialH = static_cast<uint32_t>(prevPanel.ActualHeight());
+        }
+        if (initialW == 0 || initialH == 0) {
+            auto content = AppContent();
+            if (initialW == 0) initialW = static_cast<uint32_t>(content.ActualWidth());
+            if (initialH == 0) initialH = static_cast<uint32_t>(content.ActualHeight());
         }
 
         // Wrap TabFactory::Make in SEH guard so a hardware exception in
@@ -694,6 +770,18 @@ namespace winrt::GhosttyWin32::implementation
             return;
         }
 
+        // Parent the SplitPanel under AppContent (NOT TabViewItem) with
+        // Visibility=Collapsed. The deferred onActivated callback flips
+        // SelectedItem on the TabView, which fires SelectionChanged →
+        // UpdateActivePanelVisibility, which is what actually makes
+        // this panel Visible — so the "panel becomes visible only with
+        // real content" invariant from issue #22 still holds. The panel
+        // ref is captured by value (cheap winrt handle, just AddRef)
+        // before the unique_ptr is moved into m_tabs so we don't reach
+        // through a moved-from pointer.
+        auto panel = tab->Panel();
+        panel.Visibility(winrt::Microsoft::UI::Xaml::Visibility::Collapsed);
+        AppContent().Children().Append(panel);
         // SelectedItem / SW_SHOW are deferred to the onActivated
         // callback fired from Tab once ghostty has presented its first
         // frame; focus + IME activation chain off SelectedItem via the
@@ -726,6 +814,10 @@ namespace winrt::GhosttyWin32::implementation
         if (tv.TabItems().Size() == 0) {
             RequestClose();
         } else {
+            // Mirror the TabCloseRequested handler: unparent the
+            // SplitPanel from AppContent before destroying the Tab so
+            // it doesn't leak as an orphan child.
+            RemoveTabPanelFromAppContent(*t);
             m_tabs.Remove(item);
         }
     }

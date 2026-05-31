@@ -14,13 +14,16 @@ namespace winrt::GhosttyWin32::implementation {
 // Each Tab references:
 //   * A SplitPanel (`m_panel`) that owns the Pane tree describing how
 //     this tab's content is partitioned across one or more terminal
-//     panes, and is the TabViewItem's Content. The Panel keeps its
-//     Children() collection in sync with the tree's leaf set so
-//     framework input routing, hit-testing, and measure / arrange work
-//     end-to-end. Today the tree is always a single leaf — NEW_SPLIT
-//     plumbing comes in the next phase — but the structure is in place
-//     so callers (Tabs::FindBySurface, action callbacks) walk the tree
-//     instead of assuming a single TerminalControl per tab.
+//     panes. The host (MainWindow) parents the panel under AppContent
+//     alongside every other tab's panel; selection drives per-panel
+//     Visibility, which is why TabViewItem.Content stays unset. The
+//     panel keeps its Children() collection in sync with the tree's
+//     leaf set so framework input routing, hit-testing, and measure /
+//     arrange work end-to-end. Today the tree is always a single leaf
+//     — NEW_SPLIT plumbing comes in the next phase — but the structure
+//     is in place so callers (Tabs::FindBySurface, action callbacks)
+//     walk the tree instead of assuming a single TerminalControl per
+//     tab.
 //   * A pointer to the currently active leaf (`m_activeLeaf`). All
 //     "focused terminal" operations (key events, IME, clipboard,
 //     action targets) flow through this. Today there is exactly one
@@ -163,8 +166,9 @@ private:
         DetachAllLeaves(node->Second());
     }
 
-    // SplitPanel owns the Pane tree (via its own m_root) and is set as
-    // the TabViewItem's Content by TabFactory.
+    // SplitPanel owns the Pane tree (via its own m_root). The host
+    // parents it under AppContent — Tab just borrows it via Panel()
+    // for tree walks and Detach plumbing.
     winrt::GhosttyWin32::SplitPanel m_panel{ nullptr };
     Microsoft::UI::Xaml::Controls::TabViewItem m_item{ nullptr };
     // Borrowed pointer into the SplitPanel's tree — never owning.

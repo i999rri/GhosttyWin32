@@ -138,6 +138,19 @@ namespace winrt::GhosttyWin32::implementation
         // depending on the current OverlappedPresenter state.
         void UpdateMaximizeGlyph();
 
+        // Reconcile AppContent child Visibility with the currently
+        // active tab — selected tab's SplitPanel goes Visible, every
+        // other tab's panel goes Collapsed. Called from
+        // TabView.SelectionChanged on every selection flip (incl. the
+        // deferred first-tab activation that runs after ghostty presents
+        // its first frame).
+        void UpdateActivePanelVisibility();
+        // Unparent `tab`'s SplitPanel from AppContent. Called by the
+        // close paths just before the Tab object is destroyed so the
+        // panel doesn't leak as an orphan child. ~Tab can't do this
+        // itself because Tab is deliberately unaware of AppContent.
+        void RemoveTabPanelFromAppContent(Tab const& tab);
+
         // Tear down the pane carrying `id` and update the tree / tab
         // list. Dispatched from close_surface_cb. UI thread only.
         void CloseSurfaceByPaneId(PaneId id);
