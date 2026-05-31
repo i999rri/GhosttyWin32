@@ -412,9 +412,28 @@ namespace winrt::GhosttyWin32::implementation
                     // parented; the swap chain handle keeps its DComp
                     // binding across the switch.
                     self->UpdateActivePanelVisibility();
-                    if (auto* tab = self->ActiveTab()) {
-                        tab->Focus();
-                    }
+                    // Defer Focus to the next dispatcher tick. The
+                    // synchronous Focus call races XAML's own focus
+                    // migration when the previously-active panel just
+                    // went Collapsed — observable as "click a tab once,
+                    // nothing happens; click again to actually switch"
+                    // because focus stays parked on the now-Collapsed
+                    // control and the next click is treated as a focus
+                    // recovery instead of a selection change. Same
+                    // pattern as the DragRegion PointerReleased handler
+                    // above, which had to bounce through the dispatcher
+                    // for the same reason.
+                    auto dq = self->DispatcherQueue();
+                    if (!dq) return;
+                    dq.TryEnqueue([weakSelf]() {
+                        auto self2 = weakSelf.get();
+                        if (!self2) return;
+                        try {
+                            if (auto* tab = self2->ActiveTab()) {
+                                tab->Focus();
+                            }
+                        } catch (winrt::hresult_error const&) {}
+                    });
                 } catch (winrt::hresult_error const&) {
                 }
             });
