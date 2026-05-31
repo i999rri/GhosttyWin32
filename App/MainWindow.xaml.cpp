@@ -512,6 +512,23 @@ namespace winrt::GhosttyWin32::implementation
                 ? winrt::Microsoft::UI::Xaml::Visibility::Visible
                 : winrt::Microsoft::UI::Xaml::Visibility::Collapsed);
         }
+        // Pre-apply the focused visual on the newly-active leaf
+        // synchronously, ahead of the dispatcher-deferred tab->Focus()
+        // call in SelectionChanged. Without this, the panel goes
+        // Visible while still in the "last LostFocus" state — its
+        // UnfocusedDim overlay is shown for the one dispatcher tick
+        // before XAML's GotFocus arrives and clears it — visible as a
+        // brief darken/brighten flash on every tab switch. The actual
+        // keyboard focus still goes through the deferred path (which
+        // is what fires m_onFocused → NotifySurfaceFocused and updates
+        // the active surface tracker); this only takes care of the
+        // overlay's visibility so the visual state matches the
+        // perceived selection immediately.
+        if (tab) {
+            if (auto* tc = tab->ActiveControl()) {
+                tc->ApplyFocusVisual(true);
+            }
+        }
     }
 
     void MainWindow::RemoveTabPanelFromAppContent(Tab const& tab)
