@@ -15,6 +15,7 @@
 #include <commctrl.h>
 #include <winrt/Microsoft.Windows.AppNotifications.h>
 #include <winrt/Microsoft.Windows.AppNotifications.Builder.h>
+#include <winrt/Windows.Graphics.h>
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
@@ -220,14 +221,35 @@ namespace winrt::GhosttyWin32::implementation
             });
 
             auto tv = TabView();
-            // The OS-blessed drag region is the entire AppTitleBar grid
-            // (strip + caption-button column), not just the small Border
-            // we historically pointed it at. Anchoring it on the wrapping
-            // grid keeps the "chrome row" as one OS-recognised unit, which
-            // is what makes the planned `window-decoration=false` toggle a
-            // one-line `AppTitleBar.Visibility(Collapsed)` rather than a
-            // walk over multiple children.
-            SetTitleBar(AppTitleBar());
+            // Don't call Window.SetTitleBar(AppTitleBar()) — that would
+            // make the whole chrome row OS-title-bar input, including the
+            // tab headers. Double-clicking a tab header would then
+            // satisfy the OS's "double-click on title bar = maximize"
+            // gesture, so a quick second click on a tab maximises the
+            // window instead of just selecting the tab.
+            //
+            // Use AppWindowTitleBar.SetDragRectangles instead: explicit
+            // physical-pixel rectangles for the drag region. The tabs +
+            // caption-button columns are outside any drag rect, so the
+            // OS treats clicks on them as ordinary content clicks.
+            // UpdateDragRectangles() is the single source of truth and
+            // is re-called when DragRegion's bounds change (tab add /
+            // remove / TabStripFooter resize) so the rect tracks the
+            // strip's free space dynamically.
+            DragRegion().SizeChanged([weakSelf = get_weak()](auto&&, auto&&) {
+                if (auto self = weakSelf.get()) self->UpdateDragRectangles();
+            });
+            // Publish the initial rect once the strip has finished its
+            // first layout. DragRegion lives inside TabView's template,
+            // which only realises on TabView.Loaded — calling
+            // UpdateDragRectangles here would publish an empty rect that
+            // gets corrected immediately by the SizeChanged above, but
+            // the empty rect would leak through to OS until the next
+            // resize. Tying it to TabView.Loaded keeps the first
+            // published rect already correct.
+            tv.Loaded([weakSelf = get_weak()](auto&&, auto&&) {
+                if (auto self = weakSelf.get()) self->UpdateDragRectangles();
+            });
 
             // Title-bar click focus restore. Clicking the DragRegion
             // immediately knocks focus off the active TerminalControl
@@ -528,6 +550,50 @@ namespace winrt::GhosttyWin32::implementation
             if (auto* tc = tab->ActiveControl()) {
                 tc->ApplyFocusVisual(true);
             }
+        }
+    }
+
+    void MainWindow::UpdateDragRectangles()
+    {
+        // Convert DragRegion's current bounds to a single window-relative
+        // physical-pixel RectInt32 and hand it to AppWindowTitleBar. Only
+        // this rectangle responds to drag input; tabs and caption buttons
+        // sit outside it so OS title-bar gestures (double-click maximize,
+        // long-drag move) only fire from the strip's free space.
+        //
+        // Re-runs on DragRegion.SizeChanged: tab adds / removes change
+        // the strip layout and so the DragRegion's bounds. DPI changes
+        // also trigger a SizeChanged via the XAML relayout, so the
+        // physical-pixel conversion stays current without a separate
+        // DPI hook.
+        if (!m_hwnd) return;
+        auto dragRegion = DragRegion();
+        if (!dragRegion) return;
+        // Skip when the element hasn't been measured yet — TransformToVisual
+        // works but ActualWidth/Height are 0, which would publish an
+        // empty drag rect and let the OS treat the whole AppTitleBar as
+        // non-drag content until the next size change. Bailing keeps
+        // whatever rect was last published in effect.
+        if (dragRegion.ActualWidth() <= 0 || dragRegion.ActualHeight() <= 0) return;
+
+        auto content = Content();
+        if (!content) return;
+        auto transform = dragRegion.TransformToVisual(content);
+        auto origin = transform.TransformPoint(winrt::Windows::Foundation::Point{0.0f, 0.0f});
+
+        const double scale = static_cast<double>(GetDpiForWindow(m_hwnd)) / 96.0;
+        winrt::Windows::Graphics::RectInt32 rect{
+            static_cast<int32_t>(origin.X * scale),
+            static_cast<int32_t>(origin.Y * scale),
+            static_cast<int32_t>(dragRegion.ActualWidth() * scale),
+            static_cast<int32_t>(dragRegion.ActualHeight() * scale)
+        };
+        try {
+            AppWindow().TitleBar().SetDragRectangles({rect});
+        } catch (winrt::hresult_error const&) {
+            // AppWindow may not have a TitleBar yet during early init.
+            // The next SizeChanged after the window is realised will
+            // retry, so silently dropping the first attempt is fine.
         }
     }
 

@@ -150,6 +150,14 @@ namespace winrt::GhosttyWin32::implementation
         // panel doesn't leak as an orphan child. ~Tab can't do this
         // itself because Tab is deliberately unaware of AppContent.
         void RemoveTabPanelFromAppContent(Tab const& tab);
+        // Publish a single drag rectangle to AppWindowTitleBar covering
+        // the DragRegion's current bounds. Called from
+        // DragRegion.SizeChanged so the rect tracks the strip's free
+        // space as tabs are added / removed. Avoids using
+        // Window.SetTitleBar (which would mark the whole AppTitleBar —
+        // including tab headers — as OS title-bar input, triggering a
+        // double-click maximize when the user double-clicks a tab).
+        void UpdateDragRectangles();
 
         // Tear down the pane carrying `id` and update the tree / tab
         // list. Dispatched from close_surface_cb. UI thread only.
