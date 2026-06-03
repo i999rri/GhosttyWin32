@@ -30,6 +30,9 @@
     <ClInclude Include="Ghostty\Actions\Tags\SizeLimit.h">
       <Filter>Ghostty\Actions\Tags</Filter>
     </ClInclude>
+    <ClInclude Include="Ghostty\Actions\Tags\WindowDecorations.h">
+      <Filter>Ghostty\Actions\Tags</Filter>
+    </ClInclude>
     <ClInclude Include="Ghostty\App.h">
       <Filter>Ghostty</Filter>
     </ClInclude>

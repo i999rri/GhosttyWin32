@@ -3,6 +3,7 @@
 #include "ghostty.h"
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <winrt/Windows.UI.h>
 
 namespace core::ghostty {
@@ -53,6 +54,29 @@ public:
         ghostty_config_color_s c{};
         if (GetRaw("split-divider-color", &c)) return ColorFrom(c);
         return DeriveDividerFromBackground(BackgroundRgb());
+    }
+
+    // Whether the user's config asks for window chrome (caption
+    // buttons + drag region) to be shown. Reads the ghostty enum
+    // `window-decoration` and returns true for any value except
+    // `none` (i.e. auto / client / server all map to "decorated").
+    // Defaults to true if the key isn't readable — matching ghostty's
+    // own default of `.auto`. Used by the TOGGLE_WINDOW_DECORATIONS
+    // tag (#68) to know what "the config default" means before
+    // applying per-window overrides.
+    bool WindowDecoratedByConfig() const noexcept {
+        // ghostty exposes enum config values as their @tagName — a
+        // pointer to a null-terminated string — NOT as the
+        // underlying integer (see ghostty src/config/c_get.zig
+        // line 62-65). The output pointer must be a `const char*`,
+        // not an int; treating it as an int silently truncates the
+        // 64-bit pointer write to 4 bytes and corrupts the stack.
+        // Possible tag names: "auto" / "client" / "server" / "none".
+        const char* tag = nullptr;
+        if (!GetRaw("window-decoration", &tag) || !tag) {
+            return true;  // key unreadable; assume decorated default
+        }
+        return std::strcmp(tag, "none") != 0;
     }
 
     // Unfocused-split overlay opacity as ghostty defines it: the
