@@ -522,6 +522,9 @@ namespace winrt::GhosttyWin32::implementation
         // panel becomes Visible; everything else becomes Collapsed.
         // Collapsed elements stay parented (no Unloaded fires) so the
         // SwapChainPanel's DComp surface binding survives the switch.
+        // No focus-visual pre-apply is needed — UnfocusedDim is owned
+        // by Tab.SetActiveLeaf and is independent of XAML focus, so
+        // tab switches don't disturb it.
         auto* tab = ActiveTab();
         winrt::GhosttyWin32::SplitPanel activePanel{ nullptr };
         if (tab) activePanel = tab->Panel();
@@ -533,23 +536,6 @@ namespace winrt::GhosttyWin32::implementation
             child.Visibility(isActive
                 ? winrt::Microsoft::UI::Xaml::Visibility::Visible
                 : winrt::Microsoft::UI::Xaml::Visibility::Collapsed);
-        }
-        // Pre-apply the focused visual on the newly-active leaf
-        // synchronously, ahead of the dispatcher-deferred tab->Focus()
-        // call in SelectionChanged. Without this, the panel goes
-        // Visible while still in the "last LostFocus" state — its
-        // UnfocusedDim overlay is shown for the one dispatcher tick
-        // before XAML's GotFocus arrives and clears it — visible as a
-        // brief darken/brighten flash on every tab switch. The actual
-        // keyboard focus still goes through the deferred path (which
-        // is what fires m_onFocused → NotifySurfaceFocused and updates
-        // the active surface tracker); this only takes care of the
-        // overlay's visibility so the visual state matches the
-        // perceived selection immediately.
-        if (tab) {
-            if (auto* tc = tab->ActiveControl()) {
-                tc->ApplyFocusVisual(true);
-            }
         }
     }
 
@@ -616,6 +602,25 @@ namespace winrt::GhosttyWin32::implementation
     void MainWindow::NotifySurfaceFocused(ghostty_surface_t surface) noexcept
     {
         m_activeSurface = surface;
+        // Route the focus event back into the owning Tab so it can
+        // update its per-tab dim invariant. SetActiveLeaf is idempotent
+        // when `leaf` is already the tab's active leaf, so the deferred
+        // Focus call we issue after tab switches (which re-focuses the
+        // same TerminalControl that was already active in the
+        // newly-selected tab) doesn't repaint anything. The case that
+        // matters is a pointer click on a non-active pane inside a
+        // split — GotFocus fires, we land here, SetActiveLeaf swaps
+        // the dim across the panes.
+        if (!surface) return;
+        try {
+            auto lookup = m_tabs.FindLeafBySurface(surface);
+            if (lookup.tab && lookup.leaf && lookup.tab->ActiveLeaf() != lookup.leaf) {
+                lookup.tab->SetActiveLeaf(lookup.leaf);
+            }
+        } catch (...) {
+            // Defensive: dim update is a UX nicety, never crash the
+            // focus path over it.
+        }
     }
 
     // ----- IMainWindowView -----
