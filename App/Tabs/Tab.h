@@ -56,11 +56,14 @@ public:
             throw winrt::hresult_error(E_INVALIDARG, L"Tab: SplitPanel has no root");
         }
         // Initial active leaf is the first (and currently only) leaf
-        // found via depth-first descent.
-        m_activeLeaf = FindFirstLeaf(panelImpl->Root());
-        if (!m_activeLeaf) {
+        // found via depth-first descent. Route through SetActiveLeaf so
+        // the per-tab dim state is applied consistently: active leaf
+        // bright, everything else dim.
+        auto* firstLeaf = FindFirstLeaf(panelImpl->Root());
+        if (!firstLeaf) {
             throw winrt::hresult_error(E_INVALIDARG, L"Tab: pane tree has no leaf");
         }
+        SetActiveLeaf(firstLeaf);
     }
 
     ~Tab() {
@@ -100,11 +103,27 @@ public:
 
     // Retarget the active leaf — used by NEW_SPLIT (focus shifts to
     // the freshly-created pane), GOTO_SPLIT (direction-based pane
-    // nav), and any future pointer-focus path. `leaf` must reach back
-    // to a leaf currently inside this tab's SplitPanel tree;
-    // callers are expected to verify with FindLeafByPaneId or by
-    // building the leaf themselves before the tree mutation.
-    void SetActiveLeaf(Pane* leaf) noexcept { m_activeLeaf = leaf; }
+    // nav), and the pointer-focus path (a click on a non-active pane).
+    // `leaf` must reach back to a leaf currently inside this tab's
+    // SplitPanel tree, or be nullptr to indicate "no active leaf yet"
+    // during a tree mutation. Callers verify with FindLeafByPaneId or
+    // build the leaf themselves before the tree mutation.
+    //
+    // Owns the per-tab dim invariant: the active leaf's UnfocusedDim
+    // is Collapsed (bright), every other leaf's is Visible (dim).
+    // Walking the tree on every SetActiveLeaf call is the canonical
+    // path — the dim state is a property of which leaf the tab thinks
+    // is active, not of XAML keyboard focus, so tab switches and
+    // alt-tabs don't disturb it (they don't change m_activeLeaf).
+    // Pointer clicks and keybind navigation come in through here too;
+    // the corresponding TerminalControl GotFocus / LostFocus hooks no
+    // longer touch the overlay.
+    void SetActiveLeaf(Pane* leaf) {
+        m_activeLeaf = leaf;
+        if (auto* panelImpl = winrt::get_self<implementation::SplitPanel>(m_panel)) {
+            ApplyDimRecursive(panelImpl->Root(), leaf);
+        }
+    }
 
     // Detach every TerminalControl in the tree (surface free, swap
     // chain release, composition handle close, SizeChanged unhook).
@@ -152,6 +171,23 @@ private:
         if (node->IsLeaf()) return node;
         if (auto* p = FindFirstLeaf(node->First())) return p;
         return FindFirstLeaf(node->Second());
+    }
+
+    // Walk the tree and apply the per-tab dim invariant: the leaf
+    // whose Pane* matches `active` gets its UnfocusedDim Collapsed
+    // (bright); every other leaf's gets Visible (dim). Static because
+    // it doesn't touch this instance's mutable state beyond the
+    // leaves it visits.
+    static void ApplyDimRecursive(Pane* node, Pane const* active) {
+        if (!node) return;
+        if (node->IsLeaf()) {
+            if (auto* tc = LeafToTerminalControl(*node)) {
+                tc->ApplyFocusVisual(node == active);
+            }
+            return;
+        }
+        ApplyDimRecursive(node->First(), active);
+        ApplyDimRecursive(node->Second(), active);
     }
 
     static void DetachAllLeaves(Pane* node) {
