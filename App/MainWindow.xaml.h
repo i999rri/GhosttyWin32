@@ -4,6 +4,7 @@
 #include "ghostty.h"
 #include "Ghostty/Actions/Tags/Fullscreen.h"
 #include "Ghostty/Actions/Tags/SizeLimit.h"
+#include "Ghostty/Actions/Tags/WindowDecorations.h"
 #include "Ghostty/App.h"
 #include "Ghostty/CallbackDispatcher.h"
 #include "Host/IWindow.h"
@@ -104,6 +105,13 @@ namespace winrt::GhosttyWin32::implementation
         // that nothing outside one specific handler reads.
         void ApplySizeLimit(ghostty_action_size_limit_s limit) override;
         void ToggleFullscreen() override;
+        void ToggleWindowDecorations() override;
+        // Apply the current decoration state (config + any override
+        // installed by ToggleWindowDecorations) to the XAML caption
+        // buttons / drag region. Called once at startup so the config
+        // value is honoured even without a toggle, and re-called from
+        // ToggleWindowDecorations after flipping the tag.
+        void ApplyWindowDecorationsAppearance();
         void PresentTerminal() override;
         void ShowOnScreenKeyboard() override;
 
@@ -169,8 +177,9 @@ namespace winrt::GhosttyWin32::implementation
         // (no limit set, not in fullscreen). Subclasses installed
         // by SizeLimit are auto-removed by Win32 when m_hwnd is
         // destroyed, so no explicit teardown ordering is needed.
-        ghostty::actions::tags::SizeLimit  m_sizeLimit;
-        ghostty::actions::tags::Fullscreen m_fullscreen;
+        ghostty::actions::tags::SizeLimit          m_sizeLimit;
+        ghostty::actions::tags::Fullscreen         m_fullscreen;
+        ghostty::actions::tags::WindowDecorations  m_windowDecorations;
         PaneIdAllocator m_paneIds;
         Tabs m_tabs;
         // Focus-tracked active surface. Set by NotifySurfaceFocused

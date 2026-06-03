@@ -106,6 +106,8 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
             return m_actions.OnSizeLimit(action.action.size_limit);
         case GHOSTTY_ACTION_TOGGLE_FULLSCREEN:
             return m_actions.OnToggleFullscreen();
+        case GHOSTTY_ACTION_TOGGLE_WINDOW_DECORATIONS:
+            return m_actions.OnToggleWindowDecorations();
 
         // ----- split-pane (surface-targeted) -----
         case GHOSTTY_ACTION_NEW_SPLIT:
@@ -180,15 +182,12 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
         // Acking avoids "unhandled action" noise once that's
         // fixed and the keybind starts firing.
         case GHOSTTY_ACTION_FLOAT_WINDOW:
-        // TOGGLE_WINDOW_DECORATIONS / TOGGLE_BACKGROUND_OPACITY:
-        // dispatched but not yet implemented to match upstream
-        // semantics — tracked separately so the action_cb stays
-        // quiet until the real implementations land:
-        //   #68 — TOGGLE_WINDOW_DECORATIONS (per-window override,
-        //         3-state, mirroring upstream GTK)
-        //   #69 — TOGGLE_BACKGROUND_OPACITY (layered-alpha flip
-        //         against config value, with macOS-style guards)
-        case GHOSTTY_ACTION_TOGGLE_WINDOW_DECORATIONS:
+        // TOGGLE_BACKGROUND_OPACITY: dispatched but not yet
+        // implemented — tracked in #69. (The layered-alpha approach
+        // sketched in the issue body doesn't work over a flip-model
+        // DComp swap chain; the real fix is a libghostty
+        // premultiplied-alpha change. Ack to keep the action_cb
+        // path quiet meanwhile.)
         case GHOSTTY_ACTION_TOGGLE_BACKGROUND_OPACITY:
         // MOUSE_VISIBILITY disabled pending #60 (the renderer-
         // side ghostty_surface_key call doesn't populate the

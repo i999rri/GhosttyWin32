@@ -82,6 +82,7 @@
     <ClInclude Include="Ghostty\Actions\Actions.h" />
     <ClInclude Include="Ghostty\Actions\Tags\Fullscreen.h" />
     <ClInclude Include="Ghostty\Actions\Tags\SizeLimit.h" />
+    <ClInclude Include="Ghostty\Actions\Tags\WindowDecorations.h" />
     <ClInclude Include="Ghostty\App.h" />
     <ClInclude Include="Ghostty\CallbackDispatcher.h" />
     <ClInclude Include="Ghostty\Config.h" />

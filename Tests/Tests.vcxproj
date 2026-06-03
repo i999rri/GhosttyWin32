@@ -138,6 +138,7 @@
     <ClCompile Include="test_ghostty_callback_dispatcher.cpp" />
     <ClCompile Include="test_size_limit.cpp" />
     <ClCompile Include="test_fullscreen.cpp" />
+    <ClCompile Include="test_window_decorations.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="MockMainWindowView.h" />

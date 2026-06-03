@@ -362,6 +362,18 @@ bool Actions::OnToggleFullscreen() {
     return true;
 }
 
+bool Actions::OnToggleWindowDecorations() {
+    // The override state + the XAML application (show / hide caption
+    // buttons + drag region) both live on the view; this method just
+    // bounces the trigger through the UI dispatcher. action_cb fires
+    // from the renderer thread, so the dispatcher hop is required
+    // before touching XAML.
+    m_view.Dispatch([this]() {
+        m_view.ToggleWindowDecorations();
+    });
+    return true;
+}
+
 // ===== split-pane =====
 // All five surface-target split operations share the same shape:
 // bounce through the UI dispatcher, then hand off to the view
