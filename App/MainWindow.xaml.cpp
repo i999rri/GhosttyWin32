@@ -800,22 +800,37 @@ namespace winrt::GhosttyWin32::implementation
         // client rect, which causes a "stretch then resize" flash as
         // soon as the panel becomes Visible.
         //
+        // Values are PHYSICAL pixels — `cfg.initial_width` /
+        // `initial_height` are the swap-chain buffer resolution. On
+        // high-DPI (RDP 200 %, scaled displays) passing ActualWidth
+        // straight through halves the swap-chain resolution, so the
+        // new tab opens with the rendered content shrunk into the
+        // corner of the panel until a window resize bumps it up to
+        // the right size. Multiply by CompositionScale to match what
+        // the SizeChanged handler does for every subsequent resize.
+        //
         // First-tab case: ActiveControl() is null and AppContent has
         // already been measured (Activated fires after the first
-        // layout pass), so AppContent.ActualWidth/Height is the right
-        // fallback. Without this fallback the very first surface would
-        // be created at the bare window size — historically that
-        // produced a visible reflow on the first frame.
+        // layout pass), so AppContent.ActualWidth/Height (also DIPs
+        // -> scaled) is the right fallback.
         uint32_t initialW = 0, initialH = 0;
         if (auto* prevControl = ActiveControl()) {
             auto prevPanel = prevControl->InnerPanel();
-            initialW = static_cast<uint32_t>(prevPanel.ActualWidth());
-            initialH = static_cast<uint32_t>(prevPanel.ActualHeight());
+            double sx = prevPanel.CompositionScaleX();
+            double sy = prevPanel.CompositionScaleY();
+            if (sx <= 0.0) sx = 1.0;
+            if (sy <= 0.0) sy = 1.0;
+            initialW = static_cast<uint32_t>(prevPanel.ActualWidth()  * sx);
+            initialH = static_cast<uint32_t>(prevPanel.ActualHeight() * sy);
         }
         if (initialW == 0 || initialH == 0) {
             auto content = AppContent();
-            if (initialW == 0) initialW = static_cast<uint32_t>(content.ActualWidth());
-            if (initialH == 0) initialH = static_cast<uint32_t>(content.ActualHeight());
+            double sx = content.CompositionScaleX();
+            double sy = content.CompositionScaleY();
+            if (sx <= 0.0) sx = 1.0;
+            if (sy <= 0.0) sy = 1.0;
+            if (initialW == 0) initialW = static_cast<uint32_t>(content.ActualWidth()  * sx);
+            if (initialH == 0) initialH = static_cast<uint32_t>(content.ActualHeight() * sy);
         }
 
         // Wrap TabFactory::Make in SEH guard so a hardware exception in
@@ -1367,17 +1382,33 @@ namespace winrt::GhosttyWin32::implementation
         }
 
         // Size hint for the new ghostty surface: the source pane's
-        // current SwapChainPanel size halved on the split axis. The
-        // SplitPanel's first arrange pass after ReplaceLeaf will
-        // re-size both leaves to their actual half-extent and trigger
-        // SizeChanged → ghostty resize anyway; this just keeps the
-        // initial swap chain close to the eventual size so the first
-        // frame doesn't have to stretch.
+        // current SwapChainPanel size halved on the split axis,
+        // expressed in PHYSICAL pixels — `cfg.initial_width` /
+        // `initial_height` are the swap-chain buffer resolution, not
+        // a DIP measurement. On high-DPI (RDP 200 %, scaled monitors)
+        // passing ActualWidth straight through halves the swap-chain
+        // resolution, so the new pane renders into a buffer half the
+        // pane's physical pixel footprint and the host's
+        // SetMatrixTransform inverse-scale leaves the rendered content
+        // shrunk into the corner with a black margin. Multiplying by
+        // CompositionScale matches what the SizeChanged handler does
+        // for every subsequent resize, so the swap chain is correctly-
+        // sized from the first frame instead of waiting for a window
+        // resize to bring it up to the right resolution.
+        //
+        // CompositionScale can transiently read 0 on a panel composition
+        // hasn't picked up yet; fall back to 1.0 in that case (matches
+        // the SizeChanged guard). The eventual CompositionScaleChanged
+        // re-publishes the correct size via surface_set_size.
         uint32_t srcW = 0, srcH = 0;
         if (auto* srcTc = Tab::LeafToTerminalControl(*sourceLeaf)) {
             auto p = srcTc->InnerPanel();
-            srcW = static_cast<uint32_t>(p.ActualWidth());
-            srcH = static_cast<uint32_t>(p.ActualHeight());
+            double scaleX = p.CompositionScaleX();
+            double scaleY = p.CompositionScaleY();
+            if (scaleX <= 0.0) scaleX = 1.0;
+            if (scaleY <= 0.0) scaleY = 1.0;
+            srcW = static_cast<uint32_t>(p.ActualWidth()  * scaleX);
+            srcH = static_cast<uint32_t>(p.ActualHeight() * scaleY);
         }
         uint32_t newW = (orient == SplitOrientation::Horizontal) ? srcW / 2 : srcW;
         uint32_t newH = (orient == SplitOrientation::Vertical)   ? srcH / 2 : srcH;
