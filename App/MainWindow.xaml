@@ -10,39 +10,57 @@
     Title="Ghostty">
 
     <!-- Layout strategy:
-           Col 0  TabView (spans both columns) — fills the entire window so
-                  the SwapChainPanel content area keeps the full width.
-           Col 1  CaptionButtons (Auto = 138px) — anchored to the window's
-                  right edge in the OUTER grid so they don't shift around
-                  when the TabStripFooter width changes with tab count.
-                  Drawn on top of TabView's tab-strip area thanks to later-
-                  sibling Z-order.
-         The TabStripFooter still hosts a DragRegion border, but with
-         MinWidth=200 the OS gives it at least ~62px of empty space to the
-         left of where the buttons land (200 footer - 138 button cluster),
-         which is the only draggable strip area when many tabs are open. -->
+           Row 0  AppTitleBar (Auto height) — the entire chrome area:
+                  TabView's tab strip on the left, caption buttons pinned
+                  on the right. Hidden as a unit when chrome is turned off
+                  (planned follow-up for `window-decoration=false`).
+           Row 1  AppContent (Star) — terminal content area. Every Tab's
+                  SplitPanel is parented here (not in TabViewItem.Content)
+                  so the strip can live above without coupling its
+                  visibility to whether the terminal stays visible.
+                  Selection drives per-panel Visibility; tab switching
+                  toggles which child of AppContent is Visible.
+         Inside AppTitleBar:
+           Col 0  TabView (spans both columns) — strip-only, since the
+                  per-tab Content is hosted in AppContent. With null
+                  TabItem.Content the template's content row collapses to
+                  zero, so the Auto outer row sizes to just the strip.
+           Col 1  CaptionButtons (Auto ≈ 138px) — anchored right in the
+                  outer Grid so they don't shift when the TabStripFooter
+                  width changes; drawn on top of the strip via Z-order.
+         The TabStripFooter still hosts a DragRegion border (MinWidth=200
+         leaves ~62px of empty draggable area to the left of the caption
+         buttons). The window's title-bar drag region is the whole
+         AppTitleBar via SetTitleBar — DragRegion's only job is to give
+         the OS a visible-but-transparent surface inside the strip. -->
     <Grid>
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="Auto" />
-        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
 
-        <TabView x:Name="TabView" Grid.Column="0" Grid.ColumnSpan="2"
-                 IsAddTabButtonVisible="True"
-                 TabWidthMode="Equal"
-                 VerticalAlignment="Stretch"
-                 HorizontalAlignment="Stretch">
-            <TabView.TabStripFooter>
-                <Border x:Name="DragRegion"
-                        Background="Transparent"
-                        HorizontalAlignment="Stretch"
-                        MinWidth="200" />
-            </TabView.TabStripFooter>
-        </TabView>
+        <Grid x:Name="AppTitleBar" Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
 
-        <StackPanel x:Name="CaptionButtons" Grid.Column="1"
-                    Orientation="Horizontal"
-                    VerticalAlignment="Top">
+            <TabView x:Name="TabView" Grid.Column="0" Grid.ColumnSpan="2"
+                     IsAddTabButtonVisible="True"
+                     TabWidthMode="Equal"
+                     VerticalAlignment="Top"
+                     HorizontalAlignment="Stretch">
+                <TabView.TabStripFooter>
+                    <Border x:Name="DragRegion"
+                            Background="Transparent"
+                            HorizontalAlignment="Stretch"
+                            MinWidth="200" />
+                </TabView.TabStripFooter>
+            </TabView>
+
+            <StackPanel x:Name="CaptionButtons" Grid.Column="1"
+                        Orientation="Horizontal"
+                        VerticalAlignment="Top">
             <!-- Local Button.Resources overrides let the default
                  ControlTemplate paint flat caption-style backgrounds
                  without us retemplating the whole control.
@@ -102,5 +120,13 @@
                           Glyph="&#xE8BB;" FontSize="10" />
             </Button>
         </StackPanel>
+        </Grid>
+
+        <!-- AppContent: every Tab's SplitPanel is appended here as a
+             child (not as TabViewItem.Content). The currently-selected
+             tab's panel is the only one with Visibility=Visible; the
+             rest are Collapsed but stay parented so their swap chains
+             keep their DComp surface binding across tab switches. -->
+        <Grid x:Name="AppContent" Grid.Row="1" />
     </Grid>
 </Window>
