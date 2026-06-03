@@ -26,6 +26,9 @@
     <Filter Include="Tabs\Panes">
       <UniqueIdentifier>{8A5D7C1F-3B6E-49C4-A0F2-D7E9B4F8C2A1}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Display">
+      <UniqueIdentifier>{B3E9F5A2-7C8D-4E6A-9F1B-2D5E8C3A6F4D}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Tabs\Tab.h">
@@ -45,6 +48,9 @@
     </ClInclude>
     <ClInclude Include="Tabs\Panes\PaneIdAllocator.h">
       <Filter>Tabs\Panes</Filter>
+    </ClInclude>
+    <ClInclude Include="Display\PhysicalPixels.h">
+      <Filter>Display</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

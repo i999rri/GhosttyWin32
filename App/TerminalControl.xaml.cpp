@@ -2,6 +2,7 @@
 #include "TerminalControl.xaml.h"
 #include "Interop/Encoding.h"
 #include "Host/KeyModifiers.h"
+#include "Display/PhysicalPixels.h"
 #include "Win32/Clipboard.h"
 #include <dxgi1_3.h>
 #if __has_include("TerminalControl.g.cpp")
@@ -401,30 +402,16 @@ namespace winrt::GhosttyWin32::implementation
                        Microsoft::UI::Xaml::SizeChangedEventArgs const& args) {
                 auto self = weakSelf.get();
                 if (!self || !self->m_surface) return;
+                // SizeChangedEventArgs.NewSize is in DIPs; ghostty's
+                // surface_set_size needs the swap-chain buffer
+                // resolution in physical pixels. display::ToPhysicalPixels
+                // does the multiplication and the CompositionScale=0
+                // fallback.
                 auto sz = args.NewSize();
-                // ghostty_surface_set_size takes physical pixels (the
-                // renderer creates swap-chain buffers at exactly this
-                // resolution), but SizeChangedEventArgs.NewSize is in
-                // DIPs. On 200% DPI a 1067 DIP panel needs a 2134 px
-                // swap chain; passing the DIP value through directly
-                // makes the renderer create a half-resolution buffer
-                // and the (DPI-scaled) glyphs land on it at too few
-                // pixels per cell, so text reads as ~2x oversized.
-                // Multiply by CompositionScale so the swap chain
-                // resolution matches the panel's physical pixel
-                // footprint. CompositionScale == 0 means the panel
-                // hasn't been picked up by composition yet — leave
-                // it at 1.0 and rely on the next SizeChanged once
-                // composition settles.
                 auto panel = sender.as<Microsoft::UI::Xaml::Controls::SwapChainPanel>();
-                double scaleX = panel.CompositionScaleX();
-                double scaleY = panel.CompositionScaleY();
-                if (scaleX <= 0.0) scaleX = 1.0;
-                if (scaleY <= 0.0) scaleY = 1.0;
-                uint32_t w = static_cast<uint32_t>(sz.Width * scaleX);
-                uint32_t h = static_cast<uint32_t>(sz.Height * scaleY);
-                if (w > 0 && h > 0) {
-                    ghostty_surface_set_size(self->m_surface, w, h);
+                auto px = display::ToPhysicalPixels(panel, sz.Width, sz.Height);
+                if (px.width > 0 && px.height > 0) {
+                    ghostty_surface_set_size(self->m_surface, px.width, px.height);
                 }
             });
 
@@ -455,20 +442,16 @@ namespace winrt::GhosttyWin32::implementation
                         sx, std::memory_order_release);
                 }
                 ghostty_surface_set_content_scale(self->m_surface, sx, sy);
-                // ghostty_surface_set_size takes physical pixels — when
-                // the composition scale changes, the panel's logical
-                // size in DIPs hasn't necessarily changed (so XAML may
-                // not fire SizeChanged) but the physical-pixel footprint
-                // has. Re-push it so the swap-chain resolution matches
-                // the new composition scale; otherwise the glyphs end up
-                // at the new font size on the old (lower-resolution)
-                // swap chain and read as oversized.
-                double dipW = panel.ActualWidth();
-                double dipH = panel.ActualHeight();
-                uint32_t pw = static_cast<uint32_t>(dipW * sx);
-                uint32_t ph = static_cast<uint32_t>(dipH * sy);
-                if (pw > 0 && ph > 0) {
-                    ghostty_surface_set_size(self->m_surface, pw, ph);
+                // When the composition scale changes, the panel's DIP
+                // size hasn't necessarily changed (so XAML may not fire
+                // SizeChanged) but the physical-pixel footprint has.
+                // Re-push the size so the swap-chain resolution matches
+                // the new scale; otherwise glyphs end up at the new
+                // font size on the old (lower-resolution) swap chain
+                // and read as oversized.
+                auto px = display::MeasuredPhysical(panel);
+                if (px.width > 0 && px.height > 0) {
+                    ghostty_surface_set_size(self->m_surface, px.width, px.height);
                 }
             });
     }
