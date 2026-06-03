@@ -762,6 +762,26 @@ namespace winrt::GhosttyWin32::implementation
     void MainWindow::CreateTab()
     {
         if (!m_ghostty || !m_hwnd) return;
+
+        // Drop new-tab requests when the chrome is hidden AND at least
+        // one tab already exists. The tab strip is part of AppTitleBar,
+        // so with chrome collapsed there's no UI to switch tabs — a
+        // second tab would be invisible and unreachable. Silently
+        // ignoring matches the upstream macOS behaviour, where
+        // `window-decoration=false` disables native tabs entirely and
+        // new-tab requests fall back to new windows. Until multi-window
+        // (#55) lands, "fall back" here means "drop"; the user's
+        // recourse is to toggle decorations back on (ctrl+shift+d) or
+        // edit config. The first tab is exempt so the terminal can come
+        // up at all when the user launches with chrome already off.
+        if (!m_tabs.Empty()) {
+            ghostty::Config cfg(m_ghostty->ConfigHandle());
+            if (!m_windowDecorations.Effective(cfg.WindowDecoratedByConfig())) {
+                OutputDebugStringW(L"[GhosttyWin32] CreateTab dropped: window-decoration=false; multi-window (#55) not yet wired\n");
+                return;
+            }
+        }
+
         auto tv = TabView();
 
         auto item = muxc::TabViewItem();
@@ -801,6 +821,26 @@ namespace winrt::GhosttyWin32::implementation
             // there because EditContext registration only takes hold
             // for an element that's actually in the live tree).
             tvStrong.SelectedItem(itemStrong);
+            // Make the active panel Visible as the canonical step,
+            // not as a "safeguard against SelectionChanged not firing".
+            //
+            // SelectionChanged on TabView only fires once the control
+            // template has been realized, which is keyed off the first
+            // Measure pass — and Measure doesn't run on Collapsed
+            // elements. So when the chrome is hidden (AppTitleBar
+            // collapsed at startup for `window-decoration=false`), the
+            // SelectedItem property updates but no event fires from
+            // the unrealized template. Relying on the event to drive
+            // visibility is an invariant that's only true in some
+            // visual-tree states; calling Update here makes it true
+            // unconditionally.
+            //
+            // The SelectionChanged handler still calls Update for user-
+            // initiated tab clicks (a different entry into the same
+            // invariant). Both call sites are idempotent — same input
+            // state, same output state — so doubling up on the chrome-
+            // visible activation path is harmless.
+            self->UpdateActivePanelVisibility();
             if (self->m_hwnd) ShowWindow(self->m_hwnd, SW_SHOW);
             // Focus is taken in the Activated event handler that fires
             // from the WM_ACTIVATE this ShowWindow posts. See the
@@ -1039,22 +1079,25 @@ namespace winrt::GhosttyWin32::implementation
 
     void MainWindow::ApplyWindowDecorationsAppearance()
     {
-        // CaptionButtons + DragRegion are shown when decorated, hidden
-        // when not. ExtendsContentIntoTitleBar stays true unconditionally
-        // — the OS native title bar was already removed at construction
-        // (#67 / MainWindow ctor), so "undecorated" here means hiding
-        // our own custom chrome.
+        // Collapse AppTitleBar as a single unit — it wraps the entire
+        // chrome row (tab strip + drag region + caption buttons) and
+        // lives in its own outer-Grid Auto row, so hiding it shrinks
+        // the row to 0 and AppContent expands to fill the window.
+        // Matches the upstream macOS `window-decoration=false`
+        // experience: chrome gone, terminal area only.
+        //
+        // ExtendsContentIntoTitleBar stays true unconditionally — the OS
+        // native title bar was already removed at construction (#67),
+        // so "undecorated" here means hiding our own custom chrome row.
         bool configDecorated = true;
         if (m_ghostty) {
             ghostty::Config cfg(m_ghostty->ConfigHandle());
             configDecorated = cfg.WindowDecoratedByConfig();
         }
         bool decorated = m_windowDecorations.Effective(configDecorated);
-        auto vis = decorated
+        AppTitleBar().Visibility(decorated
             ? winrt::Microsoft::UI::Xaml::Visibility::Visible
-            : winrt::Microsoft::UI::Xaml::Visibility::Collapsed;
-        CaptionButtons().Visibility(vis);
-        DragRegion().Visibility(vis);
+            : winrt::Microsoft::UI::Xaml::Visibility::Collapsed);
     }
 
     void MainWindow::PresentTerminal()
