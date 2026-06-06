@@ -3,6 +3,7 @@
 #include "Ghostty/CallbackDispatcher.h"
 #include "Host/KeyModifiers.h"
 #include "Interop/Encoding.h"
+#include "Display/PhysicalPixels.h"
 #include "Win32/Clipboard.h"
 #include "Win32/SEHGuard.h"
 #if __has_include("MainWindow.g.cpp")
@@ -863,22 +864,21 @@ namespace winrt::GhosttyWin32::implementation
         // client rect, which causes a "stretch then resize" flash as
         // soon as the panel becomes Visible.
         //
-        // First-tab case: ActiveControl() is null and AppContent has
-        // already been measured (Activated fires after the first
-        // layout pass), so AppContent.ActualWidth/Height is the right
-        // fallback. Without this fallback the very first surface would
-        // be created at the bare window size — historically that
-        // produced a visible reflow on the first frame.
+        // Values are PHYSICAL pixels (see display::MeasuredPhysical for
+        // why the conversion matters). First-tab case: ActiveControl()
+        // is null and AppContent has already been measured (Activated
+        // fires after the first layout pass), so the AppContent
+        // fallback gives a non-zero hint.
         uint32_t initialW = 0, initialH = 0;
         if (auto* prevControl = ActiveControl()) {
-            auto prevPanel = prevControl->InnerPanel();
-            initialW = static_cast<uint32_t>(prevPanel.ActualWidth());
-            initialH = static_cast<uint32_t>(prevPanel.ActualHeight());
+            auto sz = display::MeasuredPhysical(prevControl->InnerPanel());
+            initialW = sz.width;
+            initialH = sz.height;
         }
         if (initialW == 0 || initialH == 0) {
-            auto content = AppContent();
-            if (initialW == 0) initialW = static_cast<uint32_t>(content.ActualWidth());
-            if (initialH == 0) initialH = static_cast<uint32_t>(content.ActualHeight());
+            auto sz = display::MeasuredPhysical(AppContent());
+            if (initialW == 0) initialW = sz.width;
+            if (initialH == 0) initialH = sz.height;
         }
 
         // Wrap TabFactory::Make in SEH guard so a hardware exception in
@@ -1467,17 +1467,14 @@ namespace winrt::GhosttyWin32::implementation
         }
 
         // Size hint for the new ghostty surface: the source pane's
-        // current SwapChainPanel size halved on the split axis. The
-        // SplitPanel's first arrange pass after ReplaceLeaf will
-        // re-size both leaves to their actual half-extent and trigger
-        // SizeChanged → ghostty resize anyway; this just keeps the
-        // initial swap chain close to the eventual size so the first
-        // frame doesn't have to stretch.
+        // current SwapChainPanel size halved on the split axis,
+        // expressed in PHYSICAL pixels (see display::MeasuredPhysical
+        // for why the conversion matters).
         uint32_t srcW = 0, srcH = 0;
         if (auto* srcTc = Tab::LeafToTerminalControl(*sourceLeaf)) {
-            auto p = srcTc->InnerPanel();
-            srcW = static_cast<uint32_t>(p.ActualWidth());
-            srcH = static_cast<uint32_t>(p.ActualHeight());
+            auto sz = display::MeasuredPhysical(srcTc->InnerPanel());
+            srcW = sz.width;
+            srcH = sz.height;
         }
         uint32_t newW = (orient == SplitOrientation::Horizontal) ? srcW / 2 : srcW;
         uint32_t newH = (orient == SplitOrientation::Vertical)   ? srcH / 2 : srcH;

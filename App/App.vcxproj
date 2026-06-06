@@ -163,6 +163,7 @@
     <ClInclude Include="Tabs\Tab.h" />
     <ClInclude Include="Tabs\TabFactory.h" />
     <ClInclude Include="Tabs\Tabs.h" />
+    <ClInclude Include="Display\PhysicalPixels.h" />
     <ClInclude Include="TerminalControl.xaml.h">
       <DependentUpon>TerminalControl.xaml</DependentUpon>
     </ClInclude>
