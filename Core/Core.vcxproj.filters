@@ -13,6 +13,9 @@
     <Filter Include="Host">
       <UniqueIdentifier>{28EE2ED7-EE73-4B7B-8D61-EAEC92D0BFC1}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Input">
+      <UniqueIdentifier>{B7E8A1F3-2D9C-4A8E-9F4D-6E2C5B8D1A7F}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Interop">
       <UniqueIdentifier>{5924F11C-C724-4FB1-912F-C123175E936D}</UniqueIdentifier>
     </Filter>
@@ -50,6 +53,9 @@
     </ClInclude>
     <ClInclude Include="Host\KeyModifiers.h">
       <Filter>Host</Filter>
+    </ClInclude>
+    <ClInclude Include="Input\KeyEventTranslator.h">
+      <Filter>Input</Filter>
     </ClInclude>
     <ClInclude Include="Interop\Encoding.h">
       <Filter>Interop</Filter>
