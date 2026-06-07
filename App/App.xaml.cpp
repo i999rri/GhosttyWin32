@@ -105,6 +105,16 @@ namespace winrt::GhosttyWin32::implementation
             });
     }
 
+    void App::CreateGhostty(ghostty_runtime_config_s const& rtConfig)
+    {
+        // Idempotent: if a window-init path runs twice we keep the
+        // first ghostty handle (the rtConfig copy on the C side
+        // already references the first dispatcher) and silently drop
+        // the second rtConfig.
+        if (m_ghostty) return;
+        m_ghostty = core::ghostty::App::Create(rtConfig);
+    }
+
     uint64_t App::ParseSurfaceIdFromArguments(std::wstring const& arguments)
     {
         // Argument format is `key=value;key=value`. Today only

@@ -171,7 +171,8 @@ namespace winrt::GhosttyWin32::implementation
         // list. Dispatched from close_surface_cb. UI thread only.
         void CloseSurfaceByPaneId(PaneId id);
 
-        std::unique_ptr<ghostty::App> m_ghostty;
+        // ghostty::App moved to App scope (lifted for #55 multi-window).
+        // MainWindow accesses it via App::g_app->Ghostty() at call sites.
         HWND m_hwnd = nullptr;
         // SIZE_LIMIT / TOGGLE_FULLSCREEN state. Default constructed
         // (no limit set, not in fullscreen). Subclasses installed
@@ -191,9 +192,10 @@ namespace winrt::GhosttyWin32::implementation
         std::unique_ptr<TabFactory> m_tabFactory;
         // ghostty runtime callback dispatcher (today: action_cb;
         // future: clipboard / surface). Built in InitGhostty after
-        // the ghostty::App handle is available; destroyed before
-        // m_ghostty so handlers can't observe a half-torn-down app
-        // on shutdown.
+        // the ghostty::App handle is available; the App-scope
+        // ghostty wrapper outlives every MainWindow (see App.xaml.h
+        // member ordering), so the dispatcher can't observe a
+        // half-torn-down ghostty handle from any of its handlers.
         std::unique_ptr<ghostty::CallbackDispatcher> m_ghosttyDispatcher;
     };
 }

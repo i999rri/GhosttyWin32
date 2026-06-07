@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "MainWindow.xaml.h"
+#include "App.xaml.h"
 #include "Ghostty/CallbackDispatcher.h"
 #include "Host/KeyModifiers.h"
 #include "Interop/Encoding.h"
@@ -487,7 +488,10 @@ namespace winrt::GhosttyWin32::implementation
     MainWindow::~MainWindow()
     {
         m_tabs.Clear();   // Tab destructors handle cleanup
-        m_ghostty.reset(); // ghostty_app_free + config_free in correct order
+        // ghostty::App ownership lives on App scope now (#55 prep).
+        // App's destructor frees ghostty AFTER its `window` member
+        // (this MainWindow) has gone, so the surface/IO-thread join
+        // inside ghostty_app_free finds nothing left to wait on.
         // Clean shutdown reached — clear the crash flag so the next launch
         // doesn't pause unnecessarily.
         std::error_code ec;
@@ -659,8 +663,11 @@ namespace winrt::GhosttyWin32::implementation
     {
         // Guard against the inert window state — Tick can fire from
         // a queued RENDER action after the window has begun tearing
-        // down (m_ghostty already released). No-op in that case.
-        if (m_ghostty) m_ghostty->Tick();
+        // down. App::Ghostty() returns null after App's destructor
+        // releases the wrapper.
+        if (App::g_app) {
+            if (auto* g = App::g_app->Ghostty()) g->Tick();
+        }
     }
 
     void MainWindow::RequestClose()
@@ -683,10 +690,14 @@ namespace winrt::GhosttyWin32::implementation
         ghostty_runtime_config_s rtConfig{};
         rtConfig.userdata = this;
         rtConfig.wakeup_cb = [](void*) {
-            if (!g_mainWindow || !g_mainWindow->m_ghostty) return;
+            // Wakeup arrives on a worker thread. Hop to the UI thread
+            // before touching ghostty, and re-check App::Ghostty()
+            // there — App::g_app may still be live during late
+            // shutdown but the ghostty wrapper can already be gone.
+            if (!g_mainWindow || !App::g_app || !App::g_app->Ghostty()) return;
             g_mainWindow->DispatcherQueue().TryEnqueue([]() {
-                if (g_mainWindow && g_mainWindow->m_ghostty) {
-                    g_mainWindow->m_ghostty->Tick();
+                if (App::g_app) {
+                    if (auto* g = App::g_app->Ghostty()) g->Tick();
                 }
             });
         };
@@ -742,8 +753,11 @@ namespace winrt::GhosttyWin32::implementation
             });
         };
 
-        m_ghostty = ghostty::App::Create(rtConfig);
-        if (m_ghostty && m_hwnd) {
+        // Hand the rtConfig to App; it owns the resulting
+        // ghostty::App for the rest of the process.
+        if (App::g_app) App::g_app->CreateGhostty(rtConfig);
+        auto* ghosttyApp = App::g_app ? App::g_app->Ghostty() : nullptr;
+        if (ghosttyApp && m_hwnd) {
             // Capture by raw `this`: MainWindow outlives every
             // TerminalControl it owns (the controls are destroyed
             // through Tabs, which is a MainWindow member), so the
@@ -755,9 +769,9 @@ namespace winrt::GhosttyWin32::implementation
             // typed, fallback-aware accessors so TabFactory (and
             // future callers) stop reimplementing the key-length /
             // fallback dance every time they need a config value.
-            ghostty::Config cfg(m_ghostty->ConfigHandle());
+            ghostty::Config cfg(ghosttyApp->ConfigHandle());
             m_tabFactory = std::make_unique<TabFactory>(
-                m_ghostty->Handle(),
+                ghosttyApp->Handle(),
                 cfg,
                 m_hwnd,
                 m_paneIds,
@@ -767,7 +781,8 @@ namespace winrt::GhosttyWin32::implementation
 
     void MainWindow::CreateTab()
     {
-        if (!m_ghostty || !m_hwnd) return;
+        auto* ghosttyApp = App::g_app ? App::g_app->Ghostty() : nullptr;
+        if (!ghosttyApp || !m_hwnd) return;
 
         // Drop new-tab requests when the chrome is hidden AND at least
         // one tab already exists. The tab strip is part of AppTitleBar,
@@ -781,7 +796,7 @@ namespace winrt::GhosttyWin32::implementation
         // edit config. The first tab is exempt so the terminal can come
         // up at all when the user launches with chrome already off.
         if (!m_tabs.Empty()) {
-            ghostty::Config cfg(m_ghostty->ConfigHandle());
+            ghostty::Config cfg(ghosttyApp->ConfigHandle());
             if (!m_windowDecorations.Effective(cfg.WindowDecoratedByConfig())) {
                 OutputDebugStringW(L"[GhosttyWin32] CreateTab dropped: window-decoration=false; multi-window (#55) not yet wired\n");
                 return;
@@ -1074,8 +1089,8 @@ namespace winrt::GhosttyWin32::implementation
         // 3-state override; Apply reads it back and translates the
         // effective state into XAML Visibility.
         bool configDecorated = true;
-        if (m_ghostty) {
-            ghostty::Config cfg(m_ghostty->ConfigHandle());
+        if (auto* g = App::g_app ? App::g_app->Ghostty() : nullptr) {
+            ghostty::Config cfg(g->ConfigHandle());
             configDecorated = cfg.WindowDecoratedByConfig();
         }
         m_windowDecorations.Toggle(configDecorated);
@@ -1095,8 +1110,8 @@ namespace winrt::GhosttyWin32::implementation
         // native title bar was already removed at construction (#67),
         // so "undecorated" here means hiding our own custom chrome row.
         bool configDecorated = true;
-        if (m_ghostty) {
-            ghostty::Config cfg(m_ghostty->ConfigHandle());
+        if (auto* g = App::g_app ? App::g_app->Ghostty() : nullptr) {
+            ghostty::Config cfg(g->ConfigHandle());
             configDecorated = cfg.WindowDecoratedByConfig();
         }
         bool decorated = m_windowDecorations.Effective(configDecorated);
@@ -1169,25 +1184,27 @@ namespace winrt::GhosttyWin32::implementation
 
     void MainWindow::ReplaceConfig(ghostty_config_t cloned)
     {
-        if (!m_ghostty) {
+        auto* g = App::g_app ? App::g_app->Ghostty() : nullptr;
+        if (!g) {
             ghostty_config_free(cloned);
             return;
         }
-        m_ghostty->ReplaceConfig(cloned);
+        g->ReplaceConfig(cloned);
     }
 
     void MainWindow::ReloadConfig(bool soft)
     {
-        if (!m_ghostty) return;
+        if (!App::g_app || !App::g_app->Ghostty()) return;
         if (soft) {
             // Soft reload: re-apply the config we already hold.
-            // Runs on whichever thread called us — m_ghostty's
-            // handles are stable, and ghostty_app_update_config
-            // is thread-safe on its own state.
-            DispatcherQueue().TryEnqueue([this]() {
-                if (!m_ghostty) return;
-                auto app = m_ghostty->Handle();
-                auto cfg = m_ghostty->ConfigHandle();
+            // Runs on whichever thread called us — the ghostty handles
+            // are stable, and ghostty_app_update_config is thread-safe
+            // on its own state.
+            DispatcherQueue().TryEnqueue([]() {
+                auto* g = App::g_app ? App::g_app->Ghostty() : nullptr;
+                if (!g) return;
+                auto app = g->Handle();
+                auto cfg = g->ConfigHandle();
                 if (app && cfg) ghostty_app_update_config(app, cfg);
             });
             return;
@@ -1214,12 +1231,14 @@ namespace winrt::GhosttyWin32::implementation
                     return 0;
                 }
                 mwLocal->DispatcherQueue().TryEnqueue([mwLocal, newCfg]() {
-                    if (!mwLocal->m_ghostty) {
+                    auto* g = App::g_app ? App::g_app->Ghostty() : nullptr;
+                    if (!g) {
                         ghostty_config_free(newCfg);
                         return;
                     }
-                    ghostty_app_update_config(mwLocal->m_ghostty->Handle(), newCfg);
-                    mwLocal->m_ghostty->ReplaceConfig(newCfg);
+                    ghostty_app_update_config(g->Handle(), newCfg);
+                    g->ReplaceConfig(newCfg);
+                    (void)mwLocal;
                 });
                 return 0;
             }, ctx, 0, nullptr);

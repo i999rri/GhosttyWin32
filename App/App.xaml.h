@@ -1,8 +1,10 @@
 #pragma once
 
 #include "App.xaml.g.h"
+#include "Ghostty/App.h"
 #include <winrt/Microsoft.Windows.AppLifecycle.h>
 #include <winrt/Microsoft.Windows.AppNotifications.h>
+#include <memory>
 #include <string>
 
 namespace winrt::GhosttyWin32::implementation
@@ -38,6 +40,25 @@ namespace winrt::GhosttyWin32::implementation
         // decode failure.
         static uint64_t ParseSurfaceIdFromArguments(std::wstring const& arguments);
 
+        // Construct the process-wide ghostty::App with the host's
+        // runtime config. The host (MainWindow) builds the rtConfig
+        // — including the lambdas that reach back into its dispatcher
+        // and globals — and hands it here so App owns the resulting
+        // ghostty handle. Lifting the owner out of MainWindow is the
+        // foundation for multi-window: a single ghostty_app_t shared
+        // across every MainWindow. Idempotent against double-call
+        // (subsequent calls drop the new rtConfig and keep the
+        // existing handle).
+        void CreateGhostty(ghostty_runtime_config_s const& rtConfig);
+
+        // Borrowed accessor for the ghostty::App built by
+        // CreateGhostty. Null until CreateGhostty has run. The host
+        // never frees through this pointer — App owns it and tears it
+        // down in its destructor, AFTER the window member (declared
+        // below this one) has already released every TerminalControl
+        // and the surfaces they held.
+        core::ghostty::App* Ghostty() const noexcept { return m_ghostty.get(); }
+
     private:
         // Subsequent-activation handler. The first activation runs through
         // OnLaunched; later activations (a second click of a notification,
@@ -56,6 +77,13 @@ namespace winrt::GhosttyWin32::implementation
         // NotificationInvoked path below, where args are valid.
         void HandleActivation(
             winrt::Microsoft::Windows::AppLifecycle::AppActivationArguments const& args);
+
+        // Declared BEFORE `window` so that on App destruction the
+        // window member destructs first (releasing every MainWindow
+        // and through it every surface). Only then does m_ghostty
+        // run, and ghostty_app_free's surface/IO-thread join finds
+        // nothing left to wait on.
+        std::unique_ptr<core::ghostty::App> m_ghostty;
 
         winrt::Microsoft::UI::Xaml::Window window{ nullptr };
         // Token for the primary AppInstance's Activated event; the
