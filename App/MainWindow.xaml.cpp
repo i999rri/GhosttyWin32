@@ -704,7 +704,7 @@ namespace winrt::GhosttyWin32::implementation
             if (!tc || !tc->Surface()) return false;
             auto utf8 = interop::Encoding::toUtf8(win32::Clipboard::read(g_mainWindow->m_hwnd));
             if (utf8.empty()) return false;
-            ghostty_surface_complete_clipboard_request(tc->Surface(), utf8.c_str(), state, false);
+            tc->Surface().CompleteClipboardRequest(utf8.c_str(), state, false);
             return true;
         };
         rtConfig.confirm_read_clipboard_cb = [](void*, const char* content, void* state, ghostty_clipboard_request_e) {
@@ -712,7 +712,7 @@ namespace winrt::GhosttyWin32::implementation
             if (g_mainWindow) {
                 auto* tc = g_mainWindow->ActiveControl();
                 if (tc && tc->Surface()) {
-                    ghostty_surface_complete_clipboard_request(tc->Surface(), content, state, true);
+                    tc->Surface().CompleteClipboardRequest(content, state, true);
                 }
             }
         };
@@ -1328,7 +1328,7 @@ namespace winrt::GhosttyWin32::implementation
             if (!node) return nullptr;
             if (node->IsLeaf()) {
                 auto* tc = Tab::LeafToTerminalControl(*node);
-                return (tc && tc->Surface() == surface) ? node : nullptr;
+                return (tc && tc->Surface().Owns(surface)) ? node : nullptr;
             }
             if (auto* p = FindLeafForSurface(node->First(), surface)) return p;
             return FindLeafForSurface(node->Second(), surface);
@@ -1711,7 +1711,7 @@ namespace winrt::GhosttyWin32::implementation
             // outlive the underlying ghostty_surface_t. The next
             // TerminalControl::GotFocus on the retargeted sibling (or
             // a new tab) will refill the slot.
-            if (tc->Surface() == m_activeSurface) m_activeSurface = nullptr;
+            if (tc->Surface().Owns(m_activeSurface)) m_activeSurface = nullptr;
             tc->Detach();
         }
 

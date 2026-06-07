@@ -86,6 +86,7 @@
     <ClInclude Include="Ghostty\App.h" />
     <ClInclude Include="Ghostty\CallbackDispatcher.h" />
     <ClInclude Include="Ghostty\Config.h" />
+    <ClInclude Include="Ghostty\Surface.h" />
     <ClInclude Include="Host\IWindow.h" />
     <ClInclude Include="Host\ImeBuffer.h" />
     <ClInclude Include="Host\KeyModifiers.h" />

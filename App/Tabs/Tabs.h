@@ -135,7 +135,7 @@ private:
     static Pane* FindLeafBySurfaceRecursive(Pane* node, ghostty_surface_t surface) {
         if (!node) return nullptr;
         if (node->IsLeaf()) {
-            if (auto* c = Tab::LeafToTerminalControl(*node); c && c->Surface() == surface) {
+            if (auto* c = Tab::LeafToTerminalControl(*node); c && c->Surface().Owns(surface)) {
                 return node;
             }
             return nullptr;
