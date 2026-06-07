@@ -3,6 +3,8 @@
 #include "Interop/Encoding.h"
 #include "Host/KeyModifiers.h"
 #include "Input/KeyEventTranslator.h"
+#include "Input/TerminalKeyDown.h"
+#include "Input/TerminalKeyUp.h"
 #include "Display/PhysicalPixels.h"
 #include "Win32/Clipboard.h"
 #include <dxgi1_3.h>
@@ -190,34 +192,34 @@ namespace winrt::GhosttyWin32::implementation
             auto self = weakSelf.get();
             if (!self || !self->m_surface) return;
 
-            int vk = static_cast<int>(args.Key());
-            UINT scanCode = args.KeyStatus().ScanCode;
-            bool ctrl = GetKeyState(VK_CONTROL) & 0x8000;
-            bool shift = GetKeyState(VK_SHIFT) & 0x8000;
+            input::TerminalKeyDown key(args, self->m_ime.composing());
 
-            // IME is processing this key — let the EditContext handlers
-            // own the composition lifecycle, and don't double-encode
+            // IME owns the composition lifecycle; don't double-encode
             // into the pty.
-            if (vk == VK_PROCESSKEY || self->m_ime.composing()) return;
+            if (key.isImeKeystroke()) return;
 
-            // Ctrl+C: copy selection if any, otherwise fall through to
-            // ghostty_surface_key so the SIGINT path runs.
-            if (ctrl && !shift && vk == 'C') {
-                if (ghostty_surface_has_selection(self->m_surface)) {
-                    ghostty_text_s text = {};
-                    if (ghostty_surface_read_selection(self->m_surface, &text) && text.text && text.text_len > 0) {
-                        win32::Clipboard::write(self->m_hostHwnd, interop::Encoding::toUtf16(text.text, static_cast<int>(text.text_len)));
-                        ghostty_surface_free_text(self->m_surface, &text);
-                    }
-                    ghostty_surface_mouse_button(self->m_surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, (ghostty_input_mods_e)0);
-                    ghostty_surface_mouse_button(self->m_surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, (ghostty_input_mods_e)0);
-                    args.Handled(true);
-                    return;
+            // Copy shortcut with a live selection: write to the OS
+            // clipboard and clear the selection. Ctrl+C with no
+            // selection falls through to ghostty so the SIGINT path
+            // runs.
+            if (key.isCopyShortcut()
+                && ghostty_surface_has_selection(self->m_surface))
+            {
+                ghostty_text_s text = {};
+                if (ghostty_surface_read_selection(self->m_surface, &text) && text.text && text.text_len > 0) {
+                    win32::Clipboard::write(self->m_hostHwnd, interop::Encoding::toUtf16(text.text, static_cast<int>(text.text_len)));
+                    ghostty_surface_free_text(self->m_surface, &text);
                 }
+                ghostty_surface_mouse_button(self->m_surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, (ghostty_input_mods_e)0);
+                ghostty_surface_mouse_button(self->m_surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, (ghostty_input_mods_e)0);
+                args.Handled(true);
+                return;
             }
 
-            // Ctrl+V: paste from clipboard.
-            if (ctrl && !shift && vk == 'V') {
+            // Paste shortcut: read the OS clipboard and feed it as
+            // text. The paste API (ghostty_surface_text) is the
+            // bracketed-paste path on ghostty's side.
+            if (key.isPasteShortcut()) {
                 auto utf8 = interop::Encoding::toUtf8(win32::Clipboard::read(self->m_hostHwnd));
                 if (!utf8.empty()) {
                     ghostty_surface_text(self->m_surface, utf8.c_str(), utf8.size());
@@ -228,64 +230,11 @@ namespace winrt::GhosttyWin32::implementation
                 return;
             }
 
-            // Two ToUnicode calls feed two separate ghostty fields:
-            //
-            //   * `unshifted_codepoint` — keystroke with no modifiers
-            //     held, used by ghostty to match unicode-keyed
-            //     bindings (`keybind = ctrl+shift+t = new_tab`
-            //     matches against 't', not against the physical-key
-            //     enum). Computed via an empty key-state buffer.
-            //
-            //   * `text` — the OS-translated UTF-8 the keystroke
-            //     actually produces with live modifiers held. ghostty's
-            //     encoder writes this to the pty via the legacy
-            //     fallback when no binding matches, so this is how
-            //     printable input reaches the terminal. Restricted to
-            //     codepoints >= 0x20 — control characters get encoded
-            //     by ghostty's ctrlSeq / pcStyleFunctionKey paths from
-            //     the scan code, and passing them through `text` would
-            //     double-write.
-            //
-            // Each ToUnicode call can leave dead-key state in the
-            // local buffer; drain with VK_SPACE so the next real
-            // keystroke isn't affected.
-            BYTE plainState[256] = {};
-            wchar_t unshiftedChars[4] = {};
-            int unshiftedCount = ToUnicode(vk, scanCode, plainState, unshiftedChars, 4, 0);
-            wchar_t drain1[4] = {};
-            ToUnicode(VK_SPACE, 0x39, plainState, drain1, 4, 0);
-
+            // Forward as ordinary terminal input. textBuf owns the
+            // OS-translated UTF-8 the RawKeyPress.text pointer
+            // references, so it has to outlive `raw`.
             char textBuf[16] = {};
-            const char* textPtr = nullptr;
-            BYTE liveState[256] = {};
-            GetKeyboardState(liveState);
-            wchar_t liveChars[4] = {};
-            int liveCount = ToUnicode(vk, scanCode, liveState, liveChars, 4, 0);
-            wchar_t drain2[4] = {};
-            ToUnicode(VK_SPACE, 0x39, liveState, drain2, 4, 0);
-            if (liveCount > 0 && liveChars[0] >= 0x20) {
-                int len = WideCharToMultiByte(
-                    CP_UTF8, 0, liveChars, liveCount,
-                    textBuf, sizeof(textBuf) - 1, nullptr, nullptr);
-                if (len > 0) {
-                    textBuf[len] = '\0';
-                    textPtr = textBuf;
-                }
-            }
-
-            core::input::RawKeyPress raw{
-                .vk_code     = static_cast<uint32_t>(vk),
-                .scan_code   = scanCode,
-                .is_extended = args.KeyStatus().IsExtendedKey,
-                .shift       = shift,
-                .ctrl        = ctrl,
-                .alt         = (GetKeyState(VK_MENU) & 0x8000) != 0,
-                .composing   = false,  // IME path already short-circuited above
-                .text        = textPtr,
-                .unshifted_codepoint =
-                    (unshiftedCount > 0 && unshiftedChars[0] >= 0x20)
-                        ? static_cast<uint32_t>(unshiftedChars[0]) : 0u,
-            };
+            auto raw = key.toRawKeyPress(textBuf, sizeof(textBuf));
             auto keyEvent = core::input::Translate(raw);
             ghostty_surface_key(self->m_surface, keyEvent);
 
@@ -297,14 +246,8 @@ namespace winrt::GhosttyWin32::implementation
         KeyUp([weakSelf](auto&&, muxi::KeyRoutedEventArgs const& args) {
             auto self = weakSelf.get();
             if (!self || !self->m_surface) return;
-            core::input::RawKeyRelease raw{
-                .vk_code     = static_cast<uint32_t>(args.Key()),
-                .scan_code   = args.KeyStatus().ScanCode,
-                .is_extended = args.KeyStatus().IsExtendedKey,
-                .shift       = (GetKeyState(VK_SHIFT) & 0x8000) != 0,
-                .ctrl        = (GetKeyState(VK_CONTROL) & 0x8000) != 0,
-                .alt         = (GetKeyState(VK_MENU) & 0x8000) != 0,
-            };
+            input::TerminalKeyUp key(args);
+            auto raw = key.toRawKeyRelease();
             auto keyEvent = core::input::Translate(raw);
             ghostty_surface_key(self->m_surface, keyEvent);
         });
