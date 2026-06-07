@@ -663,11 +663,11 @@ namespace winrt::GhosttyWin32::implementation
     {
         // Guard against the inert window state — Tick can fire from
         // a queued RENDER action after the window has begun tearing
-        // down. App::Ghostty() returns null after App's destructor
-        // releases the wrapper.
-        if (App::g_app) {
-            if (auto* g = App::g_app->Ghostty()) g->Tick();
-        }
+        // down. m_ghosttyApp is null before InitGhostty has run and
+        // would stay non-null through the rest of MainWindow's life
+        // (see App.xaml.h member ordering for why), so the check here
+        // is purely for the pre-init window.
+        if (m_ghosttyApp) m_ghosttyApp->Tick();
     }
 
     void MainWindow::RequestClose()
@@ -754,10 +754,14 @@ namespace winrt::GhosttyWin32::implementation
         };
 
         // Hand the rtConfig to App; it owns the resulting
-        // ghostty::App for the rest of the process.
+        // ghostty::App for the rest of the process. We then take a
+        // borrowed pointer to it for the rest of MainWindow's life —
+        // App is destroyed after this MainWindow (window member
+        // declared after m_ghostty on App), so the borrow can't
+        // outlive what it points at.
         if (App::g_app) App::g_app->CreateGhostty(rtConfig);
-        auto* ghosttyApp = App::g_app ? App::g_app->Ghostty() : nullptr;
-        if (ghosttyApp && m_hwnd) {
+        m_ghosttyApp = App::g_app ? App::g_app->Ghostty() : nullptr;
+        if (m_ghosttyApp && m_hwnd) {
             // Capture by raw `this`: MainWindow outlives every
             // TerminalControl it owns (the controls are destroyed
             // through Tabs, which is a MainWindow member), so the
@@ -769,9 +773,9 @@ namespace winrt::GhosttyWin32::implementation
             // typed, fallback-aware accessors so TabFactory (and
             // future callers) stop reimplementing the key-length /
             // fallback dance every time they need a config value.
-            ghostty::Config cfg(ghosttyApp->ConfigHandle());
+            ghostty::Config cfg(m_ghosttyApp->ConfigHandle());
             m_tabFactory = std::make_unique<TabFactory>(
-                ghosttyApp->Handle(),
+                m_ghosttyApp->Handle(),
                 cfg,
                 m_hwnd,
                 m_paneIds,
@@ -781,8 +785,7 @@ namespace winrt::GhosttyWin32::implementation
 
     void MainWindow::CreateTab()
     {
-        auto* ghosttyApp = App::g_app ? App::g_app->Ghostty() : nullptr;
-        if (!ghosttyApp || !m_hwnd) return;
+        if (!m_ghosttyApp || !m_hwnd) return;
 
         // Drop new-tab requests when the chrome is hidden AND at least
         // one tab already exists. The tab strip is part of AppTitleBar,
@@ -796,7 +799,7 @@ namespace winrt::GhosttyWin32::implementation
         // edit config. The first tab is exempt so the terminal can come
         // up at all when the user launches with chrome already off.
         if (!m_tabs.Empty()) {
-            ghostty::Config cfg(ghosttyApp->ConfigHandle());
+            ghostty::Config cfg(m_ghosttyApp->ConfigHandle());
             if (!m_windowDecorations.Effective(cfg.WindowDecoratedByConfig())) {
                 OutputDebugStringW(L"[GhosttyWin32] CreateTab dropped: window-decoration=false; multi-window (#55) not yet wired\n");
                 return;
@@ -1089,8 +1092,8 @@ namespace winrt::GhosttyWin32::implementation
         // 3-state override; Apply reads it back and translates the
         // effective state into XAML Visibility.
         bool configDecorated = true;
-        if (auto* g = App::g_app ? App::g_app->Ghostty() : nullptr) {
-            ghostty::Config cfg(g->ConfigHandle());
+        if (m_ghosttyApp) {
+            ghostty::Config cfg(m_ghosttyApp->ConfigHandle());
             configDecorated = cfg.WindowDecoratedByConfig();
         }
         m_windowDecorations.Toggle(configDecorated);
@@ -1110,8 +1113,8 @@ namespace winrt::GhosttyWin32::implementation
         // native title bar was already removed at construction (#67),
         // so "undecorated" here means hiding our own custom chrome row.
         bool configDecorated = true;
-        if (auto* g = App::g_app ? App::g_app->Ghostty() : nullptr) {
-            ghostty::Config cfg(g->ConfigHandle());
+        if (m_ghosttyApp) {
+            ghostty::Config cfg(m_ghosttyApp->ConfigHandle());
             configDecorated = cfg.WindowDecoratedByConfig();
         }
         bool decorated = m_windowDecorations.Effective(configDecorated);
@@ -1184,27 +1187,27 @@ namespace winrt::GhosttyWin32::implementation
 
     void MainWindow::ReplaceConfig(ghostty_config_t cloned)
     {
-        auto* g = App::g_app ? App::g_app->Ghostty() : nullptr;
-        if (!g) {
+        if (!m_ghosttyApp) {
             ghostty_config_free(cloned);
             return;
         }
-        g->ReplaceConfig(cloned);
+        m_ghosttyApp->ReplaceConfig(cloned);
     }
 
     void MainWindow::ReloadConfig(bool soft)
     {
-        if (!App::g_app || !App::g_app->Ghostty()) return;
+        if (!m_ghosttyApp) return;
         if (soft) {
             // Soft reload: re-apply the config we already hold.
             // Runs on whichever thread called us — the ghostty handles
             // are stable, and ghostty_app_update_config is thread-safe
-            // on its own state.
-            DispatcherQueue().TryEnqueue([]() {
-                auto* g = App::g_app ? App::g_app->Ghostty() : nullptr;
-                if (!g) return;
-                auto app = g->Handle();
-                auto cfg = g->ConfigHandle();
+            // on its own state. Capture `this` so the queued lambda
+            // can read m_ghosttyApp from the same MainWindow that
+            // owns the borrow.
+            DispatcherQueue().TryEnqueue([this]() {
+                if (!m_ghosttyApp) return;
+                auto app = m_ghosttyApp->Handle();
+                auto cfg = m_ghosttyApp->ConfigHandle();
                 if (app && cfg) ghostty_app_update_config(app, cfg);
             });
             return;
@@ -1231,14 +1234,13 @@ namespace winrt::GhosttyWin32::implementation
                     return 0;
                 }
                 mwLocal->DispatcherQueue().TryEnqueue([mwLocal, newCfg]() {
-                    auto* g = App::g_app ? App::g_app->Ghostty() : nullptr;
-                    if (!g) {
+                    if (!mwLocal->m_ghosttyApp) {
                         ghostty_config_free(newCfg);
                         return;
                     }
-                    ghostty_app_update_config(g->Handle(), newCfg);
-                    g->ReplaceConfig(newCfg);
-                    (void)mwLocal;
+                    ghostty_app_update_config(
+                        mwLocal->m_ghosttyApp->Handle(), newCfg);
+                    mwLocal->m_ghosttyApp->ReplaceConfig(newCfg);
                 });
                 return 0;
             }, ctx, 0, nullptr);

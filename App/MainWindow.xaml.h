@@ -171,8 +171,19 @@ namespace winrt::GhosttyWin32::implementation
         // list. Dispatched from close_surface_cb. UI thread only.
         void CloseSurfaceByPaneId(PaneId id);
 
-        // ghostty::App moved to App scope (lifted for #55 multi-window).
-        // MainWindow accesses it via App::g_app->Ghostty() at call sites.
+        // Borrowed pointer into the App-scope core::ghostty::App
+        // (owned by `winrt::App::m_ghostty`). Set in InitGhostty after
+        // App::CreateGhostty runs. App's destructor frees the wrapper
+        // AFTER its `window` member has gone (see App.xaml.h member
+        // ordering), so this pointer stays valid for every method
+        // MainWindow can be reached through.
+        //
+        // C runtime callbacks (wakeup_cb, action_cb, …) can't reach
+        // this member — they're plain C function pointers without
+        // capture — and have to go through `App::g_app->Ghostty()`
+        // instead.
+        core::ghostty::App* m_ghosttyApp{ nullptr };
+
         HWND m_hwnd = nullptr;
         // SIZE_LIMIT / TOGGLE_FULLSCREEN state. Default constructed
         // (no limit set, not in fullscreen). Subclasses installed
