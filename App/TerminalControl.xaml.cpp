@@ -2,6 +2,7 @@
 #include "TerminalControl.xaml.h"
 #include "Interop/Encoding.h"
 #include "Host/KeyModifiers.h"
+#include "Input/KeyEventTranslator.h"
 #include "Display/PhysicalPixels.h"
 #include "Win32/Clipboard.h"
 #include <dxgi1_3.h>
@@ -227,55 +228,66 @@ namespace winrt::GhosttyWin32::implementation
                 return;
             }
 
-            // Compute the unshifted codepoint (VK translated with no
-            // modifiers held) so unicode-keyed bindings can match.
-            // Without this, Binding.Set.getEvent() in
-            // input/Binding.zig:2622 falls through every lookup path
-            // for entries like `unicode = 't'` (ctrl+shift+t = new_tab,
-            // ctrl+shift+w = close_tab, etc.) and returns null. The
-            // physical-keyed bindings (ctrl+tab = next_tab,
-            // ctrl+shift+arrow_left = previous_tab) already match via
-            // keycode; this fixes the unicode ones.
+            // Two ToUnicode calls feed two separate ghostty fields:
             //
-            // Text encoding stays on the separate ghostty_surface_text
-            // path below — passing a `text` field into the key event
-            // would double-input because encodeKey also writes utf8 to
-            // the pty.
+            //   * `unshifted_codepoint` — keystroke with no modifiers
+            //     held, used by ghostty to match unicode-keyed
+            //     bindings (`keybind = ctrl+shift+t = new_tab`
+            //     matches against 't', not against the physical-key
+            //     enum). Computed via an empty key-state buffer.
+            //
+            //   * `text` — the OS-translated UTF-8 the keystroke
+            //     actually produces with live modifiers held. ghostty's
+            //     encoder writes this to the pty via the legacy
+            //     fallback when no binding matches, so this is how
+            //     printable input reaches the terminal. Restricted to
+            //     codepoints >= 0x20 — control characters get encoded
+            //     by ghostty's ctrlSeq / pcStyleFunctionKey paths from
+            //     the scan code, and passing them through `text` would
+            //     double-write.
+            //
+            // Each ToUnicode call can leave dead-key state in the
+            // local buffer; drain with VK_SPACE so the next real
+            // keystroke isn't affected.
             BYTE plainState[256] = {};
             wchar_t unshiftedChars[4] = {};
             int unshiftedCount = ToUnicode(vk, scanCode, plainState, unshiftedChars, 4, 0);
-            // Drain any dead-key state ToUnicode left in plainState so
-            // the next real keystroke isn't affected.
-            wchar_t drain[4] = {};
-            ToUnicode(VK_SPACE, 0x39, plainState, drain, 4, 0);
+            wchar_t drain1[4] = {};
+            ToUnicode(VK_SPACE, 0x39, plainState, drain1, 4, 0);
 
-            ghostty_input_key_s keyEvent = {};
-            keyEvent.action = GHOSTTY_ACTION_PRESS;
-            keyEvent.keycode = scanCode;
-            if (args.KeyStatus().IsExtendedKey) keyEvent.keycode |= 0xE000;
-            keyEvent.mods = host::currentMods();
-            if (unshiftedCount > 0 && unshiftedChars[0] >= 0x20) {
-                keyEvent.unshifted_codepoint = static_cast<uint32_t>(unshiftedChars[0]);
-            }
-            bool consumed = ghostty_surface_key(self->m_surface, keyEvent);
-
-            // Translate to text using ToUnicode (replaces
-            // CharacterReceived). Skip when the binding consumed the
-            // key — otherwise ctrl+shift+t would type "T" into the pty
-            // in addition to opening a new tab.
-            if (!consumed) {
-                BYTE kbState[256] = {};
-                GetKeyboardState(kbState);
-                wchar_t chars[4] = {};
-                int charCount = ToUnicode(vk, scanCode, kbState, chars, 4, 0);
-                if (charCount > 0 && chars[0] >= 0x20) {
-                    char utf8[16] = {};
-                    int len = WideCharToMultiByte(CP_UTF8, 0, chars, charCount, utf8, sizeof(utf8), nullptr, nullptr);
-                    if (len > 0) {
-                        ghostty_surface_text(self->m_surface, utf8, len);
-                    }
+            char textBuf[16] = {};
+            const char* textPtr = nullptr;
+            BYTE liveState[256] = {};
+            GetKeyboardState(liveState);
+            wchar_t liveChars[4] = {};
+            int liveCount = ToUnicode(vk, scanCode, liveState, liveChars, 4, 0);
+            wchar_t drain2[4] = {};
+            ToUnicode(VK_SPACE, 0x39, liveState, drain2, 4, 0);
+            if (liveCount > 0 && liveChars[0] >= 0x20) {
+                int len = WideCharToMultiByte(
+                    CP_UTF8, 0, liveChars, liveCount,
+                    textBuf, sizeof(textBuf) - 1, nullptr, nullptr);
+                if (len > 0) {
+                    textBuf[len] = '\0';
+                    textPtr = textBuf;
                 }
             }
+
+            core::input::RawKeyPress raw{
+                .vk_code     = static_cast<uint32_t>(vk),
+                .scan_code   = scanCode,
+                .is_extended = args.KeyStatus().IsExtendedKey,
+                .shift       = shift,
+                .ctrl        = ctrl,
+                .alt         = (GetKeyState(VK_MENU) & 0x8000) != 0,
+                .composing   = false,  // IME path already short-circuited above
+                .text        = textPtr,
+                .unshifted_codepoint =
+                    (unshiftedCount > 0 && unshiftedChars[0] >= 0x20)
+                        ? static_cast<uint32_t>(unshiftedChars[0]) : 0u,
+            };
+            auto keyEvent = core::input::Translate(raw);
+            ghostty_surface_key(self->m_surface, keyEvent);
 
             if (self->m_app) ghostty_app_tick(self->m_app);
             ghostty_surface_refresh(self->m_surface);
@@ -285,11 +297,15 @@ namespace winrt::GhosttyWin32::implementation
         KeyUp([weakSelf](auto&&, muxi::KeyRoutedEventArgs const& args) {
             auto self = weakSelf.get();
             if (!self || !self->m_surface) return;
-            ghostty_input_key_s keyEvent = {};
-            keyEvent.action = GHOSTTY_ACTION_RELEASE;
-            keyEvent.keycode = args.KeyStatus().ScanCode;
-            if (args.KeyStatus().IsExtendedKey) keyEvent.keycode |= 0xE000;
-            keyEvent.mods = host::currentMods();
+            core::input::RawKeyRelease raw{
+                .vk_code     = static_cast<uint32_t>(args.Key()),
+                .scan_code   = args.KeyStatus().ScanCode,
+                .is_extended = args.KeyStatus().IsExtendedKey,
+                .shift       = (GetKeyState(VK_SHIFT) & 0x8000) != 0,
+                .ctrl        = (GetKeyState(VK_CONTROL) & 0x8000) != 0,
+                .alt         = (GetKeyState(VK_MENU) & 0x8000) != 0,
+            };
+            auto keyEvent = core::input::Translate(raw);
             ghostty_surface_key(self->m_surface, keyEvent);
         });
 
