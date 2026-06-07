@@ -56,8 +56,8 @@ TEST(KeyEventTranslatorTest, ReleaseOverloadProducesActionRelease) {
 
 TEST(KeyEventTranslatorTest, ModsBitmaskFromIndividualFlags) {
     RawKeyPress raw{
-        .ctrl  = true,
         .shift = true,
+        .ctrl  = true,
     };
 
     auto out = Translate(raw);

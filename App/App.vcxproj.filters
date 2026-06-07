@@ -29,6 +29,9 @@
     <Filter Include="Display">
       <UniqueIdentifier>{B3E9F5A2-7C8D-4E6A-9F1B-2D5E8C3A6F4D}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Input">
+      <UniqueIdentifier>{A6D4F1B8-3C5E-4978-8B2A-1F7C6E9D5B3A}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Tabs\Tab.h">
@@ -51,6 +54,12 @@
     </ClInclude>
     <ClInclude Include="Display\PhysicalPixels.h">
       <Filter>Display</Filter>
+    </ClInclude>
+    <ClInclude Include="Input\TerminalKeyDown.h">
+      <Filter>Input</Filter>
+    </ClInclude>
+    <ClInclude Include="Input\TerminalKeyUp.h">
+      <Filter>Input</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
