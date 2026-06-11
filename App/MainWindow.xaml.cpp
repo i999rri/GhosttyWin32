@@ -759,18 +759,18 @@ namespace winrt::GhosttyWin32::implementation
 
     void MainWindow::InitGhostty()
     {
-        // Bring the dispatcher up before requesting the runtime
-        // config so the action_cb forwarder can rely on it being
-        // ready by the time ghostty fires its first action.
+        // Bring the dispatcher up before any action / surface event
+        // fires; the rtConfig action_cb reaches g_mainWindow->m_ghosttyDispatcher
+        // and would no-op until this assignment completes.
         m_ghosttyDispatcher = ghostty::CallbackDispatcher::Create(*this);
 
-        // Hand the rtConfig to App; it owns the resulting
-        // ghostty::App for the rest of the process. We then take a
-        // borrowed pointer to it for the rest of MainWindow's life —
-        // App is destroyed after this MainWindow (window member
-        // declared after m_ghostty on App), so the borrow can't
-        // outlive what it points at.
-        if (App::g_app) App::g_app->CreateGhostty(BuildRuntimeConfig());
+        // App already created ghostty before constructing this window
+        // (App::OnLaunched calls CreateGhostty + aborts on failure),
+        // so the borrow we take here is guaranteed non-null. We still
+        // capture it through a getter for the null-check happens at
+        // one place. App is destroyed AFTER this MainWindow (window
+        // member declared after m_ghostty on App), so the borrow
+        // can't outlive what it points at.
         m_ghosttyApp = App::g_app ? App::g_app->Ghostty() : nullptr;
         if (m_ghosttyApp && m_hwnd) {
             // Capture by raw `this`: MainWindow outlives every

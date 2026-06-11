@@ -194,6 +194,20 @@ namespace winrt::GhosttyWin32::implementation
         // here after Register(), so the routing path goes via the
         // wWinMain-side subscriber calling App::RouteNotificationClick.
 
+        // Bring up ghostty BEFORE constructing the window. The
+        // runtime config's callbacks reach host state via the
+        // `g_mainWindow` static, so they can be wired without a
+        // MainWindow existing yet — the first callback won't fire
+        // until a surface is created, by which point Activate has
+        // run and the static is set. Doing the order this way means
+        // MainWindow's constructor can already see a live
+        // `App::Ghostty()` and adopt it as an invariant.
+        CreateGhostty(implementation::MainWindow::BuildRuntimeConfig());
+        if (!Ghostty()) {
+            OutputDebugStringW(L"[App] ghostty init failed; not creating window\n");
+            return;
+        }
+
         window = make<MainWindow>();
         window.Activate();
     }
