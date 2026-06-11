@@ -135,6 +135,14 @@ namespace winrt::GhosttyWin32::implementation
         void PresentNotification(PaneId id);
         void ReportProgress(ghostty_action_progress_report_s pr) override;
 
+        // Build the runtime config that ghostty::App::Create wants —
+        // wakeup / action / clipboard / close_surface callbacks. Every
+        // callback is a C function pointer that reaches host state
+        // through the `g_mainWindow` static, so the result has no
+        // instance dependency and the host can construct it before
+        // the first MainWindow exists.
+        static ghostty_runtime_config_s BuildRuntimeConfig();
+
     private:
         void InitGhostty();
         Tab* ActiveTab();

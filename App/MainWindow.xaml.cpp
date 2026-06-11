@@ -680,15 +680,17 @@ namespace winrt::GhosttyWin32::implementation
         try { Close(); } catch (winrt::hresult_error const&) {}
     }
 
-    void MainWindow::InitGhostty()
+    ghostty_runtime_config_s MainWindow::BuildRuntimeConfig()
     {
-        // Bring the dispatcher up before the runtime config so the
-        // action_cb forwarder below can rely on it being ready by
-        // the time ghostty fires its first action.
-        m_ghosttyDispatcher = ghostty::CallbackDispatcher::Create(*this);
-
+        // Every callback below is a C function pointer with no
+        // capture; they reach host state through the `g_mainWindow`
+        // static, which the Activated handler sets before any
+        // surface (and therefore any tick) exists. The result is
+        // therefore safe to build before any MainWindow instance has
+        // been constructed — the App can call this in OnLaunched
+        // and feed the result to CreateGhostty before make<MainWindow>().
         ghostty_runtime_config_s rtConfig{};
-        rtConfig.userdata = this;
+        rtConfig.userdata = nullptr;
         rtConfig.wakeup_cb = [](void*) {
             // Wakeup arrives on a worker thread. Hop to the UI thread
             // before touching ghostty, and re-check App::Ghostty()
@@ -752,6 +754,15 @@ namespace winrt::GhosttyWin32::implementation
                 mw->CloseSurfaceByPaneId(id);
             });
         };
+        return rtConfig;
+    }
+
+    void MainWindow::InitGhostty()
+    {
+        // Bring the dispatcher up before requesting the runtime
+        // config so the action_cb forwarder can rely on it being
+        // ready by the time ghostty fires its first action.
+        m_ghosttyDispatcher = ghostty::CallbackDispatcher::Create(*this);
 
         // Hand the rtConfig to App; it owns the resulting
         // ghostty::App for the rest of the process. We then take a
@@ -759,7 +770,7 @@ namespace winrt::GhosttyWin32::implementation
         // App is destroyed after this MainWindow (window member
         // declared after m_ghostty on App), so the borrow can't
         // outlive what it points at.
-        if (App::g_app) App::g_app->CreateGhostty(rtConfig);
+        if (App::g_app) App::g_app->CreateGhostty(BuildRuntimeConfig());
         m_ghosttyApp = App::g_app ? App::g_app->Ghostty() : nullptr;
         if (m_ghosttyApp && m_hwnd) {
             // Capture by raw `this`: MainWindow outlives every
