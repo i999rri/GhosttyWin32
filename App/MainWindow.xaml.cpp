@@ -680,13 +680,10 @@ namespace winrt::GhosttyWin32::implementation
 
     void MainWindow::Tick()
     {
-        // Guard against the inert window state — Tick can fire from
-        // a queued RENDER action after the window has begun tearing
-        // down. m_ghosttyApp is null before InitGhostty has run and
-        // would stay non-null through the rest of MainWindow's life
-        // (see App.xaml.h member ordering for why), so the check here
-        // is purely for the pre-init window.
-        if (m_ghosttyApp) m_ghosttyApp->Tick();
+        // Class invariant: m_ghosttyApp is set in the constructor and
+        // App outlives every MainWindow (App's `window` member is
+        // destroyed before its `m_ghostty`). No null check needed.
+        m_ghosttyApp->Tick();
     }
 
     void MainWindow::RequestClose()
@@ -807,7 +804,7 @@ namespace winrt::GhosttyWin32::implementation
 
     void MainWindow::CreateTab()
     {
-        if (!m_ghosttyApp || !m_hwnd) return;
+        if (!m_hwnd) return;
 
         // Drop new-tab requests when the chrome is hidden AND at least
         // one tab already exists. The tab strip is part of AppTitleBar,
@@ -1113,11 +1110,8 @@ namespace winrt::GhosttyWin32::implementation
         // Flip the override first, then re-apply. The tag owns the
         // 3-state override; Apply reads it back and translates the
         // effective state into XAML Visibility.
-        bool configDecorated = true;
-        if (m_ghosttyApp) {
-            ghostty::Config cfg(m_ghosttyApp->ConfigHandle());
-            configDecorated = cfg.WindowDecoratedByConfig();
-        }
+        ghostty::Config cfg(m_ghosttyApp->ConfigHandle());
+        bool configDecorated = cfg.WindowDecoratedByConfig();
         m_windowDecorations.Toggle(configDecorated);
         ApplyWindowDecorationsAppearance();
     }
@@ -1134,11 +1128,8 @@ namespace winrt::GhosttyWin32::implementation
         // ExtendsContentIntoTitleBar stays true unconditionally — the OS
         // native title bar was already removed at construction (#67),
         // so "undecorated" here means hiding our own custom chrome row.
-        bool configDecorated = true;
-        if (m_ghosttyApp) {
-            ghostty::Config cfg(m_ghosttyApp->ConfigHandle());
-            configDecorated = cfg.WindowDecoratedByConfig();
-        }
+        ghostty::Config cfg(m_ghosttyApp->ConfigHandle());
+        bool configDecorated = cfg.WindowDecoratedByConfig();
         bool decorated = m_windowDecorations.Effective(configDecorated);
         AppTitleBar().Visibility(decorated
             ? winrt::Microsoft::UI::Xaml::Visibility::Visible
@@ -1209,25 +1200,18 @@ namespace winrt::GhosttyWin32::implementation
 
     void MainWindow::ReplaceConfig(ghostty_config_t cloned)
     {
-        if (!m_ghosttyApp) {
-            ghostty_config_free(cloned);
-            return;
-        }
         m_ghosttyApp->ReplaceConfig(cloned);
     }
 
     void MainWindow::ReloadConfig(bool soft)
     {
-        if (!m_ghosttyApp) return;
         if (soft) {
             // Soft reload: re-apply the config we already hold.
             // Runs on whichever thread called us — the ghostty handles
             // are stable, and ghostty_app_update_config is thread-safe
             // on its own state. Capture `this` so the queued lambda
-            // can read m_ghosttyApp from the same MainWindow that
-            // owns the borrow.
+            // reads m_ghosttyApp from the same MainWindow.
             DispatcherQueue().TryEnqueue([this]() {
-                if (!m_ghosttyApp) return;
                 auto app = m_ghosttyApp->Handle();
                 auto cfg = m_ghosttyApp->ConfigHandle();
                 if (app && cfg) ghostty_app_update_config(app, cfg);
@@ -1256,10 +1240,6 @@ namespace winrt::GhosttyWin32::implementation
                     return 0;
                 }
                 mwLocal->DispatcherQueue().TryEnqueue([mwLocal, newCfg]() {
-                    if (!mwLocal->m_ghosttyApp) {
-                        ghostty_config_free(newCfg);
-                        return;
-                    }
                     ghostty_app_update_config(
                         mwLocal->m_ghosttyApp->Handle(), newCfg);
                     mwLocal->m_ghosttyApp->ReplaceConfig(newCfg);

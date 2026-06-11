@@ -180,11 +180,14 @@ namespace winrt::GhosttyWin32::implementation
         void CloseSurfaceByPaneId(PaneId id);
 
         // Borrowed pointer into the App-scope core::ghostty::App
-        // (owned by `winrt::App::m_ghostty`). Set in InitGhostty after
-        // App::CreateGhostty runs. App's destructor frees the wrapper
-        // AFTER its `window` member has gone (see App.xaml.h member
-        // ordering), so this pointer stays valid for every method
-        // MainWindow can be reached through.
+        // (owned by `winrt::App::m_ghostty`). Set in MainWindow's
+        // constructor — App's OnLaunched creates ghostty BEFORE
+        // make<MainWindow>() and aborts on failure, so by the time
+        // this MainWindow exists the borrow is guaranteed non-null.
+        // App's destructor frees the wrapper AFTER its `window`
+        // member has gone (see App.xaml.h member ordering), so the
+        // pointer stays valid for this MainWindow's entire lifetime
+        // and every method can read it unconditionally.
         //
         // C runtime callbacks (wakeup_cb, action_cb, …) can't reach
         // this member — they're plain C function pointers without
