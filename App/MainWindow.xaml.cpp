@@ -51,6 +51,25 @@ namespace winrt::GhosttyWin32::implementation
 {
     MainWindow::MainWindow()
     {
+        // Adopt the App-scope ghostty wrapper as a class invariant.
+        // App::OnLaunched created ghostty before make<MainWindow>()
+        // and aborted on failure, so by the time a MainWindow exists
+        // the borrow below is guaranteed non-null; every method on
+        // this class can read `m_ghosttyApp->Foo()` without
+        // re-checking. The pointer's lifetime is safe by App's
+        // destructor order — App destroys its `window` member
+        // (containing this MainWindow) BEFORE `m_ghostty`, so the
+        // borrow can't outlive its target.
+        m_ghosttyApp = App::g_app->Ghostty();
+
+        // Same lifetime story as m_ghosttyApp: this MainWindow exists
+        // for the dispatcher's entire life, and `*this` is already a
+        // valid C++ object inside the ctor body. Building the
+        // dispatcher here (rather than waiting for Activated) keeps
+        // the action_cb forwarder safe even if it fires through any
+        // pre-Activated edge case.
+        m_ghosttyDispatcher = ghostty::CallbackDispatcher::Create(*this);
+
         ExtendsContentIntoTitleBar(true);
 
         Activated([this](auto&&, auto&&) {
@@ -759,20 +778,12 @@ namespace winrt::GhosttyWin32::implementation
 
     void MainWindow::InitGhostty()
     {
-        // Bring the dispatcher up before any action / surface event
-        // fires; the rtConfig action_cb reaches g_mainWindow->m_ghosttyDispatcher
-        // and would no-op until this assignment completes.
-        m_ghosttyDispatcher = ghostty::CallbackDispatcher::Create(*this);
-
-        // App already created ghostty before constructing this window
-        // (App::OnLaunched calls CreateGhostty + aborts on failure),
-        // so the borrow we take here is guaranteed non-null. We still
-        // capture it through a getter for the null-check happens at
-        // one place. App is destroyed AFTER this MainWindow (window
-        // member declared after m_ghostty on App), so the borrow
-        // can't outlive what it points at.
-        m_ghosttyApp = App::g_app ? App::g_app->Ghostty() : nullptr;
-        if (m_ghosttyApp && m_hwnd) {
+        // m_ghosttyApp + m_ghosttyDispatcher are already set in the
+        // constructor — both of them only need state that's
+        // available at ctor time. What's left for this method is
+        // m_tabFactory, which depends on the HWND fetched from the
+        // Activated handler above.
+        if (m_hwnd) {
             // Capture by raw `this`: MainWindow outlives every
             // TerminalControl it owns (the controls are destroyed
             // through Tabs, which is a MainWindow member), so the
