@@ -40,22 +40,12 @@ namespace winrt::GhosttyWin32::implementation
         // decode failure.
         static uint64_t ParseSurfaceIdFromArguments(std::wstring const& arguments);
 
-        // Construct the process-wide ghostty::App with the host's
-        // runtime config. The host (MainWindow) builds the rtConfig
-        // — including the lambdas that reach back into its dispatcher
-        // and globals — and hands it here so App owns the resulting
-        // ghostty handle. Lifting the owner out of MainWindow is the
-        // foundation for multi-window: a single ghostty_app_t shared
-        // across every MainWindow. Idempotent against double-call
-        // (subsequent calls drop the new rtConfig and keep the
-        // existing handle).
-        void CreateGhostty(ghostty_runtime_config_s const& rtConfig);
-
-        // Borrowed accessor for the ghostty::App built by
-        // CreateGhostty. Null until CreateGhostty has run. The host
-        // never frees through this pointer — App owns it and tears it
-        // down in its destructor, AFTER the window member (declared
-        // below this one) has already released every TerminalControl
+        // Borrowed accessor for the process-wide ghostty::App.
+        // OnLaunched creates it before make<MainWindow>() and aborts
+        // if creation fails, so any code path that can see a live
+        // MainWindow sees a non-null result. App owns the wrapper and
+        // tears it down in its destructor, AFTER the window member
+        // (declared below this one) has released every TerminalControl
         // and the surfaces they held.
         core::ghostty::App* Ghostty() const noexcept { return m_ghostty.get(); }
 
