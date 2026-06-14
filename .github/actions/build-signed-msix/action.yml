@@ -184,7 +184,7 @@ runs:
           "Package/Package.wapproj",
           "/p:Configuration=Release",
           "/p:Platform=x64",
-          "/p:PlatformToolset=v143",
+          "/p:PlatformToolset=v145",
           "/p:GenerateAppxPackageOnBuild=true",
           "/p:UapAppxPackageBuildMode=SideloadOnly",
           "/p:AppxBundle=Never"
