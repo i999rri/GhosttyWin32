@@ -135,15 +135,16 @@ namespace winrt::GhosttyWin32::implementation
         void PresentNotification(PaneId id);
         void ReportProgress(ghostty_action_progress_report_s pr) override;
 
-        // Build the runtime config that ghostty::App::Create wants —
-        // wakeup / action / clipboard / close_surface callbacks. Every
-        // callback is a C function pointer that reaches host state
-        // through the `g_mainWindow` static, so the result has no
-        // instance dependency and the host can construct it before
-        // the first MainWindow exists.
-        static ghostty_runtime_config_s BuildRuntimeConfig();
-
     private:
+        // The runtime-config callbacks (RuntimeConfigFactory) need to
+        // reach into m_ghosttyDispatcher / m_hwnd / ActiveControl() /
+        // CloseSurfaceByPaneId() — the wiring back into this window
+        // that ghostty asked the host to provide. Friending the
+        // factory keeps those members private to everyone else while
+        // documenting the tight coupling.
+        friend class RuntimeConfigFactory;
+
+
         void InitGhostty();
         Tab* ActiveTab();
         // Convenience wrapper around ActiveTab()->ActiveControl(). Most
@@ -220,6 +221,15 @@ namespace winrt::GhosttyWin32::implementation
         // half-torn-down ghostty handle from any of its handlers.
         std::unique_ptr<ghostty::CallbackDispatcher> m_ghosttyDispatcher;
     };
+
+    // Process-wide pointer to the live MainWindow. Set in the
+    // Activated handler on first construction. Exposed at namespace
+    // scope so RuntimeConfigFactory's static callbacks — defined in a
+    // separate TU — can route ghostty's runtime hooks back into the
+    // window. Goes away in PR2 of #55, replaced by an App-scope
+    // registry that lets callbacks address a specific window by
+    // target.
+    extern MainWindow* g_mainWindow;
 }
 
 namespace winrt::GhosttyWin32::factory_implementation

@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "App.xaml.h"
 #include "MainWindow.xaml.h"
+#include "Ghostty/RuntimeConfigFactory.h"
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -193,7 +194,7 @@ namespace winrt::GhosttyWin32::implementation
         // MainWindow's constructor can already see a live
         // `App::Ghostty()` and adopt it as an invariant.
         m_ghostty = core::ghostty::App::Create(
-            implementation::MainWindow::BuildRuntimeConfig());
+            implementation::RuntimeConfigFactory::Build());
         if (!m_ghostty) {
             OutputDebugStringW(L"[App] ghostty init failed; not creating window\n");
             return;

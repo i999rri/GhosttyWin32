@@ -45,10 +45,14 @@ using namespace winrt;
 using namespace Microsoft::UI::Xaml;
 namespace muxc = Microsoft::UI::Xaml::Controls;
 
-static winrt::GhosttyWin32::implementation::MainWindow* g_mainWindow = nullptr;
-
 namespace winrt::GhosttyWin32::implementation
 {
+    // Definition for the extern declaration in MainWindow.xaml.h. The
+    // runtime callbacks built by RuntimeConfigFactory live in a
+    // separate TU and need to see this symbol; the Activated handler
+    // sets it on first window construction.
+    MainWindow* g_mainWindow = nullptr;
+
     MainWindow::MainWindow()
     {
         // Adopt the App-scope ghostty wrapper as a class invariant.
@@ -694,83 +698,6 @@ namespace winrt::GhosttyWin32::implementation
         // surfaces in practice (RPC_E_DISCONNECTED via the dispose
         // path).
         try { Close(); } catch (winrt::hresult_error const&) {}
-    }
-
-    ghostty_runtime_config_s MainWindow::BuildRuntimeConfig()
-    {
-        // Every callback below is a C function pointer with no
-        // capture; they reach host state through the `g_mainWindow`
-        // static, which the Activated handler sets before any
-        // surface (and therefore any tick) exists. The result is
-        // therefore safe to build before any MainWindow instance has
-        // been constructed — the App can call this in OnLaunched
-        // and feed the result to CreateGhostty before make<MainWindow>().
-        ghostty_runtime_config_s rtConfig{};
-        rtConfig.userdata = nullptr;
-        rtConfig.wakeup_cb = [](void*) {
-            // Wakeup arrives on a worker thread. Hop to the UI thread
-            // before touching ghostty, and re-check App::Ghostty()
-            // there — App::g_app may still be live during late
-            // shutdown but the ghostty wrapper can already be gone.
-            if (!g_mainWindow || !App::g_app || !App::g_app->Ghostty()) return;
-            g_mainWindow->DispatcherQueue().TryEnqueue([]() {
-                if (App::g_app) {
-                    if (auto* g = App::g_app->Ghostty()) g->Tick();
-                }
-            });
-        };
-        rtConfig.action_cb = [](ghostty_app_t, ghostty_target_s target, ghostty_action_s action) -> bool {
-            // Thin forwarder. All dispatch + handler bodies live in
-            // GhosttyCallbackDispatcher / GhosttyActions; the lambda
-            // only exists because ghostty's runtime config wants a
-            // C function pointer.
-            if (!g_mainWindow || !g_mainWindow->m_ghosttyDispatcher) return false;
-            return g_mainWindow->m_ghosttyDispatcher->DispatchAction(target, action);
-        };
-        rtConfig.read_clipboard_cb = [](void*, ghostty_clipboard_e, void* state) -> bool {
-            if (!g_mainWindow) return false;
-            auto* tc = g_mainWindow->ActiveControl();
-            if (!tc || !tc->Surface()) return false;
-            auto utf8 = interop::Encoding::toUtf8(win32::Clipboard::read(g_mainWindow->m_hwnd));
-            if (utf8.empty()) return false;
-            tc->Surface().CompleteClipboardRequest(utf8.c_str(), state, false);
-            return true;
-        };
-        rtConfig.confirm_read_clipboard_cb = [](void*, const char* content, void* state, ghostty_clipboard_request_e) {
-            // Auto-confirm clipboard reads
-            if (g_mainWindow) {
-                auto* tc = g_mainWindow->ActiveControl();
-                if (tc && tc->Surface()) {
-                    tc->Surface().CompleteClipboardRequest(content, state, true);
-                }
-            }
-        };
-        rtConfig.write_clipboard_cb = [](void*, ghostty_clipboard_e, const ghostty_clipboard_content_s* content, size_t count, bool) {
-            if (!content || count == 0 || !content[0].data) return;
-            HWND hwnd = g_mainWindow ? g_mainWindow->m_hwnd : nullptr;
-            win32::Clipboard::write(hwnd, interop::Encoding::toUtf16(content[0].data));
-        };
-        // Shell exited (e.g. user typed `exit`), or ghostty asked to close
-        // the surface for any other reason. The userdata is the PaneId
-        // we set in TabFactory::MakeLeaf. Dispatch the UI mutation to
-        // the next UI tick so it happens off the renderer thread.
-        //
-        // Two cases:
-        //   * Leaf is the only pane in its tab → close the tab (same
-        //     path as GHOSTTY_ACTION_CLOSE_TAB).
-        //   * Leaf has a sibling → collapse the split. The surviving
-        //     sibling takes the parent split's slot; if the closed
-        //     pane was the active leaf, focus moves to the first leaf
-        //     under the surviving subtree.
-        rtConfig.close_surface_cb = [](void* userdata, bool /*process_alive*/) {
-            if (!g_mainWindow || !userdata) return;
-            PaneId id = PaneId::FromUserdata(userdata);
-            auto mw = g_mainWindow;
-            mw->DispatcherQueue().TryEnqueue([mw, id]() {
-                mw->CloseSurfaceByPaneId(id);
-            });
-        };
-        return rtConfig;
     }
 
     void MainWindow::InitGhostty()

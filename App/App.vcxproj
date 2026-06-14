@@ -163,6 +163,7 @@
     <ClInclude Include="Tabs\TabFactory.h" />
     <ClInclude Include="Tabs\Tabs.h" />
     <ClInclude Include="Display\PhysicalPixels.h" />
+    <ClInclude Include="Ghostty\RuntimeConfigFactory.h" />
     <ClInclude Include="Input\TerminalKeyDown.h" />
     <ClInclude Include="Input\TerminalKeyUp.h" />
     <ClInclude Include="TerminalControl.xaml.h">
@@ -185,6 +186,7 @@
     <ClCompile Include="MainWindow.xaml.cpp">
       <DependentUpon>MainWindow.xaml</DependentUpon>
     </ClCompile>
+    <ClCompile Include="Ghostty\RuntimeConfigFactory.cpp" />
     <ClCompile Include="SplitPanel.cpp" />
     <ClCompile Include="TerminalControl.xaml.cpp">
       <DependentUpon>TerminalControl.xaml</DependentUpon>

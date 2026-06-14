@@ -32,6 +32,9 @@
     <Filter Include="Input">
       <UniqueIdentifier>{A6D4F1B8-3C5E-4978-8B2A-1F7C6E9D5B3A}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Ghostty">
+      <UniqueIdentifier>{C7F2A1D5-4B6E-49A3-B8C2-3D5E7A8F1C9B}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Tabs\Tab.h">
@@ -61,6 +64,14 @@
     <ClInclude Include="Input\TerminalKeyUp.h">
       <Filter>Input</Filter>
     </ClInclude>
+    <ClInclude Include="Ghostty\RuntimeConfigFactory.h">
+      <Filter>Ghostty</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Ghostty\RuntimeConfigFactory.cpp">
+      <Filter>Ghostty</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Text Include="readme.txt" />
