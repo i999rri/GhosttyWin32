@@ -1336,7 +1336,7 @@ namespace winrt::GhosttyWin32::implementation
                 float cCenterX = c.X + c.Width  * 0.5f;
                 float cCenterY = c.Y + c.Height * 0.5f;
 
-                double primary, perpendicular;
+                double primary = 0.0, perpendicular = 0.0;
                 bool valid = false;
                 switch (dir) {
                 case GHOSTTY_GOTO_SPLIT_LEFT:
