@@ -9,9 +9,18 @@
 
 namespace winrt::GhosttyWin32::implementation
 {
+    class MainWindowRuntime;
+
     struct App : AppT<App>
     {
         App();
+        // Defined in App.xaml.cpp where MainWindowRuntime's full
+        // definition is visible — std::unique_ptr<MainWindowRuntime>'s
+        // implicit destructor needs the complete type, and the header
+        // only forward-declares it to avoid pulling the heavy
+        // Ghostty/MainWindowRuntime.h dependency into every translation
+        // unit that includes App.xaml.h.
+        ~App();
 
         void OnLaunched(Microsoft::UI::Xaml::LaunchActivatedEventArgs const&);
 
@@ -68,11 +77,22 @@ namespace winrt::GhosttyWin32::implementation
         void HandleActivation(
             winrt::Microsoft::Windows::AppLifecycle::AppActivationArguments const& args);
 
-        // Declared BEFORE `window` so that on App destruction the
-        // window member destructs first (releasing every MainWindow
-        // and through it every surface). Only then does m_ghostty
-        // run, and ghostty_app_free's surface/IO-thread join finds
-        // nothing left to wait on.
+        // Three-member destruction order, leaning on reverse-of-
+        // declaration semantics. The members below MUST stay in this
+        // order:
+        //
+        //   1. `window` destructs first (last-declared) → every
+        //      MainWindow is released → every TerminalControl
+        //      detaches → every surface is freed.
+        //   2. `m_ghostty` destructs → `ghostty_app_free` joins the
+        //      surface / IO worker threads. In-flight callbacks fired
+        //      from a thread that hasn't observed the join yet can
+        //      still find `m_runtime` alive at this point.
+        //   3. `m_runtime` destructs last. By now the join is done
+        //      and no more callbacks can fire — safe to release the
+        //      IGhosttyRuntime the factory's userdata pointer was
+        //      aimed at.
+        std::unique_ptr<MainWindowRuntime> m_runtime;
         std::unique_ptr<core::ghostty::App> m_ghostty;
 
         winrt::Microsoft::UI::Xaml::Window window{ nullptr };

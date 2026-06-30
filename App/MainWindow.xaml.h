@@ -136,13 +136,13 @@ namespace winrt::GhosttyWin32::implementation
         void ReportProgress(ghostty_action_progress_report_s pr) override;
 
     private:
-        // The runtime-config callbacks (RuntimeConfigFactory) need to
-        // reach into m_ghosttyDispatcher / m_hwnd / ActiveControl() /
-        // CloseSurfaceByPaneId() — the wiring back into this window
-        // that ghostty asked the host to provide. Friending the
-        // factory keeps those members private to everyone else while
-        // documenting the tight coupling.
-        friend class RuntimeConfigFactory;
+        // The MainWindowRuntime implementation of the ghostty runtime
+        // callbacks needs to reach into m_ghosttyDispatcher / m_hwnd /
+        // ActiveControl() / CloseSurfaceByPaneId() — the wiring back
+        // into this window that ghostty asked the host to provide.
+        // Friending the runtime keeps those members private to
+        // everyone else while documenting the tight coupling.
+        friend class MainWindowRuntime;
 
 
         void InitGhostty();

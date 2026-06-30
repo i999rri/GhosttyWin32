@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "App.xaml.h"
 #include "MainWindow.xaml.h"
+#include "Ghostty/MainWindowRuntime.h"
 #include "Ghostty/RuntimeConfigFactory.h"
 #include <filesystem>
 #include <fstream>
@@ -50,6 +51,12 @@ namespace winrt::GhosttyWin32::implementation
         });
 #endif
     }
+
+    // Out-of-line so MainWindowRuntime's full definition (included
+    // above) is in scope where the unique_ptr destructor is
+    // instantiated. The body itself is empty — destruction runs
+    // member-by-member per the App.xaml.h declaration order.
+    App::~App() = default;
 
     void App::OnInstanceActivated(
         winrt::Windows::Foundation::IInspectable const&,
@@ -186,15 +193,20 @@ namespace winrt::GhosttyWin32::implementation
         // wWinMain-side subscriber calling App::RouteNotificationClick.
 
         // Bring up ghostty BEFORE constructing the window. The
-        // runtime config's callbacks reach host state via the
-        // `g_mainWindow` static, so they can be wired without a
-        // MainWindow existing yet — the first callback won't fire
-        // until a surface is created, by which point Activate has
-        // run and the static is set. Doing the order this way means
-        // MainWindow's constructor can already see a live
-        // `App::Ghostty()` and adopt it as an invariant.
+        // runtime is created first, then handed to the factory as
+        // the rtConfig userdata — every C callback ghostty fires
+        // unwraps that pointer back to our IGhosttyRuntime impl. The
+        // first callback won't fire until a surface is created, by
+        // which point Activate has run and `g_mainWindow` is set, so
+        // MainWindowRuntime can reach back into the window.
+        //
+        // Member ordering in App.xaml.h enforces destruction order
+        // (window → m_ghostty → m_runtime), keeping the userdata
+        // pointer alive across ghostty_app_free's surface-thread
+        // join.
+        m_runtime = std::make_unique<MainWindowRuntime>();
         m_ghostty = core::ghostty::App::Create(
-            implementation::RuntimeConfigFactory::Build());
+            core::ghostty::RuntimeConfigFactory::Build(m_runtime.get()));
         if (!m_ghostty) {
             OutputDebugStringW(L"[App] ghostty init failed; not creating window\n");
             return;

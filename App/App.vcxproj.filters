@@ -64,12 +64,12 @@
     <ClInclude Include="Input\TerminalKeyUp.h">
       <Filter>Input</Filter>
     </ClInclude>
-    <ClInclude Include="Ghostty\RuntimeConfigFactory.h">
+    <ClInclude Include="Ghostty\MainWindowRuntime.h">
       <Filter>Ghostty</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="Ghostty\RuntimeConfigFactory.cpp">
+    <ClCompile Include="Ghostty\MainWindowRuntime.cpp">
       <Filter>Ghostty</Filter>
     </ClCompile>
   </ItemGroup>
