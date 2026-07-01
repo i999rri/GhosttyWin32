@@ -2,6 +2,8 @@
 
 #include "Ghostty/IGhosttyRuntime.h"
 
+#include <functional>
+
 namespace winrt::GhosttyWin32::implementation {
 
 // App-side implementation of the runtime hooks ghostty calls back
@@ -17,7 +19,25 @@ namespace winrt::GhosttyWin32::implementation {
 // still sees a live runtime.
 class MainWindowRuntime : public core::ghostty::IGhosttyRuntime {
 public:
-    MainWindowRuntime() = default;
+    // Predicate consulted at the top of every callback before host
+    // state gets touched. Whether "ready" means "g_mainWindow set +
+    // App::g_app live + ghostty wrapper alive," some subset, or a
+    // completely different condition (e.g. under test) is App's
+    // choice — this class only knows there's a function to ask.
+    using ReadinessCheck = std::function<bool()>;
+
+    // Drives ghostty's event loop forward. OnWakeup dispatches this
+    // to the UI thread. Injected instead of calling the App-scope
+    // `App::g_app->Ghostty()->Tick()` directly so this class doesn't
+    // reach out of its window domain — `App` and the ghostty wrapper
+    // are somebody else's concerns.
+    using WakeupTick = std::function<void()>;
+
+    // `isHostReady` and `wakeupTick` must remain callable for the
+    // runtime's lifetime — App owns both this runtime and the state
+    // the closures capture, so their lifetimes are naturally tied.
+    MainWindowRuntime(ReadinessCheck isHostReady,
+                      WakeupTick     wakeupTick);
     ~MainWindowRuntime() override = default;
 
     MainWindowRuntime(MainWindowRuntime const&)            = delete;
@@ -30,6 +50,10 @@ public:
     void OnConfirmReadClipboard(char const* content, void* state) override;
     void OnWriteClipboard(char const* utf8) override;
     void OnCloseSurface(void* paneIdUserdata) override;
+
+private:
+    ReadinessCheck m_isHostReady;
+    WakeupTick     m_wakeupTick;
 };
 
 }  // namespace winrt::GhosttyWin32::implementation

@@ -204,7 +204,18 @@ namespace winrt::GhosttyWin32::implementation
         // (window → m_ghostty → m_runtime), keeping the userdata
         // pointer alive across ghostty_app_free's surface-thread
         // join.
-        m_runtime = std::make_unique<MainWindowRuntime>();
+        // The runtime consults these callables at the top of every
+        // callback. Keeping App-scope knowledge here — which statics
+        // have to be alive, how to reach the ghostty wrapper — means
+        // MainWindowRuntime doesn't hard-code its own definition of
+        // readiness and doesn't reach out of its window domain.
+        m_runtime = std::make_unique<MainWindowRuntime>(
+            []() {
+                return g_mainWindow != nullptr
+                    && App::g_app != nullptr
+                    && App::g_app->Ghostty() != nullptr;
+            },
+            []() { App::g_app->Ghostty()->Tick(); });
         m_ghostty = core::ghostty::App::Create(
             core::ghostty::RuntimeConfigFactory::Build(m_runtime.get()));
         if (!m_ghostty) {
