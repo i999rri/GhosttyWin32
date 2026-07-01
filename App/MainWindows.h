@@ -63,6 +63,12 @@ public:
     bool   Empty() const noexcept { return m_windows.empty(); }
     size_t Count() const noexcept { return m_windows.size(); }
 
+    // range-for support. Iteration is over live borrowed pointers in
+    // registration order; users of the range must not modify the
+    // aggregate through Register / Unregister mid-loop.
+    auto begin() const noexcept { return m_windows.begin(); }
+    auto end()   const noexcept { return m_windows.end(); }
+
 private:
     std::vector<MainWindow*> m_windows;
 };

@@ -542,13 +542,20 @@ namespace winrt::GhosttyWin32::implementation
         // over with its standard dialog — same end result, just less polished.
         // That's an acceptable trade for keeping this code readable.
         OutputDebugStringA("GhosttyWin32: unhandled exception, attempting cleanup\n");
-        if (g_mainWindow) {
-            if (g_mainWindow->m_hwnd) ShowWindow(g_mainWindow->m_hwnd, SW_HIDE);
-            for (auto& tab : g_mainWindow->m_tabs) {
-                if (!tab) continue;
-                if (auto* tc = tab->ActiveControl()) {
-                    HANDLE h = tc->CompositionHandle();
-                    if (h) CloseHandle(h);
+        if (App::g_app) {
+            // Walk every registered window; the SEH handler is
+            // process-wide, and once multi-window lands a fatal
+            // crash still wants every window's composition handles
+            // released before we hand control back.
+            for (auto* w : App::g_app->Windows()) {
+                if (!w) continue;
+                if (w->m_hwnd) ShowWindow(w->m_hwnd, SW_HIDE);
+                for (auto& tab : w->m_tabs) {
+                    if (!tab) continue;
+                    if (auto* tc = tab->ActiveControl()) {
+                        HANDLE h = tc->CompositionHandle();
+                        if (h) CloseHandle(h);
+                    }
                 }
             }
         }
