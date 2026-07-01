@@ -204,18 +204,26 @@ namespace winrt::GhosttyWin32::implementation
         // (window → m_ghostty → m_runtime), keeping the userdata
         // pointer alive across ghostty_app_free's surface-thread
         // join.
-        // The runtime consults these callables at the top of every
-        // callback. Keeping App-scope knowledge here — which statics
-        // have to be alive, how to reach the ghostty wrapper — means
-        // MainWindowRuntime doesn't hard-code its own definition of
-        // readiness and doesn't reach out of its window domain.
-        m_runtime = std::make_unique<MainWindowRuntime>(
-            []() {
-                return g_mainWindow != nullptr
-                    && App::g_app != nullptr
+        // The runtime consults these callables through its Host
+        // bundle. Keeping App-scope knowledge here — which state has
+        // to be alive, how to reach the ghostty wrapper, how to look
+        // up windows — means MainWindowRuntime doesn't hard-code any
+        // of it. designated-initialiser field names double as
+        // documentation for what each closure does.
+        m_runtime = std::make_unique<MainWindowRuntime>(MainWindowRuntime::Host{
+            .isReady = []() {
+                return App::g_app != nullptr
+                    && !App::g_app->Windows().Empty()
                     && App::g_app->Ghostty() != nullptr;
             },
-            []() { App::g_app->Ghostty()->Tick(); });
+            .wakeupTick = []() { App::g_app->Ghostty()->Tick(); },
+            .findWindowBySurface = [](ghostty_surface_t s) -> MainWindow* {
+                return App::g_app->Windows().FindForSurface(s);
+            },
+            .anyWindow = []() -> MainWindow* {
+                return App::g_app->Windows().Any();
+            },
+        });
         m_ghostty = core::ghostty::App::Create(
             core::ghostty::RuntimeConfigFactory::Build(m_runtime.get()));
         if (!m_ghostty) {
