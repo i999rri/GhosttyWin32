@@ -89,6 +89,12 @@ namespace winrt::GhosttyWin32::implementation
             SetUnhandledExceptionFilter(&MainWindow::OnUnhandledException);
 
             g_mainWindow = this;
+            // Also register with the App-scope aggregate — the
+            // registry is what the runtime callbacks and any future
+            // target-based routing consult. g_mainWindow stays wired
+            // in parallel for now; it goes away in a later commit
+            // once every reader has been migrated to the aggregate.
+            if (App::g_app) App::g_app->Windows().Register(this);
             auto windowNative = this->try_as<::IWindowNative>();
             if (windowNative) windowNative->get_WindowHandle(&m_hwnd);
             if (m_hwnd) ShowWindow(m_hwnd, SW_HIDE);
@@ -510,6 +516,11 @@ namespace winrt::GhosttyWin32::implementation
 
     MainWindow::~MainWindow()
     {
+        // Take ourselves off the App-scope aggregate before anything
+        // else — subsequent runtime callbacks that fire during
+        // ghostty_app_free's join land in the FindForSurface / Any
+        // paths and must not find a half-torn-down window.
+        if (App::g_app) App::g_app->Windows().Unregister(this);
         m_tabs.Clear();   // Tab destructors handle cleanup
         // ghostty::App ownership lives on App scope now (#55 prep).
         // App's destructor frees ghostty AFTER its `window` member
