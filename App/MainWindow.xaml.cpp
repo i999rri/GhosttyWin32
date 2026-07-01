@@ -645,6 +645,11 @@ namespace winrt::GhosttyWin32::implementation
         }
     }
 
+    bool MainWindow::OwnsSurface(ghostty_surface_t surface) const noexcept
+    {
+        return surface != nullptr && m_tabs.FindBySurface(surface) != nullptr;
+    }
+
     void MainWindow::NotifySurfaceFocused(ghostty_surface_t surface) noexcept
     {
         m_activeSurface = surface;

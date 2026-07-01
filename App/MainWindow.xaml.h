@@ -64,6 +64,12 @@ namespace winrt::GhosttyWin32::implementation
         // surface itself is torn down.
         ghostty_surface_t GetActiveSurface() const noexcept { return m_activeSurface; }
 
+        // True when any leaf in this window's tab tree owns `surface`.
+        // App::FindWindowForSurface iterates its window list and asks
+        // each in turn — the linear cost is fine at the scale a
+        // multi-window session will reach in practice.
+        bool OwnsSurface(ghostty_surface_t surface) const noexcept;
+
         // ----- IMainWindowView -----
         // Narrow surface the callback dispatcher / GhosttyActions
         // consume; see IMainWindowView.h for why these live behind

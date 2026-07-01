@@ -2,6 +2,7 @@
 
 #include "App.xaml.g.h"
 #include "Ghostty/App.h"
+#include "MainWindows.h"
 #include <winrt/Microsoft.Windows.AppLifecycle.h>
 #include <winrt/Microsoft.Windows.AppNotifications.h>
 #include <memory>
@@ -58,6 +59,16 @@ namespace winrt::GhosttyWin32::implementation
         // and the surfaces they held.
         core::ghostty::App* Ghostty() const noexcept { return m_ghostty.get(); }
 
+        // Aggregate for the set of live MainWindows. Sibling to
+        // `Tabs` in shape: a borrow-only collection that MainWindow
+        // registers itself into during its Activated handler and
+        // unregisters from in its destructor. Runtime callbacks and
+        // target-based routing consult this to reach the right
+        // window; the accessor replaces the file-scope `g_mainWindow`
+        // static.
+        MainWindows&       Windows()       noexcept { return m_windows; }
+        MainWindows const& Windows() const noexcept { return m_windows; }
+
     private:
         // Subsequent-activation handler. The first activation runs through
         // OnLaunched; later activations (a second click of a notification,
@@ -92,6 +103,14 @@ namespace winrt::GhosttyWin32::implementation
         //      and no more callbacks can fire — safe to release the
         //      IGhosttyRuntime the factory's userdata pointer was
         //      aimed at.
+        //
+        // `m_windows` is a borrow-only aggregate; its own destruction
+        // order relative to the members below doesn't matter (the
+        // pointers don't own the MainWindows, `window` does), but
+        // every MainWindow unregisters itself in its destructor which
+        // runs during step 1, so by the time we reach step 2 the
+        // aggregate is already empty.
+        MainWindows                        m_windows;
         std::unique_ptr<MainWindowRuntime> m_runtime;
         std::unique_ptr<core::ghostty::App> m_ghostty;
 
