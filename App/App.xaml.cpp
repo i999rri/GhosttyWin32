@@ -197,8 +197,9 @@ namespace winrt::GhosttyWin32::implementation
         // the rtConfig userdata — every C callback ghostty fires
         // unwraps that pointer back to our IGhosttyRuntime impl. The
         // first callback won't fire until a surface is created, by
-        // which point Activate has run and `g_mainWindow` is set, so
-        // MainWindowRuntime can reach back into the window.
+        // which point Activate has run and the Activated handler has
+        // registered the new MainWindow with the aggregate, so
+        // MainWindowRuntime's lookups return non-null.
         //
         // Member ordering in App.xaml.h enforces destruction order
         // (window → m_ghostty → m_runtime), keeping the userdata

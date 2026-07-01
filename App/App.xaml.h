@@ -64,8 +64,7 @@ namespace winrt::GhosttyWin32::implementation
         // registers itself into during its Activated handler and
         // unregisters from in its destructor. Runtime callbacks and
         // target-based routing consult this to reach the right
-        // window; the accessor replaces the file-scope `g_mainWindow`
-        // static.
+        // window.
         MainWindows&       Windows()       noexcept { return m_windows; }
         MainWindows const& Windows() const noexcept { return m_windows; }
 

@@ -47,12 +47,6 @@ namespace muxc = Microsoft::UI::Xaml::Controls;
 
 namespace winrt::GhosttyWin32::implementation
 {
-    // Definition for the extern declaration in MainWindow.xaml.h. The
-    // runtime callbacks built by RuntimeConfigFactory live in a
-    // separate TU and need to see this symbol; the Activated handler
-    // sets it on first window construction.
-    MainWindow* g_mainWindow = nullptr;
-
     MainWindow::MainWindow()
     {
         // Adopt the App-scope ghostty wrapper as a class invariant.
@@ -88,12 +82,10 @@ namespace winrt::GhosttyWin32::implementation
             // visible white flash).
             SetUnhandledExceptionFilter(&MainWindow::OnUnhandledException);
 
-            g_mainWindow = this;
-            // Also register with the App-scope aggregate — the
-            // registry is what the runtime callbacks and any future
-            // target-based routing consult. g_mainWindow stays wired
-            // in parallel for now; it goes away in a later commit
-            // once every reader has been migrated to the aggregate.
+            // Enter the App-scope aggregate. Every caller —
+            // runtime callbacks, target-based routing, the SEH
+            // handler — consults this collection to reach a live
+            // MainWindow; no file-scope static shortcut remains.
             if (App::g_app) App::g_app->Windows().Register(this);
             auto windowNative = this->try_as<::IWindowNative>();
             if (windowNative) windowNative->get_WindowHandle(&m_hwnd);
