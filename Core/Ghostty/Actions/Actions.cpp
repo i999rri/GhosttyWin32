@@ -230,6 +230,18 @@ bool Actions::OnNewTab() {
     return true;
 }
 
+bool Actions::OnNewWindow() {
+    if (!m_newWindow) return false;
+    // Hop to the UI thread — CreateNewWindow builds a Xaml Window
+    // and every Xaml touch has to happen there. The `m_view`
+    // dispatch is a UI-thread hop that any live window can provide;
+    // we don't need our own dispatcher for this to arrive there.
+    m_view.Dispatch([this]() {
+        m_newWindow();
+    });
+    return true;
+}
+
 bool Actions::OnCloseTab(ghostty_surface_t surface) {
     if (!surface) return true;
     m_view.Dispatch([this, surface]() {

@@ -116,15 +116,17 @@ namespace winrt::GhosttyWin32::implementation
         winrt::Microsoft::Windows::AppLifecycle::AppActivationArguments const& args)
     {
         // Activated fires on a worker — bounce to the UI thread before
-        // touching the window. If the redirect happened before OnLaunched
-        // wired up `window`, just drop it; OnLaunched will run normally
-        // and present the terminal as a first-launch effect.
-        if (!window) return;
-        window.DispatcherQueue().TryEnqueue([weak = get_weak(), args]() {
-            if (auto self = weak.get()) {
-                self->HandleActivation(args);
-            }
-        });
+        // touching any Xaml state. If the redirect happened before
+        // OnLaunched added the first window, just drop it; OnLaunched
+        // will run normally and present the terminal as a first-launch
+        // effect.
+        if (m_topLevelWindows.empty()) return;
+        m_topLevelWindows.front().DispatcherQueue().TryEnqueue(
+            [weak = get_weak(), args]() {
+                if (auto self = weak.get()) {
+                    self->HandleActivation(args);
+                }
+            });
     }
 
     void App::HandleActivation(
@@ -138,10 +140,8 @@ namespace winrt::GhosttyWin32::implementation
         // forward; the surface-targeted route (clicks on toasts we
         // raised ourselves) is handled by OnNotificationInvoked, where
         // the args are in-process and safe to read.
-        if (auto mwProj = window.try_as<winrt::GhosttyWin32::MainWindow>()) {
-            if (auto* mw = winrt::get_self<implementation::MainWindow>(mwProj)) {
-                mw->PresentNotification(implementation::PaneId{ 0 });
-            }
+        if (auto* mw = m_windows.Any()) {
+            mw->PresentNotification(implementation::PaneId{ 0 });
         }
     }
 
@@ -149,19 +149,26 @@ namespace winrt::GhosttyWin32::implementation
     {
         // Called from the wWinMain-side NotificationInvoked subscriber
         // on a worker thread. Bounce to the UI thread before touching
-        // the window. If the click arrives before OnLaunched has
-        // wired `window`, drop it — the user just gets the regular
-        // foreground from AppInstance::Activated.
-        if (!window) return;
-        window.DispatcherQueue().TryEnqueue(
+        // any Xaml state. If the click arrives before OnLaunched has
+        // added the first window, drop it — the user just gets the
+        // regular foreground from AppInstance::Activated.
+        if (m_topLevelWindows.empty()) return;
+        m_topLevelWindows.front().DispatcherQueue().TryEnqueue(
             [weak = get_weak(), paneIdValue]()
             {
                 auto self = weak.get();
                 if (!self) return;
-                if (auto mwProj = self->window.try_as<winrt::GhosttyWin32::MainWindow>()) {
-                    if (auto* mw = winrt::get_self<implementation::MainWindow>(mwProj)) {
-                        mw->PresentNotification(implementation::PaneId{ paneIdValue });
-                    }
+                // Route the click to the specific window that owns
+                // the targeted pane; fall back to any live window if
+                // the id is the "no target" sentinel or the owning
+                // window has since closed.
+                PaneId target{ paneIdValue };
+                MainWindow* mw = target
+                    ? self->m_windows.FindForPaneId(target)
+                    : nullptr;
+                if (!mw) mw = self->m_windows.Any();
+                if (mw) {
+                    mw->PresentNotification(target);
                 }
             });
     }

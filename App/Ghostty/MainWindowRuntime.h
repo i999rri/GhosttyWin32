@@ -7,7 +7,7 @@
 
 namespace winrt::GhosttyWin32::implementation {
 
-class MainWindow;
+struct MainWindow;
 
 // App-side implementation of the runtime hooks ghostty calls back
 // into. The factory in Core does the C↔C++ translation; this class

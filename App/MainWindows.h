@@ -8,7 +8,7 @@
 
 namespace winrt::GhosttyWin32::implementation {
 
-class MainWindow;
+struct MainWindow;
 
 // Aggregate for the set of MainWindows live in the process. MainWindow
 // adds and removes itself as part of its own lifecycle; runtime
