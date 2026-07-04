@@ -10,7 +10,7 @@
 #include "Host/IWindow.h"
 #include "Interop/Encoding.h"
 #include "Win32/Clipboard.h"
-#include "Tabs/Panes/PaneIdAllocator.h"
+#include "Tabs/Panes/PaneId.h"
 #include "Tabs/Tab.h"
 #include "Tabs/TabFactory.h"
 #include "Tabs/Tabs.h"
@@ -62,6 +62,12 @@ namespace winrt::GhosttyWin32::implementation
         // each in turn — the linear cost is fine at the scale a
         // multi-window session will reach in practice.
         bool OwnsSurface(ghostty_surface_t surface) const noexcept;
+
+        // Same shape as OwnsSurface but keyed by PaneId. Used by
+        // MainWindows::FindWindowByPaneId to route close_surface_cb —
+        // the userdata payload is a globally unique PaneId (App owns
+        // the allocator), so exactly one window returns true.
+        bool OwnsPane(PaneId id) const noexcept;
 
         // ----- IMainWindowView -----
         // Narrow surface the callback dispatcher / GhosttyActions
@@ -210,7 +216,6 @@ namespace winrt::GhosttyWin32::implementation
         ghostty::actions::tags::SizeLimit          m_sizeLimit;
         ghostty::actions::tags::Fullscreen         m_fullscreen;
         ghostty::actions::tags::WindowDecorations  m_windowDecorations;
-        PaneIdAllocator m_paneIds;
         Tabs m_tabs;
         // Focus-tracked active surface. Set by NotifySurfaceFocused
         // when a TerminalControl gains focus, cleared when the

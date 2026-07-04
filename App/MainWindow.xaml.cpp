@@ -603,6 +603,11 @@ namespace winrt::GhosttyWin32::implementation
         return surface != nullptr && m_tabs.FindBySurface(surface) != nullptr;
     }
 
+    bool MainWindow::OwnsPane(PaneId id) const noexcept
+    {
+        return static_cast<bool>(id) && m_tabs.FindByPaneId(id).tab != nullptr;
+    }
+
     void MainWindow::NotifySurfaceFocused(ghostty_surface_t surface) noexcept
     {
         m_activeSurface = surface;
@@ -682,7 +687,7 @@ namespace winrt::GhosttyWin32::implementation
                 m_ghosttyApp->Handle(),
                 cfg,
                 m_hwnd,
-                m_paneIds,
+                App::g_app->PaneIds(),
                 std::move(onLeafFocused));
         }
     }

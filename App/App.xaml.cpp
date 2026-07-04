@@ -284,6 +284,9 @@ namespace winrt::GhosttyWin32::implementation
             .anyWindow = []() -> MainWindow* {
                 return App::g_app->Windows().Any();
             },
+            .findWindowByPaneId = [](PaneId id) -> MainWindow* {
+                return App::g_app->Windows().FindForPaneId(id);
+            },
         });
         m_ghostty = core::ghostty::App::Create(
             core::ghostty::RuntimeConfigFactory::Build(m_runtime.get()));

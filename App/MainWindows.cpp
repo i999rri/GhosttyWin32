@@ -14,4 +14,13 @@ MainWindow* MainWindows::FindForSurface(ghostty_surface_t surface) const noexcep
     return nullptr;
 }
 
+MainWindow* MainWindows::FindForPaneId(PaneId id) const noexcept
+{
+    if (!id) return nullptr;
+    for (auto* w : m_windows) {
+        if (w && w->OwnsPane(id)) return w;
+    }
+    return nullptr;
+}
+
 }  // namespace winrt::GhosttyWin32::implementation

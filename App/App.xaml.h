@@ -3,6 +3,7 @@
 #include "App.xaml.g.h"
 #include "Ghostty/App.h"
 #include "MainWindows.h"
+#include "Tabs/Panes/PaneIdAllocator.h"
 #include <winrt/Microsoft.Windows.AppLifecycle.h>
 #include <winrt/Microsoft.Windows.AppNotifications.h>
 #include <memory>
@@ -77,6 +78,16 @@ namespace winrt::GhosttyWin32::implementation
         MainWindows&       Windows()       noexcept { return m_windows; }
         MainWindows const& Windows() const noexcept { return m_windows; }
 
+        // Process-wide PaneId allocator. Every leaf across every
+        // MainWindow draws its id from here so PaneIds are globally
+        // unique — that's what lets close_surface_cb route a
+        // ghostty-side close request to the exact pane by id alone,
+        // even when a second (or Nth) MainWindow enters the picture.
+        // Also what `AppNotification`'s `surfaceId=` argument encodes
+        // when a background notification click needs to focus a
+        // specific pane regardless of which window owns it.
+        PaneIdAllocator& PaneIds() noexcept { return m_paneIds; }
+
     private:
         // Subsequent-activation handler. The first activation runs through
         // OnLaunched; later activations (a second click of a notification,
@@ -112,6 +123,11 @@ namespace winrt::GhosttyWin32::implementation
         //      IGhosttyRuntime the factory's userdata pointer was
         //      aimed at.
         //
+        // Process-wide PaneId issuer. Held by App because MainWindow
+        // ctor / tab creation both need it before their own state is
+        // fully assembled; sharing the counter across windows keeps
+        // ids collision-free for close_surface_cb routing.
+        PaneIdAllocator                    m_paneIds;
         // `m_windows` is a borrow-only aggregate; its own destruction
         // order relative to the members below doesn't matter (the
         // pointers don't own the MainWindows, `window` does), but
