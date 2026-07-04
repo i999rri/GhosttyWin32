@@ -209,6 +209,14 @@ namespace winrt::GhosttyWin32::implementation
         core::ghostty::App* m_ghosttyApp{ nullptr };
 
         HWND m_hwnd = nullptr;
+        // Activated fires whenever the window gains focus, but the
+        // one-shot setup below (HWND grab, tab-factory construction,
+        // first-tab spawn, etc.) is only meaningful on the first
+        // activation. Per-instance rather than a function-static
+        // bool because that shape leaked across MainWindow instances
+        // and left every window after the first stuck in the
+        // "already set up" branch with no HWND, no tabs, no terminal.
+        bool m_activatedOnce = false;
         // SIZE_LIMIT / TOGGLE_FULLSCREEN state. Default constructed
         // (no limit set, not in fullscreen). Subclasses installed
         // by SizeLimit are auto-removed by Win32 when m_hwnd is

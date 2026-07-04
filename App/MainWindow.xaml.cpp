@@ -64,9 +64,8 @@ namespace winrt::GhosttyWin32::implementation
         ExtendsContentIntoTitleBar(true);
 
         Activated([this](auto&&, auto&&) {
-            static bool initialized = false;
-            if (initialized) return;
-            initialized = true;
+            if (m_activatedOnce) return;
+            m_activatedOnce = true;
 
             // Enter the App-scope aggregate. Every caller —
             // runtime callbacks, target-based routing, the SEH
