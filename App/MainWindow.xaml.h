@@ -30,13 +30,6 @@ namespace winrt::GhosttyWin32::implementation
         MainWindow();
         ~MainWindow();
 
-        // Best-effort cleanup invoked from SetUnhandledExceptionFilter.
-        // Walks live tabs and closes their composition surface handles so
-        // DComp drops its driver-side references before the OS kills the
-        // process — reduces the chance the next launch inherits corrupted
-        // NVIDIA state.
-        static long __stdcall OnUnhandledException(struct _EXCEPTION_POINTERS* info) noexcept;
-
         // Caption button click handlers, referenced from MainWindow.xaml.
         // Routed through Win32 messages (WM_SYSCOMMAND / WM_CLOSE / ShowWindow)
         // rather than OverlappedPresenter state changes, which have
@@ -149,6 +142,13 @@ namespace winrt::GhosttyWin32::implementation
         // Friending the runtime keeps those members private to
         // everyone else while documenting the tight coupling.
         friend class MainWindowRuntime;
+        // The process-wide SEH handler on App walks every window's
+        // tabs to release composition handles before a fatal crash
+        // reaches WER. Same pattern as MainWindowRuntime: a specific
+        // outside actor that has an intrinsic reason to reach into
+        // this window's guts, granted access by name rather than by
+        // widening the public surface.
+        friend struct App;
 
 
         void InitGhostty();

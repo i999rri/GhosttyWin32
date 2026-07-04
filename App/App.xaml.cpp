@@ -14,7 +14,12 @@ using namespace winrt;
 using namespace Microsoft::UI::Xaml;
 
 namespace {
-    std::filesystem::path crashFlagPathApp() {
+    // Flag file used to detect that the previous process didn't exit
+    // cleanly. Created in OnLaunched, removed in ~App on clean
+    // shutdown — if it's still there at next launch, the previous
+    // run crashed and OnLaunched waits briefly so the NVIDIA driver
+    // has time to recover its internal state.
+    std::filesystem::path crashFlagPath() {
         wchar_t buf[MAX_PATH];
         DWORD len = GetTempPathW(MAX_PATH, buf);
         if (len == 0) return L"GhosttyWin32_running.flag";
@@ -56,7 +61,54 @@ namespace winrt::GhosttyWin32::implementation
     // above) is in scope where the unique_ptr destructor is
     // instantiated. The body itself is empty — destruction runs
     // member-by-member per the App.xaml.h declaration order.
-    App::~App() = default;
+    App::~App()
+    {
+        // Clean shutdown reached — remove the crash flag so the next
+        // launch doesn't sit through the 2-second driver recovery pause.
+        // Best-effort: if the filesystem call fails we lose nothing
+        // beyond the extra pause on the next start.
+        std::error_code ec;
+        std::filesystem::remove(crashFlagPath(), ec);
+    }
+
+    long __stdcall App::OnUnhandledException(struct _EXCEPTION_POINTERS* /*info*/) noexcept
+    {
+        // Fatal crash inside the process. Best-effort cleanup: hide
+        // every registered window and release each active
+        // TerminalControl's composition handle before letting
+        // WER / debugger take over. We deliberately don't touch XAML
+        // objects (releasing the surfaces via DComp is enough) or
+        // ghostty structures that might be wrecked. If any of them
+        // does crash anyway, the unhandled-exception filter "fails"
+        // recursively and WER takes over with its standard dialog —
+        // same end result, just less polished. That's an acceptable
+        // trade for keeping this code readable.
+        OutputDebugStringA("GhosttyWin32: unhandled exception, attempting cleanup\n");
+        if (g_app) {
+            // Walk every registered window; the SEH handler is
+            // process-wide, and once multi-window lands a fatal
+            // crash still wants every window's composition handles
+            // released before we hand control back.
+            for (auto* w : g_app->Windows()) {
+                if (!w) continue;
+                if (w->m_hwnd) ShowWindow(w->m_hwnd, SW_HIDE);
+                for (auto& tab : w->m_tabs) {
+                    if (!tab) continue;
+                    if (auto* tc = tab->ActiveControl()) {
+                        HANDLE h = tc->CompositionHandle();
+                        if (h) CloseHandle(h);
+                    }
+                }
+            }
+        }
+        MessageBoxW(nullptr,
+            L"GhosttyWin32 hit a fatal error and must exit.\n\n"
+            L"Restarting the app usually recovers.",
+            L"GhosttyWin32",
+            MB_OK | MB_ICONERROR | MB_TASKMODAL);
+        // Don't swallow the exception — let WER / debugger see it as usual.
+        return EXCEPTION_CONTINUE_SEARCH;
+    }
 
     void App::OnInstanceActivated(
         winrt::Windows::Foundation::IInspectable const&,
@@ -177,13 +229,21 @@ namespace winrt::GhosttyWin32::implementation
         // Activated handler — by then the window is already mapped.
         {
             std::error_code ec;
-            auto flag = crashFlagPathApp();
+            auto flag = crashFlagPath();
             if (std::filesystem::exists(flag, ec)) {
                 OutputDebugStringA("GhosttyWin32: previous run crashed; pausing 2s for driver recovery\n");
                 Sleep(2000);
             }
             std::ofstream(flag).close();
         }
+
+        // Register the process-wide SEH handler now that the crash
+        // flag is in place. Historically this lived in MainWindow's
+        // Activated handler; moving it here makes it independent of
+        // window count — a fatal exception with two windows open
+        // still walks every window's composition handles before we
+        // let WER take over.
+        SetUnhandledExceptionFilter(&App::OnUnhandledException);
 
         // AppNotificationManager::Default().Register() and the
         // NotificationInvoked subscription both already happened in

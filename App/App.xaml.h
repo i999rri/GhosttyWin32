@@ -50,6 +50,15 @@ namespace winrt::GhosttyWin32::implementation
         // decode failure.
         static uint64_t ParseSurfaceIdFromArguments(std::wstring const& arguments);
 
+        // Best-effort cleanup invoked from SetUnhandledExceptionFilter
+        // when a SEH exception unwinds past the top of the call stack.
+        // Process-wide by definition — walks every registered MainWindow
+        // via the App-scope aggregate to release composition handles
+        // before the process dies. Registered once in OnLaunched;
+        // returns EXCEPTION_CONTINUE_SEARCH so the debugger / WER sees
+        // the exception normally.
+        static long __stdcall OnUnhandledException(struct _EXCEPTION_POINTERS* info) noexcept;
+
         // Borrowed accessor for the process-wide ghostty::App.
         // OnLaunched creates it before make<MainWindow>() and aborts
         // if creation fails, so any code path that can see a live
