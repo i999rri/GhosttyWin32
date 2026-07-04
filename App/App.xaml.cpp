@@ -3,6 +3,7 @@
 #include "MainWindow.xaml.h"
 #include "Ghostty/MainWindowRuntime.h"
 #include "Ghostty/RuntimeConfigFactory.h"
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -295,7 +296,29 @@ namespace winrt::GhosttyWin32::implementation
             return;
         }
 
-        window = make<MainWindow>();
-        window.Activate();
+        CreateNewWindow();
+    }
+
+    void App::CreateNewWindow()
+    {
+        auto w = make<MainWindow>();
+        m_topLevelWindows.push_back(w);
+        // Auto-erase the vector entry when the user closes the
+        // window. Capture only `this`; the sender comes in through
+        // the event args, so no strong Window reference is trapped
+        // inside the lambda — closing really is the last thing that
+        // keeps the Window alive.
+        w.Closed([this](winrt::Windows::Foundation::IInspectable const& sender,
+                        winrt::Microsoft::UI::Xaml::WindowEventArgs const&) {
+            auto closing = sender.try_as<winrt::Microsoft::UI::Xaml::Window>();
+            if (!closing) return;
+            auto it = std::find(m_topLevelWindows.begin(),
+                                m_topLevelWindows.end(),
+                                closing);
+            if (it != m_topLevelWindows.end()) {
+                m_topLevelWindows.erase(it);
+            }
+        });
+        w.Activate();
     }
 }
