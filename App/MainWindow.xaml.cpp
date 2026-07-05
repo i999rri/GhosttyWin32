@@ -163,35 +163,23 @@ namespace winrt::GhosttyWin32::implementation
                         if (auto* tc = self->ActiveControl()) {
                             tc->NotifyImeFocusLeave();
                         }
-                        // Spurious-deactivation recovery, deferred.
-                        // The Win32 title-bar tracking modal loop
-                        // DefWindowProc runs for HTCAPTION clicks
-                        // briefly steals foreground for tracking
-                        // proxies, so a synchronous
-                        // GetForegroundWindow() check here reads a
-                        // transient non-our-HWND value and
-                        // misclassifies the spurious deactivation as
-                        // genuine. Bouncing through the dispatcher
-                        // delays the check until after the modal loop
-                        // returns and foreground state settles. If by
-                        // then our HWND is still foreground, we
-                        // self-Activate so the activated branch of
-                        // this same handler re-runs and queues the
-                        // focus restore. Genuine deactivation leaves
-                        // foreground on the other app, so the check
-                        // skips re-activation and the window properly
-                        // backgrounds.
-                        auto dq = self->DispatcherQueue();
-                        if (dq) {
-                            dq.TryEnqueue([weakActivated]() {
-                                auto self = weakActivated.get();
-                                if (!self || !self->m_hwnd) return;
-                                if (GetForegroundWindow() == self->m_hwnd) {
-                                    try { self->Activate(); }
-                                    catch (winrt::hresult_error const&) {}
-                                }
-                            });
-                        }
+                        // Title-bar HTCAPTION modal-loop recovery is
+                        // handled by the DragRegion PointerReleased
+                        // handler set up further down — it re-focuses
+                        // through the dispatcher regardless of how
+                        // Activated resolves the click, which is the
+                        // reliable path. The earlier
+                        // GetForegroundWindow-based re-Activate here
+                        // was a supplementary recovery for the same
+                        // scenario; with multiple top-level windows
+                        // it fires spuriously on legitimate cross-
+                        // window switches — the check briefly reads
+                        // our HWND while Windows is still routing the
+                        // WM_ACTIVATE pair between siblings — and
+                        // ping-pongs focus back to whichever window
+                        // deactivated last. Trust WinUI's Deactivated
+                        // as authoritative and let PointerReleased
+                        // handle the drag case.
                         return;
                     }
                     // Window came back into focus. Restoring focus
