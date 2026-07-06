@@ -192,6 +192,23 @@ namespace winrt::GhosttyWin32::implementation
         // list. Dispatched from close_surface_cb. UI thread only.
         void CloseSurfaceByPaneId(PaneId id);
 
+        // True when this window's HWND is the OS foreground window.
+        // WinUI3's Window.Activated oscillates continuously when
+        // multiple windows share one UI thread, so activation-driven
+        // work must not trust the event state verbatim — this per-call
+        // Win32 query stays stable through the oscillation and always
+        // reflects reality without any lifecycle to maintain.
+        bool IsForeground() const noexcept {
+            return m_hwnd != nullptr && m_hwnd == ::GetForegroundWindow();
+        }
+
+        // Last renderer-side focus value forwarded for this window.
+        // Forwards are gated on IsForeground() and deduped here —
+        // every ghostty .focus message triggers a renderer frame, so
+        // redundant sends are not free. Starts true to match ghostty's
+        // surface default.
+        bool m_rendererFocus{ true };
+
         // Borrowed pointer into the App-scope core::ghostty::App
         // (owned by `winrt::App::m_ghostty`). Set in MainWindow's
         // constructor — App's OnLaunched creates ghostty BEFORE

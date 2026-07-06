@@ -96,6 +96,13 @@ public:
     void Refresh() noexcept {
         if (m_handle) ghostty_surface_refresh(m_handle);
     }
+    // Renderer-side focus state. Drives the renderer thread's cadence
+    // (focused surfaces poll faster) and cursor-blink gating; ghostty
+    // defaults every surface to focused, so without these calls every
+    // window keeps blink-presenting forever.
+    void SetFocus(bool focused) noexcept {
+        if (m_handle) ghostty_surface_set_focus(m_handle, focused);
+    }
     void SetSize(uint32_t w, uint32_t h) noexcept {
         if (m_handle) ghostty_surface_set_size(m_handle, w, h);
     }

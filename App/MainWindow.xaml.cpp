@@ -162,6 +162,24 @@ namespace winrt::GhosttyWin32::implementation
                     if (args.WindowActivationState() == State::Deactivated) {
                         if (auto* tc = self->ActiveControl()) {
                             tc->NotifyImeFocusLeave();
+                            // Window-level activation crosses windows
+                            // without firing the control's LostFocus
+                            // (XAML logical focus stays on the control
+                            // while the window is inactive), so drop
+                            // the renderer-side focus here. Gated on
+                            // the OS foreground truth + deduped:
+                            // WinUI3 Activated oscillates with
+                            // multiple windows on one thread, and
+                            // forwarding it verbatim spams the
+                            // renderer with .focus messages — each of
+                            // which produces a frame, which is enough
+                            // continuous presenting to re-trigger the
+                            // multi-window overlap flicker.
+                            if (self->m_rendererFocus &&
+                                !self->IsForeground()) {
+                                self->m_rendererFocus = false;
+                                tc->Surface().SetFocus(false);
+                            }
                         }
                         // Title-bar HTCAPTION modal-loop recovery is
                         // handled by the DragRegion PointerReleased
@@ -203,11 +221,38 @@ namespace winrt::GhosttyWin32::implementation
                             auto self = weakActivated.get();
                             if (!self) return;
                             try {
+                                // Bail unless this window is REALLY the
+                                // OS foreground by the time this runs.
+                                // With two windows on one thread the
+                                // Activated events oscillate, and
+                                // running this restore path on a
+                                // window that has already lost
+                                // activation is what sustains the
+                                // ping-pong: Focus() on an element in
+                                // an inactive window re-activates that
+                                // window, yanking foreground back from
+                                // the sibling — whose own pending
+                                // restore then yanks it again, forever.
+                                // The OS foreground check at execution
+                                // (not enqueue) time breaks the cycle:
+                                // a stale restore becomes a no-op.
+                                if (!self->IsForeground()) {
+                                    return;
+                                }
                                 if (auto* tab = self->ActiveTab()) {
                                     tab->Focus();
                                 }
                                 if (auto* tc = self->ActiveControl()) {
                                     tc->NotifyImeFocusEnter();
+                                    // Counterpart of the Deactivated
+                                    // branch: if XAML focus never left
+                                    // the control, GotFocus won't
+                                    // re-fire, so restore the renderer
+                                    // focus explicitly (deduped).
+                                    if (!self->m_rendererFocus) {
+                                        self->m_rendererFocus = true;
+                                        tc->Surface().SetFocus(true);
+                                    }
                                 }
                             } catch (winrt::hresult_error const&) {
                             }

@@ -105,6 +105,12 @@ namespace winrt::GhosttyWin32::implementation
             if (self->m_onFocused && self->m_surface) {
                 self->m_onFocused(self->m_surface.Handle());
             }
+            // Tell the renderer thread this surface is the focused
+            // one. ghostty defaults every surface to focused, so
+            // without this the losing pane's renderer keeps the fast
+            // poll cadence and keeps blink-presenting alongside the
+            // gaining one.
+            self->m_surface.SetFocus(true);
         });
 
         LostFocus([weakSelf](auto&&, auto&&) {
@@ -112,6 +118,7 @@ namespace winrt::GhosttyWin32::implementation
             if (!self) return;
             if (self->m_editContext) self->m_editContext.NotifyFocusLeave();
             // No dim change here — see the GotFocus comment above.
+            self->m_surface.SetFocus(false);
         });
 
         PointerMoved([weakSelf](auto&&, muxi::PointerRoutedEventArgs const& args) {
