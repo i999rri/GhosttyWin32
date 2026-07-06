@@ -26,20 +26,27 @@ namespace core::ghostty::actions {
 // the ghostty action_cb contract.
 class Actions {
 public:
-    // Spawns a top-level window at App scope. NEW_WINDOW is the one
-    // action that doesn't belong on IWindow — the per-window view
-    // doesn't own the "add another window" operation — so it's
-    // injected as a callable at construction time. Same shape as
-    // MainWindowRuntime's Host bundle for other cross-scope hooks.
-    using NewWindowFn = std::function<void()>;
+    // App-scope operations injected at construction time. These are
+    // the actions that don't belong on IWindow — the per-window view
+    // doesn't own "add another window", "close every window", or
+    // "quit the app" — so App supplies them as callables. Same shape
+    // as MainWindowRuntime's Host bundle for other cross-scope hooks.
+    //
+    // Every slot defaults to empty so unit tests that never exercise
+    // these actions keep the bare one-arg construction; each handler
+    // degrades sensibly when its slot is missing (OnNewWindow bails,
+    // the close-scope handlers fall back to closing the one window
+    // they can reach — exactly the single-window behaviour these
+    // actions had before the split).
+    struct AppHooks {
+        std::function<void()> newWindow;
+        std::function<void()> closeAllWindows;
+        std::function<void()> quit;
+    };
 
-    // `newWindow` defaults to an empty `std::function` so unit tests
-    // that never exercise NEW_WINDOW keep the one-arg construction
-    // shape they already have; the OnNewWindow handler bails early
-    // when the slot is empty.
-    Actions(host::IWindow& view, NewWindowFn newWindow = {}) noexcept
+    Actions(host::IWindow& view, AppHooks hooks = {}) noexcept
         : m_view(view)
-        , m_newWindow(std::move(newWindow)) {}
+        , m_hooks(std::move(hooks)) {}
 
     // ----- terminal events -----
     bool OnRingBell();
@@ -68,7 +75,7 @@ public:
     // ----- tab lifecycle / navigation / title -----
     bool OnNewTab();
     // NEW_WINDOW: spawn a fresh top-level MainWindow. Bounces
-    // through the injected NewWindowFn (which App fills with
+    // through the injected newWindow hook (which App fills with
     // `App::g_app->CreateNewWindow()`); Actions doesn't know or
     // care what a "window" is at that layer.
     bool OnNewWindow();
@@ -110,7 +117,7 @@ public:
 
 private:
     host::IWindow& m_view;
-    NewWindowFn    m_newWindow;
+    AppHooks       m_hooks;
 
     // Initial window size from GHOSTTY_ACTION_INITIAL_SIZE
     // (physical pixels). Zero means "not yet received" —

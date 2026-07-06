@@ -4,11 +4,11 @@ namespace core::ghostty {
 
 std::unique_ptr<CallbackDispatcher>
 CallbackDispatcher::Create(host::IWindow& view,
-                           actions::Actions::NewWindowFn newWindow) {
-    // Default for `newWindow` lives on the declaration; the
+                           actions::Actions::AppHooks hooks) {
+    // Default for `hooks` lives on the declaration; the
     // definition can't repeat it or the compiler flags a duplicate.
     return std::unique_ptr<CallbackDispatcher>(
-        new CallbackDispatcher(view, std::move(newWindow)));
+        new CallbackDispatcher(view, std::move(hooks)));
 }
 
 bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_s action) {

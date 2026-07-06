@@ -231,13 +231,13 @@ bool Actions::OnNewTab() {
 }
 
 bool Actions::OnNewWindow() {
-    if (!m_newWindow) return false;
+    if (!m_hooks.newWindow) return false;
     // Hop to the UI thread — CreateNewWindow builds a Xaml Window
     // and every Xaml touch has to happen there. The `m_view`
     // dispatch is a UI-thread hop that any live window can provide;
     // we don't need our own dispatcher for this to arrive there.
     m_view.Dispatch([this]() {
-        m_newWindow();
+        m_hooks.newWindow();
     });
     return true;
 }

@@ -53,13 +53,17 @@ namespace winrt::GhosttyWin32::implementation
         // dispatcher here (rather than waiting for Activated) keeps
         // the action_cb forwarder safe even if it fires through any
         // pre-Activated edge case.
-        // NEW_WINDOW is App-scope: the "add another top-level window"
-        // operation doesn't belong on IWindow, so the factory takes
-        // it as a callable the App fills in. Same shape as
+        // The AppHooks slots are App-scope: "add another top-level
+        // window" and friends don't belong on IWindow, so the factory
+        // takes them as callables the App fills in. Same shape as
         // MainWindowRuntime's Host bundle for other cross-scope hooks.
         m_ghosttyDispatcher = ghostty::CallbackDispatcher::Create(
             *this,
-            []() { if (App::g_app) App::g_app->CreateNewWindow(); });
+            {
+                .newWindow = []() {
+                    if (App::g_app) App::g_app->CreateNewWindow();
+                },
+            });
 
         ExtendsContentIntoTitleBar(true);
 
