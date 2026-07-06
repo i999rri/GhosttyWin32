@@ -28,19 +28,6 @@
 #pragma comment(lib, "shell32.lib")
 #pragma comment(lib, "comctl32.lib")
 
-namespace {
-    // Flag file used to detect that the previous process didn't exit cleanly.
-    // Created at startup, deleted on clean shutdown — if it's still there at
-    // launch time, the previous run crashed and we wait briefly so the
-    // NVIDIA driver has time to recover its internal state.
-    std::filesystem::path crashFlagPath() {
-        wchar_t buf[MAX_PATH];
-        DWORD len = GetTempPathW(MAX_PATH, buf);
-        if (len == 0) return L"GhosttyWin32_running.flag";
-        return std::filesystem::path(buf) / L"GhosttyWin32_running.flag";
-    }
-}
-
 using namespace winrt;
 using namespace Microsoft::UI::Xaml;
 namespace muxc = Microsoft::UI::Xaml::Controls;
@@ -74,13 +61,6 @@ namespace winrt::GhosttyWin32::implementation
             static bool initialized = false;
             if (initialized) return;
             initialized = true;
-
-            // Best-effort cleanup if we crash later — tells DComp to release
-            // surfaces so the next launch starts cleaner. The crash flag
-            // itself is set / checked / cleared in App::OnLaunched so the
-            // recovery delay happens before any window is mapped (avoids a
-            // visible white flash).
-            SetUnhandledExceptionFilter(&MainWindow::OnUnhandledException);
 
             // Enter the App-scope aggregate. Every caller —
             // runtime callbacks, target-based routing, the SEH
@@ -517,47 +497,10 @@ namespace winrt::GhosttyWin32::implementation
         // ghostty::App ownership lives on App scope now (#55 prep).
         // App's destructor frees ghostty AFTER its `window` member
         // (this MainWindow) has gone, so the surface/IO-thread join
-        // inside ghostty_app_free finds nothing left to wait on.
-        // Clean shutdown reached — clear the crash flag so the next launch
-        // doesn't pause unnecessarily.
-        std::error_code ec;
-        std::filesystem::remove(crashFlagPath(), ec);
-    }
-
-    long __stdcall MainWindow::OnUnhandledException(struct _EXCEPTION_POINTERS* /*info*/) noexcept
-    {
-        // Best-effort cleanup before the OS kills the process. Each call here
-        // is a Win32 / kernel API that's safe even with a corrupted heap;
-        // ShowWindow / CloseHandle / MessageBoxW don't touch user-mode
-        // structures that might be wrecked. If any of them does crash anyway,
-        // the unhandled-exception filter "fails" recursively and WER takes
-        // over with its standard dialog — same end result, just less polished.
-        // That's an acceptable trade for keeping this code readable.
-        OutputDebugStringA("GhosttyWin32: unhandled exception, attempting cleanup\n");
-        if (App::g_app) {
-            // Walk every registered window; the SEH handler is
-            // process-wide, and once multi-window lands a fatal
-            // crash still wants every window's composition handles
-            // released before we hand control back.
-            for (auto* w : App::g_app->Windows()) {
-                if (!w) continue;
-                if (w->m_hwnd) ShowWindow(w->m_hwnd, SW_HIDE);
-                for (auto& tab : w->m_tabs) {
-                    if (!tab) continue;
-                    if (auto* tc = tab->ActiveControl()) {
-                        HANDLE h = tc->CompositionHandle();
-                        if (h) CloseHandle(h);
-                    }
-                }
-            }
-        }
-        MessageBoxW(nullptr,
-            L"GhosttyWin32 hit a fatal error and must exit.\n\n"
-            L"Restarting the app usually recovers.",
-            L"GhosttyWin32",
-            MB_OK | MB_ICONERROR | MB_TASKMODAL);
-        // Don't swallow the exception — let WER / debugger see it as usual.
-        return EXCEPTION_CONTINUE_SEARCH;
+        // inside ghostty_app_free finds nothing left to wait on. The
+        // crash flag is also App's concern: App::~App clears it once
+        // per clean process shutdown, which is the granularity the
+        // "did the previous run crash?" check actually wants.
     }
 
     Tab* MainWindow::ActiveTab()
