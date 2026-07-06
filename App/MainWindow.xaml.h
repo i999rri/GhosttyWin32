@@ -136,6 +136,15 @@ namespace winrt::GhosttyWin32::implementation
         void ReportProgress(ghostty_action_progress_report_s pr) override;
 
     private:
+        // The MainWindowRuntime implementation of the ghostty runtime
+        // callbacks needs to reach into m_ghosttyDispatcher / m_hwnd /
+        // ActiveControl() / CloseSurfaceByPaneId() — the wiring back
+        // into this window that ghostty asked the host to provide.
+        // Friending the runtime keeps those members private to
+        // everyone else while documenting the tight coupling.
+        friend class MainWindowRuntime;
+
+
         void InitGhostty();
         Tab* ActiveTab();
         // Convenience wrapper around ActiveTab()->ActiveControl(). Most
@@ -171,7 +180,22 @@ namespace winrt::GhosttyWin32::implementation
         // list. Dispatched from close_surface_cb. UI thread only.
         void CloseSurfaceByPaneId(PaneId id);
 
-        std::unique_ptr<ghostty::App> m_ghostty;
+        // Borrowed pointer into the App-scope core::ghostty::App
+        // (owned by `winrt::App::m_ghostty`). Set in MainWindow's
+        // constructor — App's OnLaunched creates ghostty BEFORE
+        // make<MainWindow>() and aborts on failure, so by the time
+        // this MainWindow exists the borrow is guaranteed non-null.
+        // App's destructor frees the wrapper AFTER its `window`
+        // member has gone (see App.xaml.h member ordering), so the
+        // pointer stays valid for this MainWindow's entire lifetime
+        // and every method can read it unconditionally.
+        //
+        // C runtime callbacks (wakeup_cb, action_cb, …) can't reach
+        // this member — they're plain C function pointers without
+        // capture — and have to go through `App::g_app->Ghostty()`
+        // instead.
+        core::ghostty::App* m_ghosttyApp{ nullptr };
+
         HWND m_hwnd = nullptr;
         // SIZE_LIMIT / TOGGLE_FULLSCREEN state. Default constructed
         // (no limit set, not in fullscreen). Subclasses installed
@@ -191,11 +215,21 @@ namespace winrt::GhosttyWin32::implementation
         std::unique_ptr<TabFactory> m_tabFactory;
         // ghostty runtime callback dispatcher (today: action_cb;
         // future: clipboard / surface). Built in InitGhostty after
-        // the ghostty::App handle is available; destroyed before
-        // m_ghostty so handlers can't observe a half-torn-down app
-        // on shutdown.
+        // the ghostty::App handle is available; the App-scope
+        // ghostty wrapper outlives every MainWindow (see App.xaml.h
+        // member ordering), so the dispatcher can't observe a
+        // half-torn-down ghostty handle from any of its handlers.
         std::unique_ptr<ghostty::CallbackDispatcher> m_ghosttyDispatcher;
     };
+
+    // Process-wide pointer to the live MainWindow. Set in the
+    // Activated handler on first construction. Exposed at namespace
+    // scope so RuntimeConfigFactory's static callbacks — defined in a
+    // separate TU — can route ghostty's runtime hooks back into the
+    // window. Goes away in PR2 of #55, replaced by an App-scope
+    // registry that lets callbacks address a specific window by
+    // target.
+    extern MainWindow* g_mainWindow;
 }
 
 namespace winrt::GhosttyWin32::factory_implementation

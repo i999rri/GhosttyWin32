@@ -1,15 +1,26 @@
 #pragma once
 
 #include "App.xaml.g.h"
+#include "Ghostty/App.h"
 #include <winrt/Microsoft.Windows.AppLifecycle.h>
 #include <winrt/Microsoft.Windows.AppNotifications.h>
+#include <memory>
 #include <string>
 
 namespace winrt::GhosttyWin32::implementation
 {
+    class MainWindowRuntime;
+
     struct App : AppT<App>
     {
         App();
+        // Defined in App.xaml.cpp where MainWindowRuntime's full
+        // definition is visible — std::unique_ptr<MainWindowRuntime>'s
+        // implicit destructor needs the complete type, and the header
+        // only forward-declares it to avoid pulling the heavy
+        // Ghostty/MainWindowRuntime.h dependency into every translation
+        // unit that includes App.xaml.h.
+        ~App();
 
         void OnLaunched(Microsoft::UI::Xaml::LaunchActivatedEventArgs const&);
 
@@ -38,6 +49,15 @@ namespace winrt::GhosttyWin32::implementation
         // decode failure.
         static uint64_t ParseSurfaceIdFromArguments(std::wstring const& arguments);
 
+        // Borrowed accessor for the process-wide ghostty::App.
+        // OnLaunched creates it before make<MainWindow>() and aborts
+        // if creation fails, so any code path that can see a live
+        // MainWindow sees a non-null result. App owns the wrapper and
+        // tears it down in its destructor, AFTER the window member
+        // (declared below this one) has released every TerminalControl
+        // and the surfaces they held.
+        core::ghostty::App* Ghostty() const noexcept { return m_ghostty.get(); }
+
     private:
         // Subsequent-activation handler. The first activation runs through
         // OnLaunched; later activations (a second click of a notification,
@@ -56,6 +76,24 @@ namespace winrt::GhosttyWin32::implementation
         // NotificationInvoked path below, where args are valid.
         void HandleActivation(
             winrt::Microsoft::Windows::AppLifecycle::AppActivationArguments const& args);
+
+        // Three-member destruction order, leaning on reverse-of-
+        // declaration semantics. The members below MUST stay in this
+        // order:
+        //
+        //   1. `window` destructs first (last-declared) → every
+        //      MainWindow is released → every TerminalControl
+        //      detaches → every surface is freed.
+        //   2. `m_ghostty` destructs → `ghostty_app_free` joins the
+        //      surface / IO worker threads. In-flight callbacks fired
+        //      from a thread that hasn't observed the join yet can
+        //      still find `m_runtime` alive at this point.
+        //   3. `m_runtime` destructs last. By now the join is done
+        //      and no more callbacks can fire — safe to release the
+        //      IGhosttyRuntime the factory's userdata pointer was
+        //      aimed at.
+        std::unique_ptr<MainWindowRuntime> m_runtime;
+        std::unique_ptr<core::ghostty::App> m_ghostty;
 
         winrt::Microsoft::UI::Xaml::Window window{ nullptr };
         // Token for the primary AppInstance's Activated event; the

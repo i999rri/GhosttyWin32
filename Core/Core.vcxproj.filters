@@ -45,6 +45,12 @@
     <ClInclude Include="Ghostty\Config.h">
       <Filter>Ghostty</Filter>
     </ClInclude>
+    <ClInclude Include="Ghostty\IGhosttyRuntime.h">
+      <Filter>Ghostty</Filter>
+    </ClInclude>
+    <ClInclude Include="Ghostty\RuntimeConfigFactory.h">
+      <Filter>Ghostty</Filter>
+    </ClInclude>
     <ClInclude Include="Ghostty\Surface.h">
       <Filter>Ghostty</Filter>
     </ClInclude>
@@ -81,6 +87,9 @@
       <Filter>Ghostty\Actions\Tags</Filter>
     </ClCompile>
     <ClCompile Include="Ghostty\CallbackDispatcher.cpp">
+      <Filter>Ghostty</Filter>
+    </ClCompile>
+    <ClCompile Include="Ghostty\RuntimeConfigFactory.cpp">
       <Filter>Ghostty</Filter>
     </ClCompile>
     <ClCompile Include="Win32\SEHGuard.cpp">

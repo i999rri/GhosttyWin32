@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "MainWindow.xaml.h"
+#include "App.xaml.h"
 #include "Ghostty/CallbackDispatcher.h"
 #include "Host/KeyModifiers.h"
 #include "Interop/Encoding.h"
@@ -44,12 +45,35 @@ using namespace winrt;
 using namespace Microsoft::UI::Xaml;
 namespace muxc = Microsoft::UI::Xaml::Controls;
 
-static winrt::GhosttyWin32::implementation::MainWindow* g_mainWindow = nullptr;
-
 namespace winrt::GhosttyWin32::implementation
 {
+    // Definition for the extern declaration in MainWindow.xaml.h. The
+    // runtime callbacks built by RuntimeConfigFactory live in a
+    // separate TU and need to see this symbol; the Activated handler
+    // sets it on first window construction.
+    MainWindow* g_mainWindow = nullptr;
+
     MainWindow::MainWindow()
     {
+        // Adopt the App-scope ghostty wrapper as a class invariant.
+        // App::OnLaunched created ghostty before make<MainWindow>()
+        // and aborted on failure, so by the time a MainWindow exists
+        // the borrow below is guaranteed non-null; every method on
+        // this class can read `m_ghosttyApp->Foo()` without
+        // re-checking. The pointer's lifetime is safe by App's
+        // destructor order — App destroys its `window` member
+        // (containing this MainWindow) BEFORE `m_ghostty`, so the
+        // borrow can't outlive its target.
+        m_ghosttyApp = App::g_app->Ghostty();
+
+        // Same lifetime story as m_ghosttyApp: this MainWindow exists
+        // for the dispatcher's entire life, and `*this` is already a
+        // valid C++ object inside the ctor body. Building the
+        // dispatcher here (rather than waiting for Activated) keeps
+        // the action_cb forwarder safe even if it fires through any
+        // pre-Activated edge case.
+        m_ghosttyDispatcher = ghostty::CallbackDispatcher::Create(*this);
+
         ExtendsContentIntoTitleBar(true);
 
         Activated([this](auto&&, auto&&) {
@@ -487,7 +511,10 @@ namespace winrt::GhosttyWin32::implementation
     MainWindow::~MainWindow()
     {
         m_tabs.Clear();   // Tab destructors handle cleanup
-        m_ghostty.reset(); // ghostty_app_free + config_free in correct order
+        // ghostty::App ownership lives on App scope now (#55 prep).
+        // App's destructor frees ghostty AFTER its `window` member
+        // (this MainWindow) has gone, so the surface/IO-thread join
+        // inside ghostty_app_free finds nothing left to wait on.
         // Clean shutdown reached — clear the crash flag so the next launch
         // doesn't pause unnecessarily.
         std::error_code ec;
@@ -657,10 +684,10 @@ namespace winrt::GhosttyWin32::implementation
 
     void MainWindow::Tick()
     {
-        // Guard against the inert window state — Tick can fire from
-        // a queued RENDER action after the window has begun tearing
-        // down (m_ghostty already released). No-op in that case.
-        if (m_ghostty) m_ghostty->Tick();
+        // Class invariant: m_ghosttyApp is set in the constructor and
+        // App outlives every MainWindow (App's `window` member is
+        // destroyed before its `m_ghostty`). No null check needed.
+        m_ghosttyApp->Tick();
     }
 
     void MainWindow::RequestClose()
@@ -675,75 +702,12 @@ namespace winrt::GhosttyWin32::implementation
 
     void MainWindow::InitGhostty()
     {
-        // Bring the dispatcher up before the runtime config so the
-        // action_cb forwarder below can rely on it being ready by
-        // the time ghostty fires its first action.
-        m_ghosttyDispatcher = ghostty::CallbackDispatcher::Create(*this);
-
-        ghostty_runtime_config_s rtConfig{};
-        rtConfig.userdata = this;
-        rtConfig.wakeup_cb = [](void*) {
-            if (!g_mainWindow || !g_mainWindow->m_ghostty) return;
-            g_mainWindow->DispatcherQueue().TryEnqueue([]() {
-                if (g_mainWindow && g_mainWindow->m_ghostty) {
-                    g_mainWindow->m_ghostty->Tick();
-                }
-            });
-        };
-        rtConfig.action_cb = [](ghostty_app_t, ghostty_target_s target, ghostty_action_s action) -> bool {
-            // Thin forwarder. All dispatch + handler bodies live in
-            // GhosttyCallbackDispatcher / GhosttyActions; the lambda
-            // only exists because ghostty's runtime config wants a
-            // C function pointer.
-            if (!g_mainWindow || !g_mainWindow->m_ghosttyDispatcher) return false;
-            return g_mainWindow->m_ghosttyDispatcher->DispatchAction(target, action);
-        };
-        rtConfig.read_clipboard_cb = [](void*, ghostty_clipboard_e, void* state) -> bool {
-            if (!g_mainWindow) return false;
-            auto* tc = g_mainWindow->ActiveControl();
-            if (!tc || !tc->Surface()) return false;
-            auto utf8 = interop::Encoding::toUtf8(win32::Clipboard::read(g_mainWindow->m_hwnd));
-            if (utf8.empty()) return false;
-            tc->Surface().CompleteClipboardRequest(utf8.c_str(), state, false);
-            return true;
-        };
-        rtConfig.confirm_read_clipboard_cb = [](void*, const char* content, void* state, ghostty_clipboard_request_e) {
-            // Auto-confirm clipboard reads
-            if (g_mainWindow) {
-                auto* tc = g_mainWindow->ActiveControl();
-                if (tc && tc->Surface()) {
-                    tc->Surface().CompleteClipboardRequest(content, state, true);
-                }
-            }
-        };
-        rtConfig.write_clipboard_cb = [](void*, ghostty_clipboard_e, const ghostty_clipboard_content_s* content, size_t count, bool) {
-            if (!content || count == 0 || !content[0].data) return;
-            HWND hwnd = g_mainWindow ? g_mainWindow->m_hwnd : nullptr;
-            win32::Clipboard::write(hwnd, interop::Encoding::toUtf16(content[0].data));
-        };
-        // Shell exited (e.g. user typed `exit`), or ghostty asked to close
-        // the surface for any other reason. The userdata is the PaneId
-        // we set in TabFactory::MakeLeaf. Dispatch the UI mutation to
-        // the next UI tick so it happens off the renderer thread.
-        //
-        // Two cases:
-        //   * Leaf is the only pane in its tab → close the tab (same
-        //     path as GHOSTTY_ACTION_CLOSE_TAB).
-        //   * Leaf has a sibling → collapse the split. The surviving
-        //     sibling takes the parent split's slot; if the closed
-        //     pane was the active leaf, focus moves to the first leaf
-        //     under the surviving subtree.
-        rtConfig.close_surface_cb = [](void* userdata, bool /*process_alive*/) {
-            if (!g_mainWindow || !userdata) return;
-            PaneId id = PaneId::FromUserdata(userdata);
-            auto mw = g_mainWindow;
-            mw->DispatcherQueue().TryEnqueue([mw, id]() {
-                mw->CloseSurfaceByPaneId(id);
-            });
-        };
-
-        m_ghostty = ghostty::App::Create(rtConfig);
-        if (m_ghostty && m_hwnd) {
+        // m_ghosttyApp + m_ghosttyDispatcher are already set in the
+        // constructor — both of them only need state that's
+        // available at ctor time. What's left for this method is
+        // m_tabFactory, which depends on the HWND fetched from the
+        // Activated handler above.
+        if (m_hwnd) {
             // Capture by raw `this`: MainWindow outlives every
             // TerminalControl it owns (the controls are destroyed
             // through Tabs, which is a MainWindow member), so the
@@ -755,9 +719,9 @@ namespace winrt::GhosttyWin32::implementation
             // typed, fallback-aware accessors so TabFactory (and
             // future callers) stop reimplementing the key-length /
             // fallback dance every time they need a config value.
-            ghostty::Config cfg(m_ghostty->ConfigHandle());
+            ghostty::Config cfg(m_ghosttyApp->ConfigHandle());
             m_tabFactory = std::make_unique<TabFactory>(
-                m_ghostty->Handle(),
+                m_ghosttyApp->Handle(),
                 cfg,
                 m_hwnd,
                 m_paneIds,
@@ -767,7 +731,7 @@ namespace winrt::GhosttyWin32::implementation
 
     void MainWindow::CreateTab()
     {
-        if (!m_ghostty || !m_hwnd) return;
+        if (!m_hwnd) return;
 
         // Drop new-tab requests when the chrome is hidden AND at least
         // one tab already exists. The tab strip is part of AppTitleBar,
@@ -781,7 +745,7 @@ namespace winrt::GhosttyWin32::implementation
         // edit config. The first tab is exempt so the terminal can come
         // up at all when the user launches with chrome already off.
         if (!m_tabs.Empty()) {
-            ghostty::Config cfg(m_ghostty->ConfigHandle());
+            ghostty::Config cfg(m_ghosttyApp->ConfigHandle());
             if (!m_windowDecorations.Effective(cfg.WindowDecoratedByConfig())) {
                 OutputDebugStringW(L"[GhosttyWin32] CreateTab dropped: window-decoration=false; multi-window (#55) not yet wired\n");
                 return;
@@ -1073,11 +1037,8 @@ namespace winrt::GhosttyWin32::implementation
         // Flip the override first, then re-apply. The tag owns the
         // 3-state override; Apply reads it back and translates the
         // effective state into XAML Visibility.
-        bool configDecorated = true;
-        if (m_ghostty) {
-            ghostty::Config cfg(m_ghostty->ConfigHandle());
-            configDecorated = cfg.WindowDecoratedByConfig();
-        }
+        ghostty::Config cfg(m_ghosttyApp->ConfigHandle());
+        bool configDecorated = cfg.WindowDecoratedByConfig();
         m_windowDecorations.Toggle(configDecorated);
         ApplyWindowDecorationsAppearance();
     }
@@ -1094,11 +1055,8 @@ namespace winrt::GhosttyWin32::implementation
         // ExtendsContentIntoTitleBar stays true unconditionally — the OS
         // native title bar was already removed at construction (#67),
         // so "undecorated" here means hiding our own custom chrome row.
-        bool configDecorated = true;
-        if (m_ghostty) {
-            ghostty::Config cfg(m_ghostty->ConfigHandle());
-            configDecorated = cfg.WindowDecoratedByConfig();
-        }
+        ghostty::Config cfg(m_ghosttyApp->ConfigHandle());
+        bool configDecorated = cfg.WindowDecoratedByConfig();
         bool decorated = m_windowDecorations.Effective(configDecorated);
         AppTitleBar().Visibility(decorated
             ? winrt::Microsoft::UI::Xaml::Visibility::Visible
@@ -1169,25 +1127,20 @@ namespace winrt::GhosttyWin32::implementation
 
     void MainWindow::ReplaceConfig(ghostty_config_t cloned)
     {
-        if (!m_ghostty) {
-            ghostty_config_free(cloned);
-            return;
-        }
-        m_ghostty->ReplaceConfig(cloned);
+        m_ghosttyApp->ReplaceConfig(cloned);
     }
 
     void MainWindow::ReloadConfig(bool soft)
     {
-        if (!m_ghostty) return;
         if (soft) {
             // Soft reload: re-apply the config we already hold.
-            // Runs on whichever thread called us — m_ghostty's
-            // handles are stable, and ghostty_app_update_config
-            // is thread-safe on its own state.
+            // Runs on whichever thread called us — the ghostty handles
+            // are stable, and ghostty_app_update_config is thread-safe
+            // on its own state. Capture `this` so the queued lambda
+            // reads m_ghosttyApp from the same MainWindow.
             DispatcherQueue().TryEnqueue([this]() {
-                if (!m_ghostty) return;
-                auto app = m_ghostty->Handle();
-                auto cfg = m_ghostty->ConfigHandle();
+                auto app = m_ghosttyApp->Handle();
+                auto cfg = m_ghosttyApp->ConfigHandle();
                 if (app && cfg) ghostty_app_update_config(app, cfg);
             });
             return;
@@ -1214,12 +1167,9 @@ namespace winrt::GhosttyWin32::implementation
                     return 0;
                 }
                 mwLocal->DispatcherQueue().TryEnqueue([mwLocal, newCfg]() {
-                    if (!mwLocal->m_ghostty) {
-                        ghostty_config_free(newCfg);
-                        return;
-                    }
-                    ghostty_app_update_config(mwLocal->m_ghostty->Handle(), newCfg);
-                    mwLocal->m_ghostty->ReplaceConfig(newCfg);
+                    ghostty_app_update_config(
+                        mwLocal->m_ghosttyApp->Handle(), newCfg);
+                    mwLocal->m_ghosttyApp->ReplaceConfig(newCfg);
                 });
                 return 0;
             }, ctx, 0, nullptr);
@@ -1386,7 +1336,7 @@ namespace winrt::GhosttyWin32::implementation
                 float cCenterX = c.X + c.Width  * 0.5f;
                 float cCenterY = c.Y + c.Height * 0.5f;
 
-                double primary, perpendicular;
+                double primary = 0.0, perpendicular = 0.0;
                 bool valid = false;
                 switch (dir) {
                 case GHOSTTY_GOTO_SPLIT_LEFT:
