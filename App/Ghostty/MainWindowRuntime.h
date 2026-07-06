@@ -1,12 +1,13 @@
 #pragma once
 
 #include "Ghostty/IGhosttyRuntime.h"
+#include "Tabs/Panes/PaneId.h"
 
 #include <functional>
 
 namespace winrt::GhosttyWin32::implementation {
 
-class MainWindow;
+struct MainWindow;
 
 // App-side implementation of the runtime hooks ghostty calls back
 // into. The factory in Core does the C↔C++ translation; this class
@@ -45,6 +46,12 @@ public:
     // no explicit target, APP-target actions.
     using AnyWindow = std::function<MainWindow*()>;
 
+    // Returns the window whose tab tree owns the given `PaneId`, or
+    // null. `close_surface_cb` gives us a userdata that's a globally
+    // unique PaneId (issued from the App-scope allocator), so this
+    // resolves to exactly one window even with several open.
+    using FindWindowByPaneId = std::function<MainWindow*(PaneId)>;
+
     // Bundle of callables the runtime consults. `App` fills each
     // slot at construction time. Reads at the call sites are
     // `m_host.xxx(...)`, so the runtime touches its dependencies
@@ -60,6 +67,7 @@ public:
         WakeupTick          wakeupTick;
         FindWindowBySurface findWindowBySurface;
         AnyWindow           anyWindow;
+        FindWindowByPaneId  findWindowByPaneId;
     };
 
     explicit MainWindowRuntime(Host host);

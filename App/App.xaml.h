@@ -3,6 +3,7 @@
 #include "App.xaml.g.h"
 #include "Ghostty/App.h"
 #include "MainWindows.h"
+#include "Tabs/Panes/PaneIdAllocator.h"
 #include <winrt/Microsoft.Windows.AppLifecycle.h>
 #include <winrt/Microsoft.Windows.AppNotifications.h>
 #include <memory>
@@ -77,6 +78,25 @@ namespace winrt::GhosttyWin32::implementation
         MainWindows&       Windows()       noexcept { return m_windows; }
         MainWindows const& Windows() const noexcept { return m_windows; }
 
+        // Process-wide PaneId allocator. Every leaf across every
+        // MainWindow draws its id from here so PaneIds are globally
+        // unique — that's what lets close_surface_cb route a
+        // ghostty-side close request to the exact pane by id alone,
+        // even when a second (or Nth) MainWindow enters the picture.
+        // Also what `AppNotification`'s `surfaceId=` argument encodes
+        // when a background notification click needs to focus a
+        // specific pane regardless of which window owns it.
+        PaneIdAllocator& PaneIds() noexcept { return m_paneIds; }
+
+        // Spawns a fresh top-level MainWindow, plugs it into the
+        // aggregate (via its Activated handler) and shows it. Both
+        // `OnLaunched`'s initial window and future `NEW_WINDOW`
+        // action handlers go through here — one path, one lifetime
+        // story. A Closed subscription drops the strong reference
+        // when the user closes the window; the vector doesn't hold
+        // stale entries for windows that outlive their HWND.
+        void CreateNewWindow();
+
     private:
         // Subsequent-activation handler. The first activation runs through
         // OnLaunched; later activations (a second click of a notification,
@@ -100,9 +120,10 @@ namespace winrt::GhosttyWin32::implementation
         // declaration semantics. The members below MUST stay in this
         // order:
         //
-        //   1. `window` destructs first (last-declared) → every
-        //      MainWindow is released → every TerminalControl
-        //      detaches → every surface is freed.
+        //   1. `m_topLevelWindows` destructs first (last-declared) →
+        //      every Window handle releases → every MainWindow
+        //      destructor runs → every TerminalControl detaches →
+        //      every surface is freed.
         //   2. `m_ghostty` destructs → `ghostty_app_free` joins the
         //      surface / IO worker threads. In-flight callbacks fired
         //      from a thread that hasn't observed the join yet can
@@ -112,17 +133,31 @@ namespace winrt::GhosttyWin32::implementation
         //      IGhosttyRuntime the factory's userdata pointer was
         //      aimed at.
         //
+        // Process-wide PaneId issuer. Held by App because MainWindow
+        // ctor / tab creation both need it before their own state is
+        // fully assembled; sharing the counter across windows keeps
+        // ids collision-free for close_surface_cb routing.
+        PaneIdAllocator                    m_paneIds;
         // `m_windows` is a borrow-only aggregate; its own destruction
         // order relative to the members below doesn't matter (the
-        // pointers don't own the MainWindows, `window` does), but
-        // every MainWindow unregisters itself in its destructor which
-        // runs during step 1, so by the time we reach step 2 the
-        // aggregate is already empty.
+        // pointers don't own the MainWindows, `m_topLevelWindows`
+        // does), but every MainWindow unregisters itself in its
+        // destructor which runs during step 1, so by the time we
+        // reach step 2 the aggregate is already empty.
         MainWindows                        m_windows;
         std::unique_ptr<MainWindowRuntime> m_runtime;
         std::unique_ptr<core::ghostty::App> m_ghostty;
 
-        winrt::Microsoft::UI::Xaml::Window window{ nullptr };
+        // Strong references to every top-level window we've spawned.
+        // The vector owns each `Window` handle (the WinRT smart
+        // pointer form) until the user closes that window; a
+        // per-window Closed subscription installed by CreateNewWindow
+        // erases the matching entry so we don't stack up dangling
+        // handles across a long session. On App teardown, whatever's
+        // still here destructs during m_topLevelWindows' own
+        // destruction and each MainWindow unregisters itself from
+        // the aggregate above as part of the same unwind.
+        std::vector<winrt::Microsoft::UI::Xaml::Window> m_topLevelWindows;
         // Token for the primary AppInstance's Activated event; the
         // subscription lives for the lifetime of the App.
         winrt::event_token m_activatedToken{};

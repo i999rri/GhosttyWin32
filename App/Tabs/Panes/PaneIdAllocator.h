@@ -5,12 +5,14 @@
 
 namespace winrt::GhosttyWin32::implementation {
 
-// Issues monotonically increasing PaneIds. One instance per MainWindow —
-// the counter is per-allocator (not process-global) so that test setups
-// or future multi-window scenarios get an isolated ID space without
-// having to clear hidden static state.
+// Issues monotonically increasing PaneIds. One instance lives on App
+// (process-wide) so every leaf across every MainWindow gets a unique
+// id — that's what makes `close_surface_cb`'s PaneId-in-userdata scheme
+// address the exact pane instead of a "first window's pane N" collision.
+// The `PaneId` type's uint64 value space is large enough that overflow
+// isn't a concern in practice.
 //
-// Move-disabled: fixed location for the lifetime of MainWindow.
+// Move-disabled: fixed location for App's lifetime.
 class PaneIdAllocator {
 public:
     PaneIdAllocator() = default;

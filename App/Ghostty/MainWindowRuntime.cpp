@@ -85,17 +85,14 @@ void MainWindowRuntime::OnCloseSurface(void* paneIdUserdata)
 {
     // Shell exited (e.g. user typed `exit`) or ghostty otherwise asked
     // to close the surface. The userdata is the PaneId we set in
-    // TabFactory::MakeLeaf. Dispatch the UI mutation to the next UI
-    // tick so it happens off the renderer thread.
-    //
-    // PaneIds are per-window today (each MainWindow has its own
-    // allocator), so with multiple windows we'd need target routing
-    // here. Single-window makes `anyWindow` sufficient; #55's
-    // NEW_WINDOW work will revisit.
+    // TabFactory::MakeLeaf — a globally unique id, so resolving to
+    // the owning window is a lookup rather than "assume the only
+    // window." Dispatch the UI mutation to the next UI tick so it
+    // happens off the renderer thread.
     if (!m_host.isReady()) return;
-    auto* window = m_host.anyWindow();
-    if (!window) return;
     PaneId id = PaneId::FromUserdata(paneIdUserdata);
+    auto* window = m_host.findWindowByPaneId(id);
+    if (!window) return;
     window->DispatcherQueue().TryEnqueue([window, id]() {
         window->CloseSurfaceByPaneId(id);
     });

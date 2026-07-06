@@ -3,6 +3,8 @@
 #include "Host/IWindow.h"
 #include "ghostty.h"
 #include <cstdint>
+#include <functional>
+#include <utility>
 
 namespace core::ghostty::actions {
 
@@ -24,7 +26,20 @@ namespace core::ghostty::actions {
 // the ghostty action_cb contract.
 class Actions {
 public:
-    explicit Actions(host::IWindow& view) noexcept : m_view(view) {}
+    // Spawns a top-level window at App scope. NEW_WINDOW is the one
+    // action that doesn't belong on IWindow — the per-window view
+    // doesn't own the "add another window" operation — so it's
+    // injected as a callable at construction time. Same shape as
+    // MainWindowRuntime's Host bundle for other cross-scope hooks.
+    using NewWindowFn = std::function<void()>;
+
+    // `newWindow` defaults to an empty `std::function` so unit tests
+    // that never exercise NEW_WINDOW keep the one-arg construction
+    // shape they already have; the OnNewWindow handler bails early
+    // when the slot is empty.
+    Actions(host::IWindow& view, NewWindowFn newWindow = {}) noexcept
+        : m_view(view)
+        , m_newWindow(std::move(newWindow)) {}
 
     // ----- terminal events -----
     bool OnRingBell();
@@ -51,9 +66,12 @@ public:
     bool OnResetWindowSize();
 
     // ----- tab lifecycle / navigation / title -----
-    // NEW_TAB and NEW_WINDOW both land here in the single-window
-    // build; multi-window (#55) will route NEW_WINDOW elsewhere.
     bool OnNewTab();
+    // NEW_WINDOW: spawn a fresh top-level MainWindow. Bounces
+    // through the injected NewWindowFn (which App fills with
+    // `App::g_app->CreateNewWindow()`); Actions doesn't know or
+    // care what a "window" is at that layer.
+    bool OnNewWindow();
     bool OnCloseTab(ghostty_surface_t surface);
     bool OnGotoTab(int requested);
     bool OnMoveTab(ghostty_action_move_tab_s move);
@@ -92,6 +110,7 @@ public:
 
 private:
     host::IWindow& m_view;
+    NewWindowFn    m_newWindow;
 
     // Initial window size from GHOSTTY_ACTION_INITIAL_SIZE
     // (physical pixels). Zero means "not yet received" —

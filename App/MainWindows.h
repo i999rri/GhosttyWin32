@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Tabs/Panes/PaneId.h"
 #include "ghostty.h"
 
 #include <algorithm>
@@ -7,7 +8,7 @@
 
 namespace winrt::GhosttyWin32::implementation {
 
-class MainWindow;
+struct MainWindow;
 
 // Aggregate for the set of MainWindows live in the process. MainWindow
 // adds and removes itself as part of its own lifecycle; runtime
@@ -59,6 +60,12 @@ public:
     // Definition lives in MainWindows.cpp to break the header include
     // cycle (MainWindow needs to be complete for `OwnsSurface`).
     MainWindow* FindForSurface(ghostty_surface_t surface) const noexcept;
+
+    // Same shape as FindForSurface but keyed by PaneId. Used by the
+    // close_surface_cb path: ghostty hands us back the userdata we
+    // set on the surface (a PaneId), and we resolve it to the owning
+    // window by asking each in turn.
+    MainWindow* FindForPaneId(PaneId id) const noexcept;
 
     bool   Empty() const noexcept { return m_windows.empty(); }
     size_t Count() const noexcept { return m_windows.size(); }

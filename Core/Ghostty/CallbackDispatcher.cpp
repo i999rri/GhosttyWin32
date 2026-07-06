@@ -3,8 +3,12 @@
 namespace core::ghostty {
 
 std::unique_ptr<CallbackDispatcher>
-CallbackDispatcher::Create(host::IWindow& view) {
-    return std::unique_ptr<CallbackDispatcher>(new CallbackDispatcher(view));
+CallbackDispatcher::Create(host::IWindow& view,
+                           actions::Actions::NewWindowFn newWindow) {
+    // Default for `newWindow` lives on the declaration; the
+    // definition can't repeat it or the compiler flags a duplicate.
+    return std::unique_ptr<CallbackDispatcher>(
+        new CallbackDispatcher(view, std::move(newWindow)));
 }
 
 bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_s action) {
@@ -51,11 +55,10 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
             return m_actions.OnResetWindowSize();
 
         // ----- tab lifecycle / navigation / title -----
-        // NEW_WINDOW collapses to NEW_TAB on the single-window
-        // build; multi-window (#55) will split them again.
         case GHOSTTY_ACTION_NEW_TAB:
-        case GHOSTTY_ACTION_NEW_WINDOW:
             return m_actions.OnNewTab();
+        case GHOSTTY_ACTION_NEW_WINDOW:
+            return m_actions.OnNewWindow();
         case GHOSTTY_ACTION_CLOSE_TAB:
             if (target.tag == GHOSTTY_TARGET_SURFACE)
                 return m_actions.OnCloseTab(target.target.surface);

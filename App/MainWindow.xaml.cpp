@@ -53,14 +53,19 @@ namespace winrt::GhosttyWin32::implementation
         // dispatcher here (rather than waiting for Activated) keeps
         // the action_cb forwarder safe even if it fires through any
         // pre-Activated edge case.
-        m_ghosttyDispatcher = ghostty::CallbackDispatcher::Create(*this);
+        // NEW_WINDOW is App-scope: the "add another top-level window"
+        // operation doesn't belong on IWindow, so the factory takes
+        // it as a callable the App fills in. Same shape as
+        // MainWindowRuntime's Host bundle for other cross-scope hooks.
+        m_ghosttyDispatcher = ghostty::CallbackDispatcher::Create(
+            *this,
+            []() { if (App::g_app) App::g_app->CreateNewWindow(); });
 
         ExtendsContentIntoTitleBar(true);
 
         Activated([this](auto&&, auto&&) {
-            static bool initialized = false;
-            if (initialized) return;
-            initialized = true;
+            if (m_activatedOnce) return;
+            m_activatedOnce = true;
 
             // Enter the App-scope aggregate. Every caller —
             // runtime callbacks, target-based routing, the SEH
@@ -603,6 +608,11 @@ namespace winrt::GhosttyWin32::implementation
         return surface != nullptr && m_tabs.FindBySurface(surface) != nullptr;
     }
 
+    bool MainWindow::OwnsPane(PaneId id) const noexcept
+    {
+        return static_cast<bool>(id) && m_tabs.FindByPaneId(id).tab != nullptr;
+    }
+
     void MainWindow::NotifySurfaceFocused(ghostty_surface_t surface) noexcept
     {
         m_activeSurface = surface;
@@ -682,7 +692,7 @@ namespace winrt::GhosttyWin32::implementation
                 m_ghosttyApp->Handle(),
                 cfg,
                 m_hwnd,
-                m_paneIds,
+                App::g_app->PaneIds(),
                 std::move(onLeafFocused));
         }
     }
