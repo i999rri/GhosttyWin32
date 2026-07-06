@@ -328,4 +328,30 @@ namespace winrt::GhosttyWin32::implementation
         });
         w.Activate();
     }
+
+    void App::CloseAllWindows()
+    {
+        // Work on a copy: each Close() re-enters through the Closed
+        // subscription installed by CreateNewWindow and erases the
+        // entry from m_topLevelWindows mid-iteration.
+        auto windows = m_topLevelWindows;
+        for (auto& w : windows) {
+            // Close() throws when a window has already begun tearing
+            // down; swallow so one dying window doesn't stop the
+            // sweep (same rationale as MainWindow::RequestClose).
+            try { w.Close(); } catch (winrt::hresult_error const&) {}
+        }
+    }
+
+    void App::Quit()
+    {
+        // Process lifetime is tied to live windows on this port, so
+        // quitting IS closing every window: once the last one goes
+        // the message loop ends and App tears down in member order
+        // (windows before m_ghostty). Deliberately NOT
+        // Application::Exit(), which would skip that orderly
+        // teardown — and with it ghostty_app_free and the renderer
+        // thread joins.
+        CloseAllWindows();
+    }
 }

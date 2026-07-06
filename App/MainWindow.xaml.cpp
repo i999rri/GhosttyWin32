@@ -63,6 +63,12 @@ namespace winrt::GhosttyWin32::implementation
                 .newWindow = []() {
                     if (App::g_app) App::g_app->CreateNewWindow();
                 },
+                .closeAllWindows = []() {
+                    if (App::g_app) App::g_app->CloseAllWindows();
+                },
+                .quit = []() {
+                    if (App::g_app) App::g_app->Quit();
+                },
             });
 
         ExtendsContentIntoTitleBar(true);

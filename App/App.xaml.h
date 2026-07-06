@@ -97,6 +97,18 @@ namespace winrt::GhosttyWin32::implementation
         // stale entries for windows that outlive their HWND.
         void CreateNewWindow();
 
+        // Close every live top-level window (CLOSE_ALL_WINDOWS
+        // action). Iterates a snapshot because each Close() erases
+        // its own vector entry through the Closed subscription.
+        void CloseAllWindows();
+
+        // QUIT action. Today identical in effect to
+        // CloseAllWindows() — process lifetime is tied to live
+        // windows — but kept as a distinct entry point so
+        // quit-specific behaviour (confirmation, session save) has
+        // a home when it arrives.
+        void Quit();
+
     private:
         // Subsequent-activation handler. The first activation runs through
         // OnLaunched; later activations (a second click of a notification,

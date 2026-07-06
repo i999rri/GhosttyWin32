@@ -59,9 +59,18 @@ public:
     bool OnOpenUrl(ghostty_action_open_url_s url);
 
     // ----- window lifecycle -----
-    // Used for CLOSE_WINDOW / CLOSE_ALL_WINDOWS / QUIT — the
-    // single-window build collapses all three to the same effect.
+    // CLOSE_WINDOW: close the window that owns the action's target.
+    // This Actions instance is already per-window (the runtime
+    // routes actions by target surface), so closing m_view is the
+    // right scope — sibling windows survive.
     bool OnCloseWindow();
+    // CLOSE_ALL_WINDOWS / QUIT: app-scope teardown via the injected
+    // hooks. Distinct handlers because their scope differs from
+    // CLOSE_WINDOW in a multi-window session, even though on Windows
+    // (process lifetime == live windows) both currently resolve to
+    // "close every window".
+    bool OnCloseAllWindows();
+    bool OnQuit();
     bool OnToggleVisibility();
     bool OnToggleMaximize();
     bool OnPresentTerminal();

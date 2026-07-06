@@ -30,13 +30,12 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
             return m_actions.OnOpenUrl(action.action.open_url);
 
         // ----- window lifecycle -----
-        // CLOSE_WINDOW / CLOSE_ALL_WINDOWS / QUIT all collapse to
-        // OnCloseWindow on the single-window build; multi-window
-        // (#55) will need to give these three distinct handlers.
         case GHOSTTY_ACTION_CLOSE_WINDOW:
-        case GHOSTTY_ACTION_CLOSE_ALL_WINDOWS:
-        case GHOSTTY_ACTION_QUIT:
             return m_actions.OnCloseWindow();
+        case GHOSTTY_ACTION_CLOSE_ALL_WINDOWS:
+            return m_actions.OnCloseAllWindows();
+        case GHOSTTY_ACTION_QUIT:
+            return m_actions.OnQuit();
         case GHOSTTY_ACTION_TOGGLE_VISIBILITY:
             return m_actions.OnToggleVisibility();
         case GHOSTTY_ACTION_TOGGLE_MAXIMIZE:
