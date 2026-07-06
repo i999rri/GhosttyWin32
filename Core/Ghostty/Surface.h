@@ -103,6 +103,12 @@ public:
     void SetFocus(bool focused) noexcept {
         if (m_handle) ghostty_surface_set_focus(m_handle, focused);
     }
+    // Renderer-side visibility. While false the renderer thread skips
+    // draws entirely and parks the surface's DComp visual; the frame
+    // shown at the time of hiding is redrawn on the next show.
+    void SetOcclusion(bool visible) noexcept {
+        if (m_handle) ghostty_surface_set_occlusion(m_handle, visible);
+    }
     void SetSize(uint32_t w, uint32_t h) noexcept {
         if (m_handle) ghostty_surface_set_size(m_handle, w, h);
     }

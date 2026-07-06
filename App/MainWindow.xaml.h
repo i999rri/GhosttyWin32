@@ -192,6 +192,13 @@ namespace winrt::GhosttyWin32::implementation
         // list. Dispatched from close_surface_cb. UI thread only.
         void CloseSurfaceByPaneId(PaneId id);
 
+        // Push renderer-side visibility to every surface in this
+        // window (all tabs, all panes). Driven by
+        // Window.VisibilityChanged: while hidden/minimized each
+        // surface's renderer thread skips draws entirely instead of
+        // ticking its blink / safety-net presents. UI thread only.
+        void BroadcastOcclusion(bool visible);
+
         // True when this window's HWND is the OS foreground window.
         // WinUI3's Window.Activated oscillates continuously when
         // multiple windows share one UI thread, so activation-driven

@@ -261,6 +261,25 @@ namespace winrt::GhosttyWin32::implementation
                 }
             });
 
+            // Renderer-side occlusion. While the window is hidden
+            // (minimize, Win+D, tray) every surface's renderer thread
+            // can stop producing frames entirely instead of ticking
+            // blink / safety-net presents; VisibilityChanged fires for
+            // both directions and the restore path redraws once from
+            // the renderer's .visible handler, so no stale frame is
+            // shown. Same weak_ref/try-catch rationale as the
+            // Activated handler above.
+            VisibilityChanged([weakActivated](
+                winrt::Windows::Foundation::IInspectable const&,
+                winrt::Microsoft::UI::Xaml::WindowVisibilityChangedEventArgs const& args) {
+                auto self = weakActivated.get();
+                if (!self) return;
+                try {
+                    self->BroadcastOcclusion(args.Visible());
+                } catch (winrt::hresult_error const&) {
+                }
+            });
+
             auto tv = TabView();
             // Don't call Window.SetTitleBar(AppTitleBar()) — that would
             // make the whole chrome row OS-title-bar input, including the
@@ -1381,6 +1400,23 @@ namespace winrt::GhosttyWin32::implementation
                 }
             }
             return best;
+        }
+    }
+
+    void MainWindow::BroadcastOcclusion(bool visible)
+    {
+        for (auto& tab : m_tabs) {
+            if (!tab) continue;
+            auto* panelImpl =
+                winrt::get_self<implementation::SplitPanel>(tab->Panel());
+            if (!panelImpl) continue;
+            std::vector<Pane*> leaves;
+            CollectLeaves(panelImpl->Root(), leaves);
+            for (auto* leaf : leaves) {
+                if (auto* tc = Tab::LeafToTerminalControl(*leaf)) {
+                    tc->Surface().SetOcclusion(visible);
+                }
+            }
         }
     }
 
