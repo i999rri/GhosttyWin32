@@ -64,6 +64,12 @@ namespace winrt::GhosttyWin32::implementation
         // surface itself is torn down.
         ghostty_surface_t GetActiveSurface() const noexcept { return m_activeSurface; }
 
+        // True when any leaf in this window's tab tree owns `surface`.
+        // App::FindWindowForSurface iterates its window list and asks
+        // each in turn — the linear cost is fine at the scale a
+        // multi-window session will reach in practice.
+        bool OwnsSurface(ghostty_surface_t surface) const noexcept;
+
         // ----- IMainWindowView -----
         // Narrow surface the callback dispatcher / GhosttyActions
         // consume; see IMainWindowView.h for why these live behind
@@ -221,15 +227,6 @@ namespace winrt::GhosttyWin32::implementation
         // half-torn-down ghostty handle from any of its handlers.
         std::unique_ptr<ghostty::CallbackDispatcher> m_ghosttyDispatcher;
     };
-
-    // Process-wide pointer to the live MainWindow. Set in the
-    // Activated handler on first construction. Exposed at namespace
-    // scope so RuntimeConfigFactory's static callbacks — defined in a
-    // separate TU — can route ghostty's runtime hooks back into the
-    // window. Goes away in PR2 of #55, replaced by an App-scope
-    // registry that lets callbacks address a specific window by
-    // target.
-    extern MainWindow* g_mainWindow;
 }
 
 namespace winrt::GhosttyWin32::factory_implementation

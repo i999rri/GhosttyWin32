@@ -12,10 +12,8 @@ namespace winrt::GhosttyWin32::implementation {
 namespace interop = core::interop;
 namespace win32   = core::win32;
 
-MainWindowRuntime::MainWindowRuntime(ReadinessCheck isHostReady,
-                                     WakeupTick     wakeupTick)
-    : m_isHostReady(std::move(isHostReady))
-    , m_wakeupTick(std::move(wakeupTick))
+MainWindowRuntime::MainWindowRuntime(Host host)
+    : m_host(std::move(host))
 {
 }
 
@@ -27,9 +25,11 @@ void MainWindowRuntime::OnWakeup()
     // the dispatcher pulling the item. `[this]` captures the runtime
     // pointer; runtime lifetime outlasts ghostty per App's member
     // ordering, so the capture stays valid.
-    if (!m_isHostReady()) return;
-    g_mainWindow->DispatcherQueue().TryEnqueue([this]() {
-        if (m_isHostReady()) m_wakeupTick();
+    if (!m_host.isReady()) return;
+    auto* window = m_host.anyWindow();
+    if (!window) return;
+    window->DispatcherQueue().TryEnqueue([this]() {
+        if (m_host.isReady()) m_host.wakeupTick();
     });
 }
 
@@ -38,17 +38,23 @@ bool MainWindowRuntime::OnAction(ghostty_target_s target,
 {
     // Thin forwarder. All dispatch + handler bodies live in
     // GhosttyCallbackDispatcher / GhosttyActions.
-    if (!m_isHostReady() || !g_mainWindow->m_ghosttyDispatcher) return false;
-    return g_mainWindow->m_ghosttyDispatcher->DispatchAction(target, action);
+    if (!m_host.isReady()) return false;
+    auto* window = (target.tag == GHOSTTY_TARGET_SURFACE)
+        ? m_host.findWindowBySurface(target.target.surface)
+        : m_host.anyWindow();
+    if (!window || !window->m_ghosttyDispatcher) return false;
+    return window->m_ghosttyDispatcher->DispatchAction(target, action);
 }
 
 bool MainWindowRuntime::OnReadClipboard(void* state)
 {
-    if (!m_isHostReady()) return false;
-    auto* tc = g_mainWindow->ActiveControl();
+    if (!m_host.isReady()) return false;
+    auto* window = m_host.anyWindow();
+    if (!window) return false;
+    auto* tc = window->ActiveControl();
     if (!tc || !tc->Surface()) return false;
     auto utf8 = interop::Encoding::toUtf8(
-        win32::Clipboard::read(g_mainWindow->m_hwnd));
+        win32::Clipboard::read(window->m_hwnd));
     if (utf8.empty()) return false;
     tc->Surface().CompleteClipboardRequest(utf8.c_str(), state, false);
     return true;
@@ -57,8 +63,10 @@ bool MainWindowRuntime::OnReadClipboard(void* state)
 void MainWindowRuntime::OnConfirmReadClipboard(char const* content, void* state)
 {
     // Auto-confirm clipboard reads.
-    if (!m_isHostReady()) return;
-    auto* tc = g_mainWindow->ActiveControl();
+    if (!m_host.isReady()) return;
+    auto* window = m_host.anyWindow();
+    if (!window) return;
+    auto* tc = window->ActiveControl();
     if (tc && tc->Surface()) {
         tc->Surface().CompleteClipboardRequest(content, state, true);
     }
@@ -66,9 +74,11 @@ void MainWindowRuntime::OnConfirmReadClipboard(char const* content, void* state)
 
 void MainWindowRuntime::OnWriteClipboard(char const* utf8)
 {
-    if (!m_isHostReady()) return;
+    if (!m_host.isReady()) return;
+    auto* window = m_host.anyWindow();
+    if (!window) return;
     win32::Clipboard::write(
-        g_mainWindow->m_hwnd, interop::Encoding::toUtf16(utf8));
+        window->m_hwnd, interop::Encoding::toUtf16(utf8));
 }
 
 void MainWindowRuntime::OnCloseSurface(void* paneIdUserdata)
@@ -77,11 +87,17 @@ void MainWindowRuntime::OnCloseSurface(void* paneIdUserdata)
     // to close the surface. The userdata is the PaneId we set in
     // TabFactory::MakeLeaf. Dispatch the UI mutation to the next UI
     // tick so it happens off the renderer thread.
-    if (!m_isHostReady()) return;
+    //
+    // PaneIds are per-window today (each MainWindow has its own
+    // allocator), so with multiple windows we'd need target routing
+    // here. Single-window makes `anyWindow` sufficient; #55's
+    // NEW_WINDOW work will revisit.
+    if (!m_host.isReady()) return;
+    auto* window = m_host.anyWindow();
+    if (!window) return;
     PaneId id = PaneId::FromUserdata(paneIdUserdata);
-    auto* mw = g_mainWindow;
-    mw->DispatcherQueue().TryEnqueue([mw, id]() {
-        mw->CloseSurfaceByPaneId(id);
+    window->DispatcherQueue().TryEnqueue([window, id]() {
+        window->CloseSurfaceByPaneId(id);
     });
 }
 

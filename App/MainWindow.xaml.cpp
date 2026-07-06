@@ -47,12 +47,6 @@ namespace muxc = Microsoft::UI::Xaml::Controls;
 
 namespace winrt::GhosttyWin32::implementation
 {
-    // Definition for the extern declaration in MainWindow.xaml.h. The
-    // runtime callbacks built by RuntimeConfigFactory live in a
-    // separate TU and need to see this symbol; the Activated handler
-    // sets it on first window construction.
-    MainWindow* g_mainWindow = nullptr;
-
     MainWindow::MainWindow()
     {
         // Adopt the App-scope ghostty wrapper as a class invariant.
@@ -88,7 +82,11 @@ namespace winrt::GhosttyWin32::implementation
             // visible white flash).
             SetUnhandledExceptionFilter(&MainWindow::OnUnhandledException);
 
-            g_mainWindow = this;
+            // Enter the App-scope aggregate. Every caller —
+            // runtime callbacks, target-based routing, the SEH
+            // handler — consults this collection to reach a live
+            // MainWindow; no file-scope static shortcut remains.
+            if (App::g_app) App::g_app->Windows().Register(this);
             auto windowNative = this->try_as<::IWindowNative>();
             if (windowNative) windowNative->get_WindowHandle(&m_hwnd);
             if (m_hwnd) ShowWindow(m_hwnd, SW_HIDE);
@@ -510,6 +508,11 @@ namespace winrt::GhosttyWin32::implementation
 
     MainWindow::~MainWindow()
     {
+        // Take ourselves off the App-scope aggregate before anything
+        // else — subsequent runtime callbacks that fire during
+        // ghostty_app_free's join land in the FindForSurface / Any
+        // paths and must not find a half-torn-down window.
+        if (App::g_app) App::g_app->Windows().Unregister(this);
         m_tabs.Clear();   // Tab destructors handle cleanup
         // ghostty::App ownership lives on App scope now (#55 prep).
         // App's destructor frees ghostty AFTER its `window` member
@@ -531,13 +534,20 @@ namespace winrt::GhosttyWin32::implementation
         // over with its standard dialog — same end result, just less polished.
         // That's an acceptable trade for keeping this code readable.
         OutputDebugStringA("GhosttyWin32: unhandled exception, attempting cleanup\n");
-        if (g_mainWindow) {
-            if (g_mainWindow->m_hwnd) ShowWindow(g_mainWindow->m_hwnd, SW_HIDE);
-            for (auto& tab : g_mainWindow->m_tabs) {
-                if (!tab) continue;
-                if (auto* tc = tab->ActiveControl()) {
-                    HANDLE h = tc->CompositionHandle();
-                    if (h) CloseHandle(h);
+        if (App::g_app) {
+            // Walk every registered window; the SEH handler is
+            // process-wide, and once multi-window lands a fatal
+            // crash still wants every window's composition handles
+            // released before we hand control back.
+            for (auto* w : App::g_app->Windows()) {
+                if (!w) continue;
+                if (w->m_hwnd) ShowWindow(w->m_hwnd, SW_HIDE);
+                for (auto& tab : w->m_tabs) {
+                    if (!tab) continue;
+                    if (auto* tc = tab->ActiveControl()) {
+                        HANDLE h = tc->CompositionHandle();
+                        if (h) CloseHandle(h);
+                    }
                 }
             }
         }
@@ -643,6 +653,11 @@ namespace winrt::GhosttyWin32::implementation
         if (children.IndexOf(panel, idx)) {
             children.RemoveAt(idx);
         }
+    }
+
+    bool MainWindow::OwnsSurface(ghostty_surface_t surface) const noexcept
+    {
+        return surface != nullptr && m_tabs.FindBySurface(surface) != nullptr;
     }
 
     void MainWindow::NotifySurfaceFocused(ghostty_surface_t surface) noexcept
