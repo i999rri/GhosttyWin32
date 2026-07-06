@@ -45,6 +45,9 @@
     <ClInclude Include="Ghostty\Config.h">
       <Filter>Ghostty</Filter>
     </ClInclude>
+    <ClInclude Include="Ghostty\Surface.h">
+      <Filter>Ghostty</Filter>
+    </ClInclude>
     <ClInclude Include="Host\IWindow.h">
       <Filter>Host</Filter>
     </ClInclude>

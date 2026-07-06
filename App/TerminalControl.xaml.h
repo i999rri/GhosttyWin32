@@ -1,6 +1,7 @@
 #pragma once
 
 #include "TerminalControl.g.h"
+#include "Ghostty/Surface.h"
 #include "Host/ImeBuffer.h"
 #include "Interop/Encoding.h"
 #include "Win32/Clipboard.h"
@@ -141,7 +142,14 @@ namespace winrt::GhosttyWin32::implementation
         static void OnSwapChainChanged(void* swap_chain, void* userdata) noexcept;
 
         // Implementation-only accessors used by Tab.
-        ghostty_surface_t Surface() const noexcept { return m_surface; }
+        //
+        // Surface() returns the wrapper itself so call sites can issue
+        // typed operations (Refresh, Key, MouseButton, …) without
+        // touching raw ghostty C API. Identity-comparison call sites
+        // (action callbacks, FindLeafBySurface) compare via
+        // `tc->Surface().Handle()` against ghostty's raw handle.
+        core::ghostty::Surface const& Surface() const noexcept { return m_surface; }
+        core::ghostty::Surface& Surface() noexcept { return m_surface; }
         HANDLE CompositionHandle() const noexcept { return m_compositionHandle; }
 
         // Apply a ghostty-requested mouse cursor shape. Must be called on
@@ -189,7 +197,7 @@ namespace winrt::GhosttyWin32::implementation
         void SetupImeContext();
 
         ghostty_app_t m_app{ nullptr };
-        ghostty_surface_t m_surface{ nullptr };
+        core::ghostty::Surface m_surface{};
         HANDLE m_compositionHandle{ nullptr };
         // Host window HWND — used for Win32 APIs that need a window
         // owner (clipboard read/write, IME bounds in screen coords).
