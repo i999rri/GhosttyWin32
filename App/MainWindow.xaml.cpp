@@ -1692,6 +1692,13 @@ namespace winrt::GhosttyWin32::implementation
         panelImpl->InvalidateArrange();
     }
 
+    TerminalControl* MainWindow::ControlByPaneId(PaneId id) noexcept
+    {
+        auto lookup = m_tabs.FindByPaneId(id);
+        if (!lookup.leaf) return nullptr;
+        return Tab::LeafToTerminalControl(*lookup.leaf);
+    }
+
     void MainWindow::CloseSurfaceByPaneId(PaneId id)
     {
         auto lookup = m_tabs.FindByPaneId(id);

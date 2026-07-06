@@ -192,6 +192,13 @@ namespace winrt::GhosttyWin32::implementation
         // list. Dispatched from close_surface_cb. UI thread only.
         void CloseSurfaceByPaneId(PaneId id);
 
+        // The TerminalControl hosting the pane carrying `id`, or null
+        // when no tab in this window owns it (already closed, or it
+        // lives in a sibling window). Used by MainWindowRuntime to
+        // complete surface-scoped callbacks (clipboard) on exactly
+        // the surface that issued them.
+        TerminalControl* ControlByPaneId(PaneId id) noexcept;
+
         // Push renderer-side visibility to every surface in this
         // window (all tabs, all panes). Driven by
         // Window.VisibilityChanged: while hidden/minimized each
