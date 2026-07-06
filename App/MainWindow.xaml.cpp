@@ -763,21 +763,20 @@ namespace winrt::GhosttyWin32::implementation
     {
         if (!m_hwnd) return;
 
-        // Drop new-tab requests when the chrome is hidden AND at least
-        // one tab already exists. The tab strip is part of AppTitleBar,
-        // so with chrome collapsed there's no UI to switch tabs — a
-        // second tab would be invisible and unreachable. Silently
-        // ignoring matches the upstream macOS behaviour, where
+        // Redirect new-tab requests to a new window when the chrome is
+        // hidden AND at least one tab already exists. The tab strip is
+        // part of AppTitleBar, so with chrome collapsed there's no UI
+        // to switch tabs — a second tab would be invisible and
+        // unreachable. Falling back to a fresh top-level window
+        // matches the upstream macOS behaviour, where
         // `window-decoration=false` disables native tabs entirely and
-        // new-tab requests fall back to new windows. Until multi-window
-        // (#55) lands, "fall back" here means "drop"; the user's
-        // recourse is to toggle decorations back on (ctrl+shift+d) or
-        // edit config. The first tab is exempt so the terminal can come
-        // up at all when the user launches with chrome already off.
+        // new-tab requests become new windows. The first tab is exempt
+        // so the terminal can come up at all when the user launches
+        // with chrome already off.
         if (!m_tabs.Empty()) {
             ghostty::Config cfg(m_ghosttyApp->ConfigHandle());
             if (!m_windowDecorations.Effective(cfg.WindowDecoratedByConfig())) {
-                OutputDebugStringW(L"[GhosttyWin32] CreateTab dropped: window-decoration=false; multi-window (#55) not yet wired\n");
+                if (App::g_app) App::g_app->CreateNewWindow();
                 return;
             }
         }
