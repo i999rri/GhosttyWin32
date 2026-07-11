@@ -296,6 +296,115 @@ namespace winrt::GhosttyWin32::implementation
 
             auto tv = TabView();
 
+            // ----- tab drag-out / merge (release-time semantics) -----
+            // Tab movement uses TabView's classic drag-and-drop flow
+            // (CanDragTabs, set in markup) rather than the WinAppSDK
+            // native tear-out (CanTearOutTabs). Native tear-out drives
+            // an OS move-size loop that spawns and drags a live window
+            // mid-drag; in practice it shipped broken
+            // (microsoft-ui-xaml#10154 raises the window request for
+            // plain clicks, #10156 zeroes the NewWindowId round-trip)
+            // and mispositions the grab point when the torn-out window
+            // appears. With drag-and-drop nothing happens until the
+            // user RELEASES: dropping on another window's strip merges
+            // the tab there, dropping anywhere else spawns a window at
+            // the drop point. Only a drag ghost is shown mid-drag.
+            //
+            // The dragged TabViewItem travels in the DataPackage
+            // properties — every window lives in this process, so the
+            // drop target reads the same IInspectable back out and no
+            // app-global drag state is needed.
+            tv.TabDragStarting([](auto const&, auto const& args) {
+                args.Data().Properties().Insert(L"GhosttyTornTab", args.Tab());
+                args.Data().RequestedOperation(
+                    winrt::Windows::ApplicationModel::DataTransfer::DataPackageOperation::Move);
+            });
+
+            tv.TabStripDragOver([](auto const&, auto const& e) {
+                if (e.DataView().Properties().HasKey(L"GhosttyTornTab")) {
+                    e.AcceptedOperation(
+                        winrt::Windows::ApplicationModel::DataTransfer::DataPackageOperation::Move);
+                }
+            });
+
+            tv.TabStripDrop([weakActivated](auto const& sender, auto const& e) {
+                auto self = weakActivated.get();
+                if (!self || !App::g_app) return;
+                // TabStripDrop is a plain DragEventHandler, so the
+                // sender arrives as IInspectable, not a typed TabView.
+                auto strip = sender.template try_as<muxc::TabView>();
+                if (!strip) return;
+                auto obj = e.DataView().Properties().TryLookup(L"GhosttyTornTab");
+                auto item = obj ? obj.template try_as<muxc::TabViewItem>() : nullptr;
+                if (!item) return;
+                auto* source = App::g_app->FindWindowByTabItem(item);
+                // Same-strip drops are reorders, which CanReorderTabs
+                // already handled natively.
+                if (!source || source == self.get()) return;
+                // Insert where the tab was dropped: before the first
+                // tab whose slot the pointer hasn't fully passed.
+                int32_t index = -1;
+                auto items = strip.TabItems();
+                for (uint32_t i = 0; i < items.Size(); ++i) {
+                    auto container = strip.ContainerFromIndex(i)
+                        .template try_as<muxc::TabViewItem>();
+                    if (!container) continue;
+                    if (e.GetPosition(container).X - container.ActualWidth() < 0) {
+                        index = static_cast<int32_t>(i);
+                        break;
+                    }
+                }
+                try {
+                    if (auto tab = source->ReleaseTornOutTab(item)) {
+                        self->AdoptTornOutTab(std::move(tab), index);
+                        source->CloseIfTornOutEmpty();
+                    }
+                } catch (winrt::hresult_error const&) {
+                    // A failed move must not take either window down;
+                    // whichever side holds the unique_ptr owns the tab.
+                }
+            });
+
+            tv.TabDroppedOutside([weakActivated](auto const&, auto const& args) {
+                auto self = weakActivated.get();
+                if (!self || !App::g_app) return;
+                auto item = args.Tab();
+                if (!item) return;
+                POINT cursor{};
+                bool haveCursor = GetCursorPos(&cursor) != 0;
+                // Offsets place the window so its tab strip lands near
+                // the pointer instead of the window's top-left corner.
+                int32_t dropX = static_cast<int32_t>(cursor.x) - 120;
+                int32_t dropY = static_cast<int32_t>(cursor.y) - 24;
+                // Dragging out the only tab must not leave an empty
+                // shell behind — just move this window to the drop
+                // point instead, browser-style.
+                if (self->m_tabs.Size() <= 1) {
+                    if (haveCursor) {
+                        self->AppWindow().Move({ dropX, dropY });
+                    }
+                    return;
+                }
+                auto* host = App::g_app->CreateTearOutWindow();
+                if (!host) return;
+                try {
+                    if (auto tab = self->ReleaseTornOutTab(item)) {
+                        host->AdoptTornOutTab(std::move(tab), -1);
+                        if (haveCursor) {
+                            host->AppWindow().Move({ dropX, dropY });
+                        }
+                        // The drag is over, so activation is safe —
+                        // hand the new window focus like a browser
+                        // does after a tab is torn off.
+                        host->Activate();
+                    } else {
+                        // Nothing moved; don't leak an empty host.
+                        host->RequestClose();
+                    }
+                } catch (winrt::hresult_error const&) {
+                }
+            });
+
             // Don't call Window.SetTitleBar(AppTitleBar()) — that would
             // make the whole chrome row OS-title-bar input, including the
             // tab headers. Double-clicking a tab header would then
