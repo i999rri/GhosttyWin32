@@ -109,7 +109,25 @@ namespace winrt::GhosttyWin32::implementation
         // a home when it arrives.
         void Quit();
 
+        // Spawn the window that will host a torn-out tab. Same
+        // tracking as CreateNewWindow, but with no initial tab (it
+        // adopts the dropped one) and no Activate() — the drop
+        // handler positions the window at the drop point after
+        // adopting the tab and decides activation itself.
+        MainWindow* CreateTearOutWindow();
+
+        // The live window whose tab strip owns `item`, or null.
+        // Locates the source window of a dragged tab on the drop
+        // paths (the drop target only receives the TabViewItem).
+        MainWindow* FindWindowByTabItem(
+            Microsoft::UI::Xaml::Controls::TabViewItem const& item) noexcept;
+
     private:
+        // Shared tail of CreateNewWindow / CreateTearOutWindow:
+        // strong-ref the window in m_topLevelWindows and subscribe
+        // the Closed auto-erase.
+        void TrackWindow(Microsoft::UI::Xaml::Window const& w);
+
         // Subsequent-activation handler. The first activation runs through
         // OnLaunched; later activations (a second click of a notification,
         // a relaunch from the Start menu, etc.) get redirected to this

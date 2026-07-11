@@ -309,6 +309,39 @@ namespace winrt::GhosttyWin32::implementation
     void App::CreateNewWindow()
     {
         auto w = make<MainWindow>();
+        TrackWindow(w);
+        w.Activate();
+    }
+
+    MainWindow* App::CreateTearOutWindow()
+    {
+        auto w = make<MainWindow>();
+        auto* impl = winrt::get_self<MainWindow>(w);
+        // Must be flagged before the first Activated runs its
+        // one-shot init: this window adopts the dragged tab instead
+        // of creating one.
+        impl->SuppressInitialTab();
+        TrackWindow(w);
+        // Deliberately no Activate(): the drop handler positions the
+        // window at the drop point after adopting the tab and decides
+        // activation itself.
+        return impl;
+    }
+
+    MainWindow* App::FindWindowByTabItem(
+        Microsoft::UI::Xaml::Controls::TabViewItem const& item) noexcept
+    {
+        for (auto const& w : m_topLevelWindows) {
+            if (auto typed = w.try_as<winrt::GhosttyWin32::MainWindow>()) {
+                auto* impl = winrt::get_self<MainWindow>(typed);
+                if (impl && impl->OwnsTabItem(item)) return impl;
+            }
+        }
+        return nullptr;
+    }
+
+    void App::TrackWindow(Microsoft::UI::Xaml::Window const& w)
+    {
         m_topLevelWindows.push_back(w);
         // Auto-erase the vector entry when the user closes the
         // window. Capture only `this`; the sender comes in through
@@ -326,7 +359,6 @@ namespace winrt::GhosttyWin32::implementation
                 m_topLevelWindows.erase(it);
             }
         });
-        w.Activate();
     }
 
     void App::CloseAllWindows()
