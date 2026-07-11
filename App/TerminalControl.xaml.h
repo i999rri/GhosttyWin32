@@ -124,6 +124,20 @@ namespace winrt::GhosttyWin32::implementation
         // safe.
         void Detach();
 
+        // Re-point this control at a new host window after a tab
+        // tear-out / adopt. The surface and swap chain move as-is —
+        // the SwapChainPanel keeps its composition binding across
+        // reparenting on the shared UI thread — but two things are
+        // derived from the owning window and must follow it: the host
+        // HWND (IME caret coordinates via ClientToScreen, clipboard
+        // ownership) and the focused callback, which feeds the owning
+        // window's active-surface cache.
+        void Rehost(HWND hostHwnd,
+                    std::function<void(ghostty_surface_t)> onFocused) noexcept {
+            m_hostHwnd  = hostHwnd;
+            m_onFocused = std::move(onFocused);
+        }
+
         // Renderer-thread callback registered with ghostty as
         // cfg.swap_chain_ready_cb. Hops to the UI thread and binds the
         // swap chain handle to the panel via ISwapChainPanelNative2.
