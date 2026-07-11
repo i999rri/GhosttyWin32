@@ -310,18 +310,31 @@ namespace winrt::GhosttyWin32::implementation
             // the tab there, dropping anywhere else spawns a window at
             // the drop point. Only a drag ghost is shown mid-drag.
             //
-            // The dragged TabViewItem travels in the DataPackage
-            // properties — every window lives in this process, so the
-            // drop target reads the same IInspectable back out and no
-            // app-global drag state is needed.
+            // The dragged TabViewItem travels through App's
+            // dragged-tab slot (SetDraggedTab), NOT the DataPackage:
+            // a drop on another top-level window rides OLE, which
+            // only marshals primitive package values — a TabViewItem
+            // stuffed into Properties comes out missing on the other
+            // window and the merge silently degrades into a
+            // drop-outside. The package deliberately stays empty
+            // (operation only) so foreign drop targets — a text
+            // editor, say — have nothing to accept and can't swallow
+            // the drag away from TabDroppedOutside.
             tv.TabDragStarting([](auto const&, auto const& args) {
-                args.Data().Properties().Insert(L"GhosttyTornTab", args.Tab());
+                if (App::g_app) App::g_app->SetDraggedTab(args.Tab());
                 args.Data().RequestedOperation(
                     winrt::Windows::ApplicationModel::DataTransfer::DataPackageOperation::Move);
             });
 
+            // Fires on the source when the drag ends, whether or not
+            // any drop landed — the one reliable place to clear the
+            // in-flight slot.
+            tv.TabDragCompleted([](auto const&, auto const&) {
+                if (App::g_app) App::g_app->ClearDraggedTab();
+            });
+
             tv.TabStripDragOver([](auto const&, auto const& e) {
-                if (e.DataView().Properties().HasKey(L"GhosttyTornTab")) {
+                if (App::g_app && App::g_app->DraggedTab()) {
                     e.AcceptedOperation(
                         winrt::Windows::ApplicationModel::DataTransfer::DataPackageOperation::Move);
                 }
@@ -334,8 +347,9 @@ namespace winrt::GhosttyWin32::implementation
                 // sender arrives as IInspectable, not a typed TabView.
                 auto strip = sender.template try_as<muxc::TabView>();
                 if (!strip) return;
-                auto obj = e.DataView().Properties().TryLookup(L"GhosttyTornTab");
-                auto item = obj ? obj.template try_as<muxc::TabViewItem>() : nullptr;
+                // Source's TabDragCompleted (which clears the slot)
+                // fires only after this drop returns.
+                auto item = App::g_app->DraggedTab();
                 if (!item) return;
                 auto* source = App::g_app->FindWindowByTabItem(item);
                 // Same-strip drops are reorders, which CanReorderTabs

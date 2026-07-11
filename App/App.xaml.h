@@ -122,6 +122,26 @@ namespace winrt::GhosttyWin32::implementation
         MainWindow* FindWindowByTabItem(
             Microsoft::UI::Xaml::Controls::TabViewItem const& item) noexcept;
 
+        // The tab drag currently in flight, if any. Cross-window
+        // drag-and-drop rides OLE, which only marshals primitive
+        // DataPackage values — a TabViewItem stuffed into the
+        // package's Properties comes out empty on another window's
+        // TabStripDrop. Every window shares this process, so the
+        // dragged item travels through this slot instead: set in
+        // TabDragStarting, read by any window's drop handlers,
+        // cleared in TabDragCompleted (which fires on the source
+        // whether or not a drop landed).
+        void SetDraggedTab(
+            Microsoft::UI::Xaml::Controls::TabViewItem const& item)
+        {
+            m_draggedTab = item;
+        }
+        void ClearDraggedTab() noexcept { m_draggedTab = nullptr; }
+        Microsoft::UI::Xaml::Controls::TabViewItem DraggedTab() const noexcept
+        {
+            return m_draggedTab;
+        }
+
     private:
         // Shared tail of CreateNewWindow / CreateTearOutWindow:
         // strong-ref the window in m_topLevelWindows and subscribe
@@ -191,5 +211,8 @@ namespace winrt::GhosttyWin32::implementation
         // Token for the primary AppInstance's Activated event; the
         // subscription lives for the lifetime of the App.
         winrt::event_token m_activatedToken{};
+        // See SetDraggedTab. Strong ref for the duration of the drag
+        // only; TabDragCompleted always clears it.
+        Microsoft::UI::Xaml::Controls::TabViewItem m_draggedTab{ nullptr };
     };
 }
