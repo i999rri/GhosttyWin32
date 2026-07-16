@@ -98,31 +98,13 @@ ghostty.dll (Zig, from i999rri/ghostty windows-port branch)
 
 ## Install
 
-### Scoop (recommended)
-
-```powershell
-scoop bucket add ghostty https://github.com/i999rri/scoop-bucket
-scoop install ghosttywin32
-```
-
-**v0.2.x (current latest release):** the bucket ships a portable ZIP. No
-elevation required.
-
-**v0.3.0 and later (in development):** the bucket will ship a signed MSIX.
-Installation imports the signing certificate into
-`LocalMachine\TrustedPeople` and registers the MSIX via `Add-AppxPackage`,
-so `scoop install` has to run from an elevated PowerShell. See
-[issue #46](https://github.com/i999rri/GhosttyWin32/issues/46) for the
-in-flight migration to SignPath Foundation, which will remove the
-elevation requirement.
-
-### Manual install
-
-**v0.2.x:** download `GhosttyWin32-v<version>-x64.zip` from
-[Releases](https://github.com/i999rri/GhosttyWin32/releases) and unzip
-anywhere.
-
-**v0.3.0 and later:**
+The MSIX is signed only with a self-signed publisher certificate
+(`CN=i999rri`) — an established CA / OSS Foundation signature isn't in
+place yet (see [issue #46](https://github.com/i999rri/GhosttyWin32/issues/46)),
+so Windows requires the certificate to be trusted before the MSIX will
+install. Manual install is the only supported path today; a Scoop channel
+existed for the pre-MSIX ZIP builds (v0.2.x) and will return once signing
+is available.
 
 1. Download `Ghostty-<version>-x64.msix` and `Ghostty.cer` from
    [Releases](https://github.com/i999rri/GhosttyWin32/releases).
