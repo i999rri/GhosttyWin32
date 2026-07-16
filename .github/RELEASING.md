@@ -1,7 +1,7 @@
 # リリース手順
 
 GhosttyWin32 のリリースは GitHub Actions で MSIX をビルド・自己署名 → GitHub Releases にアップロードする。
-Scoop / 手動どちらでもインストール可能な配布形態。
+正式な CA / OSS Foundation 署名が取得できるまで、Scoop チャネルは停止中 ([#46](https://github.com/i999rri/GhosttyWin32/issues/46))、配布は手動インストールのみ。
 
 ## ブランチとリリースの全体像
 
@@ -276,7 +276,7 @@ git push origin v0.3.0-rc1
 | `v0.3.0` (production) | `Ghostty-0.3.0-x64.msix` |
 | `v0.3.0-rc1` (RC) | `Ghostty-v0.3.0-rc1-x64.msix` |
 
-scoop manifest 側はこの違いを autoupdate URL pattern で吸収する (RC channel の manifest では `$matchHead` か full ref を使う)。
+(Scoop チャネル復帰時は、autoupdate URL pattern で `Ghostty-$version-x64.msix` (production) / `Ghostty-v$version-x64.msix` (RC) を吸収させる。)
 
 RC2 以降が必要になった場合は、dev に修正コミットを積んでから新タグ:
 

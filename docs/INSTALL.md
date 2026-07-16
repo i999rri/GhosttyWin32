@@ -1,10 +1,10 @@
 # Install Guide / インストール手順
 
-Step-by-step manual install for the signed MSIX. If you use Scoop, you don't need this — the Scoop manifest handles the certificate trust step automatically.
+Step-by-step manual install for the self-signed MSIX. Manual install is the only supported path while an established CA / OSS Foundation signature is unavailable — see [issue #46](https://github.com/i999rri/GhosttyWin32/issues/46).
 
 <details><summary>日本語</summary>
 
-署名付き MSIX を手動インストールする手順。Scoop でインストールする場合は不要 (Scoop manifest が証明書信頼の手順を自動で行う)。
+自己署名 MSIX を手動インストールする手順。正式な CA / OSS Foundation 署名が取得できるまでは手動インストールが唯一のサポート経路 (詳細は [issue #46](https://github.com/i999rri/GhosttyWin32/issues/46))。
 
 </details>
 
@@ -146,29 +146,13 @@ If you see a different error code, check existing [GitHub Issues](https://github
 
 ### Removing Ghostty / Ghostty を削除
 
-For MSIX manual install:
-
 - **Settings → Apps → Installed apps** → search "Ghostty" → **⋯** → **Uninstall**
-
-For Scoop install:
-
-```powershell
-scoop uninstall ghosttywin32
-```
 
 User data under `%LOCALAPPDATA%\ghostty\` is not removed automatically. Delete that directory manually if you want a clean state.
 
 <details><summary>日本語</summary>
 
-MSIX 手動インストールの場合:
-
 - 「**設定 → アプリ → インストール済みアプリ**」で「Ghostty」を検索 → 「**⋯**」 → 「**アンインストール**」
-
-Scoop でインストールした場合:
-
-```powershell
-scoop uninstall ghosttywin32
-```
 
 `%LOCALAPPDATA%\ghostty\` 配下のユーザーデータは自動削除されない。完全に消したい場合は手動で削除。
 

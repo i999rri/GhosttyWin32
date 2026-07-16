@@ -197,12 +197,12 @@ jobs:
 
             ## Installation
 
-            ### Scoop (recommended)
-            ```
-            scoop install ghostty
-            ```
+            Signed only with a self-signed publisher certificate (`CN=i999rri`)
+            — an established CA / OSS Foundation signature isn't in place yet
+            (see [#46](https://github.com/${{ github.repository }}/issues/46)),
+            so Windows requires the certificate to be trusted before the MSIX
+            will install. Manual install is the only supported path:
 
-            ### Manual install
             1. Download `Ghostty.cer` and the `.msix` from the assets above
             2. Trust the certificate (Local Machine → Trusted People store)
             3. Double-click the `.msix` to install
