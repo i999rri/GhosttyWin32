@@ -173,6 +173,31 @@ Write-Host "PFX base64 をクリップボードにコピーしました"
 |---|---|
 | `SIGNING_PFX_BASE64` | クリップボードに入った Base64 文字列 |
 | `SIGNING_PFX_PASSWORD` | 手順 2 で入力したパスワード |
+| `RELEASE_APP_ID` | 手順 4a の GitHub App の App ID |
+| `RELEASE_APP_PRIVATE_KEY` | 手順 4a でダウンロードした `.pem` の中身全部 |
+
+#### 4a. Release tag push 用 GitHub App
+
+`auto-tag-release-pr.yml` は release PR merge 後に `main` にタグを打つ。この push
+を **default の `GITHUB_TOKEN` で行うと `release.yml` (`on: push: tags`) が発火しない**
+(GitHub の loop-prevention 仕様: `GITHUB_TOKEN` 起因のイベントは他 workflow を trigger
+しない)。回避策として GitHub App の installation token で push する。
+
+作成手順:
+
+1. Personal settings → Developer settings → **GitHub Apps** → New GitHub App
+2. Name: 任意 (例 `ghosttywin32-release-bot`)、Homepage URL: 任意
+3. **Webhook**: **Active チェック外し** (通知不要)
+4. **Repository permissions** → **Contents: Read and write** (これだけ)
+5. **Where can this app be installed**: **Only on this account**
+6. 作成 → General ページ下部の **Generate a private key** で `.pem` ダウンロード
+7. 上部の **Install App** タブ → 自分のアカウントに install → GhosttyWin32 のみ選択
+8. General ページ上部の **App ID** (6-7 桁数値) を `RELEASE_APP_ID` に登録
+9. `.pem` の中身をそのまま `RELEASE_APP_PRIVATE_KEY` に登録 (BEGIN/END 行含めて全部)
+
+`auto-tag-release-pr.yml` の `actions/create-github-app-token@v1` ステップが起動時に
+installation token を発行して checkout + push に食わせる。tag object は
+`<app-slug>[bot]` として annotate される。
 
 ### 5. Environments を作成
 
