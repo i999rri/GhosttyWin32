@@ -47,6 +47,7 @@
 
             <TabView x:Name="TabView" Grid.Column="0" Grid.ColumnSpan="2"
                      IsAddTabButtonVisible="True"
+                     CanDragTabs="True"
                      TabWidthMode="Equal"
                      VerticalAlignment="Top"
                      HorizontalAlignment="Stretch">

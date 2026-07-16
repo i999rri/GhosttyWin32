@@ -199,6 +199,45 @@ namespace winrt::GhosttyWin32::implementation
         // the surface that issued them.
         TerminalControl* ControlByPaneId(PaneId id) noexcept;
 
+        // ----- tab drag-out / merge (#55 follow-up) -----
+        // Mark this window as a drop host BEFORE its first Activated:
+        // it will receive a live, already-presenting tab instead of
+        // creating one, so the one-shot init skips the initial
+        // CreateTab and the pre-first-frame SW_HIDE (the adopted tab
+        // has frames to show from the first paint). Called by
+        // App::CreateTearOutWindow through the existing friendship.
+        void SuppressInitialTab() noexcept { m_suppressInitialTab = true; }
+
+        // Take `item`'s Tab out of this window alive: strip entry
+        // removed, panel unparented from AppContent, focused-surface
+        // cache cleared if it pointed into the tab — but nothing
+        // detached or destroyed, so a sibling window can adopt the
+        // same Tab. Returns null when this window doesn't own `item`.
+        std::unique_ptr<Tab> ReleaseTornOutTab(
+            winrt::Microsoft::UI::Xaml::Controls::TabViewItem const& item);
+
+        // Counterpart of ReleaseTornOutTab: insert the tab into this
+        // window's strip at `index` (clamped; negative appends),
+        // re-point its controls at this window (host HWND + focused
+        // callback), parent the panel, select it, and make sure the
+        // window is visible. Safe to call before this window's first
+        // Activated — the HWND is captured on demand.
+        void AdoptTornOutTab(std::unique_ptr<Tab> tab, int32_t index);
+
+        // Close this window once a tear-out leaves it without tabs,
+        // matching browser behaviour. Deferred through the dispatcher
+        // so teardown never runs inside tear-out event dispatch.
+        void CloseIfTornOutEmpty();
+
+        // True when this window's tab strip owns `item`. Used by the
+        // merge path to locate the source window of a torn-out tab.
+        bool OwnsTabItem(
+            winrt::Microsoft::UI::Xaml::Controls::TabViewItem const& item) const noexcept {
+            return m_tabs.FindByItem(item) != nullptr;
+        }
+
+        bool m_suppressInitialTab{ false };
+
         // Push renderer-side visibility to every surface in this
         // window (all tabs, all panes). Driven by
         // Window.VisibilityChanged: while hidden/minimized each
