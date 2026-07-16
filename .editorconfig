@@ -1,0 +1,43 @@
+# https://editorconfig.org/
+# Picked up automatically by Visual Studio, VS Code, and most modern
+# editors. Drives encoding / line endings on save so new files match
+# what MSVC and midl.exe expect — see the per-type charset rules
+# below for why.
+
+root = true
+
+[*]
+end_of_line = crlf
+charset = utf-8
+indent_style = space
+indent_size = 4
+trim_trailing_whitespace = true
+insert_final_newline = true
+
+# C++ sources: MSVC sees /utf-8 in the project files, so BOM-less
+# UTF-8 is fine.
+[*.{cpp,h,hpp,cc}]
+charset = utf-8
+
+# IDL: midl.exe doesn't accept the cl.exe /utf-8 flag, so it falls
+# back to the system code page (cp932 on JP machines) for BOM-less
+# UTF-8 sources and warns C4819. A UTF-8 BOM is the only language-
+# agnostic way to make midl detect the encoding correctly.
+[*.idl]
+charset = utf-8-bom
+
+# XAML: same compiler / generator pipeline as managed XAML; safest
+# to ship a BOM so build-time XAML readers don't guess at encoding.
+[*.xaml]
+charset = utf-8-bom
+
+# Markdown / YAML: keep newline + final-line behaviour but allow
+# trailing whitespace in markdown (it's a hard line-break syntax).
+[*.md]
+trim_trailing_whitespace = false
+
+# Project files round-trip through Visual Studio with a UTF-8 BOM
+# already; preserve so VS doesn't show a dirty diff every load.
+[*.{vcxproj,vcxproj.filters,wapproj,sln,slnx}]
+charset = utf-8-bom
+indent_size = 2

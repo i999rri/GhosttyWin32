@@ -11,16 +11,28 @@ Release/
 # Visual Studio
 .vs/
 *.vcxproj.user
+*.wapproj.user
+
+# Claude Code per-user settings
+.claude/
+
+# MSIX packaging output
+Package/AppPackages/
+*.appxbundle
+*.appxsym
+*.appxupload
+*.msix
+*.msixbundle
+
+# MSBuild / NuGet assets cache (regenerated on every build)
+*.assets.cache
 
 # NuGet
 packages/
 Generated Files/
 
-# Ghostty DLL and import library (build from source)
-ghostty/ghostty.dll
-ghostty/ghostty.lib
-ghostty/ghostty.pdb
+# Ghostty artifacts now live entirely under external/ghostty/zig-out/;
+# no separate ghostty/ output dir at the repo root.
 obj/
 *.dll
 *.lib
-GhosttyWin32App/ghostty.h

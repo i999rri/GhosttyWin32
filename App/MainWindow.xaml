@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="GhosttyWin32.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:GhosttyWin32"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Title="Ghostty">
+
+    <!-- Layout strategy:
+           Row 0  AppTitleBar (Auto height) — the entire chrome area:
+                  TabView's tab strip on the left, caption buttons pinned
+                  on the right. Hidden as a unit when chrome is turned off
+                  (planned follow-up for `window-decoration=false`).
+           Row 1  AppContent (Star) — terminal content area. Every Tab's
+                  SplitPanel is parented here (not in TabViewItem.Content)
+                  so the strip can live above without coupling its
+                  visibility to whether the terminal stays visible.
+                  Selection drives per-panel Visibility; tab switching
+                  toggles which child of AppContent is Visible.
+         Inside AppTitleBar:
+           Col 0  TabView (spans both columns) — strip-only, since the
+                  per-tab Content is hosted in AppContent. With null
+                  TabItem.Content the template's content row collapses to
+                  zero, so the Auto outer row sizes to just the strip.
+           Col 1  CaptionButtons (Auto ≈ 138px) — anchored right in the
+                  outer Grid so they don't shift when the TabStripFooter
+                  width changes; drawn on top of the strip via Z-order.
+         The TabStripFooter still hosts a DragRegion border (MinWidth=200
+         leaves ~62px of empty draggable area to the left of the caption
+         buttons). The window's title-bar drag region is the whole
+         AppTitleBar via SetTitleBar — DragRegion's only job is to give
+         the OS a visible-but-transparent surface inside the strip. -->
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid x:Name="AppTitleBar" Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <TabView x:Name="TabView" Grid.Column="0" Grid.ColumnSpan="2"
+                     IsAddTabButtonVisible="True"
+                     CanDragTabs="True"
+                     TabWidthMode="Equal"
+                     VerticalAlignment="Top"
+                     HorizontalAlignment="Stretch">
+                <TabView.TabStripFooter>
+                    <Border x:Name="DragRegion"
+                            Background="Transparent"
+                            HorizontalAlignment="Stretch"
+                            MinWidth="200" />
+                </TabView.TabStripFooter>
+            </TabView>
+
+            <StackPanel x:Name="CaptionButtons" Grid.Column="1"
+                        Orientation="Horizontal"
+                        VerticalAlignment="Top">
+            <!-- Local Button.Resources overrides let the default
+                 ControlTemplate paint flat caption-style backgrounds
+                 without us retemplating the whole control.
+                 SubtleFillColorSecondary/Tertiary follow OS light/dark. -->
+            <Button x:Name="MinimizeButton" Width="46" Height="40"
+                    Padding="0" BorderThickness="0" CornerRadius="0"
+                    IsTabStop="False" AllowFocusOnInteraction="False"
+                    Click="OnMinimizeClick">
+                <Button.Resources>
+                    <SolidColorBrush x:Key="ButtonBackground" Color="Transparent" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="{ThemeResource SubtleFillColorSecondary}" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="{ThemeResource SubtleFillColorTertiary}" />
+                    <SolidColorBrush x:Key="ButtonBackgroundDisabled" Color="Transparent" />
+                    <SolidColorBrush x:Key="ButtonBorderBrush" Color="Transparent" />
+                    <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="Transparent" />
+                    <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="Transparent" />
+                </Button.Resources>
+                <FontIcon FontFamily="Segoe Fluent Icons,Segoe MDL2 Assets"
+                          Glyph="&#xE921;" FontSize="10" />
+            </Button>
+            <Button x:Name="MaximizeButton" Width="46" Height="40"
+                    Padding="0" BorderThickness="0" CornerRadius="0"
+                    IsTabStop="False" AllowFocusOnInteraction="False"
+                    Click="OnMaximizeClick">
+                <Button.Resources>
+                    <SolidColorBrush x:Key="ButtonBackground" Color="Transparent" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="{ThemeResource SubtleFillColorSecondary}" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="{ThemeResource SubtleFillColorTertiary}" />
+                    <SolidColorBrush x:Key="ButtonBackgroundDisabled" Color="Transparent" />
+                    <SolidColorBrush x:Key="ButtonBorderBrush" Color="Transparent" />
+                    <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="Transparent" />
+                    <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="Transparent" />
+                </Button.Resources>
+                <FontIcon x:Name="MaximizeGlyph"
+                          FontFamily="Segoe Fluent Icons,Segoe MDL2 Assets"
+                          Glyph="&#xE922;" FontSize="10" />
+            </Button>
+            <!-- Close button uses Windows' canonical red hover (#E81123)
+                 with white foreground; the rest of the theme tokens stay
+                 transparent. -->
+            <Button x:Name="CloseButton" Width="46" Height="40"
+                    Padding="0" BorderThickness="0" CornerRadius="0"
+                    IsTabStop="False" AllowFocusOnInteraction="False"
+                    Click="OnCloseClick">
+                <Button.Resources>
+                    <SolidColorBrush x:Key="ButtonBackground" Color="Transparent" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#E81123" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#F1707A" />
+                    <SolidColorBrush x:Key="ButtonBackgroundDisabled" Color="Transparent" />
+                    <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="White" />
+                    <SolidColorBrush x:Key="ButtonForegroundPressed" Color="White" />
+                    <SolidColorBrush x:Key="ButtonBorderBrush" Color="Transparent" />
+                    <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="Transparent" />
+                    <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="Transparent" />
+                </Button.Resources>
+                <FontIcon FontFamily="Segoe Fluent Icons,Segoe MDL2 Assets"
+                          Glyph="&#xE8BB;" FontSize="10" />
+            </Button>
+        </StackPanel>
+        </Grid>
+
+        <!-- AppContent: every Tab's SplitPanel is appended here as a
+             child (not as TabViewItem.Content). The currently-selected
+             tab's panel is the only one with Visibility=Visible; the
+             rest are Collapsed but stay parented so their swap chains
+             keep their DComp surface binding across tab switches. -->
+        <Grid x:Name="AppContent" Grid.Row="1" />
+    </Grid>
+</Window>

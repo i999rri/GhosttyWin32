@@ -1,106 +1,117 @@
 # GhosttyWin32
 
-Windows host application for [Ghostty](https://github.com/ghostty-org/ghostty) terminal emulator.
+Windows host application for the [Ghostty](https://github.com/ghostty-org/ghostty) terminal emulator.
 
-Uses the libghostty C API (DLL) with a Win32 window. Supports **DirectX 11** (default) and **OpenGL** (via [Mesa Zink](https://docs.mesa3d.org/drivers/zink.html)) rendering backends.
+A WinUI 3 + C++/WinRT shell that hosts the libghostty C API. Each tab owns its own ghostty Surface and DirectX 11 device, rendered into a `SwapChainPanel`.
 
 ## Features
 
 ### Terminal
-- Full terminal emulation via libghostty (VT parser, ConPTY)
-- PowerShell / cmd.exe / custom shell (`command` config)
-- Japanese/CJK font rendering with system font fallback
-- IME input (Japanese, Chinese, Korean)
-- UTF-16 surrogate pair support (emoji)
+
+- Full terminal emulation via libghostty (VT parser, ConPTY backend)
+- PowerShell / cmd.exe / arbitrary shell (`command` config option)
+- Japanese / CJK glyph rendering with system font fallback
+- IME input (Japanese, Chinese, Korean) with composition preview
+- UTF-16 surrogate pair support (emoji, supplementary planes)
+- Auto-close tab when the shell process exits
+
+### Tabs
+
+- Multi-tab UI via WinUI 3 `TabView`
+- Per-tab isolation: each tab owns its own ghostty Surface + D3D11 device
+- Per-tab SEH guard: a hardware exception in one tab does not take down siblings (fatal cases still trigger a clean process exit)
+- New tab / close tab / reorder via standard `TabView` gestures
+- Custom XAML caption buttons (minimize / maximize / close) that route through `WM_SYSCOMMAND` to avoid driver-side state-change crashes
 
 ### Input
-- Keyboard: WM_CHAR text input + WM_KEYDOWN special keys
-- Modifier keys: Ctrl, Shift, Alt (sent to ghostty for keybindings)
-- Mouse: left/middle/right click, drag, scroll wheel
-- Text selection: left-click drag, Ctrl+C copy, Ctrl+V paste, right-click copy
-- Selection auto-clear after copy
-- Ctrl+click: URL highlight detection
 
-### Window Management
-- Fullscreen toggle (Ctrl+Enter)
-- Maximize/restore
-- Window decorations toggle (title bar show/hide)
-- Borderless mode with drag (top 30px) and edge resize (WM_NCHITTEST)
-- Minimum/maximum window size limits (SIZE_LIMIT)
+- Keyboard: `WM_CHAR` text input plus key-level events for shortcuts
+- Modifier-aware keybindings (Ctrl / Shift / Alt) forwarded to libghostty
+- Mouse: left / middle / right click, drag, scroll wheel
+- Selection: drag-to-select, Ctrl+C copy, Ctrl+V paste, right-click copy
+- Selection auto-clear after copy
+- Ctrl+click: URL highlight detection (see Known Issues)
+
+### Window
+
+- Custom title bar with `ExtendsContentIntoTitleBar`
+- Drag region sized to survive many open tabs
+- Fullscreen toggle, maximize / restore
 - DPI scaling (Per-Monitor DPI Aware V2)
+- Mica / Acrylic backdrop (when running as an MSIX package)
 
 ### Visual
+
 - Theme support (config file or `%LOCALAPPDATA%\ghostty\themes\`)
 - Background image (`background-image` config)
 - Background opacity (`background-opacity` config)
-- Title bar color synced with terminal background (DwmSetWindowAttribute, Windows 11)
-- Custom color palette (ANSI 16 colors)
+- Title bar tint synced with terminal background (`DwmSetWindowAttribute`, Windows 11)
+- Custom ANSI 16-color palette
 - Cursor color customization
 
 ### Rendering
-- **DirectX 11** (default) — native D3D11, no external dependencies, FLIP_DISCARD swap chain
-- **OpenGL 4.3+** (fallback) — via Mesa Zink (GL-to-Vulkan translation)
-- High-resolution waitable timer for frame pacing (Windows 10 1803+)
-- V-Sync OFF for low input latency
 
-### Callbacks
-- `SET_TITLE`: window title from terminal
+- DirectX 11 via the libghostty native renderer (no external dependencies)
+- FLIP_DISCARD swap chain hosted in a `SwapChainPanel`
+- High-resolution waitable timer for frame pacing (Windows 10 1803+)
+
+### libghostty Callbacks
+
+- `SET_TITLE`: tab title from terminal escape sequences
 - `MOUSE_SHAPE`: cursor changes (text, pointer, hand, resize, etc.)
-- `MOUSE_VISIBILITY`: hide/show cursor
-- `OPEN_URL`: open URLs in default browser (ShellExecuteW)
+- `MOUSE_VISIBILITY`: hide / show cursor
+- `OPEN_URL`: open URLs in the default browser (`ShellExecuteW`)
 - `RING_BELL`: flash window + system beep
-- `COLOR_CHANGE`: sync title bar color with background
-- `TOGGLE_FULLSCREEN` / `TOGGLE_MAXIMIZE` / `TOGGLE_WINDOW_DECORATIONS`
+- `COLOR_CHANGE`: sync title bar tint with terminal background
+- `TOGGLE_FULLSCREEN` / `TOGGLE_MAXIMIZE`
 - `SIZE_LIMIT` / `INITIAL_SIZE` / `RESET_WINDOW_SIZE`
+- `NEW_TAB` / `CLOSE_TAB` / `GOTO_TAB` / `MOVE_TAB`
+- `PRESENT_TERMINAL`: restore + foreground the window
+- `SHOW_ON_SCREEN_KEYBOARD`: launch the Windows OSK
 - `QUIT`: clean shutdown
-- Clipboard read/write (onReadClipboard, onWriteClipboard)
-- Wakeup: thread-safe PostMessage to main thread
+- Clipboard read / write
+- Wakeup: thread-safe `PostMessage` to the UI thread
 
 ## Architecture
 
 ```
-GhosttyWin32.exe (C++/Win32)
-  └── GhosttyBridge (singleton)
-      ├── Win32 window (WS_POPUP or WS_OVERLAPPEDWINDOW)
-      ├── Input handling (keyboard, mouse, IME)
-      ├── Clipboard (Win32 API)
-      ├── Config reading (ghostty_config_get API)
-      ├── Action dispatch (onAction callback)
-      └── 4MB stack threads (ghostty_init, config, surface)
+GhosttyWin32.exe (WinUI 3 / C++/WinRT)
+  ├── App.xaml — application entry, XAML Controls Resources
+  ├── MainWindow
+  │   ├── Custom title bar + caption buttons
+  │   ├── TabView
+  │   │   └── TerminalControl (per tab)
+  │   │       ├── SwapChainPanel → ghostty Surface
+  │   │       ├── Input forwarding (key / pointer / IME)
+  │   │       └── Per-tab D3D11 device + SEH guard
+  │   └── SetUnhandledExceptionFilter — best-effort cleanup
+  ├── GhosttyApp — ghostty_app_t lifetime wrapper (config, callbacks)
+  └── Tabs / TabFactory / TabIdAllocator — tab bookkeeping
 
 ghostty.dll (Zig, from i999rri/ghostty windows-port branch)
   ├── Terminal emulator core (VT parser, Screen)
-  ├── DirectX 11 renderer (HLSL SM5.0 shaders, d3d11_impl.c COM wrapper)
-  ├── OpenGL 4.3 renderer (GLSL 430 shaders, Mesa Zink fallback)
+  ├── DirectX 11 renderer (HLSL SM5.0, d3d11_impl.c COM wrapper)
   ├── Font rendering (Freetype + Harfbuzz)
   ├── ConPTY subprocess management
   └── Windows font discovery (registry lookup, %WINDIR%\Fonts)
-
-[Optional] Mesa Zink (opengl32.dll + libgallium_wgl.dll)
-  └── Translates OpenGL 4.6 → Vulkan (only needed for OpenGL fallback)
 ```
 
 ## Install
 
-### Scoop (Recommended)
+The MSIX is signed only with a self-signed publisher certificate
+(`CN=i999rri`) — an established CA / OSS Foundation signature isn't in
+place yet (see [issue #46](https://github.com/i999rri/GhosttyWin32/issues/46)),
+so Windows requires the certificate to be trusted before the MSIX will
+install. Manual install is the only supported path today; a Scoop channel
+existed for the pre-MSIX ZIP builds (v0.2.x) and will return once signing
+is available.
 
-```powershell
-scoop bucket add ghostty https://github.com/i999rri/scoop-bucket
-scoop install ghosttywin32
-```
-
-Then run from terminal or start menu:
-```powershell
-GhosttyWin32
-```
-
-### Manual (MSIX)
-
-1. Download `Ghostty-X.Y.Z-x64.msix` and `Ghostty.cer` from
+1. Download `Ghostty-<version>-x64.msix` and `Ghostty.cer` from
    [Releases](https://github.com/i999rri/GhosttyWin32/releases).
 2. Trust the certificate (one-time per machine; **Local Machine → Trusted
-   People** store — see [docs/INSTALL.md](docs/INSTALL.md) for the exact wizard
-   choices, since the wrong store choice silently fails with `0x800B0109`).
+   People** store — see [docs/INSTALL.md](docs/INSTALL.md) for the exact
+   wizard choices, since the wrong store choice silently fails with
+   `0x800B0109`).
 3. Double-click the `.msix` to install.
 
 Subsequent updates only require step 3. Detailed walkthrough and
@@ -110,58 +121,65 @@ troubleshooting: [docs/INSTALL.md](docs/INSTALL.md).
 
 ### Prerequisites
 
-- Visual Studio 2022+ with C++ desktop development workload
+- Visual Studio 2022 (17.10+) with the "Desktop development with C++" and
+  "Universal Windows Platform development" workloads
+- Windows App SDK 1.6+ (installed via the project's NuGet packages)
 - Zig 0.15.2+
-- Windows SDK
+- Windows SDK 10.0.22621.0+
 
 ### Build ghostty.dll
 
-This requires a forked version of Ghostty with Windows support patches:
+The forked Ghostty source lives as a git submodule under
+`external/ghostty/`, pinned to the `windows-port` branch. Initialise
+the submodule on first clone:
 
 ```bash
-git clone https://github.com/i999rri/ghostty.git
-cd ghostty
-git switch windows-port
-zig build -Doptimize=ReleaseSafe -Drenderer=directx
+git submodule update --init --recursive
 ```
 
-Copy the following files to `GhosttyWin32/ghostty/`:
-- `zig-out/lib/ghostty.dll`
-- `.zig-cache/o/<hash>/ghostty.lib` (small import library ~60KB)
-- `include/ghostty.h` (already included in this repo)
+(Or pass `--recurse-submodules` to the original `git clone`.)
+
+Build libghostty:
+
+```bash
+cd external/ghostty
+zig build -Doptimize=ReleaseSafe -Drenderer=directx
+# The DLL's import lib lands in .zig-cache instead of zig-out/lib/
+# on shared Windows builds; surface it next to the DLL so the
+# vcxprojs can link straight from external/ghostty/zig-out/lib/.
+find .zig-cache -path '*/o/*/ghostty.lib' -size +10k -size -100k \
+    -exec cp {} zig-out/lib/ghostty-internal.lib \;
+cd ../..
+```
+
+Both the App / Tests vcxprojs reference
+`$(ProjectDir)..\external\ghostty\zig-out\lib` for linker input and
+`$(ProjectDir)..\external\ghostty\include` for `ghostty.h`, so the
+submodule pin is the single source of truth for both the C API and
+the binary artifacts — no separate output directory at the repo
+root is needed.
+
+**Trying a different ghostty branch during development**: switch
+inside the submodule and rebuild — the parent repo only notices
+the change when you `git add external/ghostty`, so you can
+experiment freely and either commit the pin update or
+`git submodule update --recursive` to snap back.
+
+```bash
+cd external/ghostty
+git switch feat/dx-p3-colorspace   # or any other branch
+zig build -Doptimize=ReleaseSafe -Drenderer=directx
+find .zig-cache -path '*/o/*/ghostty.lib' -size +10k -size -100k \
+    -exec cp {} zig-out/lib/ghostty-internal.lib \;
+cd ../..
+```
 
 ### Build GhosttyWin32
 
-Open `GhosttyWin32.slnx` in Visual Studio, set to **Release | x64**, and build.
-
-### Mesa Zink Setup (Optional, for OpenGL fallback)
-
-Only needed if using the OpenGL renderer instead of DirectX.
-
-Download [mesa-dist-win](https://github.com/pal1000/mesa-dist-win/releases) (MSVC release) and copy to the exe directory:
-- `x64/opengl32.dll`
-- `x64/libgallium_wgl.dll`
-
-### Run
-
-```bash
-GhosttyWin32.exe
-```
-
-## Renderer Selection
-
-DirectX 11 is the default renderer. To use OpenGL instead:
-
-```powershell
-$env:GHOSTTY_RENDERER = "opengl"
-$env:GALLIUM_DRIVER = "zink"
-GhosttyWin32.exe
-```
-
-| Environment Variable | Default | Description |
-|---------------------|---------|-------------|
-| `GHOSTTY_RENDERER` | (DirectX) | Set to `opengl` for OpenGL/Zink fallback |
-| `GALLIUM_DRIVER` | — | Set to `zink` when using OpenGL renderer |
+Open `GhosttyWin32.slnx` in Visual Studio, select **Release | x64**, and
+build the `App` project. F5 deploys as a packaged MSIX into
+the local appx registry; `Release | x64` build artifacts land under
+`x64/Release/App/`.
 
 ## Configuration
 
@@ -179,18 +197,30 @@ background-image-opacity=0.3
 background-image-fit=cover
 ```
 
-Theme files go in `%LOCALAPPDATA%\ghostty\themes\`. See [Ghostty documentation](https://ghostty.org/docs/config) for all options.
+Theme files go in `%LOCALAPPDATA%\ghostty\themes\`. See the upstream
+[Ghostty documentation](https://ghostty.org/docs/config) for the full
+option list.
 
 ## Known Issues
 
-- `exit` does not close window ([#8](https://github.com/i999rri/GhosttyWin32/issues/8))
-- Ctrl+click URL causes process exit ([#12](https://github.com/i999rri/GhosttyWin32/issues/12)) — ghostty-side issue
-- Mesa Zink DLLs trigger Windows Defender false positive ([#11](https://github.com/i999rri/GhosttyWin32/issues/11))
-- OpenGL renderer: native WGL (without Mesa Zink) has flickering due to WGL+DWM issue
+- Ctrl+click on a URL exits the process with code 3
+  ([#12](https://github.com/i999rri/GhosttyWin32/issues/12)) — ghostty-side issue
+- Split panes are not yet implemented; only tabs
+  ([#13](https://github.com/i999rri/GhosttyWin32/issues/13))
+- Windows-specific config options (`windows-tab-bar`, `windows-drag-region`)
+  are not exposed yet ([#17](https://github.com/i999rri/GhosttyWin32/issues/17))
 
 ## Status
 
-This is an experimental Windows port. See the [windows-port branch](https://github.com/i999rri/ghostty/tree/windows-port) for Ghostty-side changes and [Discussion #2563](https://github.com/ghostty-org/ghostty/discussions/2563) for context.
+This is an experimental Windows port. See the
+[windows-port branch](https://github.com/i999rri/ghostty/tree/windows-port) for
+Ghostty-side changes and
+[Discussion #2563](https://github.com/ghostty-org/ghostty/discussions/2563) for
+context.
+
+## License
+
+[MIT](LICENSE). The libghostty library it embeds is also MIT-licensed.
 
 ## AI Disclosure
 

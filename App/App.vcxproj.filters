@@ -1,0 +1,85 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ApplicationDefinition Include="App.xaml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Page Include="MainWindow.xaml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Midl Include="MainWindow.idl" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="pch.cpp" />
+    <ClCompile Include="$(GeneratedFilesDir)module.g.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="pch.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Assets">
+      <UniqueIdentifier>{e48dc53e-40b1-40cb-970a-f89935452892}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Tabs">
+      <UniqueIdentifier>{6F2B3D8E-9C4A-47A1-B2D5-E8F1A3C6D9B0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Tabs\Panes">
+      <UniqueIdentifier>{8A5D7C1F-3B6E-49C4-A0F2-D7E9B4F8C2A1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Display">
+      <UniqueIdentifier>{B3E9F5A2-7C8D-4E6A-9F1B-2D5E8C3A6F4D}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Input">
+      <UniqueIdentifier>{A6D4F1B8-3C5E-4978-8B2A-1F7C6E9D5B3A}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Ghostty">
+      <UniqueIdentifier>{C7F2A1D5-4B6E-49A3-B8C2-3D5E7A8F1C9B}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Tabs\Tab.h">
+      <Filter>Tabs</Filter>
+    </ClInclude>
+    <ClInclude Include="Tabs\Tabs.h">
+      <Filter>Tabs</Filter>
+    </ClInclude>
+    <ClInclude Include="Tabs\TabFactory.h">
+      <Filter>Tabs</Filter>
+    </ClInclude>
+    <ClInclude Include="Tabs\Panes\Pane.h">
+      <Filter>Tabs\Panes</Filter>
+    </ClInclude>
+    <ClInclude Include="Tabs\Panes\PaneId.h">
+      <Filter>Tabs\Panes</Filter>
+    </ClInclude>
+    <ClInclude Include="Tabs\Panes\PaneIdAllocator.h">
+      <Filter>Tabs\Panes</Filter>
+    </ClInclude>
+    <ClInclude Include="Display\PhysicalPixels.h">
+      <Filter>Display</Filter>
+    </ClInclude>
+    <ClInclude Include="Input\TerminalKeyDown.h">
+      <Filter>Input</Filter>
+    </ClInclude>
+    <ClInclude Include="Input\TerminalKeyUp.h">
+      <Filter>Input</Filter>
+    </ClInclude>
+    <ClInclude Include="Ghostty\MainWindowRuntime.h">
+      <Filter>Ghostty</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Ghostty\MainWindowRuntime.cpp">
+      <Filter>Ghostty</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="readme.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <Manifest Include="app.manifest" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="packages.config" />
+  </ItemGroup>
+</Project>

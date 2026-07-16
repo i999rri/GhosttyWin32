@@ -1,0 +1,35 @@
+name: CI
+
+# Compile-only verification on every PR. Runs the same build pipeline as
+# Dev Build / Release but without signing or publishing — catches build
+# breakages (e.g. /std:c++17 vs c++20 mismatches) before merge.
+on:
+  pull_request: {}
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+# Cancel an older in-flight run on the same ref when a new push arrives.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout GhosttyWin32
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Build MSIX (unsigned)
+        uses: ./.github/actions/build-signed-msix
+        with:
+          # Placeholder version — PR builds don't publish the MSIX, so
+          # the value only matters insofar as the manifest patcher needs
+          # a syntactically valid 4-part number.
+          msix-version: '0.0.0.0'
+          sign: 'false'

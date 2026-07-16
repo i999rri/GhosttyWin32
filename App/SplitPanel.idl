@@ -1,0 +1,15 @@
+namespace GhosttyWin32
+{
+    // Layout host for a Pane tree.
+    //
+    // Declared in IDL so the C++/WinRT projection can derive from
+    // Microsoft.UI.Xaml.Controls.Panel -- Panel itself is unsealed but
+    // can only be subclassed through a runtimeclass with metadata.
+    // The MeasureOverride / ArrangeOverride that walk the Pane tree
+    // live in the impl class; no XAML-side properties are needed yet.
+    [default_interface]
+    runtimeclass SplitPanel : Microsoft.UI.Xaml.Controls.Panel
+    {
+        SplitPanel();
+    }
+}

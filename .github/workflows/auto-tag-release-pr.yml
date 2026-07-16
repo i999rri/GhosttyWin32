@@ -1,0 +1,70 @@
+name: Auto-tag release PR
+
+# When a `release/vX.Y.Z` PR is merged into main, tag main HEAD with
+# vX.Y.Z and push. The tag push is what release.yml watches for, so
+# this is the bridge between "release PR merged" and "GitHub Release
+# published".
+#
+# Branch name (release/vX.Y.Z) is the source of truth for the version
+# rather than PR title — branch refs are immutable once created, while
+# titles can be edited after the fact and would silently break the
+# auto-tag path.
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    if: |
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.head.ref, 'release/v')
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Extract and validate version
+        id: ver
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          # release/v0.3.0 → v0.3.0
+          version="${HEAD_REF#release/}"
+
+          # Production-only auto-tag: vX.Y.Z, no hyphen suffix. RC tags
+          # are intentionally a manual `git tag` flow per RELEASING.md
+          # so we don't accidentally publish an auto-approved RC build.
+          if [[ ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Branch '$HEAD_REF' doesn't match release/vX.Y.Z (no hyphen suffix allowed)."
+            exit 1
+          fi
+
+          # Refuse silent retag of an existing release. If a previous
+          # attempt already pushed the tag, the operator should clean
+          # up explicitly.
+          if git rev-parse "$version" >/dev/null 2>&1; then
+            echo "::error::Tag $version already exists. Delete it before re-running."
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Tag main HEAD and push
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$VERSION" -m "Release $VERSION"
+          git push origin "$VERSION"
+          echo "Pushed tag $VERSION → release.yml will fire."

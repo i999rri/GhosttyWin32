@@ -1,0 +1,4 @@
+[submodule "external/ghostty"]
+	path = external/ghostty
+	url = git@github.com:i999rri/ghostty.git
+	branch = windows-port
