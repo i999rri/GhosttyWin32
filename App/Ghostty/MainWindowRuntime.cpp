@@ -46,39 +46,54 @@ bool MainWindowRuntime::OnAction(ghostty_target_s target,
     return window->m_ghosttyDispatcher->DispatchAction(target, action);
 }
 
-bool MainWindowRuntime::OnReadClipboard(void* state)
+MainWindowRuntime::PaneRef
+MainWindowRuntime::ResolvePane(void* paneIdUserdata) const
+{
+    // The clipboard callbacks carry the same per-surface userdata as
+    // close_surface: the PaneId set in TabFactory::MakeLeaf. Globally
+    // unique (App-scope allocator), so this resolves to exactly one
+    // window / control even with several windows open. Null results
+    // mean the pane died before the callback landed — callers no-op.
+    PaneRef ref;
+    PaneId id = PaneId::FromUserdata(paneIdUserdata);
+    if (!id) return ref;
+    ref.window = m_host.findWindowByPaneId(id);
+    if (!ref.window) return ref;
+    ref.control = ref.window->ControlByPaneId(id);
+    return ref;
+}
+
+bool MainWindowRuntime::OnReadClipboard(void* paneIdUserdata, void* state)
 {
     if (!m_host.isReady()) return false;
-    auto* window = m_host.anyWindow();
-    if (!window) return false;
-    auto* tc = window->ActiveControl();
-    if (!tc || !tc->Surface()) return false;
+    auto ref = ResolvePane(paneIdUserdata);
+    if (!ref.control || !ref.control->Surface()) return false;
     auto utf8 = interop::Encoding::toUtf8(
-        win32::Clipboard::read(window->m_hwnd));
+        win32::Clipboard::read(ref.window->m_hwnd));
     if (utf8.empty()) return false;
-    tc->Surface().CompleteClipboardRequest(utf8.c_str(), state, false);
+    ref.control->Surface().CompleteClipboardRequest(utf8.c_str(), state, false);
     return true;
 }
 
-void MainWindowRuntime::OnConfirmReadClipboard(char const* content, void* state)
+void MainWindowRuntime::OnConfirmReadClipboard(void* paneIdUserdata,
+                                               char const* content,
+                                               void* state)
 {
     // Auto-confirm clipboard reads.
     if (!m_host.isReady()) return;
-    auto* window = m_host.anyWindow();
-    if (!window) return;
-    auto* tc = window->ActiveControl();
-    if (tc && tc->Surface()) {
-        tc->Surface().CompleteClipboardRequest(content, state, true);
+    auto ref = ResolvePane(paneIdUserdata);
+    if (ref.control && ref.control->Surface()) {
+        ref.control->Surface().CompleteClipboardRequest(content, state, true);
     }
 }
 
-void MainWindowRuntime::OnWriteClipboard(char const* utf8)
+void MainWindowRuntime::OnWriteClipboard(void* paneIdUserdata, char const* utf8)
 {
     if (!m_host.isReady()) return;
-    auto* window = m_host.anyWindow();
-    if (!window) return;
+    auto ref = ResolvePane(paneIdUserdata);
+    if (!ref.window) return;
     win32::Clipboard::write(
-        window->m_hwnd, interop::Encoding::toUtf16(utf8));
+        ref.window->m_hwnd, interop::Encoding::toUtf16(utf8));
 }
 
 void MainWindowRuntime::OnCloseSurface(void* paneIdUserdata)

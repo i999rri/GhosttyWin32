@@ -8,6 +8,7 @@
 namespace winrt::GhosttyWin32::implementation {
 
 struct MainWindow;
+struct TerminalControl;
 
 // App-side implementation of the runtime hooks ghostty calls back
 // into. The factory in Core does the C↔C++ translation; this class
@@ -42,8 +43,11 @@ public:
 
     // Returns any live window (currently: the first registered) or
     // null when the aggregate is empty. Called for callbacks that
-    // have no per-surface handle — wakeup, clipboard read/write with
-    // no explicit target, APP-target actions.
+    // genuinely have no per-surface identity — wakeup (only needs a
+    // DispatcherQueue, and every window shares the one UI thread)
+    // and APP-target actions. Surface-scoped callbacks (clipboard,
+    // close) must NOT use this: they carry a PaneId and route to the
+    // owning window.
     using AnyWindow = std::function<MainWindow*()>;
 
     // Returns the window whose tab tree owns the given `PaneId`, or
@@ -79,12 +83,24 @@ public:
     void OnWakeup() override;
     bool OnAction(ghostty_target_s target,
                   ghostty_action_s action) override;
-    bool OnReadClipboard(void* state) override;
-    void OnConfirmReadClipboard(char const* content, void* state) override;
-    void OnWriteClipboard(char const* utf8) override;
+    bool OnReadClipboard(void* paneIdUserdata, void* state) override;
+    void OnConfirmReadClipboard(void* paneIdUserdata,
+                                char const* content,
+                                void* state) override;
+    void OnWriteClipboard(void* paneIdUserdata, char const* utf8) override;
     void OnCloseSurface(void* paneIdUserdata) override;
 
 private:
+    // The window + control pair that owns a surface-scoped callback's
+    // PaneId userdata. Either pointer is null when the pane is gone
+    // (surface closed via UI before the callback landed) — callers
+    // treat that as a safe no-op, same as stale close callbacks.
+    struct PaneRef {
+        MainWindow*      window{ nullptr };
+        TerminalControl* control{ nullptr };
+    };
+    PaneRef ResolvePane(void* paneIdUserdata) const;
+
     Host m_host;
 };
 

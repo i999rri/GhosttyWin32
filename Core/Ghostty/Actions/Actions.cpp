@@ -94,12 +94,32 @@ bool Actions::OnOpenUrl(ghostty_action_open_url_s ou) {
 // ===== window lifecycle =====
 
 bool Actions::OnCloseWindow() {
-    // Single-window builds collapse CLOSE_WINDOW, QUIT, and
-    // CLOSE_ALL_WINDOWS into the same effect — close the one
-    // window we have, which terminates the app. Multi-window
-    // (#55) will need to give these three distinct behaviours.
+    // Close the window that owns the action's target and nothing
+    // else. This Actions instance is per-window (the runtime routed
+    // the action here from its target surface), so m_view is that
+    // window; siblings survive.
     m_view.Dispatch([this]() {
         m_view.RequestClose();
+    });
+    return true;
+}
+
+bool Actions::OnCloseAllWindows() {
+    // Fixtures without the app hook degrade to closing the one
+    // window they can reach — the pre-split behaviour.
+    if (!m_hooks.closeAllWindows) return OnCloseWindow();
+    // UI-thread hop for the same reason as OnNewWindow: window
+    // teardown is XAML work, and every window shares this thread.
+    m_view.Dispatch([this]() {
+        m_hooks.closeAllWindows();
+    });
+    return true;
+}
+
+bool Actions::OnQuit() {
+    if (!m_hooks.quit) return OnCloseWindow();
+    m_view.Dispatch([this]() {
+        m_hooks.quit();
     });
     return true;
 }
@@ -231,13 +251,13 @@ bool Actions::OnNewTab() {
 }
 
 bool Actions::OnNewWindow() {
-    if (!m_newWindow) return false;
+    if (!m_hooks.newWindow) return false;
     // Hop to the UI thread — CreateNewWindow builds a Xaml Window
     // and every Xaml touch has to happen there. The `m_view`
     // dispatch is a UI-thread hop that any live window can provide;
     // we don't need our own dispatcher for this to arrive there.
     m_view.Dispatch([this]() {
-        m_newWindow();
+        m_hooks.newWindow();
     });
     return true;
 }

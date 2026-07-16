@@ -7,20 +7,21 @@ namespace core::ghostty {
 
 namespace {
 
-// Latched on every Build() call. The close_surface_cb signature
-// doesn't include runtime userdata — ghostty hands us the per-surface
-// userdata (PaneId) instead — so we stash the runtime pointer here
-// for that one thunk to read.
+// Latched on every Build() call. The surface-scoped callbacks
+// (close_surface and all three clipboard hooks) don't receive the
+// runtime userdata — ghostty hands them the per-surface userdata
+// (PaneId) instead — so those thunks read the runtime pointer from
+// here and forward the surface userdata to the interface.
 //
 // Safe because the runtime always outlives ghostty_app_free's
 // surface-thread join (the standard member ordering on App).
-std::atomic<IGhosttyRuntime*> g_runtimeForCloseSurface{ nullptr };
+std::atomic<IGhosttyRuntime*> g_runtimeForSurfaceCallbacks{ nullptr };
 
 }  // namespace
 
 ghostty_runtime_config_s RuntimeConfigFactory::Build(IGhosttyRuntime* runtime)
 {
-    g_runtimeForCloseSurface.store(runtime, std::memory_order_release);
+    g_runtimeForSurfaceCallbacks.store(runtime, std::memory_order_release);
 
     ghostty_runtime_config_s rtConfig{};
     rtConfig.userdata                  = runtime;
@@ -47,37 +48,53 @@ bool RuntimeConfigFactory::Action(ghostty_app_t app,
     return runtime->OnAction(target, action);
 }
 
-bool RuntimeConfigFactory::ReadClipboard(void* userdata,
+// The clipboard callbacks are surface-scoped in libghostty: the first
+// parameter is the requesting surface's userdata (embedded.zig passes
+// `self.userdata`, i.e. the value the host set in surface_config —
+// a PaneId on this host), NOT the runtime userdata. Casting it to
+// IGhosttyRuntime* would virtual-call through a PaneId. Route through
+// the latched runtime instead and forward the pane userdata so the
+// impl can complete the request on the exact surface that issued it.
+
+bool RuntimeConfigFactory::ReadClipboard(void* paneIdUserdata,
                                           ghostty_clipboard_e,
                                           void* state)
 {
-    return static_cast<IGhosttyRuntime*>(userdata)->OnReadClipboard(state);
+    auto* runtime =
+        g_runtimeForSurfaceCallbacks.load(std::memory_order_acquire);
+    if (!runtime) return false;
+    return runtime->OnReadClipboard(paneIdUserdata, state);
 }
 
-void RuntimeConfigFactory::ConfirmReadClipboard(void* userdata,
+void RuntimeConfigFactory::ConfirmReadClipboard(void* paneIdUserdata,
                                                  char const* content,
                                                  void* state,
                                                  ghostty_clipboard_request_e)
 {
-    static_cast<IGhosttyRuntime*>(userdata)
-        ->OnConfirmReadClipboard(content, state);
+    auto* runtime =
+        g_runtimeForSurfaceCallbacks.load(std::memory_order_acquire);
+    if (!runtime) return;
+    runtime->OnConfirmReadClipboard(paneIdUserdata, content, state);
 }
 
-void RuntimeConfigFactory::WriteClipboard(void* userdata,
+void RuntimeConfigFactory::WriteClipboard(void* paneIdUserdata,
                                            ghostty_clipboard_e,
                                            ghostty_clipboard_content_s const* content,
                                            size_t count,
                                            bool)
 {
     if (!content || count == 0 || !content[0].data) return;
-    static_cast<IGhosttyRuntime*>(userdata)->OnWriteClipboard(content[0].data);
+    auto* runtime =
+        g_runtimeForSurfaceCallbacks.load(std::memory_order_acquire);
+    if (!runtime) return;
+    runtime->OnWriteClipboard(paneIdUserdata, content[0].data);
 }
 
 void RuntimeConfigFactory::CloseSurface(void* paneIdUserdata, bool /*process_alive*/)
 {
     if (!paneIdUserdata) return;
     auto* runtime =
-        g_runtimeForCloseSurface.load(std::memory_order_acquire);
+        g_runtimeForSurfaceCallbacks.load(std::memory_order_acquire);
     if (!runtime) return;
     runtime->OnCloseSurface(paneIdUserdata);
 }

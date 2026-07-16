@@ -309,6 +309,39 @@ namespace winrt::GhosttyWin32::implementation
     void App::CreateNewWindow()
     {
         auto w = make<MainWindow>();
+        TrackWindow(w);
+        w.Activate();
+    }
+
+    MainWindow* App::CreateTearOutWindow()
+    {
+        auto w = make<MainWindow>();
+        auto* impl = winrt::get_self<MainWindow>(w);
+        // Must be flagged before the first Activated runs its
+        // one-shot init: this window adopts the dragged tab instead
+        // of creating one.
+        impl->SuppressInitialTab();
+        TrackWindow(w);
+        // Deliberately no Activate(): the drop handler positions the
+        // window at the drop point after adopting the tab and decides
+        // activation itself.
+        return impl;
+    }
+
+    MainWindow* App::FindWindowByTabItem(
+        Microsoft::UI::Xaml::Controls::TabViewItem const& item) noexcept
+    {
+        for (auto const& w : m_topLevelWindows) {
+            if (auto typed = w.try_as<winrt::GhosttyWin32::MainWindow>()) {
+                auto* impl = winrt::get_self<MainWindow>(typed);
+                if (impl && impl->OwnsTabItem(item)) return impl;
+            }
+        }
+        return nullptr;
+    }
+
+    void App::TrackWindow(Microsoft::UI::Xaml::Window const& w)
+    {
         m_topLevelWindows.push_back(w);
         // Auto-erase the vector entry when the user closes the
         // window. Capture only `this`; the sender comes in through
@@ -326,6 +359,31 @@ namespace winrt::GhosttyWin32::implementation
                 m_topLevelWindows.erase(it);
             }
         });
-        w.Activate();
+    }
+
+    void App::CloseAllWindows()
+    {
+        // Work on a copy: each Close() re-enters through the Closed
+        // subscription installed by CreateNewWindow and erases the
+        // entry from m_topLevelWindows mid-iteration.
+        auto windows = m_topLevelWindows;
+        for (auto& w : windows) {
+            // Close() throws when a window has already begun tearing
+            // down; swallow so one dying window doesn't stop the
+            // sweep (same rationale as MainWindow::RequestClose).
+            try { w.Close(); } catch (winrt::hresult_error const&) {}
+        }
+    }
+
+    void App::Quit()
+    {
+        // Process lifetime is tied to live windows on this port, so
+        // quitting IS closing every window: once the last one goes
+        // the message loop ends and App tears down in member order
+        // (windows before m_ghostty). Deliberately NOT
+        // Application::Exit(), which would skip that orderly
+        // teardown — and with it ghostty_app_free and the renderer
+        // thread joins.
+        CloseAllWindows();
     }
 }

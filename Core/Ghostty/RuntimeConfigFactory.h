@@ -7,10 +7,11 @@ namespace core::ghostty {
 class IGhosttyRuntime;
 
 // Builds the `ghostty_runtime_config_s` that `ghostty_app_new` consumes.
-// Wires every callback to a small static thunk that unwraps the
-// `IGhosttyRuntime*` ghostty hands back (via `rtConfig.userdata` for
-// the wakeup / clipboard callbacks, via `ghostty_app_userdata` for the
-// action callback) and forwards into the typed methods.
+// Wires every callback to a small static thunk that finds the
+// `IGhosttyRuntime*` (via `rtConfig.userdata` for wakeup,
+// `ghostty_app_userdata` for the action callback, and a latched
+// file-scope pointer for the surface-scoped callbacks — see below)
+// and forwards into the typed methods.
 //
 // The factory has no App-side dependency; the only thing it knows about
 // is `IGhosttyRuntime`, which lives in Core. The provided `runtime`
@@ -30,25 +31,28 @@ private:
     static bool Action(ghostty_app_t app,
                        ghostty_target_s target,
                        ghostty_action_s action);
-    static bool ReadClipboard(void* userdata,
+    // The clipboard and close_surface callbacks are surface-scoped in
+    // libghostty: their first parameter is the requesting surface's
+    // userdata (the PaneId the host stored on surface_config), NOT
+    // the rtConfig userdata, so we can't reach the runtime through it
+    // directly. `Build()` stashes the runtime pointer in a file-scope
+    // atomic that these thunks read; the pane userdata is forwarded
+    // so the impl can resolve the exact surface. The pointer stays
+    // valid as long as the runtime outlives ghostty_app_free's
+    // surface-thread join — the standard member ordering on App
+    // guarantees that.
+    static bool ReadClipboard(void* paneIdUserdata,
                               ghostty_clipboard_e kind,
                               void* state);
-    static void ConfirmReadClipboard(void* userdata,
+    static void ConfirmReadClipboard(void* paneIdUserdata,
                                      char const* content,
                                      void* state,
                                      ghostty_clipboard_request_e request);
-    static void WriteClipboard(void* userdata,
+    static void WriteClipboard(void* paneIdUserdata,
                                ghostty_clipboard_e kind,
                                ghostty_clipboard_content_s const* content,
                                size_t count,
                                bool confirmed);
-    // The close_surface callback's userdata is per-surface (the
-    // PaneId the host stored on surface_config), NOT the rtConfig
-    // userdata, so we can't reach the runtime through it directly.
-    // `Build()` stashes the runtime pointer in a file-scope atomic
-    // that this thunk reads. The pointer stays valid as long as the
-    // runtime outlives ghostty_app_free's surface-thread join — the
-    // standard member ordering on App guarantees that.
     static void CloseSurface(void* paneIdUserdata, bool process_alive);
 };
 

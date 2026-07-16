@@ -49,24 +49,34 @@ public:
     virtual bool OnAction(ghostty_target_s target,
                           ghostty_action_s action) = 0;
 
-    // Terminal-initiated clipboard read. `state` is opaque ghostty
-    // bookkeeping the impl hands back to
+    // Terminal-initiated clipboard read. Like close_surface, the
+    // clipboard callbacks arrive with the *per-surface* userdata the
+    // host set in surface_config (a PaneId encoded as void*), not
+    // the runtime userdata — the request belongs to one surface and
+    // the completion must go back to exactly that surface, which
+    // matters as soon as more than one window exists. `state` is
+    // opaque ghostty bookkeeping the impl hands back to
     // `ghostty_surface_complete_clipboard_request` once the OS
     // clipboard has been read. Returns true when the host completed
     // the request (false leaves the request unresolved).
-    virtual bool OnReadClipboard(void* state) = 0;
+    virtual bool OnReadClipboard(void* paneIdUserdata, void* state) = 0;
 
     // Confirmation step for a previously-issued read. Ghostty issues
     // this when the read could be unsafe (bracketed paste with
     // newlines etc.); the impl decides whether to accept and then
-    // completes the request.
-    virtual void OnConfirmReadClipboard(char const* content,
+    // completes the request. Same per-surface userdata as
+    // OnReadClipboard.
+    virtual void OnConfirmReadClipboard(void* paneIdUserdata,
+                                        char const* content,
                                         void* state) = 0;
 
     // Terminal-initiated clipboard write — typically an OSC 52 from a
     // tmux / shell helper. The UTF-8 payload is non-null and non-empty
-    // by the time the factory invokes this.
-    virtual void OnWriteClipboard(char const* utf8) = 0;
+    // by the time the factory invokes this. Same per-surface userdata
+    // as OnReadClipboard (the write's clipboard owner should be the
+    // window that hosts the emitting surface).
+    virtual void OnWriteClipboard(void* paneIdUserdata,
+                                  char const* utf8) = 0;
 
     // Shell exited or ghostty otherwise asks the host to close the
     // surface. `paneIdUserdata` is the per-surface userdata the host

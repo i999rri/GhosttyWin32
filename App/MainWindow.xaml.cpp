@@ -53,13 +53,23 @@ namespace winrt::GhosttyWin32::implementation
         // dispatcher here (rather than waiting for Activated) keeps
         // the action_cb forwarder safe even if it fires through any
         // pre-Activated edge case.
-        // NEW_WINDOW is App-scope: the "add another top-level window"
-        // operation doesn't belong on IWindow, so the factory takes
-        // it as a callable the App fills in. Same shape as
+        // The AppHooks slots are App-scope: "add another top-level
+        // window" and friends don't belong on IWindow, so the factory
+        // takes them as callables the App fills in. Same shape as
         // MainWindowRuntime's Host bundle for other cross-scope hooks.
         m_ghosttyDispatcher = ghostty::CallbackDispatcher::Create(
             *this,
-            []() { if (App::g_app) App::g_app->CreateNewWindow(); });
+            {
+                .newWindow = []() {
+                    if (App::g_app) App::g_app->CreateNewWindow();
+                },
+                .closeAllWindows = []() {
+                    if (App::g_app) App::g_app->CloseAllWindows();
+                },
+                .quit = []() {
+                    if (App::g_app) App::g_app->Quit();
+                },
+            });
 
         ExtendsContentIntoTitleBar(true);
 
@@ -74,7 +84,11 @@ namespace winrt::GhosttyWin32::implementation
             if (App::g_app) App::g_app->Windows().Register(this);
             auto windowNative = this->try_as<::IWindowNative>();
             if (windowNative) windowNative->get_WindowHandle(&m_hwnd);
-            if (m_hwnd) ShowWindow(m_hwnd, SW_HIDE);
+            // The pre-first-frame hide avoids flashing an empty window
+            // before ghostty presents. A drop host receives a tab that
+            // is already presenting, so it has frames to show from the
+            // first paint and skips the hide.
+            if (m_hwnd && !m_suppressInitialTab) ShowWindow(m_hwnd, SW_HIDE);
 
             // Remove the OS title bar (and with it the system caption
             // buttons) so only our XAML CaptionButtons render at the top.
@@ -281,6 +295,130 @@ namespace winrt::GhosttyWin32::implementation
             });
 
             auto tv = TabView();
+
+            // ----- tab drag-out / merge (release-time semantics) -----
+            // Tab movement uses TabView's classic drag-and-drop flow
+            // (CanDragTabs, set in markup) rather than the WinAppSDK
+            // native tear-out (CanTearOutTabs). Native tear-out drives
+            // an OS move-size loop that spawns and drags a live window
+            // mid-drag; in practice it shipped broken
+            // (microsoft-ui-xaml#10154 raises the window request for
+            // plain clicks, #10156 zeroes the NewWindowId round-trip)
+            // and mispositions the grab point when the torn-out window
+            // appears. With drag-and-drop nothing happens until the
+            // user RELEASES: dropping on another window's strip merges
+            // the tab there, dropping anywhere else spawns a window at
+            // the drop point. Only a drag ghost is shown mid-drag.
+            //
+            // The dragged TabViewItem travels through App's
+            // dragged-tab slot (SetDraggedTab), NOT the DataPackage:
+            // a drop on another top-level window rides OLE, which
+            // only marshals primitive package values — a TabViewItem
+            // stuffed into Properties comes out missing on the other
+            // window and the merge silently degrades into a
+            // drop-outside. The package deliberately stays empty
+            // (operation only) so foreign drop targets — a text
+            // editor, say — have nothing to accept and can't swallow
+            // the drag away from TabDroppedOutside.
+            tv.TabDragStarting([](auto const&, auto const& args) {
+                if (App::g_app) App::g_app->SetDraggedTab(args.Tab());
+                args.Data().RequestedOperation(
+                    winrt::Windows::ApplicationModel::DataTransfer::DataPackageOperation::Move);
+            });
+
+            // Fires on the source when the drag ends, whether or not
+            // any drop landed — the one reliable place to clear the
+            // in-flight slot.
+            tv.TabDragCompleted([](auto const&, auto const&) {
+                if (App::g_app) App::g_app->ClearDraggedTab();
+            });
+
+            tv.TabStripDragOver([](auto const&, auto const& e) {
+                if (App::g_app && App::g_app->DraggedTab()) {
+                    e.AcceptedOperation(
+                        winrt::Windows::ApplicationModel::DataTransfer::DataPackageOperation::Move);
+                }
+            });
+
+            tv.TabStripDrop([weakActivated](auto const& sender, auto const& e) {
+                auto self = weakActivated.get();
+                if (!self || !App::g_app) return;
+                // TabStripDrop is a plain DragEventHandler, so the
+                // sender arrives as IInspectable, not a typed TabView.
+                auto strip = sender.template try_as<muxc::TabView>();
+                if (!strip) return;
+                // Source's TabDragCompleted (which clears the slot)
+                // fires only after this drop returns.
+                auto item = App::g_app->DraggedTab();
+                if (!item) return;
+                auto* source = App::g_app->FindWindowByTabItem(item);
+                // Same-strip drops are reorders, which CanReorderTabs
+                // already handled natively.
+                if (!source || source == self.get()) return;
+                // Insert where the tab was dropped: before the first
+                // tab whose slot the pointer hasn't fully passed.
+                int32_t index = -1;
+                auto items = strip.TabItems();
+                for (uint32_t i = 0; i < items.Size(); ++i) {
+                    auto container = strip.ContainerFromIndex(i)
+                        .template try_as<muxc::TabViewItem>();
+                    if (!container) continue;
+                    if (e.GetPosition(container).X - container.ActualWidth() < 0) {
+                        index = static_cast<int32_t>(i);
+                        break;
+                    }
+                }
+                try {
+                    if (auto tab = source->ReleaseTornOutTab(item)) {
+                        self->AdoptTornOutTab(std::move(tab), index);
+                        source->CloseIfTornOutEmpty();
+                    }
+                } catch (winrt::hresult_error const&) {
+                    // A failed move must not take either window down;
+                    // whichever side holds the unique_ptr owns the tab.
+                }
+            });
+
+            tv.TabDroppedOutside([weakActivated](auto const&, auto const& args) {
+                auto self = weakActivated.get();
+                if (!self || !App::g_app) return;
+                auto item = args.Tab();
+                if (!item) return;
+                POINT cursor{};
+                bool haveCursor = GetCursorPos(&cursor) != 0;
+                // Offsets place the window so its tab strip lands near
+                // the pointer instead of the window's top-left corner.
+                int32_t dropX = static_cast<int32_t>(cursor.x) - 120;
+                int32_t dropY = static_cast<int32_t>(cursor.y) - 24;
+                // Dragging out the only tab must not leave an empty
+                // shell behind — just move this window to the drop
+                // point instead, browser-style.
+                if (self->m_tabs.Size() <= 1) {
+                    if (haveCursor) {
+                        self->AppWindow().Move({ dropX, dropY });
+                    }
+                    return;
+                }
+                auto* host = App::g_app->CreateTearOutWindow();
+                if (!host) return;
+                try {
+                    if (auto tab = self->ReleaseTornOutTab(item)) {
+                        host->AdoptTornOutTab(std::move(tab), -1);
+                        if (haveCursor) {
+                            host->AppWindow().Move({ dropX, dropY });
+                        }
+                        // The drag is over, so activation is safe —
+                        // hand the new window focus like a browser
+                        // does after a tab is torn off.
+                        host->Activate();
+                    } else {
+                        // Nothing moved; don't leak an empty host.
+                        host->RequestClose();
+                    }
+                } catch (winrt::hresult_error const&) {
+                }
+            });
+
             // Don't call Window.SetTitleBar(AppTitleBar()) — that would
             // make the whole chrome row OS-title-bar input, including the
             // tab headers. Double-clicking a tab header would then
@@ -521,7 +659,9 @@ namespace winrt::GhosttyWin32::implementation
             });
 
             InitGhostty();
-            CreateTab();
+            // Tear-out hosts don't create an initial tab: they adopt
+            // the dragged one (possibly before this handler even ran).
+            if (!m_suppressInitialTab) CreateTab();
             // Honour `window-decoration` from config at startup so
             // users who set it in their config see the chrome state
             // they asked for without having to fire the toggle
@@ -753,21 +893,20 @@ namespace winrt::GhosttyWin32::implementation
     {
         if (!m_hwnd) return;
 
-        // Drop new-tab requests when the chrome is hidden AND at least
-        // one tab already exists. The tab strip is part of AppTitleBar,
-        // so with chrome collapsed there's no UI to switch tabs — a
-        // second tab would be invisible and unreachable. Silently
-        // ignoring matches the upstream macOS behaviour, where
+        // Redirect new-tab requests to a new window when the chrome is
+        // hidden AND at least one tab already exists. The tab strip is
+        // part of AppTitleBar, so with chrome collapsed there's no UI
+        // to switch tabs — a second tab would be invisible and
+        // unreachable. Falling back to a fresh top-level window
+        // matches the upstream macOS behaviour, where
         // `window-decoration=false` disables native tabs entirely and
-        // new-tab requests fall back to new windows. Until multi-window
-        // (#55) lands, "fall back" here means "drop"; the user's
-        // recourse is to toggle decorations back on (ctrl+shift+d) or
-        // edit config. The first tab is exempt so the terminal can come
-        // up at all when the user launches with chrome already off.
+        // new-tab requests become new windows. The first tab is exempt
+        // so the terminal can come up at all when the user launches
+        // with chrome already off.
         if (!m_tabs.Empty()) {
             ghostty::Config cfg(m_ghosttyApp->ConfigHandle());
             if (!m_windowDecorations.Effective(cfg.WindowDecoratedByConfig())) {
-                OutputDebugStringW(L"[GhosttyWin32] CreateTab dropped: window-decoration=false; multi-window (#55) not yet wired\n");
+                if (App::g_app) App::g_app->CreateNewWindow();
                 return;
             }
         }
@@ -1680,6 +1819,127 @@ namespace winrt::GhosttyWin32::implementation
         node->SetRatio(node->Ratio() + (increase ? deltaRatio : -deltaRatio));
         panelImpl->InvalidateMeasure();
         panelImpl->InvalidateArrange();
+    }
+
+    TerminalControl* MainWindow::ControlByPaneId(PaneId id) noexcept
+    {
+        auto lookup = m_tabs.FindByPaneId(id);
+        if (!lookup.leaf) return nullptr;
+        return Tab::LeafToTerminalControl(*lookup.leaf);
+    }
+
+    std::unique_ptr<Tab> MainWindow::ReleaseTornOutTab(
+        muxc::TabViewItem const& item)
+    {
+        auto* t = m_tabs.FindByItem(item);
+        if (!t) return nullptr;
+
+        // The focused-surface cache must not follow the tab out: the
+        // surfaces stay alive, but they stop being *this* window's
+        // surfaces. Walk the departing tab's leaves rather than just
+        // its active control — m_activeSurface can point at any pane.
+        if (m_activeSurface) {
+            if (auto* panelImpl =
+                    winrt::get_self<implementation::SplitPanel>(t->Panel())) {
+                std::vector<Pane*> leaves;
+                CollectLeaves(panelImpl->Root(), leaves);
+                for (auto* leaf : leaves) {
+                    auto* tc = Tab::LeafToTerminalControl(*leaf);
+                    if (tc && tc->Surface().Owns(m_activeSurface)) {
+                        m_activeSurface = nullptr;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Unparent the visual pieces but detach nothing: the swap
+        // chains keep presenting while the tab is in flight.
+        RemoveTabPanelFromAppContent(*t);
+        auto tv = TabView();
+        if (tv) {
+            uint32_t idx = 0;
+            if (tv.TabItems().IndexOf(item, idx)) {
+                tv.TabItems().RemoveAt(idx);
+            }
+        }
+        return m_tabs.Extract(item);
+    }
+
+    void MainWindow::AdoptTornOutTab(std::unique_ptr<Tab> tab, int32_t index)
+    {
+        if (!tab) return;
+
+        // A tear-out host adopts before its first Activated has run,
+        // so the HWND may not be captured yet. IWindowNative works
+        // from construction onward.
+        if (!m_hwnd) {
+            if (auto native = this->try_as<::IWindowNative>()) {
+                native->get_WindowHandle(&m_hwnd);
+            }
+        }
+
+        auto tv = TabView();
+        if (!tv) return;
+        auto items = tv.TabItems();
+        uint32_t size = items.Size();
+        uint32_t at = (index < 0 || static_cast<uint32_t>(index) > size)
+            ? size
+            : static_cast<uint32_t>(index);
+        items.InsertAt(at, tab->Item());
+
+        // Re-point every control at this window: IME coordinates and
+        // clipboard ownership key off the host HWND, and the focused
+        // callback must feed THIS window's active-surface cache. Raw
+        // `this` capture is safe by the same argument as InitGhostty's
+        // onLeafFocused — MainWindow outlives every control it hosts.
+        if (auto* panelImpl =
+                winrt::get_self<implementation::SplitPanel>(tab->Panel())) {
+            std::vector<Pane*> leaves;
+            CollectLeaves(panelImpl->Root(), leaves);
+            for (auto* leaf : leaves) {
+                if (auto* tc = Tab::LeafToTerminalControl(*leaf)) {
+                    tc->Rehost(m_hwnd, [this](ghostty_surface_t s) noexcept {
+                        NotifySurfaceFocused(s);
+                    });
+                }
+            }
+        }
+
+        // Same shape as CreateTab's post-Make sequence: parent the
+        // panel collapsed, register ownership, then select — the
+        // SelectionChanged handler reconciles panel visibility and
+        // focus for us.
+        tab->Panel().Visibility(winrt::Microsoft::UI::Xaml::Visibility::Collapsed);
+        AppContent().Children().Append(tab->Panel());
+        auto selected = tab->Item();
+        m_tabs.Add(std::move(tab));
+        tv.SelectedItem(selected);
+        UpdateActivePanelVisibility();
+        // SHOWNOACTIVATE, not SHOW: make the adopted tab visible
+        // without deciding focus here. Whether the window should be
+        // activated is the caller's call — the drop-outside handler
+        // activates its freshly spawned host, while a merge adopts
+        // into a window that is already visible and focused.
+        if (m_hwnd) ShowWindow(m_hwnd, SW_SHOWNOACTIVATE);
+    }
+
+    void MainWindow::CloseIfTornOutEmpty()
+    {
+        // Tearing the last tab out leaves an empty shell — close it,
+        // matching browser behaviour. Deferred through the dispatcher
+        // so window teardown never runs inside tear-out event
+        // dispatch, and re-checked on arrival in case a merge landed
+        // a tab here in the meantime.
+        if (!m_tabs.Empty()) return;
+        auto dq = DispatcherQueue();
+        auto weak = get_weak();
+        if (!dq) { RequestClose(); return; }
+        dq.TryEnqueue([weak]() {
+            if (auto self = weak.get()) {
+                if (self->m_tabs.Empty()) self->RequestClose();
+            }
+        });
     }
 
     void MainWindow::CloseSurfaceByPaneId(PaneId id)
