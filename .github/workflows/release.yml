@@ -10,6 +10,11 @@ on:
 
 permissions:
   contents: write
+  # gh pr list (used by "Resolve release-PR head for changelog") reads
+  # the closed release/vX.Y.Z PR to locate the release-branch tip. Any
+  # explicit permissions: block sets unlisted scopes to none, so this
+  # needs to be spelled out.
+  pull-requests: read
 
 jobs:
   build:
@@ -149,10 +154,44 @@ jobs:
           echo "tag=$prev" >> "$GITHUB_OUTPUT"
           echo "Previous tag selected: ${prev:-<none>}"
 
+      # Locate the merged release PR (release/vX.Y.Z → main) for
+      # production tags so we can point the changelog generator at the
+      # release branch tip instead of the squashed merge commit main
+      # actually holds. Empty output for RC tags — those are on dev HEAD
+      # before any squash, so generate-notes off the tag itself already
+      # sees every dev-side PR merge.
+      - name: Resolve release-PR head for changelog
+        id: relpr
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          head_sha=""
+          if [[ "$REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            head_sha=$(gh pr list --state closed \
+              --search "head:release/${REF_NAME} base:main" \
+              --json headRefOid --jq '.[0].headRefOid // empty')
+          fi
+          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
+          echo "Release-PR head SHA: ${head_sha:-<none>}"
+
       # Generate the changelog body manually so we can pass
       # previous_tag_name explicitly. softprops/action-gh-release's
       # generate_release_notes: true would call the same API but with
       # GitHub's default baseline.
+      #
+      # Production tags need a workaround: the tag already exists by the
+      # time this workflow runs (we're triggered by its push), so the
+      # generate-notes API resolves tag_name → the squashed commit main
+      # actually holds and ignores target_commitish. That loses every
+      # dev-side PR that landed as an intermediate merge (the release/
+      # branch's history) because those commits aren't reachable from
+      # main's history. Pass a UNIQUE probe tag_name that doesn't exist,
+      # which forces the API to honour target_commitish=<release-PR head>,
+      # then rewrite the probe name in the returned body so the
+      # "Full Changelog" URL uses the real tag.
       - name: Generate release notes body
         id: notes
         shell: bash
@@ -160,19 +199,26 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REF_NAME: ${{ github.ref_name }}
           PREV_TAG: ${{ steps.prev.outputs.tag }}
+          RELPR_HEAD_SHA: ${{ steps.relpr.outputs.head_sha }}
         run: |
           set -euo pipefail
-          if [[ -n "$PREV_TAG" ]]; then
-            body=$(gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
-              --method POST \
-              -f tag_name="$REF_NAME" \
-              -f previous_tag_name="$PREV_TAG" \
-              --jq '.body')
+          args=(--method POST)
+          if [[ -n "$RELPR_HEAD_SHA" ]]; then
+            probe_tag="${REF_NAME}-notes-probe"
+            args+=(-f "tag_name=$probe_tag" -f "target_commitish=$RELPR_HEAD_SHA")
           else
-            body=$(gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
-              --method POST \
-              -f tag_name="$REF_NAME" \
-              --jq '.body')
+            probe_tag=""
+            args+=(-f "tag_name=$REF_NAME")
+          fi
+          if [[ -n "$PREV_TAG" ]]; then
+            args+=(-f "previous_tag_name=$PREV_TAG")
+          fi
+          body=$(gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+            "${args[@]}" --jq '.body')
+          # Undo the probe substitution so the Full Changelog URL points
+          # at the real tag.
+          if [[ -n "$probe_tag" ]]; then
+            body="${body//$probe_tag/$REF_NAME}"
           fi
           {
             echo "body<<RELEASE_NOTES_EOF"
