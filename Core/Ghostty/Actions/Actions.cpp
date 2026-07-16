@@ -262,6 +262,16 @@ bool Actions::OnNewWindow() {
     return true;
 }
 
+bool Actions::OnGotoWindow(ghostty_action_goto_window_e direction) {
+    if (!m_hooks.gotoWindow) return false;
+    // Same UI-thread hop rationale as OnNewWindow — the hook calls
+    // Xaml Window::Activate under the hood.
+    m_view.Dispatch([this, direction]() {
+        m_hooks.gotoWindow(direction);
+    });
+    return true;
+}
+
 bool Actions::OnCloseTab(ghostty_surface_t surface) {
     if (!surface) return true;
     m_view.Dispatch([this, surface]() {
