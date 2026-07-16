@@ -155,6 +155,7 @@
     <ClInclude Include="MainWindow.xaml.h">
       <DependentUpon>MainWindow.xaml</DependentUpon>
     </ClInclude>
+    <ClInclude Include="MainWindows.h" />
     <ClInclude Include="SplitPanel.h" />
     <ClInclude Include="Tabs\Panes\Pane.h" />
     <ClInclude Include="Tabs\Panes\PaneId.h" />
@@ -163,6 +164,7 @@
     <ClInclude Include="Tabs\TabFactory.h" />
     <ClInclude Include="Tabs\Tabs.h" />
     <ClInclude Include="Display\PhysicalPixels.h" />
+    <ClInclude Include="Ghostty\MainWindowRuntime.h" />
     <ClInclude Include="Input\TerminalKeyDown.h" />
     <ClInclude Include="Input\TerminalKeyUp.h" />
     <ClInclude Include="TerminalControl.xaml.h">
@@ -185,6 +187,8 @@
     <ClCompile Include="MainWindow.xaml.cpp">
       <DependentUpon>MainWindow.xaml</DependentUpon>
     </ClCompile>
+    <ClCompile Include="MainWindows.cpp" />
+    <ClCompile Include="Ghostty\MainWindowRuntime.cpp" />
     <ClCompile Include="SplitPanel.cpp" />
     <ClCompile Include="TerminalControl.xaml.cpp">
       <DependentUpon>TerminalControl.xaml</DependentUpon>

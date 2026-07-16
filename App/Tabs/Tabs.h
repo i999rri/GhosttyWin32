@@ -114,6 +114,23 @@ public:
         return false;
     }
 
+    // Transfer ownership of the Tab wrapping `item` out of this
+    // collection without destroying it. Tab tear-out moves a live Tab
+    // — surfaces, swap chains, panel tree and all — into a sibling
+    // window's collection, so unlike Remove() the Tab must survive
+    // its departure from this list. Returns null when no tab here
+    // wraps `item`.
+    std::unique_ptr<Tab> Extract(Microsoft::UI::Xaml::Controls::TabViewItem const& item) {
+        for (auto it = m_tabs.begin(); it != m_tabs.end(); ++it) {
+            if (*it && (*it)->Item() == item) {
+                auto tab = std::move(*it);
+                m_tabs.erase(it);
+                return tab;
+            }
+        }
+        return nullptr;
+    }
+
     void Clear() noexcept { m_tabs.clear(); }
 
     bool Empty() const noexcept { return m_tabs.empty(); }
@@ -135,7 +152,7 @@ private:
     static Pane* FindLeafBySurfaceRecursive(Pane* node, ghostty_surface_t surface) {
         if (!node) return nullptr;
         if (node->IsLeaf()) {
-            if (auto* c = Tab::LeafToTerminalControl(*node); c && c->Surface() == surface) {
+            if (auto* c = Tab::LeafToTerminalControl(*node); c && c->Surface().Owns(surface)) {
                 return node;
             }
             return nullptr;

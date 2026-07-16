@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "MainWindow.xaml.h"
+#include "App.xaml.h"
 #include "Ghostty/CallbackDispatcher.h"
 #include "Host/KeyModifiers.h"
 #include "Interop/Encoding.h"
@@ -27,47 +28,67 @@
 #pragma comment(lib, "shell32.lib")
 #pragma comment(lib, "comctl32.lib")
 
-namespace {
-    // Flag file used to detect that the previous process didn't exit cleanly.
-    // Created at startup, deleted on clean shutdown — if it's still there at
-    // launch time, the previous run crashed and we wait briefly so the
-    // NVIDIA driver has time to recover its internal state.
-    std::filesystem::path crashFlagPath() {
-        wchar_t buf[MAX_PATH];
-        DWORD len = GetTempPathW(MAX_PATH, buf);
-        if (len == 0) return L"GhosttyWin32_running.flag";
-        return std::filesystem::path(buf) / L"GhosttyWin32_running.flag";
-    }
-}
-
 using namespace winrt;
 using namespace Microsoft::UI::Xaml;
 namespace muxc = Microsoft::UI::Xaml::Controls;
-
-static winrt::GhosttyWin32::implementation::MainWindow* g_mainWindow = nullptr;
 
 namespace winrt::GhosttyWin32::implementation
 {
     MainWindow::MainWindow()
     {
+        // Adopt the App-scope ghostty wrapper as a class invariant.
+        // App::OnLaunched created ghostty before make<MainWindow>()
+        // and aborted on failure, so by the time a MainWindow exists
+        // the borrow below is guaranteed non-null; every method on
+        // this class can read `m_ghosttyApp->Foo()` without
+        // re-checking. The pointer's lifetime is safe by App's
+        // destructor order — App destroys its `window` member
+        // (containing this MainWindow) BEFORE `m_ghostty`, so the
+        // borrow can't outlive its target.
+        m_ghosttyApp = App::g_app->Ghostty();
+
+        // Same lifetime story as m_ghosttyApp: this MainWindow exists
+        // for the dispatcher's entire life, and `*this` is already a
+        // valid C++ object inside the ctor body. Building the
+        // dispatcher here (rather than waiting for Activated) keeps
+        // the action_cb forwarder safe even if it fires through any
+        // pre-Activated edge case.
+        // The AppHooks slots are App-scope: "add another top-level
+        // window" and friends don't belong on IWindow, so the factory
+        // takes them as callables the App fills in. Same shape as
+        // MainWindowRuntime's Host bundle for other cross-scope hooks.
+        m_ghosttyDispatcher = ghostty::CallbackDispatcher::Create(
+            *this,
+            {
+                .newWindow = []() {
+                    if (App::g_app) App::g_app->CreateNewWindow();
+                },
+                .closeAllWindows = []() {
+                    if (App::g_app) App::g_app->CloseAllWindows();
+                },
+                .quit = []() {
+                    if (App::g_app) App::g_app->Quit();
+                },
+            });
+
         ExtendsContentIntoTitleBar(true);
 
         Activated([this](auto&&, auto&&) {
-            static bool initialized = false;
-            if (initialized) return;
-            initialized = true;
+            if (m_activatedOnce) return;
+            m_activatedOnce = true;
 
-            // Best-effort cleanup if we crash later — tells DComp to release
-            // surfaces so the next launch starts cleaner. The crash flag
-            // itself is set / checked / cleared in App::OnLaunched so the
-            // recovery delay happens before any window is mapped (avoids a
-            // visible white flash).
-            SetUnhandledExceptionFilter(&MainWindow::OnUnhandledException);
-
-            g_mainWindow = this;
+            // Enter the App-scope aggregate. Every caller —
+            // runtime callbacks, target-based routing, the SEH
+            // handler — consults this collection to reach a live
+            // MainWindow; no file-scope static shortcut remains.
+            if (App::g_app) App::g_app->Windows().Register(this);
             auto windowNative = this->try_as<::IWindowNative>();
             if (windowNative) windowNative->get_WindowHandle(&m_hwnd);
-            if (m_hwnd) ShowWindow(m_hwnd, SW_HIDE);
+            // The pre-first-frame hide avoids flashing an empty window
+            // before ghostty presents. A drop host receives a tab that
+            // is already presenting, so it has frames to show from the
+            // first paint and skips the hide.
+            if (m_hwnd && !m_suppressInitialTab) ShowWindow(m_hwnd, SW_HIDE);
 
             // Remove the OS title bar (and with it the system caption
             // buttons) so only our XAML CaptionButtons render at the top.
@@ -155,36 +176,42 @@ namespace winrt::GhosttyWin32::implementation
                     if (args.WindowActivationState() == State::Deactivated) {
                         if (auto* tc = self->ActiveControl()) {
                             tc->NotifyImeFocusLeave();
+                            // Window-level activation crosses windows
+                            // without firing the control's LostFocus
+                            // (XAML logical focus stays on the control
+                            // while the window is inactive), so drop
+                            // the renderer-side focus here. Gated on
+                            // the OS foreground truth + deduped:
+                            // WinUI3 Activated oscillates with
+                            // multiple windows on one thread, and
+                            // forwarding it verbatim spams the
+                            // renderer with .focus messages — each of
+                            // which produces a frame, which is enough
+                            // continuous presenting to re-trigger the
+                            // multi-window overlap flicker.
+                            if (self->m_rendererFocus &&
+                                !self->IsForeground()) {
+                                self->m_rendererFocus = false;
+                                tc->Surface().SetFocus(false);
+                            }
                         }
-                        // Spurious-deactivation recovery, deferred.
-                        // The Win32 title-bar tracking modal loop
-                        // DefWindowProc runs for HTCAPTION clicks
-                        // briefly steals foreground for tracking
-                        // proxies, so a synchronous
-                        // GetForegroundWindow() check here reads a
-                        // transient non-our-HWND value and
-                        // misclassifies the spurious deactivation as
-                        // genuine. Bouncing through the dispatcher
-                        // delays the check until after the modal loop
-                        // returns and foreground state settles. If by
-                        // then our HWND is still foreground, we
-                        // self-Activate so the activated branch of
-                        // this same handler re-runs and queues the
-                        // focus restore. Genuine deactivation leaves
-                        // foreground on the other app, so the check
-                        // skips re-activation and the window properly
-                        // backgrounds.
-                        auto dq = self->DispatcherQueue();
-                        if (dq) {
-                            dq.TryEnqueue([weakActivated]() {
-                                auto self = weakActivated.get();
-                                if (!self || !self->m_hwnd) return;
-                                if (GetForegroundWindow() == self->m_hwnd) {
-                                    try { self->Activate(); }
-                                    catch (winrt::hresult_error const&) {}
-                                }
-                            });
-                        }
+                        // Title-bar HTCAPTION modal-loop recovery is
+                        // handled by the DragRegion PointerReleased
+                        // handler set up further down — it re-focuses
+                        // through the dispatcher regardless of how
+                        // Activated resolves the click, which is the
+                        // reliable path. The earlier
+                        // GetForegroundWindow-based re-Activate here
+                        // was a supplementary recovery for the same
+                        // scenario; with multiple top-level windows
+                        // it fires spuriously on legitimate cross-
+                        // window switches — the check briefly reads
+                        // our HWND while Windows is still routing the
+                        // WM_ACTIVATE pair between siblings — and
+                        // ping-pongs focus back to whichever window
+                        // deactivated last. Trust WinUI's Deactivated
+                        // as authoritative and let PointerReleased
+                        // handle the drag case.
                         return;
                     }
                     // Window came back into focus. Restoring focus
@@ -208,11 +235,38 @@ namespace winrt::GhosttyWin32::implementation
                             auto self = weakActivated.get();
                             if (!self) return;
                             try {
+                                // Bail unless this window is REALLY the
+                                // OS foreground by the time this runs.
+                                // With two windows on one thread the
+                                // Activated events oscillate, and
+                                // running this restore path on a
+                                // window that has already lost
+                                // activation is what sustains the
+                                // ping-pong: Focus() on an element in
+                                // an inactive window re-activates that
+                                // window, yanking foreground back from
+                                // the sibling — whose own pending
+                                // restore then yanks it again, forever.
+                                // The OS foreground check at execution
+                                // (not enqueue) time breaks the cycle:
+                                // a stale restore becomes a no-op.
+                                if (!self->IsForeground()) {
+                                    return;
+                                }
                                 if (auto* tab = self->ActiveTab()) {
                                     tab->Focus();
                                 }
                                 if (auto* tc = self->ActiveControl()) {
                                     tc->NotifyImeFocusEnter();
+                                    // Counterpart of the Deactivated
+                                    // branch: if XAML focus never left
+                                    // the control, GotFocus won't
+                                    // re-fire, so restore the renderer
+                                    // focus explicitly (deduped).
+                                    if (!self->m_rendererFocus) {
+                                        self->m_rendererFocus = true;
+                                        tc->Surface().SetFocus(true);
+                                    }
                                 }
                             } catch (winrt::hresult_error const&) {
                             }
@@ -221,7 +275,150 @@ namespace winrt::GhosttyWin32::implementation
                 }
             });
 
+            // Renderer-side occlusion. While the window is hidden
+            // (minimize, Win+D, tray) every surface's renderer thread
+            // can stop producing frames entirely instead of ticking
+            // blink / safety-net presents; VisibilityChanged fires for
+            // both directions and the restore path redraws once from
+            // the renderer's .visible handler, so no stale frame is
+            // shown. Same weak_ref/try-catch rationale as the
+            // Activated handler above.
+            VisibilityChanged([weakActivated](
+                winrt::Windows::Foundation::IInspectable const&,
+                winrt::Microsoft::UI::Xaml::WindowVisibilityChangedEventArgs const& args) {
+                auto self = weakActivated.get();
+                if (!self) return;
+                try {
+                    self->BroadcastOcclusion(args.Visible());
+                } catch (winrt::hresult_error const&) {
+                }
+            });
+
             auto tv = TabView();
+
+            // ----- tab drag-out / merge (release-time semantics) -----
+            // Tab movement uses TabView's classic drag-and-drop flow
+            // (CanDragTabs, set in markup) rather than the WinAppSDK
+            // native tear-out (CanTearOutTabs). Native tear-out drives
+            // an OS move-size loop that spawns and drags a live window
+            // mid-drag; in practice it shipped broken
+            // (microsoft-ui-xaml#10154 raises the window request for
+            // plain clicks, #10156 zeroes the NewWindowId round-trip)
+            // and mispositions the grab point when the torn-out window
+            // appears. With drag-and-drop nothing happens until the
+            // user RELEASES: dropping on another window's strip merges
+            // the tab there, dropping anywhere else spawns a window at
+            // the drop point. Only a drag ghost is shown mid-drag.
+            //
+            // The dragged TabViewItem travels through App's
+            // dragged-tab slot (SetDraggedTab), NOT the DataPackage:
+            // a drop on another top-level window rides OLE, which
+            // only marshals primitive package values — a TabViewItem
+            // stuffed into Properties comes out missing on the other
+            // window and the merge silently degrades into a
+            // drop-outside. The package deliberately stays empty
+            // (operation only) so foreign drop targets — a text
+            // editor, say — have nothing to accept and can't swallow
+            // the drag away from TabDroppedOutside.
+            tv.TabDragStarting([](auto const&, auto const& args) {
+                if (App::g_app) App::g_app->SetDraggedTab(args.Tab());
+                args.Data().RequestedOperation(
+                    winrt::Windows::ApplicationModel::DataTransfer::DataPackageOperation::Move);
+            });
+
+            // Fires on the source when the drag ends, whether or not
+            // any drop landed — the one reliable place to clear the
+            // in-flight slot.
+            tv.TabDragCompleted([](auto const&, auto const&) {
+                if (App::g_app) App::g_app->ClearDraggedTab();
+            });
+
+            tv.TabStripDragOver([](auto const&, auto const& e) {
+                if (App::g_app && App::g_app->DraggedTab()) {
+                    e.AcceptedOperation(
+                        winrt::Windows::ApplicationModel::DataTransfer::DataPackageOperation::Move);
+                }
+            });
+
+            tv.TabStripDrop([weakActivated](auto const& sender, auto const& e) {
+                auto self = weakActivated.get();
+                if (!self || !App::g_app) return;
+                // TabStripDrop is a plain DragEventHandler, so the
+                // sender arrives as IInspectable, not a typed TabView.
+                auto strip = sender.template try_as<muxc::TabView>();
+                if (!strip) return;
+                // Source's TabDragCompleted (which clears the slot)
+                // fires only after this drop returns.
+                auto item = App::g_app->DraggedTab();
+                if (!item) return;
+                auto* source = App::g_app->FindWindowByTabItem(item);
+                // Same-strip drops are reorders, which CanReorderTabs
+                // already handled natively.
+                if (!source || source == self.get()) return;
+                // Insert where the tab was dropped: before the first
+                // tab whose slot the pointer hasn't fully passed.
+                int32_t index = -1;
+                auto items = strip.TabItems();
+                for (uint32_t i = 0; i < items.Size(); ++i) {
+                    auto container = strip.ContainerFromIndex(i)
+                        .template try_as<muxc::TabViewItem>();
+                    if (!container) continue;
+                    if (e.GetPosition(container).X - container.ActualWidth() < 0) {
+                        index = static_cast<int32_t>(i);
+                        break;
+                    }
+                }
+                try {
+                    if (auto tab = source->ReleaseTornOutTab(item)) {
+                        self->AdoptTornOutTab(std::move(tab), index);
+                        source->CloseIfTornOutEmpty();
+                    }
+                } catch (winrt::hresult_error const&) {
+                    // A failed move must not take either window down;
+                    // whichever side holds the unique_ptr owns the tab.
+                }
+            });
+
+            tv.TabDroppedOutside([weakActivated](auto const&, auto const& args) {
+                auto self = weakActivated.get();
+                if (!self || !App::g_app) return;
+                auto item = args.Tab();
+                if (!item) return;
+                POINT cursor{};
+                bool haveCursor = GetCursorPos(&cursor) != 0;
+                // Offsets place the window so its tab strip lands near
+                // the pointer instead of the window's top-left corner.
+                int32_t dropX = static_cast<int32_t>(cursor.x) - 120;
+                int32_t dropY = static_cast<int32_t>(cursor.y) - 24;
+                // Dragging out the only tab must not leave an empty
+                // shell behind — just move this window to the drop
+                // point instead, browser-style.
+                if (self->m_tabs.Size() <= 1) {
+                    if (haveCursor) {
+                        self->AppWindow().Move({ dropX, dropY });
+                    }
+                    return;
+                }
+                auto* host = App::g_app->CreateTearOutWindow();
+                if (!host) return;
+                try {
+                    if (auto tab = self->ReleaseTornOutTab(item)) {
+                        host->AdoptTornOutTab(std::move(tab), -1);
+                        if (haveCursor) {
+                            host->AppWindow().Move({ dropX, dropY });
+                        }
+                        // The drag is over, so activation is safe —
+                        // hand the new window focus like a browser
+                        // does after a tab is torn off.
+                        host->Activate();
+                    } else {
+                        // Nothing moved; don't leak an empty host.
+                        host->RequestClose();
+                    }
+                } catch (winrt::hresult_error const&) {
+                }
+            });
+
             // Don't call Window.SetTitleBar(AppTitleBar()) — that would
             // make the whole chrome row OS-title-bar input, including the
             // tab headers. Double-clicking a tab header would then
@@ -462,7 +659,9 @@ namespace winrt::GhosttyWin32::implementation
             });
 
             InitGhostty();
-            CreateTab();
+            // Tear-out hosts don't create an initial tab: they adopt
+            // the dragged one (possibly before this handler even ran).
+            if (!m_suppressInitialTab) CreateTab();
             // Honour `window-decoration` from config at startup so
             // users who set it in their config see the chrome state
             // they asked for without having to fire the toggle
@@ -486,41 +685,19 @@ namespace winrt::GhosttyWin32::implementation
 
     MainWindow::~MainWindow()
     {
+        // Take ourselves off the App-scope aggregate before anything
+        // else — subsequent runtime callbacks that fire during
+        // ghostty_app_free's join land in the FindForSurface / Any
+        // paths and must not find a half-torn-down window.
+        if (App::g_app) App::g_app->Windows().Unregister(this);
         m_tabs.Clear();   // Tab destructors handle cleanup
-        m_ghostty.reset(); // ghostty_app_free + config_free in correct order
-        // Clean shutdown reached — clear the crash flag so the next launch
-        // doesn't pause unnecessarily.
-        std::error_code ec;
-        std::filesystem::remove(crashFlagPath(), ec);
-    }
-
-    long __stdcall MainWindow::OnUnhandledException(struct _EXCEPTION_POINTERS* /*info*/) noexcept
-    {
-        // Best-effort cleanup before the OS kills the process. Each call here
-        // is a Win32 / kernel API that's safe even with a corrupted heap;
-        // ShowWindow / CloseHandle / MessageBoxW don't touch user-mode
-        // structures that might be wrecked. If any of them does crash anyway,
-        // the unhandled-exception filter "fails" recursively and WER takes
-        // over with its standard dialog — same end result, just less polished.
-        // That's an acceptable trade for keeping this code readable.
-        OutputDebugStringA("GhosttyWin32: unhandled exception, attempting cleanup\n");
-        if (g_mainWindow) {
-            if (g_mainWindow->m_hwnd) ShowWindow(g_mainWindow->m_hwnd, SW_HIDE);
-            for (auto& tab : g_mainWindow->m_tabs) {
-                if (!tab) continue;
-                if (auto* tc = tab->ActiveControl()) {
-                    HANDLE h = tc->CompositionHandle();
-                    if (h) CloseHandle(h);
-                }
-            }
-        }
-        MessageBoxW(nullptr,
-            L"GhosttyWin32 hit a fatal error and must exit.\n\n"
-            L"Restarting the app usually recovers.",
-            L"GhosttyWin32",
-            MB_OK | MB_ICONERROR | MB_TASKMODAL);
-        // Don't swallow the exception — let WER / debugger see it as usual.
-        return EXCEPTION_CONTINUE_SEARCH;
+        // ghostty::App ownership lives on App scope now (#55 prep).
+        // App's destructor frees ghostty AFTER its `window` member
+        // (this MainWindow) has gone, so the surface/IO-thread join
+        // inside ghostty_app_free finds nothing left to wait on. The
+        // crash flag is also App's concern: App::~App clears it once
+        // per clean process shutdown, which is the granularity the
+        // "did the previous run crash?" check actually wants.
     }
 
     Tab* MainWindow::ActiveTab()
@@ -618,6 +795,16 @@ namespace winrt::GhosttyWin32::implementation
         }
     }
 
+    bool MainWindow::OwnsSurface(ghostty_surface_t surface) const noexcept
+    {
+        return surface != nullptr && m_tabs.FindBySurface(surface) != nullptr;
+    }
+
+    bool MainWindow::OwnsPane(PaneId id) const noexcept
+    {
+        return static_cast<bool>(id) && m_tabs.FindByPaneId(id).tab != nullptr;
+    }
+
     void MainWindow::NotifySurfaceFocused(ghostty_surface_t surface) noexcept
     {
         m_activeSurface = surface;
@@ -657,10 +844,10 @@ namespace winrt::GhosttyWin32::implementation
 
     void MainWindow::Tick()
     {
-        // Guard against the inert window state — Tick can fire from
-        // a queued RENDER action after the window has begun tearing
-        // down (m_ghostty already released). No-op in that case.
-        if (m_ghostty) m_ghostty->Tick();
+        // Class invariant: m_ghosttyApp is set in the constructor and
+        // App outlives every MainWindow (App's `window` member is
+        // destroyed before its `m_ghostty`). No null check needed.
+        m_ghosttyApp->Tick();
     }
 
     void MainWindow::RequestClose()
@@ -675,75 +862,12 @@ namespace winrt::GhosttyWin32::implementation
 
     void MainWindow::InitGhostty()
     {
-        // Bring the dispatcher up before the runtime config so the
-        // action_cb forwarder below can rely on it being ready by
-        // the time ghostty fires its first action.
-        m_ghosttyDispatcher = ghostty::CallbackDispatcher::Create(*this);
-
-        ghostty_runtime_config_s rtConfig{};
-        rtConfig.userdata = this;
-        rtConfig.wakeup_cb = [](void*) {
-            if (!g_mainWindow || !g_mainWindow->m_ghostty) return;
-            g_mainWindow->DispatcherQueue().TryEnqueue([]() {
-                if (g_mainWindow && g_mainWindow->m_ghostty) {
-                    g_mainWindow->m_ghostty->Tick();
-                }
-            });
-        };
-        rtConfig.action_cb = [](ghostty_app_t, ghostty_target_s target, ghostty_action_s action) -> bool {
-            // Thin forwarder. All dispatch + handler bodies live in
-            // GhosttyCallbackDispatcher / GhosttyActions; the lambda
-            // only exists because ghostty's runtime config wants a
-            // C function pointer.
-            if (!g_mainWindow || !g_mainWindow->m_ghosttyDispatcher) return false;
-            return g_mainWindow->m_ghosttyDispatcher->DispatchAction(target, action);
-        };
-        rtConfig.read_clipboard_cb = [](void*, ghostty_clipboard_e, void* state) -> bool {
-            if (!g_mainWindow) return false;
-            auto* tc = g_mainWindow->ActiveControl();
-            if (!tc || !tc->Surface()) return false;
-            auto utf8 = interop::Encoding::toUtf8(win32::Clipboard::read(g_mainWindow->m_hwnd));
-            if (utf8.empty()) return false;
-            ghostty_surface_complete_clipboard_request(tc->Surface(), utf8.c_str(), state, false);
-            return true;
-        };
-        rtConfig.confirm_read_clipboard_cb = [](void*, const char* content, void* state, ghostty_clipboard_request_e) {
-            // Auto-confirm clipboard reads
-            if (g_mainWindow) {
-                auto* tc = g_mainWindow->ActiveControl();
-                if (tc && tc->Surface()) {
-                    ghostty_surface_complete_clipboard_request(tc->Surface(), content, state, true);
-                }
-            }
-        };
-        rtConfig.write_clipboard_cb = [](void*, ghostty_clipboard_e, const ghostty_clipboard_content_s* content, size_t count, bool) {
-            if (!content || count == 0 || !content[0].data) return;
-            HWND hwnd = g_mainWindow ? g_mainWindow->m_hwnd : nullptr;
-            win32::Clipboard::write(hwnd, interop::Encoding::toUtf16(content[0].data));
-        };
-        // Shell exited (e.g. user typed `exit`), or ghostty asked to close
-        // the surface for any other reason. The userdata is the PaneId
-        // we set in TabFactory::MakeLeaf. Dispatch the UI mutation to
-        // the next UI tick so it happens off the renderer thread.
-        //
-        // Two cases:
-        //   * Leaf is the only pane in its tab → close the tab (same
-        //     path as GHOSTTY_ACTION_CLOSE_TAB).
-        //   * Leaf has a sibling → collapse the split. The surviving
-        //     sibling takes the parent split's slot; if the closed
-        //     pane was the active leaf, focus moves to the first leaf
-        //     under the surviving subtree.
-        rtConfig.close_surface_cb = [](void* userdata, bool /*process_alive*/) {
-            if (!g_mainWindow || !userdata) return;
-            PaneId id = PaneId::FromUserdata(userdata);
-            auto mw = g_mainWindow;
-            mw->DispatcherQueue().TryEnqueue([mw, id]() {
-                mw->CloseSurfaceByPaneId(id);
-            });
-        };
-
-        m_ghostty = ghostty::App::Create(rtConfig);
-        if (m_ghostty && m_hwnd) {
+        // m_ghosttyApp + m_ghosttyDispatcher are already set in the
+        // constructor — both of them only need state that's
+        // available at ctor time. What's left for this method is
+        // m_tabFactory, which depends on the HWND fetched from the
+        // Activated handler above.
+        if (m_hwnd) {
             // Capture by raw `this`: MainWindow outlives every
             // TerminalControl it owns (the controls are destroyed
             // through Tabs, which is a MainWindow member), so the
@@ -755,35 +879,34 @@ namespace winrt::GhosttyWin32::implementation
             // typed, fallback-aware accessors so TabFactory (and
             // future callers) stop reimplementing the key-length /
             // fallback dance every time they need a config value.
-            ghostty::Config cfg(m_ghostty->ConfigHandle());
+            ghostty::Config cfg(m_ghosttyApp->ConfigHandle());
             m_tabFactory = std::make_unique<TabFactory>(
-                m_ghostty->Handle(),
+                m_ghosttyApp->Handle(),
                 cfg,
                 m_hwnd,
-                m_paneIds,
+                App::g_app->PaneIds(),
                 std::move(onLeafFocused));
         }
     }
 
     void MainWindow::CreateTab()
     {
-        if (!m_ghostty || !m_hwnd) return;
+        if (!m_hwnd) return;
 
-        // Drop new-tab requests when the chrome is hidden AND at least
-        // one tab already exists. The tab strip is part of AppTitleBar,
-        // so with chrome collapsed there's no UI to switch tabs — a
-        // second tab would be invisible and unreachable. Silently
-        // ignoring matches the upstream macOS behaviour, where
+        // Redirect new-tab requests to a new window when the chrome is
+        // hidden AND at least one tab already exists. The tab strip is
+        // part of AppTitleBar, so with chrome collapsed there's no UI
+        // to switch tabs — a second tab would be invisible and
+        // unreachable. Falling back to a fresh top-level window
+        // matches the upstream macOS behaviour, where
         // `window-decoration=false` disables native tabs entirely and
-        // new-tab requests fall back to new windows. Until multi-window
-        // (#55) lands, "fall back" here means "drop"; the user's
-        // recourse is to toggle decorations back on (ctrl+shift+d) or
-        // edit config. The first tab is exempt so the terminal can come
-        // up at all when the user launches with chrome already off.
+        // new-tab requests become new windows. The first tab is exempt
+        // so the terminal can come up at all when the user launches
+        // with chrome already off.
         if (!m_tabs.Empty()) {
-            ghostty::Config cfg(m_ghostty->ConfigHandle());
+            ghostty::Config cfg(m_ghosttyApp->ConfigHandle());
             if (!m_windowDecorations.Effective(cfg.WindowDecoratedByConfig())) {
-                OutputDebugStringW(L"[GhosttyWin32] CreateTab dropped: window-decoration=false; multi-window (#55) not yet wired\n");
+                if (App::g_app) App::g_app->CreateNewWindow();
                 return;
             }
         }
@@ -1073,11 +1196,8 @@ namespace winrt::GhosttyWin32::implementation
         // Flip the override first, then re-apply. The tag owns the
         // 3-state override; Apply reads it back and translates the
         // effective state into XAML Visibility.
-        bool configDecorated = true;
-        if (m_ghostty) {
-            ghostty::Config cfg(m_ghostty->ConfigHandle());
-            configDecorated = cfg.WindowDecoratedByConfig();
-        }
+        ghostty::Config cfg(m_ghosttyApp->ConfigHandle());
+        bool configDecorated = cfg.WindowDecoratedByConfig();
         m_windowDecorations.Toggle(configDecorated);
         ApplyWindowDecorationsAppearance();
     }
@@ -1094,11 +1214,8 @@ namespace winrt::GhosttyWin32::implementation
         // ExtendsContentIntoTitleBar stays true unconditionally — the OS
         // native title bar was already removed at construction (#67),
         // so "undecorated" here means hiding our own custom chrome row.
-        bool configDecorated = true;
-        if (m_ghostty) {
-            ghostty::Config cfg(m_ghostty->ConfigHandle());
-            configDecorated = cfg.WindowDecoratedByConfig();
-        }
+        ghostty::Config cfg(m_ghosttyApp->ConfigHandle());
+        bool configDecorated = cfg.WindowDecoratedByConfig();
         bool decorated = m_windowDecorations.Effective(configDecorated);
         AppTitleBar().Visibility(decorated
             ? winrt::Microsoft::UI::Xaml::Visibility::Visible
@@ -1169,25 +1286,20 @@ namespace winrt::GhosttyWin32::implementation
 
     void MainWindow::ReplaceConfig(ghostty_config_t cloned)
     {
-        if (!m_ghostty) {
-            ghostty_config_free(cloned);
-            return;
-        }
-        m_ghostty->ReplaceConfig(cloned);
+        m_ghosttyApp->ReplaceConfig(cloned);
     }
 
     void MainWindow::ReloadConfig(bool soft)
     {
-        if (!m_ghostty) return;
         if (soft) {
             // Soft reload: re-apply the config we already hold.
-            // Runs on whichever thread called us — m_ghostty's
-            // handles are stable, and ghostty_app_update_config
-            // is thread-safe on its own state.
+            // Runs on whichever thread called us — the ghostty handles
+            // are stable, and ghostty_app_update_config is thread-safe
+            // on its own state. Capture `this` so the queued lambda
+            // reads m_ghosttyApp from the same MainWindow.
             DispatcherQueue().TryEnqueue([this]() {
-                if (!m_ghostty) return;
-                auto app = m_ghostty->Handle();
-                auto cfg = m_ghostty->ConfigHandle();
+                auto app = m_ghosttyApp->Handle();
+                auto cfg = m_ghosttyApp->ConfigHandle();
                 if (app && cfg) ghostty_app_update_config(app, cfg);
             });
             return;
@@ -1214,12 +1326,9 @@ namespace winrt::GhosttyWin32::implementation
                     return 0;
                 }
                 mwLocal->DispatcherQueue().TryEnqueue([mwLocal, newCfg]() {
-                    if (!mwLocal->m_ghostty) {
-                        ghostty_config_free(newCfg);
-                        return;
-                    }
-                    ghostty_app_update_config(mwLocal->m_ghostty->Handle(), newCfg);
-                    mwLocal->m_ghostty->ReplaceConfig(newCfg);
+                    ghostty_app_update_config(
+                        mwLocal->m_ghosttyApp->Handle(), newCfg);
+                    mwLocal->m_ghosttyApp->ReplaceConfig(newCfg);
                 });
                 return 0;
             }, ctx, 0, nullptr);
@@ -1328,7 +1437,7 @@ namespace winrt::GhosttyWin32::implementation
             if (!node) return nullptr;
             if (node->IsLeaf()) {
                 auto* tc = Tab::LeafToTerminalControl(*node);
-                return (tc && tc->Surface() == surface) ? node : nullptr;
+                return (tc && tc->Surface().Owns(surface)) ? node : nullptr;
             }
             if (auto* p = FindLeafForSurface(node->First(), surface)) return p;
             return FindLeafForSurface(node->Second(), surface);
@@ -1386,7 +1495,7 @@ namespace winrt::GhosttyWin32::implementation
                 float cCenterX = c.X + c.Width  * 0.5f;
                 float cCenterY = c.Y + c.Height * 0.5f;
 
-                double primary, perpendicular;
+                double primary = 0.0, perpendicular = 0.0;
                 bool valid = false;
                 switch (dir) {
                 case GHOSTTY_GOTO_SPLIT_LEFT:
@@ -1430,6 +1539,23 @@ namespace winrt::GhosttyWin32::implementation
                 }
             }
             return best;
+        }
+    }
+
+    void MainWindow::BroadcastOcclusion(bool visible)
+    {
+        for (auto& tab : m_tabs) {
+            if (!tab) continue;
+            auto* panelImpl =
+                winrt::get_self<implementation::SplitPanel>(tab->Panel());
+            if (!panelImpl) continue;
+            std::vector<Pane*> leaves;
+            CollectLeaves(panelImpl->Root(), leaves);
+            for (auto* leaf : leaves) {
+                if (auto* tc = Tab::LeafToTerminalControl(*leaf)) {
+                    tc->Surface().SetOcclusion(visible);
+                }
+            }
         }
     }
 
@@ -1695,6 +1821,127 @@ namespace winrt::GhosttyWin32::implementation
         panelImpl->InvalidateArrange();
     }
 
+    TerminalControl* MainWindow::ControlByPaneId(PaneId id) noexcept
+    {
+        auto lookup = m_tabs.FindByPaneId(id);
+        if (!lookup.leaf) return nullptr;
+        return Tab::LeafToTerminalControl(*lookup.leaf);
+    }
+
+    std::unique_ptr<Tab> MainWindow::ReleaseTornOutTab(
+        muxc::TabViewItem const& item)
+    {
+        auto* t = m_tabs.FindByItem(item);
+        if (!t) return nullptr;
+
+        // The focused-surface cache must not follow the tab out: the
+        // surfaces stay alive, but they stop being *this* window's
+        // surfaces. Walk the departing tab's leaves rather than just
+        // its active control — m_activeSurface can point at any pane.
+        if (m_activeSurface) {
+            if (auto* panelImpl =
+                    winrt::get_self<implementation::SplitPanel>(t->Panel())) {
+                std::vector<Pane*> leaves;
+                CollectLeaves(panelImpl->Root(), leaves);
+                for (auto* leaf : leaves) {
+                    auto* tc = Tab::LeafToTerminalControl(*leaf);
+                    if (tc && tc->Surface().Owns(m_activeSurface)) {
+                        m_activeSurface = nullptr;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Unparent the visual pieces but detach nothing: the swap
+        // chains keep presenting while the tab is in flight.
+        RemoveTabPanelFromAppContent(*t);
+        auto tv = TabView();
+        if (tv) {
+            uint32_t idx = 0;
+            if (tv.TabItems().IndexOf(item, idx)) {
+                tv.TabItems().RemoveAt(idx);
+            }
+        }
+        return m_tabs.Extract(item);
+    }
+
+    void MainWindow::AdoptTornOutTab(std::unique_ptr<Tab> tab, int32_t index)
+    {
+        if (!tab) return;
+
+        // A tear-out host adopts before its first Activated has run,
+        // so the HWND may not be captured yet. IWindowNative works
+        // from construction onward.
+        if (!m_hwnd) {
+            if (auto native = this->try_as<::IWindowNative>()) {
+                native->get_WindowHandle(&m_hwnd);
+            }
+        }
+
+        auto tv = TabView();
+        if (!tv) return;
+        auto items = tv.TabItems();
+        uint32_t size = items.Size();
+        uint32_t at = (index < 0 || static_cast<uint32_t>(index) > size)
+            ? size
+            : static_cast<uint32_t>(index);
+        items.InsertAt(at, tab->Item());
+
+        // Re-point every control at this window: IME coordinates and
+        // clipboard ownership key off the host HWND, and the focused
+        // callback must feed THIS window's active-surface cache. Raw
+        // `this` capture is safe by the same argument as InitGhostty's
+        // onLeafFocused — MainWindow outlives every control it hosts.
+        if (auto* panelImpl =
+                winrt::get_self<implementation::SplitPanel>(tab->Panel())) {
+            std::vector<Pane*> leaves;
+            CollectLeaves(panelImpl->Root(), leaves);
+            for (auto* leaf : leaves) {
+                if (auto* tc = Tab::LeafToTerminalControl(*leaf)) {
+                    tc->Rehost(m_hwnd, [this](ghostty_surface_t s) noexcept {
+                        NotifySurfaceFocused(s);
+                    });
+                }
+            }
+        }
+
+        // Same shape as CreateTab's post-Make sequence: parent the
+        // panel collapsed, register ownership, then select — the
+        // SelectionChanged handler reconciles panel visibility and
+        // focus for us.
+        tab->Panel().Visibility(winrt::Microsoft::UI::Xaml::Visibility::Collapsed);
+        AppContent().Children().Append(tab->Panel());
+        auto selected = tab->Item();
+        m_tabs.Add(std::move(tab));
+        tv.SelectedItem(selected);
+        UpdateActivePanelVisibility();
+        // SHOWNOACTIVATE, not SHOW: make the adopted tab visible
+        // without deciding focus here. Whether the window should be
+        // activated is the caller's call — the drop-outside handler
+        // activates its freshly spawned host, while a merge adopts
+        // into a window that is already visible and focused.
+        if (m_hwnd) ShowWindow(m_hwnd, SW_SHOWNOACTIVATE);
+    }
+
+    void MainWindow::CloseIfTornOutEmpty()
+    {
+        // Tearing the last tab out leaves an empty shell — close it,
+        // matching browser behaviour. Deferred through the dispatcher
+        // so window teardown never runs inside tear-out event
+        // dispatch, and re-checked on arrival in case a merge landed
+        // a tab here in the meantime.
+        if (!m_tabs.Empty()) return;
+        auto dq = DispatcherQueue();
+        auto weak = get_weak();
+        if (!dq) { RequestClose(); return; }
+        dq.TryEnqueue([weak]() {
+            if (auto self = weak.get()) {
+                if (self->m_tabs.Empty()) self->RequestClose();
+            }
+        });
+    }
+
     void MainWindow::CloseSurfaceByPaneId(PaneId id)
     {
         auto lookup = m_tabs.FindByPaneId(id);
@@ -1711,7 +1958,7 @@ namespace winrt::GhosttyWin32::implementation
             // outlive the underlying ghostty_surface_t. The next
             // TerminalControl::GotFocus on the retargeted sibling (or
             // a new tab) will refill the slot.
-            if (tc->Surface() == m_activeSurface) m_activeSurface = nullptr;
+            if (tc->Surface().Owns(m_activeSurface)) m_activeSurface = nullptr;
             tc->Detach();
         }
 

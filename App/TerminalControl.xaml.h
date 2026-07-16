@@ -1,6 +1,7 @@
 #pragma once
 
 #include "TerminalControl.g.h"
+#include "Ghostty/Surface.h"
 #include "Host/ImeBuffer.h"
 #include "Interop/Encoding.h"
 #include "Win32/Clipboard.h"
@@ -123,6 +124,20 @@ namespace winrt::GhosttyWin32::implementation
         // safe.
         void Detach();
 
+        // Re-point this control at a new host window after a tab
+        // tear-out / adopt. The surface and swap chain move as-is —
+        // the SwapChainPanel keeps its composition binding across
+        // reparenting on the shared UI thread — but two things are
+        // derived from the owning window and must follow it: the host
+        // HWND (IME caret coordinates via ClientToScreen, clipboard
+        // ownership) and the focused callback, which feeds the owning
+        // window's active-surface cache.
+        void Rehost(HWND hostHwnd,
+                    std::function<void(ghostty_surface_t)> onFocused) noexcept {
+            m_hostHwnd  = hostHwnd;
+            m_onFocused = std::move(onFocused);
+        }
+
         // Renderer-thread callback registered with ghostty as
         // cfg.swap_chain_ready_cb. Hops to the UI thread and binds the
         // swap chain handle to the panel via ISwapChainPanelNative2.
@@ -141,7 +156,14 @@ namespace winrt::GhosttyWin32::implementation
         static void OnSwapChainChanged(void* swap_chain, void* userdata) noexcept;
 
         // Implementation-only accessors used by Tab.
-        ghostty_surface_t Surface() const noexcept { return m_surface; }
+        //
+        // Surface() returns the wrapper itself so call sites can issue
+        // typed operations (Refresh, Key, MouseButton, …) without
+        // touching raw ghostty C API. Identity-comparison call sites
+        // (action callbacks, FindLeafBySurface) compare via
+        // `tc->Surface().Handle()` against ghostty's raw handle.
+        core::ghostty::Surface const& Surface() const noexcept { return m_surface; }
+        core::ghostty::Surface& Surface() noexcept { return m_surface; }
         HANDLE CompositionHandle() const noexcept { return m_compositionHandle; }
 
         // Apply a ghostty-requested mouse cursor shape. Must be called on
@@ -189,7 +211,7 @@ namespace winrt::GhosttyWin32::implementation
         void SetupImeContext();
 
         ghostty_app_t m_app{ nullptr };
-        ghostty_surface_t m_surface{ nullptr };
+        core::ghostty::Surface m_surface{};
         HANDLE m_compositionHandle{ nullptr };
         // Host window HWND — used for Win32 APIs that need a window
         // owner (clipboard read/write, IME bounds in screen coords).

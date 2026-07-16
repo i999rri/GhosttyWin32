@@ -10,7 +10,7 @@
 #include "Host/IWindow.h"
 #include "Interop/Encoding.h"
 #include "Win32/Clipboard.h"
-#include "Tabs/Panes/PaneIdAllocator.h"
+#include "Tabs/Panes/PaneId.h"
 #include "Tabs/Tab.h"
 #include "Tabs/TabFactory.h"
 #include "Tabs/Tabs.h"
@@ -29,13 +29,6 @@ namespace winrt::GhosttyWin32::implementation
     {
         MainWindow();
         ~MainWindow();
-
-        // Best-effort cleanup invoked from SetUnhandledExceptionFilter.
-        // Walks live tabs and closes their composition surface handles so
-        // DComp drops its driver-side references before the OS kills the
-        // process — reduces the chance the next launch inherits corrupted
-        // NVIDIA state.
-        static long __stdcall OnUnhandledException(struct _EXCEPTION_POINTERS* info) noexcept;
 
         // Caption button click handlers, referenced from MainWindow.xaml.
         // Routed through Win32 messages (WM_SYSCOMMAND / WM_CLOSE / ShowWindow)
@@ -63,6 +56,18 @@ namespace winrt::GhosttyWin32::implementation
         // Stays valid across alt-tab — we only clear it when the
         // surface itself is torn down.
         ghostty_surface_t GetActiveSurface() const noexcept { return m_activeSurface; }
+
+        // True when any leaf in this window's tab tree owns `surface`.
+        // App::FindWindowForSurface iterates its window list and asks
+        // each in turn — the linear cost is fine at the scale a
+        // multi-window session will reach in practice.
+        bool OwnsSurface(ghostty_surface_t surface) const noexcept;
+
+        // Same shape as OwnsSurface but keyed by PaneId. Used by
+        // MainWindows::FindWindowByPaneId to route close_surface_cb —
+        // the userdata payload is a globally unique PaneId (App owns
+        // the allocator), so exactly one window returns true.
+        bool OwnsPane(PaneId id) const noexcept;
 
         // ----- IMainWindowView -----
         // Narrow surface the callback dispatcher / GhosttyActions
@@ -136,6 +141,22 @@ namespace winrt::GhosttyWin32::implementation
         void ReportProgress(ghostty_action_progress_report_s pr) override;
 
     private:
+        // The MainWindowRuntime implementation of the ghostty runtime
+        // callbacks needs to reach into m_ghosttyDispatcher / m_hwnd /
+        // ActiveControl() / CloseSurfaceByPaneId() — the wiring back
+        // into this window that ghostty asked the host to provide.
+        // Friending the runtime keeps those members private to
+        // everyone else while documenting the tight coupling.
+        friend class MainWindowRuntime;
+        // The process-wide SEH handler on App walks every window's
+        // tabs to release composition handles before a fatal crash
+        // reaches WER. Same pattern as MainWindowRuntime: a specific
+        // outside actor that has an intrinsic reason to reach into
+        // this window's guts, granted access by name rather than by
+        // widening the public surface.
+        friend struct App;
+
+
         void InitGhostty();
         Tab* ActiveTab();
         // Convenience wrapper around ActiveTab()->ActiveControl(). Most
@@ -171,8 +192,101 @@ namespace winrt::GhosttyWin32::implementation
         // list. Dispatched from close_surface_cb. UI thread only.
         void CloseSurfaceByPaneId(PaneId id);
 
-        std::unique_ptr<ghostty::App> m_ghostty;
+        // The TerminalControl hosting the pane carrying `id`, or null
+        // when no tab in this window owns it (already closed, or it
+        // lives in a sibling window). Used by MainWindowRuntime to
+        // complete surface-scoped callbacks (clipboard) on exactly
+        // the surface that issued them.
+        TerminalControl* ControlByPaneId(PaneId id) noexcept;
+
+        // ----- tab drag-out / merge (#55 follow-up) -----
+        // Mark this window as a drop host BEFORE its first Activated:
+        // it will receive a live, already-presenting tab instead of
+        // creating one, so the one-shot init skips the initial
+        // CreateTab and the pre-first-frame SW_HIDE (the adopted tab
+        // has frames to show from the first paint). Called by
+        // App::CreateTearOutWindow through the existing friendship.
+        void SuppressInitialTab() noexcept { m_suppressInitialTab = true; }
+
+        // Take `item`'s Tab out of this window alive: strip entry
+        // removed, panel unparented from AppContent, focused-surface
+        // cache cleared if it pointed into the tab — but nothing
+        // detached or destroyed, so a sibling window can adopt the
+        // same Tab. Returns null when this window doesn't own `item`.
+        std::unique_ptr<Tab> ReleaseTornOutTab(
+            winrt::Microsoft::UI::Xaml::Controls::TabViewItem const& item);
+
+        // Counterpart of ReleaseTornOutTab: insert the tab into this
+        // window's strip at `index` (clamped; negative appends),
+        // re-point its controls at this window (host HWND + focused
+        // callback), parent the panel, select it, and make sure the
+        // window is visible. Safe to call before this window's first
+        // Activated — the HWND is captured on demand.
+        void AdoptTornOutTab(std::unique_ptr<Tab> tab, int32_t index);
+
+        // Close this window once a tear-out leaves it without tabs,
+        // matching browser behaviour. Deferred through the dispatcher
+        // so teardown never runs inside tear-out event dispatch.
+        void CloseIfTornOutEmpty();
+
+        // True when this window's tab strip owns `item`. Used by the
+        // merge path to locate the source window of a torn-out tab.
+        bool OwnsTabItem(
+            winrt::Microsoft::UI::Xaml::Controls::TabViewItem const& item) const noexcept {
+            return m_tabs.FindByItem(item) != nullptr;
+        }
+
+        bool m_suppressInitialTab{ false };
+
+        // Push renderer-side visibility to every surface in this
+        // window (all tabs, all panes). Driven by
+        // Window.VisibilityChanged: while hidden/minimized each
+        // surface's renderer thread skips draws entirely instead of
+        // ticking its blink / safety-net presents. UI thread only.
+        void BroadcastOcclusion(bool visible);
+
+        // True when this window's HWND is the OS foreground window.
+        // WinUI3's Window.Activated oscillates continuously when
+        // multiple windows share one UI thread, so activation-driven
+        // work must not trust the event state verbatim — this per-call
+        // Win32 query stays stable through the oscillation and always
+        // reflects reality without any lifecycle to maintain.
+        bool IsForeground() const noexcept {
+            return m_hwnd != nullptr && m_hwnd == ::GetForegroundWindow();
+        }
+
+        // Last renderer-side focus value forwarded for this window.
+        // Forwards are gated on IsForeground() and deduped here —
+        // every ghostty .focus message triggers a renderer frame, so
+        // redundant sends are not free. Starts true to match ghostty's
+        // surface default.
+        bool m_rendererFocus{ true };
+
+        // Borrowed pointer into the App-scope core::ghostty::App
+        // (owned by `winrt::App::m_ghostty`). Set in MainWindow's
+        // constructor — App's OnLaunched creates ghostty BEFORE
+        // make<MainWindow>() and aborts on failure, so by the time
+        // this MainWindow exists the borrow is guaranteed non-null.
+        // App's destructor frees the wrapper AFTER its `window`
+        // member has gone (see App.xaml.h member ordering), so the
+        // pointer stays valid for this MainWindow's entire lifetime
+        // and every method can read it unconditionally.
+        //
+        // C runtime callbacks (wakeup_cb, action_cb, …) can't reach
+        // this member — they're plain C function pointers without
+        // capture — and have to go through `App::g_app->Ghostty()`
+        // instead.
+        core::ghostty::App* m_ghosttyApp{ nullptr };
+
         HWND m_hwnd = nullptr;
+        // Activated fires whenever the window gains focus, but the
+        // one-shot setup below (HWND grab, tab-factory construction,
+        // first-tab spawn, etc.) is only meaningful on the first
+        // activation. Per-instance rather than a function-static
+        // bool because that shape leaked across MainWindow instances
+        // and left every window after the first stuck in the
+        // "already set up" branch with no HWND, no tabs, no terminal.
+        bool m_activatedOnce = false;
         // SIZE_LIMIT / TOGGLE_FULLSCREEN state. Default constructed
         // (no limit set, not in fullscreen). Subclasses installed
         // by SizeLimit are auto-removed by Win32 when m_hwnd is
@@ -180,7 +294,6 @@ namespace winrt::GhosttyWin32::implementation
         ghostty::actions::tags::SizeLimit          m_sizeLimit;
         ghostty::actions::tags::Fullscreen         m_fullscreen;
         ghostty::actions::tags::WindowDecorations  m_windowDecorations;
-        PaneIdAllocator m_paneIds;
         Tabs m_tabs;
         // Focus-tracked active surface. Set by NotifySurfaceFocused
         // when a TerminalControl gains focus, cleared when the
@@ -191,9 +304,10 @@ namespace winrt::GhosttyWin32::implementation
         std::unique_ptr<TabFactory> m_tabFactory;
         // ghostty runtime callback dispatcher (today: action_cb;
         // future: clipboard / surface). Built in InitGhostty after
-        // the ghostty::App handle is available; destroyed before
-        // m_ghostty so handlers can't observe a half-torn-down app
-        // on shutdown.
+        // the ghostty::App handle is available; the App-scope
+        // ghostty wrapper outlives every MainWindow (see App.xaml.h
+        // member ordering), so the dispatcher can't observe a
+        // half-torn-down ghostty handle from any of its handlers.
         std::unique_ptr<ghostty::CallbackDispatcher> m_ghosttyDispatcher;
     };
 }

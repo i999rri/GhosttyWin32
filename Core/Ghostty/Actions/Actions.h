@@ -3,6 +3,8 @@
 #include "Host/IWindow.h"
 #include "ghostty.h"
 #include <cstdint>
+#include <functional>
+#include <utility>
 
 namespace core::ghostty::actions {
 
@@ -24,7 +26,27 @@ namespace core::ghostty::actions {
 // the ghostty action_cb contract.
 class Actions {
 public:
-    explicit Actions(host::IWindow& view) noexcept : m_view(view) {}
+    // App-scope operations injected at construction time. These are
+    // the actions that don't belong on IWindow — the per-window view
+    // doesn't own "add another window", "close every window", or
+    // "quit the app" — so App supplies them as callables. Same shape
+    // as MainWindowRuntime's Host bundle for other cross-scope hooks.
+    //
+    // Every slot defaults to empty so unit tests that never exercise
+    // these actions keep the bare one-arg construction; each handler
+    // degrades sensibly when its slot is missing (OnNewWindow bails,
+    // the close-scope handlers fall back to closing the one window
+    // they can reach — exactly the single-window behaviour these
+    // actions had before the split).
+    struct AppHooks {
+        std::function<void()> newWindow;
+        std::function<void()> closeAllWindows;
+        std::function<void()> quit;
+    };
+
+    Actions(host::IWindow& view, AppHooks hooks = {}) noexcept
+        : m_view(view)
+        , m_hooks(std::move(hooks)) {}
 
     // ----- terminal events -----
     bool OnRingBell();
@@ -37,9 +59,18 @@ public:
     bool OnOpenUrl(ghostty_action_open_url_s url);
 
     // ----- window lifecycle -----
-    // Used for CLOSE_WINDOW / CLOSE_ALL_WINDOWS / QUIT — the
-    // single-window build collapses all three to the same effect.
+    // CLOSE_WINDOW: close the window that owns the action's target.
+    // This Actions instance is already per-window (the runtime
+    // routes actions by target surface), so closing m_view is the
+    // right scope — sibling windows survive.
     bool OnCloseWindow();
+    // CLOSE_ALL_WINDOWS / QUIT: app-scope teardown via the injected
+    // hooks. Distinct handlers because their scope differs from
+    // CLOSE_WINDOW in a multi-window session, even though on Windows
+    // (process lifetime == live windows) both currently resolve to
+    // "close every window".
+    bool OnCloseAllWindows();
+    bool OnQuit();
     bool OnToggleVisibility();
     bool OnToggleMaximize();
     bool OnPresentTerminal();
@@ -51,9 +82,12 @@ public:
     bool OnResetWindowSize();
 
     // ----- tab lifecycle / navigation / title -----
-    // NEW_TAB and NEW_WINDOW both land here in the single-window
-    // build; multi-window (#55) will route NEW_WINDOW elsewhere.
     bool OnNewTab();
+    // NEW_WINDOW: spawn a fresh top-level MainWindow. Bounces
+    // through the injected newWindow hook (which App fills with
+    // `App::g_app->CreateNewWindow()`); Actions doesn't know or
+    // care what a "window" is at that layer.
+    bool OnNewWindow();
     bool OnCloseTab(ghostty_surface_t surface);
     bool OnGotoTab(int requested);
     bool OnMoveTab(ghostty_action_move_tab_s move);
@@ -92,6 +126,7 @@ public:
 
 private:
     host::IWindow& m_view;
+    AppHooks       m_hooks;
 
     // Initial window size from GHOSTTY_ACTION_INITIAL_SIZE
     // (physical pixels). Zero means "not yet received" —

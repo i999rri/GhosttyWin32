@@ -30,7 +30,13 @@ namespace core::ghostty {
 // call site — the option-value is the signature, not the body.
 class CallbackDispatcher {
 public:
-    static std::unique_ptr<CallbackDispatcher> Create(host::IWindow& view);
+    // `hooks` defaults to empty so existing single-arg call sites
+    // (the CallbackDispatcher unit tests never fire the app-scope
+    // actions) stay compilable without the dispatcher spilling
+    // app-lifecycle knowledge into its factory contract.
+    static std::unique_ptr<CallbackDispatcher> Create(
+        host::IWindow& view,
+        actions::Actions::AppHooks hooks = {});
 
     // Route a ghostty action_cb invocation. Returns true when the
     // action was handled (matches the ghostty action_cb contract:
@@ -39,8 +45,9 @@ public:
     bool DispatchAction(ghostty_target_s target, ghostty_action_s action);
 
 private:
-    explicit CallbackDispatcher(host::IWindow& view) noexcept
-        : m_actions(view) {}
+    CallbackDispatcher(host::IWindow& view,
+                       actions::Actions::AppHooks hooks) noexcept
+        : m_actions(view, std::move(hooks)) {}
 
     actions::Actions m_actions;
 };

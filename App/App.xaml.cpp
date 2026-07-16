@@ -1,6 +1,9 @@
 #include "pch.h"
 #include "App.xaml.h"
 #include "MainWindow.xaml.h"
+#include "Ghostty/MainWindowRuntime.h"
+#include "Ghostty/RuntimeConfigFactory.h"
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -12,7 +15,12 @@ using namespace winrt;
 using namespace Microsoft::UI::Xaml;
 
 namespace {
-    std::filesystem::path crashFlagPathApp() {
+    // Flag file used to detect that the previous process didn't exit
+    // cleanly. Created in OnLaunched, removed in ~App on clean
+    // shutdown — if it's still there at next launch, the previous
+    // run crashed and OnLaunched waits briefly so the NVIDIA driver
+    // has time to recover its internal state.
+    std::filesystem::path crashFlagPath() {
         wchar_t buf[MAX_PATH];
         DWORD len = GetTempPathW(MAX_PATH, buf);
         if (len == 0) return L"GhosttyWin32_running.flag";
@@ -50,20 +58,75 @@ namespace winrt::GhosttyWin32::implementation
 #endif
     }
 
+    // Out-of-line so MainWindowRuntime's full definition (included
+    // above) is in scope where the unique_ptr destructor is
+    // instantiated. The body itself is empty — destruction runs
+    // member-by-member per the App.xaml.h declaration order.
+    App::~App()
+    {
+        // Clean shutdown reached — remove the crash flag so the next
+        // launch doesn't sit through the 2-second driver recovery pause.
+        // Best-effort: if the filesystem call fails we lose nothing
+        // beyond the extra pause on the next start.
+        std::error_code ec;
+        std::filesystem::remove(crashFlagPath(), ec);
+    }
+
+    long __stdcall App::OnUnhandledException(struct _EXCEPTION_POINTERS* /*info*/) noexcept
+    {
+        // Fatal crash inside the process. Best-effort cleanup: hide
+        // every registered window and release each active
+        // TerminalControl's composition handle before letting
+        // WER / debugger take over. We deliberately don't touch XAML
+        // objects (releasing the surfaces via DComp is enough) or
+        // ghostty structures that might be wrecked. If any of them
+        // does crash anyway, the unhandled-exception filter "fails"
+        // recursively and WER takes over with its standard dialog —
+        // same end result, just less polished. That's an acceptable
+        // trade for keeping this code readable.
+        OutputDebugStringA("GhosttyWin32: unhandled exception, attempting cleanup\n");
+        if (g_app) {
+            // Walk every registered window; the SEH handler is
+            // process-wide, and once multi-window lands a fatal
+            // crash still wants every window's composition handles
+            // released before we hand control back.
+            for (auto* w : g_app->Windows()) {
+                if (!w) continue;
+                if (w->m_hwnd) ShowWindow(w->m_hwnd, SW_HIDE);
+                for (auto& tab : w->m_tabs) {
+                    if (!tab) continue;
+                    if (auto* tc = tab->ActiveControl()) {
+                        HANDLE h = tc->CompositionHandle();
+                        if (h) CloseHandle(h);
+                    }
+                }
+            }
+        }
+        MessageBoxW(nullptr,
+            L"GhosttyWin32 hit a fatal error and must exit.\n\n"
+            L"Restarting the app usually recovers.",
+            L"GhosttyWin32",
+            MB_OK | MB_ICONERROR | MB_TASKMODAL);
+        // Don't swallow the exception — let WER / debugger see it as usual.
+        return EXCEPTION_CONTINUE_SEARCH;
+    }
+
     void App::OnInstanceActivated(
         winrt::Windows::Foundation::IInspectable const&,
         winrt::Microsoft::Windows::AppLifecycle::AppActivationArguments const& args)
     {
         // Activated fires on a worker — bounce to the UI thread before
-        // touching the window. If the redirect happened before OnLaunched
-        // wired up `window`, just drop it; OnLaunched will run normally
-        // and present the terminal as a first-launch effect.
-        if (!window) return;
-        window.DispatcherQueue().TryEnqueue([weak = get_weak(), args]() {
-            if (auto self = weak.get()) {
-                self->HandleActivation(args);
-            }
-        });
+        // touching any Xaml state. If the redirect happened before
+        // OnLaunched added the first window, just drop it; OnLaunched
+        // will run normally and present the terminal as a first-launch
+        // effect.
+        if (m_topLevelWindows.empty()) return;
+        m_topLevelWindows.front().DispatcherQueue().TryEnqueue(
+            [weak = get_weak(), args]() {
+                if (auto self = weak.get()) {
+                    self->HandleActivation(args);
+                }
+            });
     }
 
     void App::HandleActivation(
@@ -77,10 +140,8 @@ namespace winrt::GhosttyWin32::implementation
         // forward; the surface-targeted route (clicks on toasts we
         // raised ourselves) is handled by OnNotificationInvoked, where
         // the args are in-process and safe to read.
-        if (auto mwProj = window.try_as<winrt::GhosttyWin32::MainWindow>()) {
-            if (auto* mw = winrt::get_self<implementation::MainWindow>(mwProj)) {
-                mw->PresentNotification(implementation::PaneId{ 0 });
-            }
+        if (auto* mw = m_windows.Any()) {
+            mw->PresentNotification(implementation::PaneId{ 0 });
         }
     }
 
@@ -88,19 +149,26 @@ namespace winrt::GhosttyWin32::implementation
     {
         // Called from the wWinMain-side NotificationInvoked subscriber
         // on a worker thread. Bounce to the UI thread before touching
-        // the window. If the click arrives before OnLaunched has
-        // wired `window`, drop it — the user just gets the regular
-        // foreground from AppInstance::Activated.
-        if (!window) return;
-        window.DispatcherQueue().TryEnqueue(
+        // any Xaml state. If the click arrives before OnLaunched has
+        // added the first window, drop it — the user just gets the
+        // regular foreground from AppInstance::Activated.
+        if (m_topLevelWindows.empty()) return;
+        m_topLevelWindows.front().DispatcherQueue().TryEnqueue(
             [weak = get_weak(), paneIdValue]()
             {
                 auto self = weak.get();
                 if (!self) return;
-                if (auto mwProj = self->window.try_as<winrt::GhosttyWin32::MainWindow>()) {
-                    if (auto* mw = winrt::get_self<implementation::MainWindow>(mwProj)) {
-                        mw->PresentNotification(implementation::PaneId{ paneIdValue });
-                    }
+                // Route the click to the specific window that owns
+                // the targeted pane; fall back to any live window if
+                // the id is the "no target" sentinel or the owning
+                // window has since closed.
+                PaneId target{ paneIdValue };
+                MainWindow* mw = target
+                    ? self->m_windows.FindForPaneId(target)
+                    : nullptr;
+                if (!mw) mw = self->m_windows.Any();
+                if (mw) {
+                    mw->PresentNotification(target);
                 }
             });
     }
@@ -169,13 +237,21 @@ namespace winrt::GhosttyWin32::implementation
         // Activated handler — by then the window is already mapped.
         {
             std::error_code ec;
-            auto flag = crashFlagPathApp();
+            auto flag = crashFlagPath();
             if (std::filesystem::exists(flag, ec)) {
                 OutputDebugStringA("GhosttyWin32: previous run crashed; pausing 2s for driver recovery\n");
                 Sleep(2000);
             }
             std::ofstream(flag).close();
         }
+
+        // Register the process-wide SEH handler now that the crash
+        // flag is in place. Historically this lived in MainWindow's
+        // Activated handler; moving it here makes it independent of
+        // window count — a fatal exception with two windows open
+        // still walks every window's composition handles before we
+        // let WER take over.
+        SetUnhandledExceptionFilter(&App::OnUnhandledException);
 
         // AppNotificationManager::Default().Register() and the
         // NotificationInvoked subscription both already happened in
@@ -184,7 +260,130 @@ namespace winrt::GhosttyWin32::implementation
         // here after Register(), so the routing path goes via the
         // wWinMain-side subscriber calling App::RouteNotificationClick.
 
-        window = make<MainWindow>();
-        window.Activate();
+        // Bring up ghostty BEFORE constructing the window. The
+        // runtime is created first, then handed to the factory as
+        // the rtConfig userdata — every C callback ghostty fires
+        // unwraps that pointer back to our IGhosttyRuntime impl. The
+        // first callback won't fire until a surface is created, by
+        // which point Activate has run and the Activated handler has
+        // registered the new MainWindow with the aggregate, so
+        // MainWindowRuntime's lookups return non-null.
+        //
+        // Member ordering in App.xaml.h enforces destruction order
+        // (window → m_ghostty → m_runtime), keeping the userdata
+        // pointer alive across ghostty_app_free's surface-thread
+        // join.
+        // The runtime consults these callables through its Host
+        // bundle. Keeping App-scope knowledge here — which state has
+        // to be alive, how to reach the ghostty wrapper, how to look
+        // up windows — means MainWindowRuntime doesn't hard-code any
+        // of it. designated-initialiser field names double as
+        // documentation for what each closure does.
+        m_runtime = std::make_unique<MainWindowRuntime>(MainWindowRuntime::Host{
+            .isReady = []() {
+                return App::g_app != nullptr
+                    && !App::g_app->Windows().Empty()
+                    && App::g_app->Ghostty() != nullptr;
+            },
+            .wakeupTick = []() { App::g_app->Ghostty()->Tick(); },
+            .findWindowBySurface = [](ghostty_surface_t s) -> MainWindow* {
+                return App::g_app->Windows().FindForSurface(s);
+            },
+            .anyWindow = []() -> MainWindow* {
+                return App::g_app->Windows().Any();
+            },
+            .findWindowByPaneId = [](PaneId id) -> MainWindow* {
+                return App::g_app->Windows().FindForPaneId(id);
+            },
+        });
+        m_ghostty = core::ghostty::App::Create(
+            core::ghostty::RuntimeConfigFactory::Build(m_runtime.get()));
+        if (!m_ghostty) {
+            OutputDebugStringW(L"[App] ghostty init failed; not creating window\n");
+            return;
+        }
+
+        CreateNewWindow();
+    }
+
+    void App::CreateNewWindow()
+    {
+        auto w = make<MainWindow>();
+        TrackWindow(w);
+        w.Activate();
+    }
+
+    MainWindow* App::CreateTearOutWindow()
+    {
+        auto w = make<MainWindow>();
+        auto* impl = winrt::get_self<MainWindow>(w);
+        // Must be flagged before the first Activated runs its
+        // one-shot init: this window adopts the dragged tab instead
+        // of creating one.
+        impl->SuppressInitialTab();
+        TrackWindow(w);
+        // Deliberately no Activate(): the drop handler positions the
+        // window at the drop point after adopting the tab and decides
+        // activation itself.
+        return impl;
+    }
+
+    MainWindow* App::FindWindowByTabItem(
+        Microsoft::UI::Xaml::Controls::TabViewItem const& item) noexcept
+    {
+        for (auto const& w : m_topLevelWindows) {
+            if (auto typed = w.try_as<winrt::GhosttyWin32::MainWindow>()) {
+                auto* impl = winrt::get_self<MainWindow>(typed);
+                if (impl && impl->OwnsTabItem(item)) return impl;
+            }
+        }
+        return nullptr;
+    }
+
+    void App::TrackWindow(Microsoft::UI::Xaml::Window const& w)
+    {
+        m_topLevelWindows.push_back(w);
+        // Auto-erase the vector entry when the user closes the
+        // window. Capture only `this`; the sender comes in through
+        // the event args, so no strong Window reference is trapped
+        // inside the lambda — closing really is the last thing that
+        // keeps the Window alive.
+        w.Closed([this](winrt::Windows::Foundation::IInspectable const& sender,
+                        winrt::Microsoft::UI::Xaml::WindowEventArgs const&) {
+            auto closing = sender.try_as<winrt::Microsoft::UI::Xaml::Window>();
+            if (!closing) return;
+            auto it = std::find(m_topLevelWindows.begin(),
+                                m_topLevelWindows.end(),
+                                closing);
+            if (it != m_topLevelWindows.end()) {
+                m_topLevelWindows.erase(it);
+            }
+        });
+    }
+
+    void App::CloseAllWindows()
+    {
+        // Work on a copy: each Close() re-enters through the Closed
+        // subscription installed by CreateNewWindow and erases the
+        // entry from m_topLevelWindows mid-iteration.
+        auto windows = m_topLevelWindows;
+        for (auto& w : windows) {
+            // Close() throws when a window has already begun tearing
+            // down; swallow so one dying window doesn't stop the
+            // sweep (same rationale as MainWindow::RequestClose).
+            try { w.Close(); } catch (winrt::hresult_error const&) {}
+        }
+    }
+
+    void App::Quit()
+    {
+        // Process lifetime is tied to live windows on this port, so
+        // quitting IS closing every window: once the last one goes
+        // the message loop ends and App tears down in member order
+        // (windows before m_ghostty). Deliberately NOT
+        // Application::Exit(), which would skip that orderly
+        // teardown — and with it ghostty_app_free and the renderer
+        // thread joins.
+        CloseAllWindows();
     }
 }

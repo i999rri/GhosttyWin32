@@ -86,6 +86,9 @@
     <ClInclude Include="Ghostty\App.h" />
     <ClInclude Include="Ghostty\CallbackDispatcher.h" />
     <ClInclude Include="Ghostty\Config.h" />
+    <ClInclude Include="Ghostty\IGhosttyRuntime.h" />
+    <ClInclude Include="Ghostty\RuntimeConfigFactory.h" />
+    <ClInclude Include="Ghostty\Surface.h" />
     <ClInclude Include="Host\IWindow.h" />
     <ClInclude Include="Host\ImeBuffer.h" />
     <ClInclude Include="Host\KeyModifiers.h" />
@@ -99,6 +102,7 @@
     <ClCompile Include="Ghostty\Actions\Tags\Fullscreen.cpp" />
     <ClCompile Include="Ghostty\Actions\Tags\SizeLimit.cpp" />
     <ClCompile Include="Ghostty\CallbackDispatcher.cpp" />
+    <ClCompile Include="Ghostty\RuntimeConfigFactory.cpp" />
     <ClCompile Include="Win32\SEHGuard.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

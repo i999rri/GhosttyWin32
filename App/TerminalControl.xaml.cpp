@@ -103,8 +103,14 @@ namespace winrt::GhosttyWin32::implementation
             // reaching into MainWindow globals from inside the
             // control.
             if (self->m_onFocused && self->m_surface) {
-                self->m_onFocused(self->m_surface);
+                self->m_onFocused(self->m_surface.Handle());
             }
+            // Tell the renderer thread this surface is the focused
+            // one. ghostty defaults every surface to focused, so
+            // without this the losing pane's renderer keeps the fast
+            // poll cadence and keeps blink-presenting alongside the
+            // gaining one.
+            self->m_surface.SetFocus(true);
         });
 
         LostFocus([weakSelf](auto&&, auto&&) {
@@ -112,6 +118,7 @@ namespace winrt::GhosttyWin32::implementation
             if (!self) return;
             if (self->m_editContext) self->m_editContext.NotifyFocusLeave();
             // No dim change here — see the GotFocus comment above.
+            self->m_surface.SetFocus(false);
         });
 
         PointerMoved([weakSelf](auto&&, muxi::PointerRoutedEventArgs const& args) {
@@ -119,7 +126,7 @@ namespace winrt::GhosttyWin32::implementation
             if (!self || !self->m_surface) return;
             muix::PointerPoint point = args.GetCurrentPoint(self->Panel());
             auto pos = point.Position();
-            ghostty_surface_mouse_pos(self->m_surface, pos.X, pos.Y, host::currentMods());
+            self->m_surface.MousePos(pos.X, pos.Y, host::currentMods());
         });
 
         PointerPressed([weakSelf](auto&&, muxi::PointerRoutedEventArgs const& args) {
@@ -144,29 +151,29 @@ namespace winrt::GhosttyWin32::implementation
             } else if (props.IsRightButtonPressed()) {
                 // Right-click: copy selection if there is one,
                 // otherwise treat as a normal right button press.
-                if (ghostty_surface_has_selection(self->m_surface)) {
+                if (self->m_surface.HasSelection()) {
                     ghostty_text_s text = {};
-                    if (ghostty_surface_read_selection(self->m_surface, &text) && text.text && text.text_len > 0) {
+                    if (self->m_surface.ReadSelection(&text) && text.text && text.text_len > 0) {
                         win32::Clipboard::write(self->m_hostHwnd, interop::Encoding::toUtf16(text.text, static_cast<int>(text.text_len)));
-                        ghostty_surface_free_text(self->m_surface, &text);
+                        self->m_surface.FreeText(&text);
                     }
                     // Click-then-release without modifiers clears the
                     // selection in ghostty, matching the macOS gesture.
-                    ghostty_surface_mouse_button(self->m_surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, (ghostty_input_mods_e)0);
-                    ghostty_surface_mouse_button(self->m_surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, (ghostty_input_mods_e)0);
+                    self->m_surface.MouseButton(GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, (ghostty_input_mods_e)0);
+                    self->m_surface.MouseButton(GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, (ghostty_input_mods_e)0);
                     return;
                 }
                 btn = GHOSTTY_MOUSE_RIGHT;
             } else {
                 return;
             }
-            ghostty_surface_mouse_button(self->m_surface, GHOSTTY_MOUSE_PRESS, btn, host::currentMods());
+            self->m_surface.MouseButton(GHOSTTY_MOUSE_PRESS, btn, host::currentMods());
         });
 
         PointerReleased([weakSelf](auto&&, muxi::PointerRoutedEventArgs const& args) {
             auto self = weakSelf.get();
             if (!self || !self->m_surface) return;
-            ghostty_surface_mouse_button(self->m_surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, host::currentMods());
+            self->m_surface.MouseButton(GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, host::currentMods());
             args.Handled(true);
         });
 
@@ -178,7 +185,7 @@ namespace winrt::GhosttyWin32::implementation
             int delta = props.MouseWheelDelta();
             double scrollY = (double)delta / 120.0;
             ghostty_input_scroll_mods_t smods = {};
-            ghostty_surface_mouse_scroll(self->m_surface, 0, scrollY, smods);
+            self->m_surface.MouseScroll(0, scrollY, smods);
             args.Handled(true);
         });
 
@@ -203,15 +210,15 @@ namespace winrt::GhosttyWin32::implementation
             // selection falls through to ghostty so the SIGINT path
             // runs.
             if (key.isCopyShortcut()
-                && ghostty_surface_has_selection(self->m_surface))
+                && self->m_surface.HasSelection())
             {
                 ghostty_text_s text = {};
-                if (ghostty_surface_read_selection(self->m_surface, &text) && text.text && text.text_len > 0) {
+                if (self->m_surface.ReadSelection(&text) && text.text && text.text_len > 0) {
                     win32::Clipboard::write(self->m_hostHwnd, interop::Encoding::toUtf16(text.text, static_cast<int>(text.text_len)));
-                    ghostty_surface_free_text(self->m_surface, &text);
+                    self->m_surface.FreeText(&text);
                 }
-                ghostty_surface_mouse_button(self->m_surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, (ghostty_input_mods_e)0);
-                ghostty_surface_mouse_button(self->m_surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, (ghostty_input_mods_e)0);
+                self->m_surface.MouseButton(GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, (ghostty_input_mods_e)0);
+                self->m_surface.MouseButton(GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, (ghostty_input_mods_e)0);
                 args.Handled(true);
                 return;
             }
@@ -222,10 +229,10 @@ namespace winrt::GhosttyWin32::implementation
             if (key.isPasteShortcut()) {
                 auto utf8 = interop::Encoding::toUtf8(win32::Clipboard::read(self->m_hostHwnd));
                 if (!utf8.empty()) {
-                    ghostty_surface_text(self->m_surface, utf8.c_str(), utf8.size());
+                    self->m_surface.Text(utf8.c_str(), utf8.size());
                 }
                 if (self->m_app) ghostty_app_tick(self->m_app);
-                ghostty_surface_refresh(self->m_surface);
+                self->m_surface.Refresh();
                 args.Handled(true);
                 return;
             }
@@ -236,10 +243,10 @@ namespace winrt::GhosttyWin32::implementation
             char textBuf[16] = {};
             auto raw = key.toRawKeyPress(textBuf, sizeof(textBuf));
             auto keyEvent = core::input::Translate(raw);
-            ghostty_surface_key(self->m_surface, keyEvent);
+            self->m_surface.Key(keyEvent);
 
             if (self->m_app) ghostty_app_tick(self->m_app);
-            ghostty_surface_refresh(self->m_surface);
+            self->m_surface.Refresh();
             args.Handled(true);
         });
 
@@ -249,7 +256,7 @@ namespace winrt::GhosttyWin32::implementation
             input::TerminalKeyUp key(args);
             auto raw = key.toRawKeyRelease();
             auto keyEvent = core::input::Translate(raw);
-            ghostty_surface_key(self->m_surface, keyEvent);
+            self->m_surface.Key(keyEvent);
         });
 
         // Terminals default to a text-input cursor; ghostty issues a
@@ -350,7 +357,7 @@ namespace winrt::GhosttyWin32::implementation
                                  std::shared_ptr<SwapChainChangedContext> swapChainChangedContext)
     {
         m_app = app;
-        m_surface = surface;
+        m_surface = core::ghostty::Surface(surface);
         m_compositionHandle = compositionHandle;
         m_hostHwnd = hostHwnd;
         m_attachRequest = std::move(attachRequest);
@@ -382,7 +389,7 @@ namespace winrt::GhosttyWin32::implementation
                 auto panel = sender.as<Microsoft::UI::Xaml::Controls::SwapChainPanel>();
                 auto px = display::ToPhysicalPixels(panel, sz.Width, sz.Height);
                 if (px.width > 0 && px.height > 0) {
-                    ghostty_surface_set_size(self->m_surface, px.width, px.height);
+                    self->m_surface.SetSize(px.width, px.height);
                 }
             });
 
@@ -412,7 +419,7 @@ namespace winrt::GhosttyWin32::implementation
                     self->m_swapChainChangedContext->compositionScale.store(
                         sx, std::memory_order_release);
                 }
-                ghostty_surface_set_content_scale(self->m_surface, sx, sy);
+                self->m_surface.SetContentScale(sx, sy);
                 // When the composition scale changes, the panel's DIP
                 // size hasn't necessarily changed (so XAML may not fire
                 // SizeChanged) but the physical-pixel footprint has.
@@ -422,7 +429,7 @@ namespace winrt::GhosttyWin32::implementation
                 // and read as oversized.
                 auto px = display::MeasuredPhysical(panel);
                 if (px.width > 0 && px.height > 0) {
-                    ghostty_surface_set_size(self->m_surface, px.width, px.height);
+                    self->m_surface.SetSize(px.width, px.height);
                 }
             });
     }
@@ -477,10 +484,12 @@ namespace winrt::GhosttyWin32::implementation
             // point with the kernel handle already invalid, which it
             // tolerates without faulting.
         }
-        if (m_surface) {
-            ghostty_surface_free(m_surface);
-            m_surface = nullptr;
-        }
+        // Wrapper dtor would free anyway, but the renderer-thread join
+        // happens inside ghostty_surface_free and must run BEFORE
+        // m_swapChainChangedContext goes out of scope below — so we
+        // drive the free explicitly here at the right point in the
+        // Detach sequence rather than waiting for the dtor.
+        m_surface.Reset();
         if (m_compositionHandle) {
             CloseHandle(m_compositionHandle);
             m_compositionHandle = nullptr;
@@ -533,15 +542,15 @@ namespace winrt::GhosttyWin32::implementation
                                         newText.c_str(), newText.size());
             if (self->m_ime.composing()) {
                 if (self->m_ime.text().empty()) {
-                    ghostty_surface_preedit(self->m_surface, nullptr, 0);
+                    self->m_surface.Preedit(nullptr, 0);
                 } else {
                     auto utf8 = interop::Encoding::toUtf8(self->m_ime.text());
                     if (!utf8.empty())
-                        ghostty_surface_preedit(self->m_surface, utf8.c_str(), utf8.size());
+                        self->m_surface.Preedit(utf8.c_str(), utf8.size());
                 }
             }
             if (self->m_app) ghostty_app_tick(self->m_app);
-            ghostty_surface_refresh(self->m_surface);
+            self->m_surface.Refresh();
         });
 
         m_editContext.CompositionStarted([weakSelf](
@@ -558,13 +567,13 @@ namespace winrt::GhosttyWin32::implementation
             auto self = weakSelf.get();
             if (!self) return;
             if (self->m_surface) {
-                ghostty_surface_preedit(self->m_surface, nullptr, 0);
+                self->m_surface.Preedit(nullptr, 0);
                 auto utf8 = interop::Encoding::toUtf8(self->m_ime.text());
                 if (!utf8.empty()) {
-                    ghostty_surface_text(self->m_surface, utf8.c_str(), utf8.size());
+                    self->m_surface.Text(utf8.c_str(), utf8.size());
                 }
                 if (self->m_app) ghostty_app_tick(self->m_app);
-                ghostty_surface_refresh(self->m_surface);
+                self->m_surface.Refresh();
             }
             self->m_ime.compositionCompleted();
         });
@@ -575,7 +584,7 @@ namespace winrt::GhosttyWin32::implementation
             auto self = weakSelf.get();
             if (!self || !self->m_surface || !self->m_hostHwnd) return;
             double x = 0, y = 0, w = 0, h = 0;
-            ghostty_surface_ime_point(self->m_surface, &x, &y, &w, &h);
+            self->m_surface.ImePoint(&x, &y, &w, &h);
             POINT screenPt = { (LONG)x, (LONG)y };
             ClientToScreen(self->m_hostHwnd, &screenPt);
             winrt::Windows::Foundation::Rect bounds{
@@ -591,7 +600,7 @@ namespace winrt::GhosttyWin32::implementation
             if (self->m_ime.composing()) {
                 self->m_ime.reset();
                 if (self->m_surface)
-                    ghostty_surface_preedit(self->m_surface, nullptr, 0);
+                    self->m_surface.Preedit(nullptr, 0);
             }
         });
     }
