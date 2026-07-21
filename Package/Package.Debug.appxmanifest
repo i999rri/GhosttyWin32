@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!--
+  Debug-configuration manifest. Selected by Package.wapproj when
+  building the Debug|* configurations; Release builds (including
+  every CI channel — dev-build / RC / production) use the sibling
+  Package.appxmanifest instead.
+
+  The only substantive differences from the Release manifest are:
+
+  - Identity/@Name: appended ".Dev" so Windows treats an F5-registered
+    debug loose install as a completely different app from the
+    installed production MSIX. Without this split, installing the
+    production MSIX after an F5 (or vice versa) trips 0x80073cfb
+    ("current user already installed a packaged / unpackaged version
+    of this app") and requires manual uninstall each round.
+  - DisplayName / VisualElements/@DisplayName: suffixed "(Dev)" so
+    the debug entry is visually distinguishable in Start Menu, task
+    switcher, and taskbar — you know at a glance which build you're
+    driving.
+  - ToastActivator CLSID: distinct GUID so the AppNotifications COM
+    registration doesn't fight the production install's own class
+    when both are present.
+
+  Everything else stays identical to Package.appxmanifest; any change
+  to permissions / extensions / capabilities has to be mirrored here.
+  A pre-build target in Package.wapproj could regenerate this from the
+  release manifest to remove the manual sync, but it's expensive
+  tooling for a two-file split — accept the mirror cost.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:mp="http://schemas.microsoft.com/appx/2014/phone/manifest"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  xmlns:systemai="http://schemas.microsoft.com/appx/manifest/systemai/windows10"
+  xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
+  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+  IgnorableNamespaces="uap rescap systemai com desktop">
+
+  <Identity
+    Name="d10a94a6-8f98-4723-b26d-a8b117eac06c.Dev"
+    Publisher="CN=i999rri"
+    Version="1.0.0.0" />
+
+  <mp:PhoneIdentity PhoneProductId="d10a94a6-8f98-4723-b26d-a8b117eac06c" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
+
+  <Properties>
+    <DisplayName>Ghostty (Dev)</DisplayName>
+    <PublisherDisplayName>i999rri</PublisherDisplayName>
+    <Logo>Images\StoreLogo.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Universal" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26226.0" />
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26226.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="x-generate"/>
+  </Resources>
+
+  <Applications>
+    <Application Id="App"
+      Executable="$targetnametoken$.exe"
+      EntryPoint="$targetentrypoint$">
+      <uap:VisualElements
+        DisplayName="Ghostty (Dev)"
+        Description="Ghostty (Dev)"
+        BackgroundColor="transparent"
+        Square150x150Logo="Images\Square150x150Logo.png"
+        Square44x44Logo="Images\Square44x44Logo.png">
+        <uap:DefaultTile Wide310x150Logo="Images\Wide310x150Logo.png" />
+        <uap:SplashScreen Image="Images\SplashScreen.png" />
+      </uap:VisualElements>
+      <Extensions>
+        <!-- COM activator class registration. Distinct CLSID from
+             Package.appxmanifest so a debug and a production install
+             don't fight over the same registration if both are
+             present on the same machine. See the comment on the
+             release manifest for what this actually unlocks. -->
+        <com:Extension Category="windows.comServer">
+          <com:ComServer>
+            <com:ExeServer Executable="GhosttyWin32.exe" Arguments="----AppNotificationActivated:" DisplayName="Ghostty Toast Activator (Dev)">
+              <com:Class Id="60457F0F-1240-411A-B45D-957479F5AADD" DisplayName="Ghostty Toast Activator (Dev)" />
+            </com:ExeServer>
+          </com:ComServer>
+        </com:Extension>
+        <desktop:Extension Category="windows.toastNotificationActivation">
+          <desktop:ToastNotificationActivation ToastActivatorCLSID="60457F0F-1240-411A-B45D-957479F5AADD" />
+        </desktop:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+    <systemai:Capability Name="systemAIModels"/>
+  </Capabilities>
+</Package>
