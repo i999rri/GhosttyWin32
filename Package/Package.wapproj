@@ -45,10 +45,34 @@
     <AppxPackageSigningEnabled>false</AppxPackageSigningEnabled>
     <EntryPointProjectUniqueName>..\App\App.vcxproj</EntryPointProjectUniqueName>
   </PropertyGroup>
-  <ItemGroup>
+  <!--
+    Manifest per configuration.
+
+    Debug|* → Package.Debug.appxmanifest (Identity Name ends in ".Dev",
+      distinct DisplayName + toast CLSID). Lets an F5-registered debug
+      loose install coexist with an installed production MSIX on the
+      same machine instead of tripping 0x80073cfb every round.
+
+    Release|* → Package.appxmanifest (the production identity CI signs
+      and ships). Every CI channel — dev-build / RC / production —
+      builds Release, so this is what ends up in every MSIX we publish.
+
+    See the comment at the top of Package.Debug.appxmanifest for the
+    fuller rationale and the two-file maintenance cost.
+  -->
+  <ItemGroup Condition="'$(Configuration)'!='Debug'">
     <AppxManifest Include="Package.appxmanifest">
       <SubType>Designer</SubType>
     </AppxManifest>
+  </ItemGroup>
+  <ItemGroup Condition="'$(Configuration)'=='Debug'">
+    <AppxManifest Include="Package.Debug.appxmanifest">
+      <SubType>Designer</SubType>
+    </AppxManifest>
+    <None Include="Package.appxmanifest" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(Configuration)'!='Debug'">
+    <None Include="Package.Debug.appxmanifest" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="Images\SplashScreen.scale-200.png" />
