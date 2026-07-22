@@ -1202,6 +1202,29 @@ namespace winrt::GhosttyWin32::implementation
         ApplyWindowDecorationsAppearance();
     }
 
+    void MainWindow::SetFloatOnTop(ghostty_action_float_window_e mode)
+    {
+        if (!m_hwnd) return;
+        // ON / OFF are absolute; TOGGLE flips the current Z-order
+        // state. GWL_EXSTYLE's WS_EX_TOPMOST is the source of truth —
+        // reading it means we don't need a bool member that has to
+        // stay in sync with the actual window state (something else
+        // like an external always-on-top utility could have moved
+        // the window in either direction).
+        bool desired;
+        switch (mode) {
+            case GHOSTTY_FLOAT_WINDOW_ON:  desired = true;  break;
+            case GHOSTTY_FLOAT_WINDOW_OFF: desired = false; break;
+            case GHOSTTY_FLOAT_WINDOW_TOGGLE:
+            default:
+                desired = (GetWindowLongPtrW(m_hwnd, GWL_EXSTYLE) & WS_EX_TOPMOST) == 0;
+                break;
+        }
+        HWND after = desired ? HWND_TOPMOST : HWND_NOTOPMOST;
+        SetWindowPos(m_hwnd, after, 0, 0, 0, 0,
+                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    }
+
     void MainWindow::ApplyWindowDecorationsAppearance()
     {
         // Collapse AppTitleBar as a single unit — it wraps the entire

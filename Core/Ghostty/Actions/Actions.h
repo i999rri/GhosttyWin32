@@ -76,6 +76,11 @@ public:
     bool OnPresentTerminal();
     bool OnShowOnScreenKeyboard();
     bool OnOpenConfig();
+    // FLOAT_WINDOW: toggle always-on-top for this window. macOS's
+    // NSWindowLevelFloating maps to Win32 HWND_TOPMOST via
+    // SetWindowPos; the actual call lives on the view (state tracking
+    // + HWND access), this handler just bounces there.
+    bool OnFloatWindow(ghostty_action_float_window_e mode);
 
     // ----- sizing -----
     bool OnInitialSize(ghostty_action_initial_size_s size);

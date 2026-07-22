@@ -147,6 +147,14 @@ struct IWindow {
     // window; we don't track it and the user dismisses it normally.
     virtual void ShowOnScreenKeyboard() = 0;
 
+    // FLOAT_WINDOW / toggle_window_float_on_top on macOS maps to
+    // NSWindowLevelFloating; on Windows the equivalent is the
+    // topmost Z-order via SetWindowPos(HWND_TOPMOST / HWND_NOTOPMOST).
+    // Payload is ON/OFF/TOGGLE; the view owns the current-state
+    // tracking so TOGGLE can flip without the dispatcher having to
+    // remember anything.
+    virtual void SetFloatOnTop(ghostty_action_float_window_e mode) = 0;
+
     // ----- terminal-driven appearance + lifecycle -----
 
     // Apply a new background colour (caption bar + XAML root) in

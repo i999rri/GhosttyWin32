@@ -172,6 +172,16 @@ bool Actions::OnPresentTerminal() {
     return true;
 }
 
+bool Actions::OnFloatWindow(ghostty_action_float_window_e mode) {
+    // Route through the view: the view owns the HWND and remembers
+    // the current topmost state so TOGGLE can flip without the
+    // dispatcher tracking it.
+    m_view.Dispatch([this, mode]() {
+        m_view.SetFloatOnTop(mode);
+    });
+    return true;
+}
+
 bool Actions::OnShowOnScreenKeyboard() {
     // Touch / pen users without a physical keyboard. The OSK is
     // its own top-level window; we just launch it and let the user
