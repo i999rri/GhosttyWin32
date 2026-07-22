@@ -78,6 +78,7 @@ namespace winrt::GhosttyWin32::implementation
         void Dispatch(std::function<void()> fn) override;
         void Tick() override;
         void RequestClose() override;
+        void TryClose() override;
 
         // Split-pane operations from IMainWindowView. Bodies are in
         // MainWindow.xaml.cpp; behaviour is unchanged from when these

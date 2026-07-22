@@ -52,6 +52,15 @@ struct IWindow {
     // down, so handlers can call it unconditionally.
     virtual void RequestClose() = 0;
 
+    // User-intent close: same effect as RequestClose, but consults
+    // each surface's ghostty_surface_needs_confirm_quit first and
+    // shows a WinUI ContentDialog when any pane reports true. Only
+    // reachable from paths that represent explicit user intent (X
+    // button click, close_window keybind) — internal cleanup paths
+    // (tear-out empty shell, etc.) skip the confirmation and call
+    // RequestClose directly.
+    virtual void TryClose() = 0;
+
     // ----- split-pane operations -----
     // Surface-target split actions all share the same shape: find
     // the pane owning `surface` in its tab, mutate the tree, leave

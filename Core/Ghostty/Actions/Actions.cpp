@@ -95,11 +95,11 @@ bool Actions::OnOpenUrl(ghostty_action_open_url_s ou) {
 
 bool Actions::OnCloseWindow() {
     // Close the window that owns the action's target and nothing
-    // else. This Actions instance is per-window (the runtime routed
-    // the action here from its target surface), so m_view is that
-    // window; siblings survive.
+    // else. Same intent as the X button — go through TryClose so
+    // needs_confirm_quit prompts the user before we tear anything
+    // down. Sibling windows survive either way.
     m_view.Dispatch([this]() {
-        m_view.RequestClose();
+        m_view.TryClose();
     });
     return true;
 }
