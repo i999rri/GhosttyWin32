@@ -659,6 +659,12 @@ namespace winrt::GhosttyWin32::implementation
             });
 
             InitGhostty();
+            // Subscribe to system theme changes and push the current
+            // OS light/dark preference straight through to ghostty so
+            // themes with light/dark variants pick the right one at
+            // launch without waiting for the first user toggle.
+            HookSystemThemeSignal();
+            PushCurrentSystemColorScheme();
             // Tear-out hosts don't create an initial tab: they adopt
             // the dragged one (possibly before this handler even ran).
             if (!m_suppressInitialTab) CreateTab();
@@ -698,6 +704,63 @@ namespace winrt::GhosttyWin32::implementation
         // crash flag is also App's concern: App::~App clears it once
         // per clean process shutdown, which is the granularity the
         // "did the previous run crash?" check actually wants.
+    }
+
+    namespace {
+        // Subclass ID for the WM_SETTINGCHANGE hook. Distinct from
+        // SizeLimit's (which uses id=1) so both subclasses coexist
+        // on the same HWND without either replacing the other.
+        constexpr UINT_PTR kSystemThemeSubclassId = 2;
+
+        // Read HKCU\...\Themes\Personalize\AppsUseLightTheme. Missing
+        // key or read failure defaults to DARK — the terminal's
+        // typical setting and the safer choice for a code-signed app
+        // running before the personalization service is ready.
+        ghostty_color_scheme_e ReadOsColorScheme() noexcept {
+            DWORD value = 0;
+            DWORD size = sizeof(value);
+            LSTATUS s = RegGetValueW(
+                HKEY_CURRENT_USER,
+                L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+                L"AppsUseLightTheme",
+                RRF_RT_REG_DWORD,
+                nullptr, &value, &size);
+            if (s != ERROR_SUCCESS) return GHOSTTY_COLOR_SCHEME_DARK;
+            return value ? GHOSTTY_COLOR_SCHEME_LIGHT : GHOSTTY_COLOR_SCHEME_DARK;
+        }
+
+        LRESULT CALLBACK SystemThemeSubclassProc(
+            HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
+            UINT_PTR /*id*/, DWORD_PTR ref) noexcept
+        {
+            if (msg == WM_SETTINGCHANGE && lp) {
+                // lParam is a wchar_t* naming the changed setting. The
+                // one we care about is "ImmersiveColorSet" (fires when
+                // the OS light/dark preference flips). Compare via
+                // wcscmp; other WM_SETTINGCHANGE payloads (font sizes,
+                // input languages) sail past unchanged.
+                auto* name = reinterpret_cast<const wchar_t*>(lp);
+                if (wcscmp(name, L"ImmersiveColorSet") == 0) {
+                    if (auto* self = reinterpret_cast<MainWindow*>(ref)) {
+                        self->PushCurrentSystemColorScheme();
+                    }
+                }
+            }
+            return DefSubclassProc(hwnd, msg, wp, lp);
+        }
+    }
+
+    void MainWindow::HookSystemThemeSignal() noexcept
+    {
+        if (!m_hwnd) return;
+        SetWindowSubclass(m_hwnd, &SystemThemeSubclassProc,
+                          kSystemThemeSubclassId,
+                          reinterpret_cast<DWORD_PTR>(this));
+    }
+
+    void MainWindow::PushCurrentSystemColorScheme() noexcept
+    {
+        if (m_ghosttyApp) m_ghosttyApp->SetColorScheme(ReadOsColorScheme());
     }
 
     Tab* MainWindow::ActiveTab()

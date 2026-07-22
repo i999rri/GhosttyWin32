@@ -140,6 +140,13 @@ namespace winrt::GhosttyWin32::implementation
         void PresentNotification(PaneId id);
         void ReportProgress(ghostty_action_progress_report_s pr) override;
 
+        // Read HKCU\...\Themes\Personalize\AppsUseLightTheme and forward
+        // to core::ghostty::App::SetColorScheme. Fired at first activation
+        // and from the WM_SETTINGCHANGE subclass proc in the .cpp — the
+        // subclass proc is a plain free function (not a friend), so this
+        // has to be reachable through the class's public surface.
+        void PushCurrentSystemColorScheme() noexcept;
+
     private:
         // The MainWindowRuntime implementation of the ghostty runtime
         // callbacks needs to reach into m_ghosttyDispatcher / m_hwnd /
@@ -179,6 +186,12 @@ namespace winrt::GhosttyWin32::implementation
         // panel doesn't leak as an orphan child. ~Tab can't do this
         // itself because Tab is deliberately unaware of AppContent.
         void RemoveTabPanelFromAppContent(Tab const& tab);
+        // Install a subclass on m_hwnd that watches for WM_SETTINGCHANGE
+        // events carrying the "ImmersiveColorSet" payload and pushes the
+        // updated OS light/dark preference into ghostty. Called once from
+        // the one-shot Activated init after m_hwnd is captured.
+        void HookSystemThemeSignal() noexcept;
+
         // Publish a single drag rectangle to AppWindowTitleBar covering
         // the DragRegion's current bounds. Called from
         // DragRegion.SizeChanged so the rect tracks the strip's free
