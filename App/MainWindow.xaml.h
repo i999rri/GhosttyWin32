@@ -309,6 +309,24 @@ namespace winrt::GhosttyWin32::implementation
         // member ordering), so the dispatcher can't observe a
         // half-torn-down ghostty handle from any of its handlers.
         std::unique_ptr<ghostty::CallbackDispatcher> m_ghosttyDispatcher;
+
+        // 1 Hz poll that walks each Tab, asks ghostty for the
+        // foreground process pid of the active pane, resolves it to
+        // an executable basename, and (if the shell hasn't set an
+        // OSC title on this tab yet) writes the name into the
+        // TabViewItem header. See StartForegroundPidPoll for the
+        // scheduling story.
+        winrt::Microsoft::UI::Dispatching::DispatcherQueueTimer
+            m_foregroundPidTimer{ nullptr };
+
+        // Kick off the foreground-pid poll after the first tab
+        // exists. Idempotent — safe to call more than once (won't
+        // create a second timer).
+        void StartForegroundPidPoll();
+
+        // One tick of the poll. Body is inline in the .cpp; walks
+        // m_tabs and updates the header where appropriate.
+        void UpdateForegroundNames() noexcept;
     };
 }
 

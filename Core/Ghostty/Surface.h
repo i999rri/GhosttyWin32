@@ -116,6 +116,15 @@ public:
         if (m_handle) ghostty_surface_set_content_scale(m_handle, x, y);
     }
 
+    // PID of the current foreground process in this surface's PTY —
+    // not necessarily the shell (that's the ancestor). Used by the
+    // tab-title poll to show the running command's name (`vim`,
+    // `ssh host`) instead of just the shell name. Returns 0 when
+    // no surface, no PTY yet, or no foreground process.
+    uint32_t ForegroundPid() const noexcept {
+        return m_handle ? ghostty_surface_foreground_pid(m_handle) : 0;
+    }
+
     // ---- selection ----
     bool HasSelection() const noexcept {
         return m_handle && ghostty_surface_has_selection(m_handle);
