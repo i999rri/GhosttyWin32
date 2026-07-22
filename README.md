@@ -2,7 +2,7 @@
 
 Windows host application for the [Ghostty](https://github.com/ghostty-org/ghostty) terminal emulator.
 
-A WinUI 3 + C++/WinRT shell that hosts the libghostty C API. Each tab owns its own ghostty Surface and DirectX 11 device, rendered into a `SwapChainPanel`.
+A WinUI 3 + C++/WinRT shell that hosts the libghostty C API. Each pane owns its own ghostty Surface and DirectX 11 device, rendered into a `SwapChainPanel`. Multi-window, multi-tab, and split-pane are all first-class.
 
 ## Features
 
@@ -13,31 +13,47 @@ A WinUI 3 + C++/WinRT shell that hosts the libghostty C API. Each tab owns its o
 - Japanese / CJK glyph rendering with system font fallback
 - IME input (Japanese, Chinese, Korean) with composition preview
 - UTF-16 surrogate pair support (emoji, supplementary planes)
-- Auto-close tab when the shell process exits
+- Auto-close tab / pane when the shell process exits
+
+### Windows
+
+- **Multiple top-level windows** — `Ctrl+Shift+N` (or `new_window` action) spawns a fresh window; each carries its own tab strip and pane tree
+- Cross-window focus, clipboard, and notification routing are per-surface, not per-app
+- Overlap-flicker-free: renderer-side focus / occlusion wiring keeps stacked windows from re-arming each other's blink cycle
 
 ### Tabs
 
 - Multi-tab UI via WinUI 3 `TabView`
-- Per-tab isolation: each tab owns its own ghostty Surface + D3D11 device
-- Per-tab SEH guard: a hardware exception in one tab does not take down siblings (fatal cases still trigger a clean process exit)
-- New tab / close tab / reorder via standard `TabView` gestures
-- Custom XAML caption buttons (minimize / maximize / close) that route through `WM_SYSCOMMAND` to avoid driver-side state-change crashes
+- Per-tab isolation: each tab owns its own ghostty Surface(s) + D3D11 device
+- Per-tab SEH guard: a hardware exception in one tab does not take down siblings
+- New / close / reorder / go-to via standard `TabView` gestures and keybinds
+- **Drag a tab out to spawn a new window at the drop point** (release-time drag & drop)
+- **Drag a tab onto another window's strip to merge it there** — surfaces / swap chains / split-panel trees stay live across the move (`TerminalControl::Rehost` re-points only the host HWND + focused callback)
+- Custom XAML caption buttons that route through `WM_SYSCOMMAND` to avoid driver-side state-change crashes
+
+### Splits
+
+- Horizontal / vertical splits inside any tab
+- Focus navigation between panes (`goto_split_up/down/left/right`)
+- Resize, equalize, zoom / unzoom
+- Each pane is a full ghostty Surface with its own D3D11 device, isolated behind the same SEH guard as tabs
 
 ### Input
 
-- Keyboard: `WM_CHAR` text input plus key-level events for shortcuts
+- Keyboard: scan-code + text-field forwarding — accurate keybinds across non-Latin layouts, dead keys, and AltGr
 - Modifier-aware keybindings (Ctrl / Shift / Alt) forwarded to libghostty
 - Mouse: left / middle / right click, drag, scroll wheel
-- Selection: drag-to-select, Ctrl+C copy, Ctrl+V paste, right-click copy
-- Selection auto-clear after copy
-- Ctrl+click: URL highlight detection (see Known Issues)
+- Per-pane cursor shape from `MOUSE_SHAPE` (text under text, hand over URLs, etc.)
+- Selection: drag-to-select, `Ctrl+C` copy, `Ctrl+V` paste, right-click copy; auto-clear after copy
+- Ctrl+click a URL to open in the default browser
 
-### Window
+### Window chrome
 
 - Custom title bar with `ExtendsContentIntoTitleBar`
 - Drag region sized to survive many open tabs
 - Fullscreen toggle, maximize / restore
-- DPI scaling (Per-Monitor DPI Aware V2)
+- `TOGGLE_WINDOW_DECORATIONS` — 3-state per-window override on top of the config baseline
+- DPI scaling (Per-Monitor DPI Aware V2); HiDPI-correct split sizing and text rendering
 - Mica / Acrylic backdrop (when running as an MSIX package)
 
 ### Visual
@@ -53,42 +69,47 @@ A WinUI 3 + C++/WinRT shell that hosts the libghostty C API. Each tab owns its o
 
 - DirectX 11 via the libghostty native renderer (no external dependencies)
 - FLIP_DISCARD swap chain hosted in a `SwapChainPanel`
-- High-resolution waitable timer for frame pacing (Windows 10 1803+)
+- Hybrid render cadence — focused surface polls every 4 ms; unfocused surfaces are event-driven (wakeup / blink / mailbox / 1 s safety net)
+- HiDPI / RDP correct at first paint (composition scale followed via `SwapChainPanel::CompositionScaleChanged`)
 
-### libghostty Callbacks
+### libghostty action coverage
 
-- `SET_TITLE`: tab title from terminal escape sequences
-- `MOUSE_SHAPE`: cursor changes (text, pointer, hand, resize, etc.)
-- `MOUSE_VISIBILITY`: hide / show cursor
-- `OPEN_URL`: open URLs in the default browser (`ShellExecuteW`)
-- `RING_BELL`: flash window + system beep
-- `COLOR_CHANGE`: sync title bar tint with terminal background
-- `TOGGLE_FULLSCREEN` / `TOGGLE_MAXIMIZE`
-- `SIZE_LIMIT` / `INITIAL_SIZE` / `RESET_WINDOW_SIZE`
-- `NEW_TAB` / `CLOSE_TAB` / `GOTO_TAB` / `MOVE_TAB`
-- `PRESENT_TERMINAL`: restore + foreground the window
-- `SHOW_ON_SCREEN_KEYBOARD`: launch the Windows OSK
-- `QUIT`: clean shutdown
-- Clipboard read / write
+63 of 65 upstream actions wired (as of v0.4.0). Highlights beyond the terminal core:
+
+- **Windows**: `NEW_WINDOW`, `CLOSE_WINDOW`, `CLOSE_ALL_WINDOWS`, `QUIT`, `TOGGLE_FULLSCREEN`, `TOGGLE_MAXIMIZE`, `TOGGLE_WINDOW_DECORATIONS`, `PRESENT_TERMINAL`, `SIZE_LIMIT`, `INITIAL_SIZE`, `RESET_WINDOW_SIZE`
+- **Tabs**: `NEW_TAB`, `CLOSE_TAB`, `GOTO_TAB`, `MOVE_TAB`
+- **Splits**: `NEW_SPLIT`, `GOTO_SPLIT`, `RESIZE_SPLIT`, `EQUALIZE_SPLITS`, `TOGGLE_SPLIT_ZOOM`
+- **Terminal**: `SET_TITLE`, `MOUSE_SHAPE`, `MOUSE_VISIBILITY`, `OPEN_URL` (`ShellExecuteW`), `RING_BELL` (flash + system beep), `COLOR_CHANGE`, clipboard read / write
+- **System**: notification click → present-pane round-trip (targets the exact pane, not just the app), `SHOW_ON_SCREEN_KEYBOARD`
 - Wakeup: thread-safe `PostMessage` to the UI thread
 
 ## Architecture
 
 ```
 GhosttyWin32.exe (WinUI 3 / C++/WinRT)
-  ├── App.xaml — application entry, XAML Controls Resources
-  ├── MainWindow
-  │   ├── Custom title bar + caption buttons
-  │   ├── TabView
-  │   │   └── TerminalControl (per tab)
-  │   │       ├── SwapChainPanel → ghostty Surface
-  │   │       ├── Input forwarding (key / pointer / IME)
-  │   │       └── Per-tab D3D11 device + SEH guard
-  │   └── SetUnhandledExceptionFilter — best-effort cleanup
-  ├── GhosttyApp — ghostty_app_t lifetime wrapper (config, callbacks)
-  └── Tabs / TabFactory / TabIdAllocator — tab bookkeeping
+  ├── App
+  │   ├── owns core::ghostty::App (app-wide libghostty handle)
+  │   ├── owns MainWindows aggregate (one entry per top-level window)
+  │   ├── owns PaneIdAllocator (globally unique surface IDs)
+  │   ├── SetUnhandledExceptionFilter — process-wide best-effort cleanup
+  │   └── AppNotificationManager + single-instance activation redirect
+  │
+  ├── MainWindow  (one per top-level window)
+  │   ├── Custom title bar + XAML caption buttons
+  │   ├── TabView  (owns tab-strip UI)
+  │   ├── AppContent  (grid parenting each tab's SplitPanel)
+  │   ├── Tabs / TabFactory  (per-window tab bookkeeping)
+  │   └── MainWindowRuntime  (IGhosttyRuntime impl per window)
+  │
+  ├── Tab
+  │   └── SplitPanel  (tree of Pane leaves; each leaf hosts a TerminalControl)
+  │
+  └── TerminalControl  (WinUI UserControl per pane)
+      ├── SwapChainPanel → ghostty Surface (own D3D11 device)
+      ├── Input forwarding (key scan+text, pointer, IME EditContext)
+      └── Per-pane SEH guard
 
-ghostty.dll (Zig, from i999rri/ghostty windows-port branch)
+ghostty.dll (Zig, from i999rri/ghostty windows-port branch — git submodule)
   ├── Terminal emulator core (VT parser, Screen)
   ├── DirectX 11 renderer (HLSL SM5.0, d3d11_impl.c COM wrapper)
   ├── Font rendering (Freetype + Harfbuzz)
@@ -203,20 +224,22 @@ option list.
 
 ## Known Issues
 
-- Ctrl+click on a URL exits the process with code 3
-  ([#12](https://github.com/i999rri/GhosttyWin32/issues/12)) — ghostty-side issue
-- Split panes are not yet implemented; only tabs
-  ([#13](https://github.com/i999rri/GhosttyWin32/issues/13))
 - Windows-specific config options (`windows-tab-bar`, `windows-drag-region`)
   are not exposed yet ([#17](https://github.com/i999rri/GhosttyWin32/issues/17))
+- `MOUSE_OVER_LINK`: the Win32 tooltip path crashes on URL click
+  ([#61](https://github.com/i999rri/GhosttyWin32/issues/61))
+- `Ctrl+Shift+0` keybind is swallowed when the Japanese IME / TSF is active
+  ([#83](https://github.com/i999rri/GhosttyWin32/issues/83))
+- Occasional `RO_E_CLOSED` on tab close after some operation sequences
+  ([#87](https://github.com/i999rri/GhosttyWin32/issues/87))
 
 ## Status
 
-This is an experimental Windows port. See the
+Windows port of Ghostty. See the
 [windows-port branch](https://github.com/i999rri/ghostty/tree/windows-port) for
 Ghostty-side changes and
 [Discussion #2563](https://github.com/ghostty-org/ghostty/discussions/2563) for
-context.
+upstream context.
 
 ## License
 

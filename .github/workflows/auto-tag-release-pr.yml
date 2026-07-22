@@ -9,14 +9,25 @@ name: Auto-tag release PR
 # rather than PR title — branch refs are immutable once created, while
 # titles can be edited after the fact and would silently break the
 # auto-tag path.
+#
+# The tag has to be pushed with a GitHub App installation token, NOT
+# the default GITHUB_TOKEN: GitHub deliberately does NOT fire further
+# workflows on events authored by GITHUB_TOKEN (loop-prevention), so a
+# tag pushed with it would never trigger release.yml. See
+# RELEASE_APP_ID / RELEASE_APP_PRIVATE_KEY in the repo secrets and
+# .github/RELEASING.md for the setup.
 
 on:
   pull_request:
     types: [closed]
     branches: [main]
 
-permissions:
-  contents: write
+# The tag push is authorised by the App token below (not GITHUB_TOKEN),
+# so no scopes on GITHUB_TOKEN are required. Explicit `permissions: {}`
+# reduces its blast radius to nothing — if a later step ever tries to
+# use GITHUB_TOKEN it will fail loudly instead of silently succeeding
+# with more privilege than the App token grants.
+permissions: {}
 
 jobs:
   tag:
@@ -26,10 +37,27 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # Mint an installation token from the release-bot GitHub App.
+      # Its `contents: write` permission covers the tag push, and
+      # because the token is NOT GITHUB_TOKEN the subsequent push
+      # event WILL trigger release.yml (which is the whole point of
+      # this workflow).
+      - name: Generate App token for tag push
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
       - uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 0
+          # Persist the App token as the remote's HTTPS credential so
+          # `git push` below authenticates as the App, not the workflow
+          # default. actions/checkout wires this into the local repo's
+          # git config for the duration of the job.
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Extract and validate version
         id: ver
@@ -61,10 +89,13 @@ jobs:
       - name: Tag main HEAD and push
         env:
           VERSION: ${{ steps.ver.outputs.version }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Attribute the annotated tag object to the App's bot user
+          # so the audit trail matches the push authorisation.
+          git config user.name  "${APP_SLUG}[bot]"
+          git config user.email "${APP_SLUG}[bot]@users.noreply.github.com"
           git tag -a "$VERSION" -m "Release $VERSION"
           git push origin "$VERSION"
-          echo "Pushed tag $VERSION → release.yml will fire."
+          echo "Pushed tag $VERSION as ${APP_SLUG}[bot] → release.yml will fire."
