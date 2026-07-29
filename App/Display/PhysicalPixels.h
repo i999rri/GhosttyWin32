@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cmath>
 #include <cstdint>
 #include <utility>
 #include <winrt/Microsoft.UI.Xaml.h>
@@ -96,10 +97,18 @@ inline PhysicalSize ToPhysicalPixels(
     double widthDips,
     double heightDips)
 {
+    // Ceil (not truncate) so the swap chain is never one pixel
+    // narrower / shorter than the panel that composes it. A DIP
+    // width of 1919.6 at 1.5× scale is 2879.4 physical pixels; a
+    // truncating cast produced 2879 while DWM asked the panel to
+    // cover 2880, leaving a hairline gap on the far edge where the
+    // scaled swap-chain content didn't reach. Rounding up guarantees
+    // the swap chain fully covers the panel's physical rectangle;
+    // any subpixel overshoot is invisible (the composition clips).
     auto [sx, sy] = EffectiveScales(element);
     return {
-        static_cast<uint32_t>(widthDips  * sx),
-        static_cast<uint32_t>(heightDips * sy),
+        static_cast<uint32_t>(std::ceil(widthDips  * sx)),
+        static_cast<uint32_t>(std::ceil(heightDips * sy)),
     };
 }
 

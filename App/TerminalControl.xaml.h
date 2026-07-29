@@ -220,6 +220,14 @@ namespace winrt::GhosttyWin32::implementation
         // from input handlers.
         HWND m_hostHwnd{ nullptr };
         winrt::event_token m_sizeChangedToken{};
+        // Non-repeating 50 ms debounce for the SizeChanged handler.
+        // Started (and re-started) on every SizeChanged; its Tick reads
+        // the panel's current physical footprint and pushes the final
+        // size to ghostty. Coalescing avoids the drag-resize flicker
+        // caused by the renderer thread reallocating the swap chain
+        // once per WM_SIZE.
+        winrt::Microsoft::UI::Dispatching::DispatcherQueueTimer
+            m_pendingResizeTimer{ nullptr };
         // SwapChainPanel composition scale (DPI / per-monitor scale)
         // tracking. The panel's CompositionScale can lag behind the
         // window's DPI on RDP — initially the panel reports 1.0 even

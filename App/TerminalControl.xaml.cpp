@@ -7,6 +7,7 @@
 #include "Input/TerminalKeyUp.h"
 #include "Display/PhysicalPixels.h"
 #include "Win32/Clipboard.h"
+#include <chrono>
 #include <dxgi1_3.h>
 #if __has_include("TerminalControl.g.cpp")
 #include "TerminalControl.g.cpp"
@@ -374,22 +375,47 @@ namespace winrt::GhosttyWin32::implementation
         // fires on a dead surface — but XAML can deliver a queued
         // SizeChanged after Detach during teardown, so we recheck
         // m_surface inside the handler under a strong lock.
+        //
+        // SizeChanged fires on every WM_SIZE during a drag-resize,
+        // and each SetSize triggers ghostty's renderer thread to
+        // reallocate the swap chain. Firing that reallocation many
+        // times per second is what produces the visible flicker
+        // during a drag: DWM composites intermediate frames at each
+        // in-flight buffer size while ghostty is midway through
+        // resizing again. Coalesce into a single SetSize per
+        // ~50 ms burst — for the fast-drag case the renderer only
+        // sees the last few sizes, and the panel's own composition
+        // engine (which stretches the current swap chain to the
+        // panel's DIP rectangle in the meantime) produces a smooth
+        // stretch instead of a flicker.
         auto weakSelf = get_weak();
-        m_sizeChangedToken = Panel().SizeChanged(
-            [weakSelf](Windows::Foundation::IInspectable const& sender,
-                       Microsoft::UI::Xaml::SizeChangedEventArgs const& args) {
+        auto dq = winrt::Microsoft::UI::Dispatching::DispatcherQueue::GetForCurrentThread();
+        m_pendingResizeTimer = dq ? dq.CreateTimer() : nullptr;
+        if (m_pendingResizeTimer) {
+            m_pendingResizeTimer.Interval(std::chrono::milliseconds{ 50 });
+            m_pendingResizeTimer.IsRepeating(false);
+            m_pendingResizeTimer.Tick([weakSelf](auto&&, auto&&) {
                 auto self = weakSelf.get();
                 if (!self || !self->m_surface) return;
-                // SizeChangedEventArgs.NewSize is in DIPs; ghostty's
-                // surface_set_size needs the swap-chain buffer
-                // resolution in physical pixels. display::ToPhysicalPixels
-                // does the multiplication and the CompositionScale=0
-                // fallback.
-                auto sz = args.NewSize();
-                auto panel = sender.as<Microsoft::UI::Xaml::Controls::SwapChainPanel>();
-                auto px = display::ToPhysicalPixels(panel, sz.Width, sz.Height);
-                if (px.width > 0 && px.height > 0) {
-                    self->m_surface.SetSize(px.width, px.height);
+                if (auto panel = self->Panel()) {
+                    auto px = display::MeasuredPhysical(panel);
+                    if (px.width > 0 && px.height > 0) {
+                        self->m_surface.SetSize(px.width, px.height);
+                    }
+                }
+            });
+        }
+        m_sizeChangedToken = Panel().SizeChanged(
+            [weakSelf](Windows::Foundation::IInspectable const&,
+                       Microsoft::UI::Xaml::SizeChangedEventArgs const&) {
+                auto self = weakSelf.get();
+                if (!self || !self->m_surface) return;
+                // Restart the debounce window; the timer's Tick will
+                // read the panel's current ActualWidth/Height and
+                // push the final size. Firing SetSize inline here
+                // would defeat the coalescing.
+                if (self->m_pendingResizeTimer) {
+                    self->m_pendingResizeTimer.Start();
                 }
             });
 
@@ -462,6 +488,15 @@ namespace winrt::GhosttyWin32::implementation
             // GC catches up.
             m_editContext.NotifyFocusLeave();
             m_editContext = nullptr;
+        }
+
+        // Stop the SizeChanged debounce timer first — its Tick reads
+        // m_surface, so letting it fire after we've dropped the
+        // handle below would AV. The weak_ref inside the callback
+        // guards the get() but stopping is cheap and clearer.
+        if (m_pendingResizeTimer) {
+            try { m_pendingResizeTimer.Stop(); }
+            catch (winrt::hresult_error const&) {}
         }
 
         if (auto panel = Panel()) {
