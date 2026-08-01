@@ -632,6 +632,43 @@ namespace winrt::GhosttyWin32::implementation
                     // parented; the swap chain handle keeps its DComp
                     // binding across the switch.
                     self->UpdateActivePanelVisibility();
+                    // Ghost-frame guard for the tab we just brought
+                    // back: while its SplitPanel was Collapsed, DComp
+                    // stopped compositing but the SwapChainPanel's
+                    // last-presented buffer stayed put. When we flip
+                    // back to Visible the compositor shows that stale
+                    // buffer until the renderer thread produces a
+                    // fresh present — which for the "was unfocused,
+                    // now focused" surface takes at least one hybrid-
+                    // cadence tick, long enough for the eye to catch
+                    // (most obviously with emoji glyphs). Refresh
+                    // every leaf in the newly-active tab so ghostty's
+                    // renderer produces a full frame right away and
+                    // the stale content never gets a chance to show.
+                    if (auto* tab = self->ActiveTab()) {
+                        if (auto* panelImpl =
+                                winrt::get_self<implementation::SplitPanel>(tab->Panel())) {
+                            // Inline recursion (rather than reusing
+                            // CollectLeaves defined further down in
+                            // this file) so this can sit close to the
+                            // SelectionChanged handler where the rest
+                            // of the tab-switch bookkeeping lives.
+                            struct RefreshLeaves {
+                                void operator()(Pane* node) {
+                                    if (!node) return;
+                                    if (node->IsLeaf()) {
+                                        if (auto* tc = Tab::LeafToTerminalControl(*node)) {
+                                            tc->Surface().Refresh();
+                                        }
+                                        return;
+                                    }
+                                    (*this)(node->First());
+                                    (*this)(node->Second());
+                                }
+                            } refresh;
+                            refresh(panelImpl->Root());
+                        }
+                    }
                     // Defer Focus to the next dispatcher tick. The
                     // synchronous Focus call races XAML's own focus
                     // migration when the previously-active panel just
