@@ -268,6 +268,38 @@ namespace winrt::GhosttyWin32::implementation
                                         tc->Surface().SetFocus(true);
                                     }
                                 }
+                                // Emoji cells (double-width, colored)
+                                // sometimes come out of an alt-tab
+                                // cycle with black padding around the
+                                // glyph — the previously-presented
+                                // buffer's diff render doesn't fully
+                                // repaint the background half of the
+                                // cell to the terminal bg. They come
+                                // right after a natural redraw (I/O,
+                                // cursor blink) a beat later. Force a
+                                // full-frame refresh on every leaf in
+                                // the active tab so the correction
+                                // lands immediately instead of on the
+                                // next unrelated draw.
+                                if (auto* tab = self->ActiveTab()) {
+                                    if (auto* panelImpl =
+                                            winrt::get_self<implementation::SplitPanel>(tab->Panel())) {
+                                        struct RefreshLeaves {
+                                            void operator()(Pane* node) {
+                                                if (!node) return;
+                                                if (node->IsLeaf()) {
+                                                    if (auto* tc = Tab::LeafToTerminalControl(*node)) {
+                                                        tc->Surface().Refresh();
+                                                    }
+                                                    return;
+                                                }
+                                                (*this)(node->First());
+                                                (*this)(node->Second());
+                                            }
+                                        } refresh;
+                                        refresh(panelImpl->Root());
+                                    }
+                                }
                             } catch (winrt::hresult_error const&) {
                             }
                         });
