@@ -115,6 +115,15 @@ public:
     void SetContentScale(double x, double y) noexcept {
         if (m_handle) ghostty_surface_set_content_scale(m_handle, x, y);
     }
+    // Per-surface light/dark override. ghostty_app_set_color_scheme
+    // updates only the app-level conditional state, so a soft reload
+    // triggered by that path re-derives each surface's config against
+    // the surface's OLD scheme and the theme fails to switch until the
+    // surface is recreated. Calling this per surface after the app-level
+    // push forces each one to pick up the new scheme immediately.
+    void SetColorScheme(ghostty_color_scheme_e scheme) noexcept {
+        if (m_handle) ghostty_surface_set_color_scheme(m_handle, scheme);
+    }
 
     // ---- selection ----
     bool HasSelection() const noexcept {

@@ -762,6 +762,35 @@ namespace winrt::GhosttyWin32::implementation
     {
         auto scheme = ReadOsColorScheme();
         if (m_ghosttyApp) m_ghosttyApp->SetColorScheme(scheme);
+        // ghostty_app_set_color_scheme updates only the app-level
+        // conditional state and triggers a soft reload, but each
+        // surface derives config against its OWN conditional state —
+        // which stays on the pre-flip theme, so the reload picks the
+        // old variant and the surface's palette doesn't change until
+        // it's recreated. Push the new scheme into each existing
+        // surface too so the flip lands immediately.
+        struct Push {
+            ghostty_color_scheme_e scheme;
+            void operator()(Pane* node) const {
+                if (!node) return;
+                if (node->IsLeaf()) {
+                    if (auto* tc = Tab::LeafToTerminalControl(*node)) {
+                        tc->Surface().SetColorScheme(scheme);
+                    }
+                    return;
+                }
+                (*this)(node->First());
+                (*this)(node->Second());
+            }
+        };
+        Push push{ scheme };
+        for (auto& tab : m_tabs) {
+            if (!tab) continue;
+            auto* panelImpl =
+                winrt::get_self<implementation::SplitPanel>(tab->Panel());
+            if (!panelImpl) continue;
+            push(panelImpl->Root());
+        }
         // Mirror the OS preference into the WinUI shell so titlebar,
         // TabView chrome, menus, and any XamlControlsResources-derived
         // brushes swap with the terminal content. Setting RequestedTheme
