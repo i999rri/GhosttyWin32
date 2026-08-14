@@ -760,7 +760,29 @@ namespace winrt::GhosttyWin32::implementation
 
     void MainWindow::PushCurrentSystemColorScheme() noexcept
     {
-        if (m_ghosttyApp) m_ghosttyApp->SetColorScheme(ReadOsColorScheme());
+        auto scheme = ReadOsColorScheme();
+        if (m_ghosttyApp) m_ghosttyApp->SetColorScheme(scheme);
+        // Mirror the OS preference into the WinUI shell so titlebar,
+        // TabView chrome, menus, and any XamlControlsResources-derived
+        // brushes swap with the terminal content. Setting RequestedTheme
+        // on the root Content element propagates through the visual
+        // tree; anything binding to ThemeResource values updates on the
+        // next layout tick. Guarded by IsLoaded to avoid touching the
+        // tree before the framework has attached (WM_SETTINGCHANGE can
+        // fire immediately after HWND creation).
+        try {
+            if (auto root = Content().try_as<
+                    winrt::Microsoft::UI::Xaml::FrameworkElement>()) {
+                if (root.IsLoaded()) {
+                    root.RequestedTheme(scheme == GHOSTTY_COLOR_SCHEME_LIGHT
+                        ? winrt::Microsoft::UI::Xaml::ElementTheme::Light
+                        : winrt::Microsoft::UI::Xaml::ElementTheme::Dark);
+                }
+            }
+        } catch (winrt::hresult_error const&) {
+            // Window torn down mid-notification — next open will pick
+            // up the current scheme via the Activated one-shot path.
+        }
     }
 
     Tab* MainWindow::ActiveTab()
