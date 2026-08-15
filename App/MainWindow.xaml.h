@@ -79,6 +79,19 @@ namespace winrt::GhosttyWin32::implementation
         void Tick() override;
         void RequestClose() override;
         void TryClose() override;
+        // Confirmation-gated variant of tab close. Shared by the tab-header
+        // X (TabView::TabCloseRequested), the CLOSE_TAB / CLOSE_SURFACE
+        // action (Ctrl+Shift+W), and internal paths that need to close a
+        // specific tab. Walks that tab's pane tree; if any surface reports
+        // needs_confirm_quit, shows the ContentDialog first and only runs
+        // the close on confirm.
+        void TryCloseTab(Microsoft::UI::Xaml::Controls::TabViewItem const& item);
+        // Read-only view of the "close already approved" bit for the
+        // WM_CLOSE subclass to consult without befriending it. Set by
+        // RequestClose before Window::Close, cleared nowhere (the
+        // subclass fires once per user close and the HWND goes away
+        // shortly after).
+        bool CloseApproved() const noexcept { return m_closeApproved; }
 
         // Split-pane operations from IMainWindowView. Bodies are in
         // MainWindow.xaml.cpp; behaviour is unchanged from when these
@@ -193,6 +206,13 @@ namespace winrt::GhosttyWin32::implementation
         // list. Dispatched from close_surface_cb. UI thread only.
         void CloseSurfaceByPaneId(PaneId id);
 
+        // Install a WM_CLOSE subclass so Alt+F4 / OS-issued close
+        // routes through TryClose (same confirmation gate as the
+        // custom title-bar X). Idempotent; subclass is auto-removed
+        // when the HWND is destroyed. Called from the one-shot
+        // Activated handler after m_hwnd is captured.
+        void HookCloseSignal() noexcept;
+
         // The TerminalControl hosting the pane carrying `id`, or null
         // when no tab in this window owns it (already closed, or it
         // lives in a sibling window). Used by MainWindowRuntime to
@@ -303,6 +323,15 @@ namespace winrt::GhosttyWin32::implementation
         // Constructed once ghostty is initialized — needs the app handle
         // and HWND, neither available until InitGhostty has run.
         std::unique_ptr<TabFactory> m_tabFactory;
+        // Close-confirmation state. Set by RequestClose right before
+        // WinUI's Window::Close so the WM_CLOSE subclass installed for
+        // Alt+F4 / OS-issued close treats the follow-up WM_CLOSE as
+        // "already approved" (an internal request coming down through
+        // RequestClose is by definition past the confirmation gate).
+        // m_confirmDialogInFlight guards against repeated Alt+F4
+        // presses spawning multiple stacked ContentDialogs.
+        bool m_closeApproved{ false };
+        bool m_confirmDialogInFlight{ false };
         // ghostty runtime callback dispatcher (today: action_cb;
         // future: clipboard / surface). Built in InitGhostty after
         // the ghostty::App handle is available; the App-scope
