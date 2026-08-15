@@ -662,6 +662,12 @@ namespace winrt::GhosttyWin32::implementation
             });
 
             InitGhostty();
+            // Subscribe to system theme changes and push the current
+            // OS light/dark preference straight through to ghostty so
+            // themes with light/dark variants pick the right one at
+            // launch without waiting for the first user toggle.
+            HookSystemThemeSignal();
+            PushCurrentSystemColorScheme();
             // Tear-out hosts don't create an initial tab: they adopt
             // the dragged one (possibly before this handler even ran).
             if (!m_suppressInitialTab) CreateTab();
@@ -701,6 +707,114 @@ namespace winrt::GhosttyWin32::implementation
         // crash flag is also App's concern: App::~App clears it once
         // per clean process shutdown, which is the granularity the
         // "did the previous run crash?" check actually wants.
+    }
+
+    namespace {
+        // Subclass ID for the WM_SETTINGCHANGE hook. Distinct from
+        // SizeLimit's (which uses id=1) so both subclasses coexist
+        // on the same HWND without either replacing the other.
+        constexpr UINT_PTR kSystemThemeSubclassId = 2;
+
+        // Read HKCU\...\Themes\Personalize\AppsUseLightTheme. Missing
+        // key or read failure defaults to DARK — the terminal's
+        // typical setting and the safer choice for a code-signed app
+        // running before the personalization service is ready.
+        ghostty_color_scheme_e ReadOsColorScheme() noexcept {
+            DWORD value = 0;
+            DWORD size = sizeof(value);
+            LSTATUS s = RegGetValueW(
+                HKEY_CURRENT_USER,
+                L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+                L"AppsUseLightTheme",
+                RRF_RT_REG_DWORD,
+                nullptr, &value, &size);
+            if (s != ERROR_SUCCESS) return GHOSTTY_COLOR_SCHEME_DARK;
+            return value ? GHOSTTY_COLOR_SCHEME_LIGHT : GHOSTTY_COLOR_SCHEME_DARK;
+        }
+
+        LRESULT CALLBACK SystemThemeSubclassProc(
+            HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
+            UINT_PTR /*id*/, DWORD_PTR ref) noexcept
+        {
+            if (msg == WM_SETTINGCHANGE && lp) {
+                // lParam is a wchar_t* naming the changed setting. The
+                // one we care about is "ImmersiveColorSet" (fires when
+                // the OS light/dark preference flips). Compare via
+                // wcscmp; other WM_SETTINGCHANGE payloads (font sizes,
+                // input languages) sail past unchanged.
+                auto* name = reinterpret_cast<const wchar_t*>(lp);
+                if (wcscmp(name, L"ImmersiveColorSet") == 0) {
+                    if (auto* self = reinterpret_cast<MainWindow*>(ref)) {
+                        self->PushCurrentSystemColorScheme();
+                    }
+                }
+            }
+            return DefSubclassProc(hwnd, msg, wp, lp);
+        }
+    }
+
+    void MainWindow::HookSystemThemeSignal() noexcept
+    {
+        if (!m_hwnd) return;
+        SetWindowSubclass(m_hwnd, &SystemThemeSubclassProc,
+                          kSystemThemeSubclassId,
+                          reinterpret_cast<DWORD_PTR>(this));
+    }
+
+    void MainWindow::PushCurrentSystemColorScheme() noexcept
+    {
+        auto scheme = ReadOsColorScheme();
+        if (m_ghosttyApp) m_ghosttyApp->SetColorScheme(scheme);
+        // ghostty_app_set_color_scheme updates only the app-level
+        // conditional state and triggers a soft reload, but each
+        // surface derives config against its OWN conditional state —
+        // which stays on the pre-flip theme, so the reload picks the
+        // old variant and the surface's palette doesn't change until
+        // it's recreated. Push the new scheme into each existing
+        // surface too so the flip lands immediately.
+        struct Push {
+            ghostty_color_scheme_e scheme;
+            void operator()(Pane* node) const {
+                if (!node) return;
+                if (node->IsLeaf()) {
+                    if (auto* tc = Tab::LeafToTerminalControl(*node)) {
+                        tc->Surface().SetColorScheme(scheme);
+                    }
+                    return;
+                }
+                (*this)(node->First());
+                (*this)(node->Second());
+            }
+        };
+        Push push{ scheme };
+        for (auto& tab : m_tabs) {
+            if (!tab) continue;
+            auto* panelImpl =
+                winrt::get_self<implementation::SplitPanel>(tab->Panel());
+            if (!panelImpl) continue;
+            push(panelImpl->Root());
+        }
+        // Mirror the OS preference into the WinUI shell so titlebar,
+        // TabView chrome, menus, and any XamlControlsResources-derived
+        // brushes swap with the terminal content. Setting RequestedTheme
+        // on the root Content element propagates through the visual
+        // tree; anything binding to ThemeResource values updates on the
+        // next layout tick. Guarded by IsLoaded to avoid touching the
+        // tree before the framework has attached (WM_SETTINGCHANGE can
+        // fire immediately after HWND creation).
+        try {
+            if (auto root = Content().try_as<
+                    winrt::Microsoft::UI::Xaml::FrameworkElement>()) {
+                if (root.IsLoaded()) {
+                    root.RequestedTheme(scheme == GHOSTTY_COLOR_SCHEME_LIGHT
+                        ? winrt::Microsoft::UI::Xaml::ElementTheme::Light
+                        : winrt::Microsoft::UI::Xaml::ElementTheme::Dark);
+                }
+            }
+        } catch (winrt::hresult_error const&) {
+            // Window torn down mid-notification — next open will pick
+            // up the current scheme via the Activated one-shot path.
+        }
     }
 
     Tab* MainWindow::ActiveTab()
