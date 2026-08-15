@@ -61,6 +61,9 @@
     <ClInclude Include="Tabs\Panes\Split.h">
       <Filter>Tabs\Panes</Filter>
     </ClInclude>
+    <ClInclude Include="Tabs\Panes\Tree.h">
+      <Filter>Tabs\Panes</Filter>
+    </ClInclude>
     <ClInclude Include="Display\PhysicalPixels.h">
       <Filter>Display</Filter>
     </ClInclude>

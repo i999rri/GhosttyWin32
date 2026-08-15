@@ -1,0 +1,208 @@
+#pragma once
+
+#include "Tabs/Panes/Branch.h"
+#include <functional>
+#include <memory>
+#include <utility>
+
+namespace winrt::GhosttyWin32::implementation {
+
+// Container for a pane tree — the model layer for one tab's split
+// arrangement. Owns the root Branch (nullable = empty tree) plus
+// tree-wide state that doesn't belong on any single Branch: the
+// currently-zoomed pane (if any), the mutations that need to swap
+// the root pointer, etc.
+//
+// Tree is pure C++ — no WinUI, no Win32 — so its behaviour is
+// unit-testable in isolation with fake pane trees. The XAML-side
+// Panel (SplitPanel) holds a Tree as a member and drives
+// MeasureOverride / ArrangeOverride off it; the two layers meet at
+// the mutation methods on this class (SetRoot / ReplacePane /
+// RemovePane), where SplitPanel refreshes its Children collection
+// after Tree finishes rewiring pointers.
+//
+// This is the "SplitTree" of the Ghostty upstream Swift design (see
+// external/ghostty/macos/Sources/Features/Splits/SplitTree.swift),
+// adapted to C++ sum types (Branch = variant<Pane, Split>) instead
+// of Swift indirect enums. Named Tree here rather than SplitTree —
+// the "split" prefix would collide with the Split variant type
+// (making 'SplitTree' read as 'tree of Splits' when in fact the tree
+// contains a mix of Panes and Splits) and adds no information the
+// namespace / member type doesn't already convey.
+class Tree {
+public:
+    Tree() = default;
+    explicit Tree(std::unique_ptr<Branch> root) noexcept
+        : m_root(std::move(root)) {}
+
+    Tree(Tree const&) = delete;
+    Tree& operator=(Tree const&) = delete;
+    Tree(Tree&&) = default;
+    Tree& operator=(Tree&&) = default;
+
+    // ─── root access ───
+    bool Empty() const noexcept { return !m_root; }
+    Branch*       Root()       noexcept { return m_root.get(); }
+    Branch const* Root() const noexcept { return m_root.get(); }
+
+    // Replace the entire tree. Old subtree is destroyed as its
+    // unique_ptr is overwritten. The new root's parent back-pointer
+    // is cleared (a root has no parent).
+    void SetRoot(std::unique_ptr<Branch> root) noexcept {
+        if (root) root->parent = nullptr;
+        m_root = std::move(root);
+        // Zoom state can't survive a root replacement — the pointer
+        // targets nodes that just got dropped.
+        m_zoomed = nullptr;
+    }
+
+    // ─── walker delegation ───
+    // Thin wrappers around Branch's Composite-style methods. Empty
+    // trees answer conservatively (no matches, nothing to visit).
+
+    bool AnyPaneMatches(std::function<bool(Pane const&)> const& pred) const {
+        return m_root && m_root->AnyPaneMatches(pred);
+    }
+    void ForEachPane(std::function<void(Pane&)> const& visitor) {
+        if (m_root) m_root->ForEachPane(visitor);
+    }
+    void ForEachPane(std::function<void(Pane const&)> const& visitor) const {
+        if (m_root) m_root->ForEachPane(visitor);
+    }
+    Pane* FindPane(std::function<bool(Pane const&)> const& pred) {
+        return m_root ? m_root->FindPane(pred) : nullptr;
+    }
+    Pane const* FindPane(std::function<bool(Pane const&)> const& pred) const {
+        return m_root ? m_root->FindPane(pred) : nullptr;
+    }
+
+    // ─── structural mutations ───
+
+    // Replace the Branch currently wrapping `target` (a Pane pointer
+    // reachable from the root) with `newSubtree`. Returns true on
+    // success; false if `target` isn't in this tree or either pointer
+    // is null. Used by NEW_SPLIT to swap a leaf for a split-of-that-
+    // leaf-plus-a-new-leaf, preserving the existing pane's identity.
+    //
+    // The old subtree is destroyed as its unique_ptr is overwritten,
+    // and `newSubtree`'s parent back-pointer is rewritten to match
+    // the surrounding Split (or cleared, if `target`'s Branch was the
+    // root).
+    bool ReplacePane(Pane const* target, std::unique_ptr<Branch> newSubtree) noexcept {
+        if (!target || !newSubtree || !m_root) return false;
+
+        Branch* wrapping = m_root->FindBranchOfPane(target);
+        if (!wrapping) return false;
+
+        // Was `target` the root? Swap m_root itself.
+        if (wrapping == m_root.get()) {
+            newSubtree->parent = nullptr;
+            m_root = std::move(newSubtree);
+            if (m_zoomed == target) m_zoomed = nullptr;
+            return true;
+        }
+
+        // Otherwise `wrapping` is a child of some Split. Find that
+        // Split and rewire the matching unique_ptr slot.
+        Branch* parent = wrapping->parent;
+        if (!parent) return false;                       // shouldn't happen
+        auto* parentSplit = parent->AsSplit();
+        if (!parentSplit) return false;                  // shouldn't happen
+
+        newSubtree->parent = parent;
+        if (parentSplit->left.get() == wrapping) {
+            parentSplit->left = std::move(newSubtree);
+        } else if (parentSplit->right.get() == wrapping) {
+            parentSplit->right = std::move(newSubtree);
+        } else {
+            return false;                                // shouldn't happen
+        }
+        if (m_zoomed == target) m_zoomed = nullptr;
+        return true;
+    }
+
+    // Outcome of RemovePane — the caller keys UI reactions off which
+    // case occurred (last-pane closes the whole tab, split-collapse
+    // just relayouts, not-found is a stale close event).
+    enum class RemoveResult {
+        NotFound,      // `target` wasn't in this tree
+        Collapsed,     // pane removed; its enclosing split collapsed onto its sibling
+        RemovedRoot,   // pane was the tree's sole content; tree is now empty
+    };
+
+    // Remove the Pane `target` from the tree. If the pane was under a
+    // Split, that split collapses and its surviving sibling is
+    // promoted into the split's slot.
+    RemoveResult RemovePane(Pane const* target) noexcept {
+        if (!target || !m_root) return RemoveResult::NotFound;
+
+        Branch* wrapping = m_root->FindBranchOfPane(target);
+        if (!wrapping) return RemoveResult::NotFound;
+
+        // Root case: the pane was the whole tree.
+        if (wrapping == m_root.get()) {
+            m_root.reset();
+            m_zoomed = nullptr;
+            return RemoveResult::RemovedRoot;
+        }
+
+        // Under a Split: promote the sibling into the split's slot.
+        Branch* parent = wrapping->parent;
+        if (!parent) return RemoveResult::NotFound;      // shouldn't happen
+        auto* parentSplit = parent->AsSplit();
+        if (!parentSplit) return RemoveResult::NotFound; // shouldn't happen
+
+        // Pick the sibling; detach it from the Split so we can hand
+        // it over to the grandparent slot.
+        std::unique_ptr<Branch> sibling;
+        if (parentSplit->left.get() == wrapping) {
+            sibling = std::move(parentSplit->right);
+        } else if (parentSplit->right.get() == wrapping) {
+            sibling = std::move(parentSplit->left);
+        } else {
+            return RemoveResult::NotFound;               // shouldn't happen
+        }
+        if (!sibling) return RemoveResult::NotFound;     // malformed split
+
+        // Where does the split live? Root or under a grandparent Split.
+        Branch* grand = parent->parent;
+        if (!grand) {
+            // Split was the root — sibling becomes the new root.
+            sibling->parent = nullptr;
+            m_root = std::move(sibling);
+        } else {
+            auto* grandSplit = grand->AsSplit();
+            if (!grandSplit) return RemoveResult::NotFound; // shouldn't happen
+            sibling->parent = grand;
+            if (grandSplit->left.get() == parent) {
+                grandSplit->left = std::move(sibling);
+            } else if (grandSplit->right.get() == parent) {
+                grandSplit->right = std::move(sibling);
+            } else {
+                return RemoveResult::NotFound;           // shouldn't happen
+            }
+        }
+        if (m_zoomed == target) m_zoomed = nullptr;
+        return RemoveResult::Collapsed;
+    }
+
+    // ─── zoom state ───
+    // `toggle_split_zoom` action support: one pane in the tree can be
+    // marked "zoomed", meaning it should take up the whole SplitPanel
+    // area instead of participating in the split layout. Tree just
+    // records which pane; SplitPanel consults `Zoomed()` in its
+    // arrange pass and adjusts accordingly.
+
+    Pane const* Zoomed() const noexcept { return m_zoomed; }
+    void SetZoomed(Pane const* pane) noexcept { m_zoomed = pane; }
+    void ClearZoomed() noexcept { m_zoomed = nullptr; }
+
+private:
+    std::unique_ptr<Branch> m_root;
+    // Non-owning pointer into m_root's subtree. Cleared whenever the
+    // pane it points at could be destroyed (SetRoot, ReplacePane or
+    // RemovePane touching that pane).
+    Pane const* m_zoomed{ nullptr };
+};
+
+}  // namespace winrt::GhosttyWin32::implementation
