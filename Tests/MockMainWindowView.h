@@ -20,6 +20,7 @@ struct MockMainWindowView : core::host::IWindow {
     int dispatchCalls = 0;
     int tickCalls = 0;
     int requestCloseCalls = 0;
+    int tryCloseCalls = 0;
 
     HWND Hwnd() const noexcept override { return nullptr; }
     void Dispatch(std::function<void()> fn) override {
@@ -28,6 +29,7 @@ struct MockMainWindowView : core::host::IWindow {
     }
     void Tick() override { ++tickCalls; }
     void RequestClose() override { ++requestCloseCalls; }
+    void TryClose() override { ++tryCloseCalls; }
 
     // ----- split-pane -----
     int splitActivePaneCalls = 0;

@@ -134,6 +134,15 @@ public:
         return m_handle ? ghostty_surface_foreground_pid(m_handle) : 0;
     }
 
+    // Ghostty's per-surface prompt-on-quit signal. Reflects the
+    // `confirm-close-surface` config and whether the surface actually
+    // has non-shell child processes running — hosts consult this on
+    // user-initiated close paths and only show a dialog when it
+    // reports true.
+    bool NeedsConfirmQuit() const noexcept {
+        return m_handle && ghostty_surface_needs_confirm_quit(m_handle);
+    }
+
     // ---- selection ----
     bool HasSelection() const noexcept {
         return m_handle && ghostty_surface_has_selection(m_handle);

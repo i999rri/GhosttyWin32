@@ -33,11 +33,16 @@ TEST(GhosttyActionsTest, OnRenderTicksTheView) {
     EXPECT_EQ(view.tickCalls, 1);
 }
 
-TEST(GhosttyActionsTest, OnCloseWindowAsksTheViewToClose) {
+TEST(GhosttyActionsTest, OnCloseWindowRoutesThroughTryClose) {
+    // TryClose is the confirmation-gated close path (issue #102);
+    // OnCloseWindow represents user intent, so it goes through
+    // TryClose rather than RequestClose to give
+    // needs_confirm_quit a chance to prompt.
     MockMainWindowView view;
     Actions actions(view);
     EXPECT_TRUE(actions.OnCloseWindow());
-    EXPECT_EQ(view.requestCloseCalls, 1);
+    EXPECT_EQ(view.tryCloseCalls, 1);
+    EXPECT_EQ(view.requestCloseCalls, 0);
 }
 
 TEST(GhosttyActionsTest, OnToggleFullscreenAsksTheViewToToggle) {

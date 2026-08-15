@@ -994,6 +994,79 @@ namespace winrt::GhosttyWin32::implementation
         try { Close(); } catch (winrt::hresult_error const&) {}
     }
 
+    void MainWindow::TryClose()
+    {
+        // Walk every leaf in every tab: if any surface reports
+        // needs_confirm_quit=true, gate the close on a
+        // WinUI ContentDialog. Otherwise close straight through.
+        //
+        // ghostty_surface_needs_confirm_quit already factors in the
+        // `confirm-close-surface` config, so users who set it false
+        // sail through without a dialog on every close.
+        //
+        // Inline recursion (rather than reusing CollectLeaves defined
+        // later in this file) so this can sit close to RequestClose
+        // where the surrounding close-path handlers already live.
+        struct Check {
+            bool any = false;
+            void operator()(Pane* node) {
+                if (any || !node) return;
+                if (node->IsLeaf()) {
+                    if (auto* tc = Tab::LeafToTerminalControl(*node)) {
+                        if (tc->Surface().NeedsConfirmQuit()) any = true;
+                    }
+                    return;
+                }
+                (*this)(node->First());
+                (*this)(node->Second());
+            }
+        };
+        Check check;
+        for (auto& tab : m_tabs) {
+            if (!tab) continue;
+            auto* panelImpl =
+                winrt::get_self<implementation::SplitPanel>(tab->Panel());
+            if (!panelImpl) continue;
+            check(panelImpl->Root());
+            if (check.any) break;
+        }
+        bool anyNeedsConfirm = check.any;
+
+        if (!anyNeedsConfirm) {
+            RequestClose();
+            return;
+        }
+
+        // XamlRoot is required for a ContentDialog to know which
+        // Window / island to overlay. Fall back to a plain close
+        // if the tree isn't realised yet (shouldn't happen — a
+        // close reaching TryClose means the window has been shown).
+        auto content = Content();
+        auto xamlRoot = content ? content.XamlRoot() : nullptr;
+        if (!xamlRoot) {
+            RequestClose();
+            return;
+        }
+
+        muxc::ContentDialog dlg;
+        dlg.XamlRoot(xamlRoot);
+        dlg.Title(winrt::box_value(winrt::hstring{ L"Close window?" }));
+        dlg.Content(winrt::box_value(winrt::hstring{
+            L"One or more terminals in this window still have running "
+            L"processes. They will be terminated." }));
+        dlg.PrimaryButtonText(L"Close");
+        dlg.CloseButtonText(L"Cancel");
+        dlg.DefaultButton(muxc::ContentDialogButton::Close);
+
+        auto op = dlg.ShowAsync();
+        auto weak = get_weak();
+        op.Completed([weak](auto&& sender, auto&& status) {
+            if (status != winrt::Windows::Foundation::AsyncStatus::Completed) return;
+            if (sender.GetResults() != muxc::ContentDialogResult::Primary) return;
+            if (auto self = weak.get()) self->RequestClose();
+        });
+    }
+
     void MainWindow::InitGhostty()
     {
         // m_ghosttyApp + m_ghosttyDispatcher are already set in the
@@ -2281,10 +2354,14 @@ namespace winrt::GhosttyWin32::implementation
     void MainWindow::OnCloseClick(winrt::Windows::Foundation::IInspectable const&,
                                   winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
-        // Route through WM_CLOSE so any registered close hooks run; the
-        // window's own Close() shortcut would skip them.
-        if (m_hwnd) PostMessageW(m_hwnd, WM_CLOSE, 0, 0);
-        else this->Close();
+        // User-intent close → confirmation gate. TryClose walks the
+        // window's panes, shows a WinUI ContentDialog when any
+        // surface reports needs_confirm_quit, and only then calls
+        // through to RequestClose. Alt+F4 / OS-issued WM_CLOSE still
+        // bypasses this (would need a WndProc subclass), matching
+        // typical Windows-app behaviour where only the app's own
+        // close affordances confirm.
+        TryClose();
     }
 
     void MainWindow::UpdateMaximizeGlyph()
