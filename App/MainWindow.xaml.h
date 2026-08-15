@@ -14,6 +14,7 @@
 #include "Tabs/Tab.h"
 #include "Tabs/TabFactory.h"
 #include "Tabs/Tabs.h"
+#include "WindowCloseGate.h"
 
 namespace winrt::GhosttyWin32::implementation
 {
@@ -79,6 +80,12 @@ namespace winrt::GhosttyWin32::implementation
         void Tick() override;
         void RequestClose() override;
         void TryClose() override;
+        // Public accessor for the close-flow state machine so file-local
+        // helpers (the WM_CLOSE subclass proc, for one) can consult its
+        // invariants and enqueue close requests without befriending
+        // MainWindow. The gate itself is safe to expose — it protects
+        // its own invariants regardless of caller.
+        WindowCloseGate& CloseGate() noexcept { return m_closeGate; }
 
         // Split-pane operations from IMainWindowView. Bodies are in
         // MainWindow.xaml.cpp; behaviour is unchanged from when these
@@ -206,6 +213,32 @@ namespace winrt::GhosttyWin32::implementation
         // Tear down the pane carrying `id` and update the tree / tab
         // list. Dispatched from close_surface_cb. UI thread only.
         void CloseSurfaceByPaneId(PaneId id);
+
+        // ----- WindowCloseGate ops -----
+        // Predicates and effects the gate calls back into. Ordered here
+        // so the initializer for m_closeGate can reference them by
+        // address without needing full definitions inline. All three
+        // run on the UI thread — the gate itself has no threading of
+        // its own; showDialog just returns and the decision callback
+        // fires later on the dispatcher.
+        bool NeedsConfirmForScope(CloseScope const& scope);
+        void ShowCloseDialog(CloseScope const& scope,
+                             std::function<void(bool)> onDecision);
+        void ExecuteClose(CloseScope const& scope);
+        // Mechanics of closing a single tab (detach panes, remove from
+        // TabView, unparent panel, drop the Tab object; or trigger a
+        // full window close when it was the last tab). Callable without
+        // going through the gate — the gate's Tab-scope execute is a
+        // one-liner that forwards here.
+        void PerformTabClose(
+            Microsoft::UI::Xaml::Controls::TabViewItem const& item);
+
+        // Install a WM_CLOSE subclass so Alt+F4 / OS-issued close routes
+        // through m_closeGate the same way the custom title-bar X does.
+        // Idempotent; subclass is auto-removed when the HWND is
+        // destroyed. Called from the one-shot Activated after m_hwnd is
+        // captured.
+        void HookCloseSignal() noexcept;
 
         // The TerminalControl hosting the pane carrying `id`, or null
         // when no tab in this window owns it (already closed, or it
@@ -342,6 +375,16 @@ namespace winrt::GhosttyWin32::implementation
         // One tick of the poll. Body is inline in the .cpp; walks
         // m_tabs and updates the header where appropriate.
         void UpdateForegroundNames() noexcept;
+
+        // Close-flow state machine. Every user-facing close (custom X,
+        // tab-header X, close_surface keybind, WM_CLOSE subclass) funnels
+        // through here so the confirmation dialog invariants live in one
+        // named value rather than as scattered MainWindow fields. Declared
+        // last because the initializer references other members (m_tabs,
+        // TabView(), Content(), RequestClose) and member init runs in
+        // declaration order — the gate must be built after everything it
+        // will call into is already set up.
+        WindowCloseGate m_closeGate;
     };
 }
 
