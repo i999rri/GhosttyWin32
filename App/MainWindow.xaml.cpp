@@ -69,6 +69,9 @@ namespace winrt::GhosttyWin32::implementation
                 .quit = []() {
                     if (App::g_app) App::g_app->Quit();
                 },
+                .gotoWindow = [](ghostty_action_goto_window_e d) {
+                    if (App::g_app) App::g_app->PresentWindow(d);
+                },
             });
 
         ExtendsContentIntoTitleBar(true);

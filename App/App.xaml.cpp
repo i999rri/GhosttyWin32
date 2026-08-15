@@ -340,6 +340,48 @@ namespace winrt::GhosttyWin32::implementation
         return nullptr;
     }
 
+    void App::PresentWindow(ghostty_action_goto_window_e direction)
+    {
+        const size_t n = m_topLevelWindows.size();
+        // Nothing to navigate to when there's zero or one window.
+        // Explicit guard so the modulo / index math below stays
+        // well-defined even in the degenerate single-window case.
+        if (n < 2) return;
+
+        // Anchor at whichever window is currently the OS foreground.
+        // Not every top-level HWND has to be one of ours (there are
+        // legitimate cases like the taskbar preview scenario where the
+        // foreground briefly isn't a MainWindow), so fall through to
+        // window 0 when we can't find ourselves.
+        HWND fg = ::GetForegroundWindow();
+        size_t current = 0;
+        for (size_t i = 0; i < n; ++i) {
+            auto typed = m_topLevelWindows[i]
+                .try_as<winrt::GhosttyWin32::MainWindow>();
+            if (!typed) continue;
+            auto* impl = winrt::get_self<MainWindow>(typed);
+            if (impl && impl->Hwnd() == fg) {
+                current = i;
+                break;
+            }
+        }
+
+        // NEXT / PREVIOUS wrap around the window list; matches the
+        // upstream macOS shell behaviour.
+        size_t target = current;
+        switch (direction) {
+            case GHOSTTY_GOTO_WINDOW_NEXT:
+                target = (current + 1) % n;
+                break;
+            case GHOSTTY_GOTO_WINDOW_PREVIOUS:
+                target = (current + n - 1) % n;
+                break;
+        }
+        if (target == current) return;
+
+        m_topLevelWindows[target].Activate();
+    }
+
     void App::TrackWindow(Microsoft::UI::Xaml::Window const& w)
     {
         m_topLevelWindows.push_back(w);

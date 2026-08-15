@@ -122,6 +122,11 @@ namespace winrt::GhosttyWin32::implementation
         MainWindow* FindWindowByTabItem(
             Microsoft::UI::Xaml::Controls::TabViewItem const& item) noexcept;
 
+        // GOTO_WINDOW: bring the previous / next top-level window
+        // forward relative to the currently-foreground one. No-op
+        // when only one window exists. UI thread only.
+        void PresentWindow(ghostty_action_goto_window_e direction);
+
         // The tab drag currently in flight, if any. Cross-window
         // drag-and-drop rides OLE, which only marshals primitive
         // DataPackage values — a TabViewItem stuffed into the

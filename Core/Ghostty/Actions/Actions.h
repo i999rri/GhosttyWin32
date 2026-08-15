@@ -42,6 +42,10 @@ public:
         std::function<void()> newWindow;
         std::function<void()> closeAllWindows;
         std::function<void()> quit;
+        // GOTO_WINDOW: bring another top-level window forward. App
+        // owns the window vector, so the traversal (previous / next
+        // relative to the currently-foreground window) lives there.
+        std::function<void(ghostty_action_goto_window_e)> gotoWindow;
     };
 
     Actions(host::IWindow& view, AppHooks hooks = {}) noexcept
@@ -90,6 +94,10 @@ public:
     bool OnNewWindow();
     bool OnCloseTab(ghostty_surface_t surface);
     bool OnGotoTab(int requested);
+    // GOTO_WINDOW: navigate to the previous / next top-level
+    // MainWindow. Bounces through the injected gotoWindow hook (App
+    // owns the window vector, so the traversal lives there).
+    bool OnGotoWindow(ghostty_action_goto_window_e direction);
     bool OnMoveTab(ghostty_action_move_tab_s move);
     // SET_TITLE and SET_TAB_TITLE collapse to the same handler —
     // this port has one title surface per tab.

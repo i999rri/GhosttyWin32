@@ -64,6 +64,8 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
             return false;
         case GHOSTTY_ACTION_GOTO_TAB:
             return m_actions.OnGotoTab(static_cast<int>(action.action.goto_tab));
+        case GHOSTTY_ACTION_GOTO_WINDOW:
+            return m_actions.OnGotoWindow(action.action.goto_window);
         case GHOSTTY_ACTION_MOVE_TAB:
             return m_actions.OnMoveTab(action.action.move_tab);
         // SET_TITLE / SET_TAB_TITLE: this port treats them
@@ -164,6 +166,9 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
         case GHOSTTY_ACTION_SEARCH_SELECTED:
         case GHOSTTY_ACTION_INSPECTOR:
         case GHOSTTY_ACTION_RENDER_INSPECTOR:
+        // GTK-only, will never fire on Windows. Acked so it doesn't
+        // fall through to the default "unhandled action" return.
+        case GHOSTTY_ACTION_SHOW_GTK_INSPECTOR:
         case GHOSTTY_ACTION_TOGGLE_TAB_OVERVIEW:
         case GHOSTTY_ACTION_TOGGLE_QUICK_TERMINAL:
         case GHOSTTY_ACTION_TOGGLE_COMMAND_PALETTE:
