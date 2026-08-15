@@ -46,6 +46,9 @@
     <ClInclude Include="Tabs\TabFactory.h">
       <Filter>Tabs</Filter>
     </ClInclude>
+    <ClInclude Include="Tabs\Panes\Branch.h">
+      <Filter>Tabs\Panes</Filter>
+    </ClInclude>
     <ClInclude Include="Tabs\Panes\Pane.h">
       <Filter>Tabs\Panes</Filter>
     </ClInclude>
@@ -53,6 +56,9 @@
       <Filter>Tabs\Panes</Filter>
     </ClInclude>
     <ClInclude Include="Tabs\Panes\PaneIdAllocator.h">
+      <Filter>Tabs\Panes</Filter>
+    </ClInclude>
+    <ClInclude Include="Tabs\Panes\Split.h">
       <Filter>Tabs\Panes</Filter>
     </ClInclude>
     <ClInclude Include="Display\PhysicalPixels.h">
