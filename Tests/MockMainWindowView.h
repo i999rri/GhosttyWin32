@@ -129,6 +129,13 @@ struct MockMainWindowView : core::host::IWindow {
     int toggleWindowDecorationsCalls = 0;
     void ToggleWindowDecorations() override { ++toggleWindowDecorationsCalls; }
 
+    int setFloatOnTopCalls = 0;
+    ghostty_action_float_window_e lastFloatOnTopMode{};
+    void SetFloatOnTop(ghostty_action_float_window_e mode) override {
+        ++setFloatOnTopCalls;
+        lastFloatOnTopMode = mode;
+    }
+
     int presentTerminalCalls = 0;
     void PresentTerminal() override { ++presentTerminalCalls; }
 

@@ -112,6 +112,8 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
             return m_actions.OnToggleFullscreen();
         case GHOSTTY_ACTION_TOGGLE_WINDOW_DECORATIONS:
             return m_actions.OnToggleWindowDecorations();
+        case GHOSTTY_ACTION_FLOAT_WINDOW:
+            return m_actions.OnFloatWindow(action.action.float_window);
 
         // ----- split-pane (surface-targeted) -----
         case GHOSTTY_ACTION_NEW_SPLIT:
@@ -184,11 +186,6 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
         // interaction with the DComp surface crashed the process
         // on URL click); the URL click path itself still works.
         case GHOSTTY_ACTION_MOUSE_OVER_LINK:
-        // FLOAT_WINDOW: no keybind reaches us yet; ghostty's
-        // dispatch path for it isn't understood on this port.
-        // Acking avoids "unhandled action" noise once that's
-        // fixed and the keybind starts firing.
-        case GHOSTTY_ACTION_FLOAT_WINDOW:
         // TOGGLE_BACKGROUND_OPACITY: dispatched but not yet
         // implemented — tracked in #69. (The layered-alpha approach
         // sketched in the issue body doesn't work over a flip-model
