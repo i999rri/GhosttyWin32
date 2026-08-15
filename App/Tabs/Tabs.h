@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Tabs/Panes/Pane.h"
+#include "Tabs/Panes/Tree.h"
 #include "SplitPanel.h"
 #include "Tabs/Tab.h"
 #include "ghostty.h"
@@ -39,25 +39,23 @@ public:
     }
 
     // Resolve a ghostty_surface_t back to the owning Tab by walking
-    // each tab's Pane tree. ActiveControl alone would miss surfaces in
-    // non-active leaves once splits exist; the tree walk is correct
-    // for both the single-leaf case (today) and any future split
-    // configuration. O(N * leaves) — both factors are small enough
-    // that a flat scan is strictly cheaper than maintaining an index.
+    // each tab's pane tree. ActiveControl alone would miss surfaces in
+    // non-active panes once splits exist; the tree walk is correct for
+    // both the single-pane case and any split configuration.
     Tab* FindBySurface(ghostty_surface_t surface) const {
-        return FindLeafBySurface(surface).tab;
+        return FindPaneBySurface(surface).tab;
     }
 
-    // Look up the Tab + leaf for the pane carrying `id`. Used by the
-    // close_surface_cb callback path: ghostty hands us back the ID we
-    // placed in cfg.userdata, and the dispatched lambda calls this on
-    // the UI thread. Returns { nullptr, nullptr } if the user already
-    // closed the surface via the UI before the dispatched close
-    // arrived (or if the ID is otherwise unknown), making stale
-    // callbacks a safe no-op.
+    // Look up the Tab + pane carrying `id`. Used by the close_surface_cb
+    // callback path: ghostty hands us back the ID we placed in
+    // cfg.userdata, and the dispatched lambda calls this on the UI
+    // thread. Returns { nullptr, nullptr } if the user already closed
+    // the surface via the UI before the dispatched close arrived (or
+    // if the ID is otherwise unknown), making stale callbacks a safe
+    // no-op.
     struct PaneLookup {
         Tab* tab;
-        Pane* leaf;
+        Pane* pane;
     };
     PaneLookup FindByPaneId(PaneId id) const {
         if (!id) return { nullptr, nullptr };
@@ -65,26 +63,29 @@ public:
             if (!t) continue;
             auto* panelImpl = winrt::get_self<implementation::SplitPanel>(t->Panel());
             if (!panelImpl) continue;
-            if (auto* leaf = FindLeafByPaneId(panelImpl->Root(), id)) {
-                return { t.get(), leaf };
+            if (auto* pane = panelImpl->Tree().FindPane(
+                    [id](Pane const& p) { return p.id == id; })) {
+                return { t.get(), pane };
             }
         }
         return { nullptr, nullptr };
     }
 
-    // Surface-driven leaf lookup. Mirrors FindBySurface but returns the
-    // specific leaf in addition to the owning Tab, so callers that need
-    // both (e.g. desktop notification routing — find the pane that
-    // emitted the toast and embed its PaneId in the click argument)
-    // don't repeat the tree walk.
-    PaneLookup FindLeafBySurface(ghostty_surface_t surface) const {
+    // Surface-driven pane lookup. Mirrors FindBySurface but returns the
+    // specific pane in addition to the owning Tab, so callers that need
+    // both (e.g. desktop notification routing) don't repeat the walk.
+    PaneLookup FindPaneBySurface(ghostty_surface_t surface) const {
         if (!surface) return { nullptr, nullptr };
         for (auto& t : m_tabs) {
             if (!t) continue;
             auto* panelImpl = winrt::get_self<implementation::SplitPanel>(t->Panel());
             if (!panelImpl) continue;
-            if (auto* leaf = FindLeafBySurfaceRecursive(panelImpl->Root(), surface)) {
-                return { t.get(), leaf };
+            if (auto* pane = panelImpl->Tree().FindPane(
+                    [surface](Pane const& p) {
+                        auto const* tc = Tab::PaneToTerminalControl(p);
+                        return tc && tc->Surface().Owns(surface);
+                    })) {
+                return { t.get(), pane };
             }
         }
         return { nullptr, nullptr };
@@ -144,35 +145,6 @@ public:
     auto end() const noexcept { return m_tabs.end(); }
 
 private:
-    // Depth-first search for the leaf whose TerminalControl owns
-    // `surface`. Returns the leaf node (mutable so callers updating
-    // the active-leaf pointer can do so) or nullptr. Used by both
-    // FindBySurface (which only cares whether the leaf exists) and
-    // FindLeafBySurface (which needs the leaf itself).
-    static Pane* FindLeafBySurfaceRecursive(Pane* node, ghostty_surface_t surface) {
-        if (!node) return nullptr;
-        if (node->IsLeaf()) {
-            if (auto* c = Tab::LeafToTerminalControl(*node); c && c->Surface().Owns(surface)) {
-                return node;
-            }
-            return nullptr;
-        }
-        if (auto* p = FindLeafBySurfaceRecursive(node->First(), surface)) return p;
-        return FindLeafBySurfaceRecursive(node->Second(), surface);
-    }
-
-    // Depth-first search for a leaf carrying `id`. Returns the leaf
-    // node (mutable so callers can update active-leaf pointers when
-    // collapsing the tree on close) or nullptr.
-    static Pane* FindLeafByPaneId(Pane* node, PaneId id) {
-        if (!node) return nullptr;
-        if (node->IsLeaf()) {
-            return node->Id() == id ? node : nullptr;
-        }
-        if (auto* p = FindLeafByPaneId(node->First(), id)) return p;
-        return FindLeafByPaneId(node->Second(), id);
-    }
-
     std::vector<std::unique_ptr<Tab>> m_tabs;
 };
 
