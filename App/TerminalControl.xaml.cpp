@@ -84,7 +84,7 @@ namespace winrt::GhosttyWin32::implementation
             auto self = weakSelf.get();
             if (!self) return;
             if (self->m_editContext) self->m_editContext.NotifyFocusEnter();
-            // The UnfocusedDim overlay is driven by Tab.SetActiveLeaf,
+            // The UnfocusedDim overlay is driven by Tab.SetActivePane,
             // not by XAML focus events. Reason: the dim represents
             // "this leaf is the active split in its tab", which has
             // nothing to do with XAML keyboard focus. Hooking it on
@@ -93,7 +93,7 @@ namespace winrt::GhosttyWin32::implementation
             // alt-tab away), even though the active leaf hasn't
             // changed. The surface-focused notification still fires
             // here — the host's NotifySurfaceFocused routes through
-            // Tab.SetActiveLeaf, so a real focus shift (pointer
+            // Tab.SetActivePane, so a real focus shift (pointer
             // click on a non-active pane) still updates the dim by
             // going through the tab.
             //
