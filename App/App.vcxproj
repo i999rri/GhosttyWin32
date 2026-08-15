@@ -170,6 +170,7 @@
     <ClInclude Include="TerminalControl.xaml.h">
       <DependentUpon>TerminalControl.xaml</DependentUpon>
     </ClInclude>
+    <ClInclude Include="WindowCloseGate.h" />
   </ItemGroup>
   <ItemGroup>
     <ApplicationDefinition Include="App.xaml" />

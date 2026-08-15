@@ -121,6 +121,18 @@ public:
     winrt::GhosttyWin32::SplitPanel const& Panel() const noexcept { return m_panel; }
     Pane* ActiveLeaf() const noexcept { return m_activeLeaf; }
 
+    // Per-tab confirmation predicate: does any surface in this tab's
+    // pane tree currently report ghostty_surface_needs_confirm_quit?
+    // Owns the pane-tree walk here because Tab already owns the tree —
+    // callers (WindowCloseGate.Ops.needsConfirm for a Tab scope,
+    // MainWindow.TryClose iterating tabs for the window scope) get a
+    // straight bool rather than pulling the tree out and walking it
+    // themselves.
+    bool NeedsConfirmClose() const {
+        auto* panelImpl = winrt::get_self<implementation::SplitPanel>(m_panel);
+        return panelImpl && SubtreeNeedsConfirmClose(panelImpl->Root());
+    }
+
     // Retarget the active leaf — used by NEW_SPLIT (focus shifts to
     // the freshly-created pane), GOTO_SPLIT (direction-based pane
     // nav), and the pointer-focus path (a click on a non-active pane).
@@ -220,6 +232,19 @@ private:
         }
         DetachAllLeaves(node->First());
         DetachAllLeaves(node->Second());
+    }
+
+    // Depth-first test: any surface in this subtree currently reports
+    // needs_confirm_quit? Short-circuits at the first true — walks no
+    // further once the caller's answer is settled.
+    static bool SubtreeNeedsConfirmClose(Pane const* node) {
+        if (!node) return false;
+        if (node->IsLeaf()) {
+            auto const* tc = LeafToTerminalControl(*node);
+            return tc && tc->Surface().NeedsConfirmQuit();
+        }
+        return SubtreeNeedsConfirmClose(node->First()) ||
+               SubtreeNeedsConfirmClose(node->Second());
     }
 
     // SplitPanel owns the Pane tree (via its own m_root). The host
