@@ -6,77 +6,33 @@
 
 namespace winrt::GhosttyWin32::implementation {
 
-void SplitPanel::SetRoot(std::unique_ptr<Pane> root) {
-    m_root = std::move(root);
+void SplitPanel::SetRoot(std::unique_ptr<Branch> root) {
+    m_tree.SetRoot(std::move(root));
     SyncChildrenFromTree();
     InvalidateMeasure();
     InvalidateArrange();
 }
 
-bool SplitPanel::ReplaceLeaf(Pane* leaf, std::unique_ptr<Pane> newSubtree) {
-    if (!leaf || !newSubtree || !m_root) return false;
-
-    // Root replacement: defer to SetRoot so the same children-sync /
-    // invalidate path runs.
-    if (m_root.get() == leaf) {
-        SetRoot(std::move(newSubtree));
-        return true;
-    }
-
-    // Non-root: parent owns leaf via unique_ptr; rewrite that pointer.
-    auto* parent = leaf->Parent();
-    if (!parent) return false;
-    if (!parent->ReplaceChild(leaf, std::move(newSubtree))) return false;
-
+bool SplitPanel::ReplacePane(Pane const* pane, std::unique_ptr<Branch> newSubtree) {
+    if (!m_tree.ReplacePane(pane, std::move(newSubtree))) return false;
     SyncChildrenFromTree();
     InvalidateMeasure();
     InvalidateArrange();
     return true;
 }
 
-SplitPanel::RemovalResult SplitPanel::RemoveLeaf(Pane* leaf) {
-    if (!leaf || !m_root) return RemovalResult::NotFound;
-
-    if (m_root.get() == leaf) {
-        // Root removal — tree becomes empty. Caller decides the
-        // surrounding-tab action.
-        SetRoot(nullptr);
-        return RemovalResult::RemovedRoot;
-    }
-
-    auto* parent = leaf->Parent();
-    if (!parent) return RemovalResult::NotFound;
-
-    // Identify the surviving sibling (the parent's other child) and
-    // detach it from the parent so its unique_ptr survives the parent
-    // destruction triggered below.
-    Pane* siblingRaw = (parent->First() == leaf) ? parent->Second()
-                                                  : parent->First();
-    if (!siblingRaw) return RemovalResult::NotFound;
-    auto sibling = parent->DetachChild(siblingRaw);
-    if (!sibling) return RemovalResult::NotFound;
-
-    // Replace `parent` in its slot with the sibling subtree. The
-    // parent's unique_ptr is overwritten, which destroys the parent
-    // node and (transitively) the doomed leaf. The sibling subtree's
-    // contents are unaffected because we already detached it.
-    auto* grandparent = parent->Parent();
-    if (!grandparent) {
-        // parent was root.
-        SetRoot(std::move(sibling));
-    } else {
-        if (!grandparent->ReplaceChild(parent, std::move(sibling))) {
-            return RemovalResult::NotFound;  // shouldn't happen, but fail closed
-        }
+Tree::RemoveResult SplitPanel::RemovePane(Pane const* pane) {
+    auto result = m_tree.RemovePane(pane);
+    if (result != Tree::RemoveResult::NotFound) {
         SyncChildrenFromTree();
         InvalidateMeasure();
         InvalidateArrange();
     }
-    return RemovalResult::Collapsed;
+    return result;
 }
 
-void SplitPanel::SetZoomed(Pane* leaf) {
-    m_zoomedLeaf = leaf;
+void SplitPanel::SetZoomed(Pane const* pane) {
+    m_tree.SetZoomed(pane);
     UpdateChildVisibility();
     InvalidateMeasure();
     InvalidateArrange();
@@ -84,10 +40,11 @@ void SplitPanel::SetZoomed(Pane* leaf) {
 
 void SplitPanel::UpdateChildVisibility() {
     using namespace winrt::Microsoft::UI::Xaml;
-    // No zoom in effect — every child stays visible. Walk Children()
-    // directly so this also recovers visibility for elements that
-    // were previously hidden by an earlier zoom.
-    if (!m_zoomedLeaf) {
+    auto const* zoomed = m_tree.Zoomed();
+    // No zoom — every child stays visible. Walk Children() directly so
+    // this also recovers visibility for elements previously hidden by
+    // an earlier zoom.
+    if (!zoomed) {
         for (auto&& child : Children()) {
             if (auto el = child.try_as<UIElement>()) {
                 el.Visibility(Visibility::Visible);
@@ -95,10 +52,8 @@ void SplitPanel::UpdateChildVisibility() {
         }
         return;
     }
-    // Zoom active — only the zoomed leaf's content stays visible.
-    // Comparing UIElement projections by identity works because each
-    // element appears at most once in Children().
-    auto zoomElement = m_zoomedLeaf->Content();
+    // Zoom active — only the zoomed pane's content stays visible.
+    auto zoomElement = zoomed->content;
     for (auto&& child : Children()) {
         if (auto el = child.try_as<UIElement>()) {
             el.Visibility(el == zoomElement ? Visibility::Visible : Visibility::Collapsed);
@@ -110,10 +65,6 @@ void SplitPanel::SetDividerColor(winrt::Windows::UI::Color color) noexcept {
     using namespace winrt::Microsoft::UI::Xaml::Controls;
     using namespace winrt::Microsoft::UI::Xaml::Media;
     m_dividerBrush = SolidColorBrush(color);
-    // Repaint every existing splitter so a reload-driven colour
-    // change shows up without waiting for a tree rebuild. New
-    // splitters created after this point pick the brush up via
-    // MakeSplitter's check on m_dividerBrush.
     for (auto const& entry : m_splitters) {
         if (auto border = entry.element.try_as<Border>()) {
             border.Background(m_dividerBrush);
@@ -122,13 +73,15 @@ void SplitPanel::SetDividerColor(winrt::Windows::UI::Color color) noexcept {
 }
 
 void SplitPanel::EqualizeAll() {
-    // m_splitters already holds one entry per internal node, so reuse
-    // it instead of re-walking the tree. The vector is rebuilt on
-    // every SyncChildrenFromTree, so it's always in sync with the
-    // current tree shape.
+    // m_splitters already holds one entry per Split node — reuse
+    // instead of re-walking the tree.
     if (m_splitters.empty()) return;
     for (auto const& entry : m_splitters) {
-        if (entry.node) entry.node->SetRatio(0.5);
+        if (entry.branch) {
+            if (auto* split = entry.branch->AsSplit()) {
+                split->ratio = 0.5;
+            }
+        }
     }
     InvalidateMeasure();
     InvalidateArrange();
@@ -137,83 +90,56 @@ void SplitPanel::EqualizeAll() {
 void SplitPanel::SyncChildrenFromTree() {
     Children().Clear();
     m_splitters.clear();
-    m_draggingNode = nullptr;
-    // Any tree shape change invalidates a previously-stored zoom
-    // pointer (the leaf may have moved, been wrapped in a split, or
-    // gone away entirely). Clearing here is safer than auditing every
-    // call site for whether the zoomed leaf survived.
-    m_zoomedLeaf = nullptr;
-    if (m_root) AppendNodeToChildren(*m_root);
-    // Re-evaluate Visibility across the rebuilt Children collection:
-    // a previous zoom would have left some leaves with
-    // Visibility=Collapsed, and that state survives a Clear() +
-    // re-Append because Visibility is a property of the UIElement
-    // itself, not its parent-child relationship. With m_zoomedLeaf
-    // reset above, UpdateChildVisibility sets every child to Visible.
+    m_draggingBranch = nullptr;
+    // Any tree shape change invalidates a stored zoom pointer.
+    m_tree.ClearZoomed();
+    if (auto* root = m_tree.Root()) AppendBranchToChildren(*root);
+    // Re-evaluate Visibility after rebuilding Children (previous zoom
+    // could have left Visibility=Collapsed on now-unrelated elements).
     UpdateChildVisibility();
 }
 
-void SplitPanel::AppendNodeToChildren(Pane& node) {
-    if (node.IsLeaf()) {
-        if (auto element = node.Content()) {
+void SplitPanel::AppendBranchToChildren(Branch& branch) {
+    if (auto* pane = branch.AsPane()) {
+        if (auto element = pane->content) {
             Children().Append(element);
         }
         return;
     }
-    // Walk first → splitter → second. The visual order matches the
-    // layout order, and putting the splitter between the children in
-    // the Children() collection means it gets painted on top of the
-    // junction so the dragable strip is always reachable for input.
-    if (auto* f = node.First()) AppendNodeToChildren(*f);
-    auto splitter = MakeSplitter(&node);
+    auto* split = branch.AsSplit();
+    if (!split) return;
+    // Walk left → splitter → right. Placing the splitter between the
+    // children in Children() means it paints on top of the junction so
+    // the drag strip is always reachable for input.
+    if (split->left)  AppendBranchToChildren(*split->left);
+    auto splitter = MakeSplitter(&branch);
     Children().Append(splitter);
-    m_splitters.push_back({ splitter, &node });
-    if (auto* s = node.Second()) AppendNodeToChildren(*s);
+    m_splitters.push_back({ splitter, &branch });
+    if (split->right) AppendBranchToChildren(*split->right);
 }
 
-Microsoft::UI::Xaml::Controls::Border SplitPanel::MakeSplitter(Pane* node) {
+Microsoft::UI::Xaml::Controls::Border SplitPanel::MakeSplitter(Branch* splitBranch) {
     using namespace winrt::Microsoft::UI::Xaml;
     using namespace winrt::Microsoft::UI::Xaml::Controls;
     using namespace winrt::Microsoft::UI::Xaml::Input;
     using namespace winrt::Microsoft::UI::Xaml::Media;
 
     Border border{};
-    // Prefer the SetDividerColor-supplied brush (TabFactory resolves
-    // it from ghostty config) over the built-in fallback. Fallback
-    // is a semi-transparent gray, visible on both light- and dark-
-    // themed terminal backgrounds without dominating — used only
-    // when the factory hasn't called SetDividerColor yet.
     if (m_dividerBrush) {
         border.Background(m_dividerBrush);
     } else {
         border.Background(SolidColorBrush(winrt::Windows::UI::Color{ 96, 128, 128, 128 }));
     }
 
-    // No resize cursor for now — ProtectedCursor is protected on
-    // UIElement and Border is sealed, so we can't set the per-element
-    // cursor from outside without subclassing. A follow-up can swap
-    // this Border for a custom UserControl-based splitter that
-    // exposes the cursor setup; until then the strip is visible
-    // enough to grab without the cursor hint.
-
-    // Wire pointer events. `node` is captured by raw pointer; this is
-    // safe because Borders are recreated on every SyncChildrenFromTree,
-    // so a stale `node` would only exist on a stale Border that's
-    // already been removed from Children() (and whose events therefore
-    // can't fire).
-    //
-    // `this` is also captured raw — the SplitPanel owns the Border via
-    // Children(), so the impl lives at least as long as any event the
-    // Border can fire.
-    border.PointerPressed([this, node](winrt::Windows::Foundation::IInspectable const& sender,
-                                       PointerRoutedEventArgs const& args) {
+    border.PointerPressed([this, splitBranch](winrt::Windows::Foundation::IInspectable const& sender,
+                                              PointerRoutedEventArgs const& args) {
         if (auto el = sender.try_as<UIElement>()) {
-            OnSplitterPointerPressed(el, node, args);
+            OnSplitterPointerPressed(el, splitBranch, args);
         }
     });
-    border.PointerMoved([this, node](winrt::Windows::Foundation::IInspectable const&,
-                                     PointerRoutedEventArgs const& args) {
-        OnSplitterPointerMoved(node, args);
+    border.PointerMoved([this, splitBranch](winrt::Windows::Foundation::IInspectable const&,
+                                            PointerRoutedEventArgs const& args) {
+        OnSplitterPointerMoved(splitBranch, args);
     });
     border.PointerReleased([this](winrt::Windows::Foundation::IInspectable const& sender,
                                   PointerRoutedEventArgs const& args) {
@@ -231,30 +157,28 @@ Microsoft::UI::Xaml::Controls::Border SplitPanel::MakeSplitter(Pane* node) {
     return border;
 }
 
-Microsoft::UI::Xaml::Controls::Border SplitPanel::SplitterForNode(Pane const* node) const {
+Microsoft::UI::Xaml::Controls::Border SplitPanel::SplitterForBranch(Branch const* splitBranch) const {
     for (auto const& entry : m_splitters) {
-        if (entry.node == node) return entry.element;
+        if (entry.branch == splitBranch) return entry.element;
     }
     return nullptr;
 }
 
 Windows::Foundation::Size SplitPanel::MeasureOverride(Windows::Foundation::Size availableSize) {
-    if (!m_root) return { 0, 0 };
-    // Zoom path: only the zoomed leaf participates in layout. The
-    // others are Visibility=Collapsed so Panel's base class skips
-    // them entirely — we don't need to Measure them.
-    if (m_zoomedLeaf && m_zoomedLeaf->IsLeaf()) {
-        if (auto element = m_zoomedLeaf->Content()) {
+    auto* root = m_tree.Root();
+    if (!root) return { 0, 0 };
+    // Zoom path: only the zoomed pane participates in layout. Others
+    // are Visibility=Collapsed so Panel's base class skips them.
+    if (auto const* zoomed = m_tree.Zoomed()) {
+        if (auto element = zoomed->content) {
             element.Measure(availableSize);
             return element.DesiredSize();
         }
         return { 0, 0 };
     }
-    auto result = MeasureNode(*m_root, availableSize);
-    // Every Splitter must also be measured before Arrange — XAML's
-    // contract is "every child gets Measure before Arrange or the
-    // framework panics". They don't influence the panel's desired
-    // size, just have to be visited.
+    auto result = MeasureBranch(*root, availableSize);
+    // Every splitter must be measured before Arrange — XAML's contract
+    // is "every child gets Measure or the framework panics".
     for (auto const& entry : m_splitters) {
         if (entry.element) {
             entry.element.Measure({ static_cast<float>(kSplitterThickness),
@@ -264,148 +188,140 @@ Windows::Foundation::Size SplitPanel::MeasureOverride(Windows::Foundation::Size 
     return result;
 }
 
-Windows::Foundation::Size SplitPanel::MeasureNode(Pane& node, Windows::Foundation::Size available) {
-    if (node.IsLeaf()) {
-        if (auto element = node.Content()) {
+Windows::Foundation::Size SplitPanel::MeasureBranch(Branch& branch, Windows::Foundation::Size available) {
+    if (auto* pane = branch.AsPane()) {
+        if (auto element = pane->content) {
             element.Measure(available);
             return element.DesiredSize();
         }
         return { 0, 0 };
     }
 
-    auto* first = node.First();
-    auto* second = node.Second();
+    auto* split = branch.AsSplit();
+    if (!split) return { 0, 0 };
+    auto* first  = split->left.get();
+    auto* second = split->right.get();
     if (!first && !second) return { 0, 0 };
-    if (!first)  return MeasureNode(*second, available);
-    if (!second) return MeasureNode(*first, available);
+    if (!first)  return MeasureBranch(*second, available);
+    if (!second) return MeasureBranch(*first, available);
 
-    // Reserve room for the splitter strip on the split axis so the
-    // children don't ask for space the splitter will end up taking.
     auto firstAvail  = available;
     auto secondAvail = available;
     float thickness  = static_cast<float>(kSplitterThickness);
-    if (node.Orientation() == SplitOrientation::Horizontal) {
+    if (split->direction == Split::Direction::Horizontal) {
         float useable = std::max(0.0f, available.Width - thickness);
-        firstAvail.Width  = static_cast<float>(useable * node.Ratio());
-        secondAvail.Width = static_cast<float>(useable * (1.0 - node.Ratio()));
+        firstAvail.Width  = static_cast<float>(useable * split->ratio);
+        secondAvail.Width = static_cast<float>(useable * (1.0 - split->ratio));
     } else {
         float useable = std::max(0.0f, available.Height - thickness);
-        firstAvail.Height  = static_cast<float>(useable * node.Ratio());
-        secondAvail.Height = static_cast<float>(useable * (1.0 - node.Ratio()));
+        firstAvail.Height  = static_cast<float>(useable * split->ratio);
+        secondAvail.Height = static_cast<float>(useable * (1.0 - split->ratio));
     }
 
-    auto a = MeasureNode(*first, firstAvail);
-    auto b = MeasureNode(*second, secondAvail);
+    auto a = MeasureBranch(*first, firstAvail);
+    auto b = MeasureBranch(*second, secondAvail);
 
-    if (node.Orientation() == SplitOrientation::Horizontal) {
+    if (split->direction == Split::Direction::Horizontal) {
         return { a.Width + b.Width + thickness, std::max(a.Height, b.Height) };
     }
     return { std::max(a.Width, b.Width), a.Height + b.Height + thickness };
 }
 
 Windows::Foundation::Size SplitPanel::ArrangeOverride(Windows::Foundation::Size finalSize) {
-    if (!m_root) return finalSize;
+    auto* root = m_tree.Root();
+    if (!root) return finalSize;
     Windows::Foundation::Rect fullRect{ 0, 0, finalSize.Width, finalSize.Height };
-    // Zoom: only the zoomed leaf is arranged. Others are Collapsed so
-    // their ActualSize / SizeChanged don't fire; the SwapChainPanel
-    // they own keeps whatever swap chain it had bound and resumes
-    // when unzoomed.
-    if (m_zoomedLeaf && m_zoomedLeaf->IsLeaf()) {
-        m_zoomedLeaf->SetArrangedRect(fullRect);
-        if (auto element = m_zoomedLeaf->Content()) {
+    if (auto const* zoomed = m_tree.Zoomed()) {
+        // Zoom: only the zoomed pane is arranged. Cache the rect on
+        // its wrapping Branch so downstream code (drag-resize,
+        // GOTO_SPLIT direction navigation) can still recover it.
+        if (auto* zoomedBranch = root->FindBranchOfPane(zoomed)) {
+            zoomedBranch->arrangedRect = fullRect;
+        }
+        if (auto element = zoomed->content) {
             element.Arrange(fullRect);
         }
         return finalSize;
     }
-    ArrangeNode(*m_root, fullRect);
+    ArrangeBranch(*root, fullRect);
     return finalSize;
 }
 
-void SplitPanel::ArrangeNode(Pane& node, Windows::Foundation::Rect rect) {
-    // Cache the arranged rect on the node so drag-resize and
-    // direction-based pane navigation can recover it without walking
-    // the tree from the root each time.
-    node.SetArrangedRect(rect);
+void SplitPanel::ArrangeBranch(Branch& branch, Windows::Foundation::Rect rect) {
+    branch.arrangedRect = rect;
 
-    if (node.IsLeaf()) {
-        if (auto element = node.Content()) {
+    if (auto* pane = branch.AsPane()) {
+        if (auto element = pane->content) {
             element.Arrange(rect);
         }
         return;
     }
 
-    auto* first = node.First();
-    auto* second = node.Second();
+    auto* split = branch.AsSplit();
+    if (!split) return;
+    auto* first  = split->left.get();
+    auto* second = split->right.get();
     if (!first && !second) return;
-    if (!first)  { ArrangeNode(*second, rect); return; }
-    if (!second) { ArrangeNode(*first, rect); return; }
+    if (!first)  { ArrangeBranch(*second, rect); return; }
+    if (!second) { ArrangeBranch(*first, rect); return; }
 
     float thickness = static_cast<float>(kSplitterThickness);
 
-    if (node.Orientation() == SplitOrientation::Horizontal) {
+    if (split->direction == Split::Direction::Horizontal) {
         float useable = std::max(0.0f, rect.Width - thickness);
-        float firstW  = useable * static_cast<float>(node.Ratio());
+        float firstW  = useable * static_cast<float>(split->ratio);
         float secondW = useable - firstW;
         Windows::Foundation::Rect firstRect{ rect.X, rect.Y, firstW, rect.Height };
         Windows::Foundation::Rect splitRect{ rect.X + firstW, rect.Y, thickness, rect.Height };
         Windows::Foundation::Rect secondRect{ rect.X + firstW + thickness, rect.Y, secondW, rect.Height };
-        ArrangeNode(*first, firstRect);
-        if (auto sp = SplitterForNode(&node)) sp.Arrange(splitRect);
-        ArrangeNode(*second, secondRect);
+        ArrangeBranch(*first, firstRect);
+        if (auto sp = SplitterForBranch(&branch)) sp.Arrange(splitRect);
+        ArrangeBranch(*second, secondRect);
     } else {
         float useable = std::max(0.0f, rect.Height - thickness);
-        float firstH  = useable * static_cast<float>(node.Ratio());
+        float firstH  = useable * static_cast<float>(split->ratio);
         float secondH = useable - firstH;
         Windows::Foundation::Rect firstRect{ rect.X, rect.Y, rect.Width, firstH };
         Windows::Foundation::Rect splitRect{ rect.X, rect.Y + firstH, rect.Width, thickness };
         Windows::Foundation::Rect secondRect{ rect.X, rect.Y + firstH + thickness, rect.Width, secondH };
-        ArrangeNode(*first, firstRect);
-        if (auto sp = SplitterForNode(&node)) sp.Arrange(splitRect);
-        ArrangeNode(*second, secondRect);
+        ArrangeBranch(*first, firstRect);
+        if (auto sp = SplitterForBranch(&branch)) sp.Arrange(splitRect);
+        ArrangeBranch(*second, secondRect);
     }
 }
 
 void SplitPanel::OnSplitterPointerPressed(Microsoft::UI::Xaml::UIElement const& splitter,
-                                          Pane* node,
+                                          Branch* splitBranch,
                                           Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args)
 {
-    if (!node) return;
+    if (!splitBranch) return;
     if (!splitter.CapturePointer(args.Pointer())) return;
-    m_draggingNode = node;
+    m_draggingBranch = splitBranch;
     args.Handled(true);
 }
 
-void SplitPanel::OnSplitterPointerMoved(Pane* node,
+void SplitPanel::OnSplitterPointerMoved(Branch* splitBranch,
                                         Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args)
 {
-    // Only consume moves that belong to the active drag — without
-    // this check, a stray PointerMoved on a non-pressed splitter
-    // (e.g. hover) would mutate the ratio.
-    if (!m_draggingNode || m_draggingNode != node) return;
+    if (!m_draggingBranch || m_draggingBranch != splitBranch) return;
+    auto* split = splitBranch ? splitBranch->AsSplit() : nullptr;
+    if (!split) return;
 
-    // Position in SplitPanel local coordinates so it can be compared
-    // against the parent split's arranged rect (also expressed in
-    // SplitPanel coordinates). get_strong() returns the projected
-    // SplitPanel; .as<UIElement>() narrows it to the UIElement
-    // projection GetCurrentPoint expects without the multi-step
-    // implicit conversion `*this` would need.
     auto self = get_strong().as<winrt::Microsoft::UI::Xaml::UIElement>();
     auto point = args.GetCurrentPoint(self).Position();
 
-    // The parent split occupies the same rect ArrangeNode last
-    // assigned to it, cached on the Pane itself.
-    auto rect = node->ArrangedRect();
-    double newRatio = node->Ratio();
+    auto rect = splitBranch->arrangedRect;
+    double newRatio = split->ratio;
     float thickness = static_cast<float>(kSplitterThickness);
 
-    if (node->Orientation() == SplitOrientation::Horizontal) {
+    if (split->direction == Split::Direction::Horizontal) {
         float useable = std::max(1.0f, rect.Width - thickness);
         newRatio = (point.X - rect.X) / useable;
     } else {
         float useable = std::max(1.0f, rect.Height - thickness);
         newRatio = (point.Y - rect.Y) / useable;
     }
-    node->SetRatio(newRatio);  // clamped to [0.05, 0.95] inside Pane
+    split->ratio = ClampSplitRatio(newRatio);
     InvalidateMeasure();
     InvalidateArrange();
     args.Handled(true);
@@ -415,7 +331,7 @@ void SplitPanel::OnSplitterPointerReleased(Microsoft::UI::Xaml::UIElement const&
                                            Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args)
 {
     splitter.ReleasePointerCapture(args.Pointer());
-    m_draggingNode = nullptr;
+    m_draggingBranch = nullptr;
     args.Handled(true);
 }
 
