@@ -19,10 +19,14 @@
 #include <winrt/Microsoft.Windows.AppNotifications.Builder.h>
 #include <winrt/Windows.Graphics.h>
 #include <algorithm>
+#include <cctype>
+#include <chrono>
 #include <cmath>
+#include <cwctype>
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <string_view>
 #include <vector>
 #pragma comment(lib, "dwmapi.lib")
 #pragma comment(lib, "shell32.lib")
@@ -671,6 +675,10 @@ namespace winrt::GhosttyWin32::implementation
             // Tear-out hosts don't create an initial tab: they adopt
             // the dragged one (possibly before this handler even ran).
             if (!m_suppressInitialTab) CreateTab();
+            // Start the 1 Hz foreground-pid poll now that ghostty is
+            // up and a tab exists (or, for tear-out hosts, is about to
+            // be adopted). Idempotent — the timer only starts once.
+            StartForegroundPidPoll();
             // Honour `window-decoration` from config at startup so
             // users who set it in their config see the chrome state
             // they asked for without having to fire the toggle
@@ -694,6 +702,15 @@ namespace winrt::GhosttyWin32::implementation
 
     MainWindow::~MainWindow()
     {
+        // Stop the foreground-pid poll before anything else in this
+        // destructor runs — its Tick callback captures a weak_ref
+        // that would return null at this point anyway, but Stopping
+        // explicitly avoids one final call sneaking through XAML's
+        // dispatch queue during teardown.
+        if (m_foregroundPidTimer) {
+            try { m_foregroundPidTimer.Stop(); }
+            catch (winrt::hresult_error const&) {}
+        }
         // Take ourselves off the App-scope aggregate before anything
         // else — subsequent runtime callbacks that fire during
         // ghostty_app_free's join land in the FindForSurface / Any
@@ -1260,6 +1277,92 @@ namespace winrt::GhosttyWin32::implementation
     {
         if (auto* t = m_tabs.FindBySurface(surface)) {
             t->Item().Header(box_value(winrt::hstring(title)));
+            // Once the shell has spoken, the foreground-pid poll
+            // stops overwriting the header for this tab.
+            t->MarkExplicitTitle();
+        }
+    }
+
+    namespace {
+        // Resolve a Win32 PID to its executable's basename without an
+        // extension (e.g. 12345 -> "vim", "ssh"). Returns an empty
+        // hstring when the process handle can't be opened (rights,
+        // rapid exit) or the query fails — the caller falls back to
+        // whatever the header already shows.
+        winrt::hstring PidToBasename(uint32_t pid) noexcept {
+            if (!pid) return {};
+            // QUERY_LIMITED_INFORMATION is the minimum right that
+            // still lets QueryFullProcessImageNameW read the image
+            // path — QUERY_INFORMATION is stronger and can fail on
+            // protected processes we don't need to see.
+            HANDLE h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION,
+                                   FALSE, pid);
+            if (!h) return {};
+            wchar_t buf[MAX_PATH];
+            DWORD size = static_cast<DWORD>(std::size(buf));
+            BOOL ok = QueryFullProcessImageNameW(h, 0, buf, &size);
+            CloseHandle(h);
+            if (!ok || size == 0) return {};
+            // Trim to basename without ".exe". The upstream ghostty
+            // tab title convention is `command` (no path, no
+            // extension) so match it.
+            std::wstring_view sv{ buf, size };
+            auto slash = sv.find_last_of(L"\\/");
+            if (slash != std::wstring_view::npos) sv.remove_prefix(slash + 1);
+            constexpr std::wstring_view kExe{ L".exe" };
+            if (sv.size() > kExe.size()) {
+                auto tail = sv.substr(sv.size() - kExe.size());
+                bool matches = true;
+                for (size_t i = 0; i < kExe.size(); ++i) {
+                    if (::towlower(tail[i]) != kExe[i]) { matches = false; break; }
+                }
+                if (matches) sv.remove_suffix(kExe.size());
+            }
+            return winrt::hstring(sv);
+        }
+    }
+
+    void MainWindow::StartForegroundPidPoll()
+    {
+        if (m_foregroundPidTimer) return;  // already running
+        auto dq = DispatcherQueue();
+        if (!dq) return;
+        m_foregroundPidTimer = dq.CreateTimer();
+        m_foregroundPidTimer.Interval(std::chrono::seconds{1});
+        // Weak `this`: the timer is a member (holds an unrelated
+        // WinUI ref count), and MainWindow's destructor stops it,
+        // but capturing weak plus swallowing an empty get() means
+        // teardown edge cases can't reach into a half-torn window.
+        auto weak = get_weak();
+        m_foregroundPidTimer.Tick([weak](auto&&, auto&&) {
+            if (auto self = weak.get()) self->UpdateForegroundNames();
+        });
+        m_foregroundPidTimer.Start();
+    }
+
+    void MainWindow::UpdateForegroundNames() noexcept
+    {
+        for (auto& tab : m_tabs) {
+            if (!tab) continue;
+            // Shell-supplied titles are sticky — leave them alone.
+            if (tab->HasExplicitTitle()) continue;
+            auto* tc = tab->ActiveControl();
+            if (!tc) continue;
+            uint32_t pid = tc->Surface().ForegroundPid();
+            if (!pid) continue;
+            // Same PID as last tick: keep whatever's already on the
+            // header, no per-process work.
+            if (tab->LastForegroundPid() == pid) continue;
+            auto name = PidToBasename(pid);
+            if (name.empty()) continue;
+            tab->SetForegroundCache(pid, name);
+            try {
+                tab->Item().Header(winrt::box_value(name));
+            } catch (winrt::hresult_error const&) {
+                // Tab may be tearing down (drag between windows,
+                // close race). Not our problem — next tick will
+                // find it gone.
+            }
         }
     }
 

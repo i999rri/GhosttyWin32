@@ -95,6 +95,26 @@ public:
 
     Microsoft::UI::Xaml::Controls::TabViewItem const& Item() const noexcept { return m_item; }
 
+    // True once the shell has set an explicit title via SET_TITLE /
+    // SET_TAB_TITLE (OSC 0/2 or `set_title` action). The foreground-
+    // pid poll uses this to decide whether the tab header is theirs
+    // to overwrite: shell-supplied titles win, auto-computed process
+    // names only fill in when the shell has said nothing.
+    bool HasExplicitTitle() const noexcept { return m_hasExplicitTitle; }
+    void MarkExplicitTitle() noexcept { m_hasExplicitTitle = true; }
+
+    // Last PID resolved for this tab's active pane's foreground
+    // process, and the basename cached from it. The poll updates both
+    // when the PID changes so QueryFullProcessImageNameW only runs on
+    // transitions (running `git` for a while doesn't re-open the
+    // handle every tick).
+    uint32_t LastForegroundPid() const noexcept { return m_lastForegroundPid; }
+    winrt::hstring const& LastForegroundName() const noexcept { return m_lastForegroundName; }
+    void SetForegroundCache(uint32_t pid, winrt::hstring name) noexcept {
+        m_lastForegroundPid = pid;
+        m_lastForegroundName = std::move(name);
+    }
+
     // Read-only access to the SplitPanel hosting this tab's tree, used
     // by Tabs::FindBySurface to walk every leaf and locate the one
     // whose TerminalControl owns a given ghostty_surface_t.
@@ -211,6 +231,14 @@ private:
     // Reset to nullptr or another leaf on tree mutations before any
     // leaf is destroyed.
     Pane* m_activeLeaf{ nullptr };
+
+    // See HasExplicitTitle. Sticky: once the shell sets a title the
+    // poll leaves it alone for the rest of the tab's life.
+    bool m_hasExplicitTitle{ false };
+
+    // Foreground-pid poll cache. Zero means "not yet resolved".
+    uint32_t         m_lastForegroundPid{ 0 };
+    winrt::hstring   m_lastForegroundName{};
 };
 
 }  // namespace winrt::GhosttyWin32::implementation
