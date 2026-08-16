@@ -6,54 +6,28 @@ namespace winrt::GhosttyWin32::implementation {
 
 struct Branch;
 
-// Clamp helper shared by ratio-setters (in Tree / SplitPanel mutation
-// paths) and by the Split constructor. Keeps both children
-// meaningfully visible when the user drags a splitter to the edge.
+// Clamp the ratio so both children stay visible even if the user
+// drags a splitter all the way to the edge.
 constexpr double ClampSplitRatio(double r) noexcept {
     if (r < 0.05) return 0.05;
     if (r > 0.95) return 0.95;
     return r;
 }
 
-// Split — an internal node in the pane tree. Divides its region into
-// two subregions along `direction`, with the first child taking
-// `ratio` of the total extent. Each child is another Branch (which is
-// again either a single Pane or another Split, recursively).
-//
-// Direction names the axis of the split *bar*, not the layout axis
-// of the children:
-//
-//   Horizontal : children are laid out side by side (bar is vertical)
-//   Vertical   : children are stacked               (bar is horizontal)
-//
-// A Split isn't move-enabled — Branch back-pointers into left/right
-// children stay valid for the split's lifetime, and moving would
-// invalidate them.
+// A Split isn't move-enabled — raw Branch back-pointers on children
+// would be invalidated by relocation.
 struct Split {
     enum class Direction {
-        Horizontal,
-        Vertical,
+        Horizontal,   // children side by side, bar is vertical
+        Vertical,     // children stacked,       bar is horizontal
     };
 
     Direction direction{ Direction::Horizontal };
     double    ratio{ 0.5 };
-
-    // Owned children. Both non-null in a well-formed tree; nullptr is
-    // only ever a transient state during mutation.
-    //
-    // Named left / right because the layout code (SplitPanel Measure /
-    // Arrange) cares which side of the split axis a child sits on.
-    // Walker code that just needs "visit both children" should reach
-    // for AnyOfChildren / FindChild / ForEachChild below — those
-    // centralise the left+right iteration so callers don't repeat
-    // the pattern for every new walker.
     std::unique_ptr<Branch> left;
     std::unique_ptr<Branch> right;
 
     Split() = default;
-    // Full-init constructor. Clamps `r` into the safe range so bad
-    // ratios can't sneak in via direct construction — the invariant
-    // lives on the type, not on the MakeSplitBranch factory.
     Split(Direction d, double r,
           std::unique_ptr<Branch> l,
           std::unique_ptr<Branch> right_)
@@ -62,37 +36,21 @@ struct Split {
         , left(std::move(l))
         , right(std::move(right_)) {}
 
-    // Direction predicates. Reads as `split->IsHorizontal()` at the
-    // call site instead of `split->direction == Direction::Horizontal`
-    // — same semantic, English clause style consistent with the
-    // Is<T>() / HasRoot() predicates elsewhere in this layer.
     bool IsHorizontal() const noexcept { return direction == Direction::Horizontal; }
     bool IsVertical()   const noexcept { return direction == Direction::Vertical; }
 
-    // ─── child iteration helpers (used by Branch walker methods) ───
-    //
-    // Template + inline: the parameter pack references Branch::methods
-    // that get resolved at the call site (Branch is fully defined by
-    // the time any real caller includes Branch.h — which includes
-    // this header — and instantiates one of these).
-
-    // Short-circuiting "any": returns true on the first child whose
-    // pred(*child) returns true. Missing children (transient nullptr
-    // during mutation) are skipped.
+    // Templates instantiate at the call site, so Branch just needs to
+    // be forward-declared here; Branch.h includes this header before
+    // it defines the walker bodies.
     template<class Pred>
     bool AnyOfChildren(Pred&& pred) const {
         return (left  && pred(*left))
             || (right && pred(*right));
     }
 
-    // Applies fn to each present child in order (left, right) and
-    // returns the first result that converts to true (non-null
-    // pointer, engaged optional, etc.). Falls back to a default-
-    // constructed R when no child yields one — nullptr for pointer
-    // returns, empty for optional returns. Mirrors Rust's find_map:
-    // callers propagate a value the child produced (a Pane* found
-    // deeper in the subtree, say) up through the composite without
-    // routing it via a captured outer variable.
+    // Mirrors Rust's find_map: applies fn to each present child in
+    // order and returns the first truthy result, otherwise a
+    // default-constructed R.
     template<class F>
     auto FirstChildResult(F&& fn) -> decltype(fn(std::declval<Branch&>())) {
         using R = decltype(fn(std::declval<Branch&>()));
@@ -108,9 +66,6 @@ struct Split {
         return R{};
     }
 
-    // Non-short-circuit visit — calls fn on every present child.
-    // Callers who care about a specific direction or need early exit
-    // should use AnyOfChildren / FindChild instead.
     template<class F>
     void ForEachChild(F&& fn) {
         if (left)  fn(*left);
