@@ -2154,6 +2154,27 @@ namespace winrt::GhosttyWin32::implementation
     {
         auto lookup = m_tabs.FindByPaneId(id);
         if (!lookup.tab || !lookup.pane) return;
+        auto* tc = Tab::PaneToTerminalControl(*lookup.pane);
+        auto content = Content();
+        auto xamlRoot = content ? content.XamlRoot() : nullptr;
+        auto weak = get_weak();
+        m_closeGate.Submit(
+            WindowCloseGate::Scope::Surface,
+            std::move(xamlRoot),
+            // Surface-level predicate: ask this pane alone. When the
+            // shell exits naturally ghostty returns false, so
+            // spontaneous close_surface_cb fires (child exit) sail
+            // through without a dialog.
+            [tc]() { return tc && tc->Surface().NeedsConfirmQuit(); },
+            [weak, id]() {
+                if (auto self = weak.get()) self->RemovePaneByIdApproved(id);
+            });
+    }
+
+    void MainWindow::RemovePaneByIdApproved(PaneId id)
+    {
+        auto lookup = m_tabs.FindByPaneId(id);
+        if (!lookup.tab || !lookup.pane) return;
         auto* tab = lookup.tab;
         auto* pane = lookup.pane;
 

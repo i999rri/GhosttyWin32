@@ -173,6 +173,10 @@ namespace winrt::GhosttyWin32::implementation
 
 
         void InitGhostty();
+        // Post-gate teardown for CloseSurfaceByPaneId. Runs when the
+        // close gate has already asked the user (or determined the
+        // surface doesn't need confirmation).
+        void RemovePaneByIdApproved(PaneId id);
         Tab* ActiveTab();
         // Convenience wrapper around ActiveTab()->ActiveControl(). Most
         // input/IME paths only care about the focused TerminalControl,
@@ -211,6 +215,8 @@ namespace winrt::GhosttyWin32::implementation
 
         // Tear down the pane carrying `id` and update the tree / tab
         // list. Dispatched from close_surface_cb. UI thread only.
+        // Goes through the close gate — the actual mutation lives in
+        // RemovePaneByIdApproved and only runs on approval.
         void CloseSurfaceByPaneId(PaneId id);
 
         // The TerminalControl hosting the pane carrying `id`, or null
