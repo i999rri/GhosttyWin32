@@ -14,6 +14,7 @@
 #include "Tabs/Tab.h"
 #include "Tabs/TabFactory.h"
 #include "Tabs/Tabs.h"
+#include "WindowCloseGate.h"
 
 namespace winrt::GhosttyWin32::implementation
 {
@@ -310,6 +311,10 @@ namespace winrt::GhosttyWin32::implementation
         ghostty::actions::tags::Fullscreen         m_fullscreen;
         ghostty::actions::tags::WindowDecorations  m_windowDecorations;
         Tabs m_tabs;
+        // Guards every close intent (window / tab / surface) so
+        // needs_confirm_quit prompts land once, not one dialog per
+        // path. Constructed inline so it's usable from the ctor.
+        WindowCloseGate m_closeGate;
         // Focus-tracked active surface. Set by NotifySurfaceFocused
         // when a TerminalControl gains focus, cleared when the
         // matching surface is torn down through CloseSurfaceByPaneId.

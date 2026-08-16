@@ -985,50 +985,26 @@ namespace winrt::GhosttyWin32::implementation
 
     void MainWindow::TryClose()
     {
-        // Ask each Tab whether any of its panes need confirmation.
-        // Tab::NeedsConfirmClose owns the pane-tree walk (Tab owns
-        // the tree, so the query belongs there); the surface-level
-        // ghostty_surface_needs_confirm_quit already factors in the
-        // `confirm-close-surface` config, so users who set it false
-        // sail through without a dialog on every close.
-        bool anyNeedsConfirm = false;
-        for (auto& tab : m_tabs) {
-            if (tab && tab->NeedsConfirmClose()) { anyNeedsConfirm = true; break; }
-        }
-
-        if (!anyNeedsConfirm) {
-            RequestClose();
-            return;
-        }
-
-        // XamlRoot is required for a ContentDialog to know which
-        // Window / island to overlay. Fall back to a plain close
-        // if the tree isn't realised yet (shouldn't happen — a
-        // close reaching TryClose means the window has been shown).
         auto content = Content();
         auto xamlRoot = content ? content.XamlRoot() : nullptr;
-        if (!xamlRoot) {
-            RequestClose();
-            return;
-        }
-
-        muxc::ContentDialog dlg;
-        dlg.XamlRoot(xamlRoot);
-        dlg.Title(winrt::box_value(winrt::hstring{ L"Close window?" }));
-        dlg.Content(winrt::box_value(winrt::hstring{
-            L"One or more terminals in this window still have running "
-            L"processes. They will be terminated." }));
-        dlg.PrimaryButtonText(L"Close");
-        dlg.CloseButtonText(L"Cancel");
-        dlg.DefaultButton(muxc::ContentDialogButton::Close);
-
-        auto op = dlg.ShowAsync();
         auto weak = get_weak();
-        op.Completed([weak](auto&& sender, auto&& status) {
-            if (status != winrt::Windows::Foundation::AsyncStatus::Completed) return;
-            if (sender.GetResults() != muxc::ContentDialogResult::Primary) return;
-            if (auto self = weak.get()) self->RequestClose();
-        });
+        m_closeGate.Submit(
+            WindowCloseGate::Scope::Window,
+            std::move(xamlRoot),
+            // Any pane in any tab reporting needs_confirm_quit means
+            // we should prompt. Tab owns its own tree walk so the
+            // window-level query is a linear scan over tabs.
+            [this]() {
+                for (auto& tab : m_tabs) {
+                    if (tab && tab->NeedsConfirmClose()) return true;
+                }
+                return false;
+            },
+            // Weak ref because the dialog can outlive the C++ object
+            // if teardown starts while it's still up.
+            [weak]() {
+                if (auto self = weak.get()) self->RequestClose();
+            });
     }
 
     void MainWindow::InitGhostty()
