@@ -750,7 +750,7 @@ namespace winrt::GhosttyWin32::implementation
         {
             if (msg == WM_CLOSE) {
                 auto* self = reinterpret_cast<MainWindow*>(ref);
-                if (self && !self->m_bypassCloseGate) {
+                if (self && !self->IsCloseGateBypassed()) {
                     try { self->TryClose(); } catch (winrt::hresult_error const&) {}
                     return 0;
                 }
