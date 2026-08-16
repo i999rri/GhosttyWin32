@@ -32,8 +32,62 @@ struct Split {
 
     // Owned children. Both non-null in a well-formed tree; nullptr is
     // only ever a transient state during mutation.
+    //
+    // Named left / right because the layout code (SplitPanel Measure /
+    // Arrange) cares which side of the split axis a child sits on.
+    // Walker code that just needs "visit both children" should reach
+    // for AnyOfChildren / FindChild / ForEachChild below — those
+    // centralise the left+right iteration so callers don't repeat
+    // the pattern for every new walker.
     std::unique_ptr<Branch> left;
     std::unique_ptr<Branch> right;
+
+    // ─── child iteration helpers (used by Branch walker methods) ───
+    //
+    // Template + inline: the parameter pack references Branch::methods
+    // that get resolved at the call site (Branch is fully defined by
+    // the time any real caller includes Branch.h — which includes
+    // this header — and instantiates one of these).
+
+    // Short-circuiting "any": returns true on the first child whose
+    // pred(*child) returns true. Missing children (transient nullptr
+    // during mutation) are skipped.
+    template<class Pred>
+    bool AnyOfChildren(Pred&& pred) const {
+        return (left  && pred(*left))
+            || (right && pred(*right));
+    }
+
+    // Returns a pointer to the first child for which pred(*child) is
+    // true, or nullptr if neither matches. Non-const overload only —
+    // findable children have to be mutable for the callers who use
+    // this (tree walkers rewiring the tree).
+    template<class Pred>
+    Branch* FindChild(Pred&& pred) {
+        if (left  && pred(*left))  return left.get();
+        if (right && pred(*right)) return right.get();
+        return nullptr;
+    }
+    template<class Pred>
+    Branch const* FindChild(Pred&& pred) const {
+        if (left  && pred(*left))  return left.get();
+        if (right && pred(*right)) return right.get();
+        return nullptr;
+    }
+
+    // Non-short-circuit visit — calls fn on every present child.
+    // Callers who care about a specific direction or need early exit
+    // should use AnyOfChildren / FindChild instead.
+    template<class F>
+    void ForEachChild(F&& fn) {
+        if (left)  fn(*left);
+        if (right) fn(*right);
+    }
+    template<class F>
+    void ForEachChild(F&& fn) const {
+        if (left)  fn(*left);
+        if (right) fn(*right);
+    }
 };
 
 // Clamp helper shared by ratio-setters (in Tree / SplitPanel mutation

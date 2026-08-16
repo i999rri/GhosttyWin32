@@ -104,8 +104,9 @@ inline bool Branch::AnyPaneMatches(
 {
     if (auto* p = TryGet<Pane>()) return pred(*p);
     if (auto* s = TryGet<Split>()) {
-        return (s->left  && s->left ->AnyPaneMatches(pred))
-            || (s->right && s->right->AnyPaneMatches(pred));
+        return s->AnyOfChildren([&](Branch const& c) {
+            return c.AnyPaneMatches(pred);
+        });
     }
     return false;
 }
@@ -113,16 +114,14 @@ inline bool Branch::AnyPaneMatches(
 inline void Branch::ForEachPane(std::function<void(Pane&)> const& visitor) {
     if (auto* p = TryGet<Pane>()) { visitor(*p); return; }
     if (auto* s = TryGet<Split>()) {
-        if (s->left)  s->left ->ForEachPane(visitor);
-        if (s->right) s->right->ForEachPane(visitor);
+        s->ForEachChild([&](Branch& c) { c.ForEachPane(visitor); });
     }
 }
 
 inline void Branch::ForEachPane(std::function<void(Pane const&)> const& visitor) const {
     if (auto* p = TryGet<Pane>()) { visitor(*p); return; }
     if (auto* s = TryGet<Split>()) {
-        if (s->left)  s->left ->ForEachPane(visitor);
-        if (s->right) s->right->ForEachPane(visitor);
+        s->ForEachChild([&](Branch const& c) { c.ForEachPane(visitor); });
     }
 }
 
@@ -131,8 +130,12 @@ inline Pane* Branch::FindPane(
 {
     if (auto* p = TryGet<Pane>()) return pred(*p) ? p : nullptr;
     if (auto* s = TryGet<Split>()) {
-        if (s->left)  if (auto* hit = s->left->FindPane(pred))  return hit;
-        if (s->right) if (auto* hit = s->right->FindPane(pred)) return hit;
+        Pane* hit = nullptr;
+        s->FindChild([&](Branch& c) {
+            hit = c.FindPane(pred);
+            return hit != nullptr;
+        });
+        return hit;
     }
     return nullptr;
 }
@@ -142,8 +145,12 @@ inline Pane const* Branch::FindPane(
 {
     if (auto* p = TryGet<Pane>()) return pred(*p) ? p : nullptr;
     if (auto* s = TryGet<Split>()) {
-        if (s->left)  if (auto* hit = s->left->FindPane(pred))  return hit;
-        if (s->right) if (auto* hit = s->right->FindPane(pred)) return hit;
+        Pane const* hit = nullptr;
+        s->FindChild([&](Branch const& c) {
+            hit = c.FindPane(pred);
+            return hit != nullptr;
+        });
+        return hit;
     }
     return nullptr;
 }
@@ -152,8 +159,12 @@ inline Branch* Branch::FindBranchOfPane(Pane const* target) {
     if (!target) return nullptr;
     if (auto* p = TryGet<Pane>()) return (p == target) ? this : nullptr;
     if (auto* s = TryGet<Split>()) {
-        if (s->left)  if (auto* hit = s->left ->FindBranchOfPane(target)) return hit;
-        if (s->right) if (auto* hit = s->right->FindBranchOfPane(target)) return hit;
+        Branch* hit = nullptr;
+        s->FindChild([&](Branch& c) {
+            hit = c.FindBranchOfPane(target);
+            return hit != nullptr;
+        });
+        return hit;
     }
     return nullptr;
 }
@@ -162,8 +173,12 @@ inline Branch const* Branch::FindBranchOfPane(Pane const* target) const {
     if (!target) return nullptr;
     if (auto* p = TryGet<Pane>()) return (p == target) ? this : nullptr;
     if (auto* s = TryGet<Split>()) {
-        if (s->left)  if (auto* hit = s->left ->FindBranchOfPane(target)) return hit;
-        if (s->right) if (auto* hit = s->right->FindBranchOfPane(target)) return hit;
+        Branch const* hit = nullptr;
+        s->FindChild([&](Branch const& c) {
+            hit = c.FindBranchOfPane(target);
+            return hit != nullptr;
+        });
+        return hit;
     }
     return nullptr;
 }
