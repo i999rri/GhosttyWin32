@@ -207,10 +207,13 @@ namespace winrt::GhosttyWin32::implementation
         // close) and routes it through the confirmation gate. See
         // CloseGateSubclassProc.
         void HookCloseGate() noexcept;
+
+    public:
         // Read by CloseGateSubclassProc (free function in the .cpp)
         // so the subclass can honour the bypass without needing a
-        // friend declaration for a namespace-scoped function.
+        // friend declaration for an anonymous-namespace function.
         bool IsCloseGateBypassed() const noexcept { return m_bypassCloseGate; }
+    private:
 
         // Publish a single drag rectangle to AppWindowTitleBar covering
         // the DragRegion's current bounds. Called from
