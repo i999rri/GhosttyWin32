@@ -1710,9 +1710,6 @@ namespace winrt::GhosttyWin32::implementation
     }
 
     namespace {
-        // Locate the Pane hosting `surface` in the given SplitPanel's
-        // tree. Delegates to Tree::FindPane with the surface-ownership
-        // predicate; the tree is small (a handful of panes at most).
         Pane* FindPaneForSurface(implementation::SplitPanel* panelImpl,
                                  ghostty_surface_t surface)
         {
@@ -1723,16 +1720,12 @@ namespace winrt::GhosttyWin32::implementation
             });
         }
 
-        // Push every pane under `branch` into `out` in depth-first
-        // order — left subtree before right. PREVIOUS / NEXT pane
-        // navigation iterates this list to find neighbours of the
-        // currently active pane.
         void CollectPanes(Branch& branch, std::vector<Pane*>& out) {
             branch.ForEachPane([&out](Pane& p) { out.push_back(&p); });
         }
 
-        // The Branch wrapping `pane` in this tree, needed for
-        // arrangedRect lookup (rects live on Branch, not Pane).
+        // arrangedRect lives on Branch, not Pane — layout callers
+        // resolve the pane back to its wrapping Branch through this.
         Branch* BranchOfPane(implementation::SplitPanel* panelImpl,
                              Pane const* pane)
         {
@@ -1741,16 +1734,11 @@ namespace winrt::GhosttyWin32::implementation
             return root ? root->FindBranchOfPane(*pane) : nullptr;
         }
 
-        // Pick the pane whose arranged rect is adjacent to `active`
-        // in the requested cardinal direction. Filters to panes
-        // strictly on the requested side, then scores them by primary
-        // distance (along the axis) plus a perpendicular penalty so
-        // an aligned neighbour beats a far-off-axis one.
-        //
-        // Returns nullptr if no candidate qualifies — caller's job
-        // to decide whether to fall back (today: just ignore the
-        // input, matching how Windows Terminal handles "no neighbour
-        // in this direction").
+        // Score = primary distance + 2 * perpendicular. The 2x
+        // penalty keeps focus moves predictable when an off-axis
+        // pane is technically closer in straight-line distance than
+        // the aligned neighbour. Returns nullptr when no pane sits
+        // on the requested side.
         Pane* FindAdjacentPane(implementation::SplitPanel* panelImpl,
                                Pane* active,
                                std::vector<Pane*> const& panes,
@@ -1781,8 +1769,7 @@ namespace winrt::GhosttyWin32::implementation
                 bool valid = false;
                 switch (dir) {
                 case GHOSTTY_GOTO_SPLIT_LEFT:
-                    // Candidate must end at or before active starts —
-                    // allow a tiny overlap to absorb float rounding.
+                    // 1px slack absorbs float rounding on the boundary.
                     if (cx2 > a.X + 1.0f) break;
                     primary = a.X - cx2;
                     perpendicular = std::abs(cCenterY - aCenterY);
@@ -1810,10 +1797,6 @@ namespace winrt::GhosttyWin32::implementation
                     return nullptr;  // PREVIOUS / NEXT handled elsewhere
                 }
                 if (!valid) continue;
-                // Weight perpendicular gap twice as heavily as primary
-                // distance — keeps focus moves predictable when there
-                // are off-axis panes that are technically closer in
-                // straight-line distance.
                 double score = primary + 2.0 * perpendicular;
                 if (score < bestScore) {
                     bestScore = score;
@@ -1851,17 +1834,14 @@ namespace winrt::GhosttyWin32::implementation
         Pane* sourcePane = FindPaneForSurface(panelImpl, surface);
         if (!sourcePane) return;
 
-        // The source pane's UIElement + PaneId get moved into a fresh
-        // wrapper Pane inside the split subtree we build below.
-        // Capturing them here means the wrapper has its own reference
-        // to the underlying TerminalControl before the ReplacePane call
-        // destroys the original Branch.
+        // Copy out before ReplacePane destroys the original Branch —
+        // the wrapper below needs its own reference to the underlying
+        // TerminalControl and id.
         auto sourceContent = sourcePane->content;
         PaneId sourcePaneId = sourcePane->id;
 
-        // ghostty's split-direction maps to (direction, which-side-
-        // does-the-new-pane-take). RIGHT/DOWN put the new pane after
-        // the source on the layout axis; LEFT/UP put it before.
+        // RIGHT/DOWN put the new pane after the source on the layout
+        // axis; LEFT/UP put it before.
         Split::Direction splitDir;
         bool newFirst;
         switch (direction) {
@@ -1922,17 +1902,13 @@ namespace winrt::GhosttyWin32::implementation
         }
         auto newBranch = std::move(ctx.result);
         if (!newBranch) return;
-        // Capture a stable pointer to the new Pane before newBranch
-        // moves into the subtree; get_if on the variant is only
-        // valid while the branch is still around.
+        // Cache before newBranch is moved into the subtree — get_if
+        // on the variant is only valid while the branch is around.
         Pane* newPanePtr = newBranch->TryGet<Pane>();
         auto newControl = newBranch->TryGet<Pane>()
             ? newBranch->TryGet<Pane>()->content.try_as<winrt::GhosttyWin32::TerminalControl>()
             : nullptr;
 
-        // Build the replacement subtree: a Split branch whose left/right
-        // are (a) a wrapper around the original source content and
-        // (b) the new pane branch, ordered per `newFirst`.
         auto sourceWrapper = MakePaneBranch(sourceContent, sourcePaneId);
         auto subtree = newFirst
             ? MakeSplitBranch(splitDir, 0.5, std::move(newBranch), std::move(sourceWrapper))
@@ -1986,10 +1962,8 @@ namespace winrt::GhosttyWin32::implementation
 
         Pane* pane = FindPaneForSurface(panelImpl, surface);
         if (!pane) return;
-        // Single-pane tabs skip the zoom — there's nothing to expand
-        // against, and the visual state would be identical to the
-        // normal layout. Detect by asking whether the root Branch is
-        // itself the wrapping Branch for this pane.
+        // Single-pane tab has nothing to expand against; visual state
+        // would be identical to the normal layout.
         auto* root = panelImpl->Tree().Root();
         if (root && root->TryGet<Pane>() == pane) return;
 
@@ -2066,17 +2040,13 @@ namespace winrt::GhosttyWin32::implementation
             ? Split::Direction::Horizontal
             : Split::Direction::Vertical;
 
-        // Walk up from the pane's wrapping Branch to the nearest
-        // ancestor Split with the matching axis. Branch::parent
-        // points at the enclosing Branch (which will be a Split
-        // variant); we keep walking until we find a Split whose
-        // direction matches, or run out of parents.
+        // Walk to the nearest ancestor Split whose axis matches.
         Branch* node = BranchOfPane(panelImpl, pane);
         while (node && node->parent) {
             Branch* parent = node->parent;
             auto* parentSplit = parent ? parent->TryGet<Split>() : nullptr;
             if (parentSplit && parentSplit->direction == needDir) {
-                node = parent;  // target: this Split branch
+                node = parent;
                 break;
             }
             node = parent;
@@ -2244,12 +2214,9 @@ namespace winrt::GhosttyWin32::implementation
         auto* panelImpl = winrt::get_self<implementation::SplitPanel>(tab->Panel());
         if (!panelImpl) return;
 
-        // Identify a sibling pane BEFORE the removal so we can
-        // retarget the active pane into it (the pane pointer is about
-        // to be invalidated). The sibling here means "the pane on the
-        // other side of the immediate Split ancestor" — under the new
-        // sum-type, we find it by walking to the wrapping Branch and
-        // taking the opposite child, then picking its first pane.
+        // Pick a sibling pane before removal invalidates the pointer.
+        // "Sibling" == the first pane on the other child of the
+        // immediate Split ancestor.
         Pane* siblingPane = nullptr;
         bool closingActive = (tab->ActivePane() == pane);
         if (auto* wrapping = BranchOfPane(panelImpl, pane)) {
