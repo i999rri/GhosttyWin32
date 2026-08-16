@@ -557,55 +557,20 @@ namespace winrt::GhosttyWin32::implementation
                 walk(tv);
             });
 
-            tv.TabCloseRequested([this](muxc::TabView const& sender, muxc::TabViewTabCloseRequestedEventArgs const& args) {
+            tv.TabCloseRequested([this](muxc::TabView const&, muxc::TabViewTabCloseRequestedEventArgs const& args) {
                 auto item = args.Tab();
-                // Detach the control BEFORE removing it from TabView.
-                // Detach calls ISwapChainPanelNative2::SetSwapChainHandle(nullptr)
-                // on the inner panel, and that call AVs at +0x1F8 inside
-                // microsoft.ui.xaml.dll if the panel has already been
-                // unparented from the live visual tree (reproducer:
-                // Ctrl+Shift+W long-press across multiple tabs, where
-                // XAML hasn't finished processing the previous RemoveAt
-                // when the next Detach kicks in). Doing it pre-RemoveAt
-                // keeps the panel in the live tree for the duration of
-                // SetSwapChainHandle. Detach is idempotent, so the
-                // ~Tab → ~TerminalControl path runs it again as a no-op.
-                if (auto* t = m_tabs.FindByItem(item)) {
-                    // Detach every pane in the tab, not just the active
-                    // one — multi-pane tabs have multiple swap chains
-                    // and each needs SetSwapChainHandle(nullptr) before
-                    // the panel is unparented.
-                    t->DetachAll();
-                }
-                uint32_t idx = 0;
-                if (sender.TabItems().IndexOf(item, idx)) {
-                    sender.TabItems().RemoveAt(idx);
-                }
-                DwmFlush();              // wait for compositor to release
-                if (sender.TabItems().Size() == 0) {
-                    // Last tab: defer Tab object destruction to
-                    // ~MainWindow's m_tabs.Clear. Tearing down the
-                    // focused control synchronously here leaves XAML's
-                    // focus subsystem holding a stale pointer that AVs
-                    // at +0x1F8 once mw->Close() kicks off window
-                    // teardown — same path as a normal title-bar X
-                    // close, which works fine precisely because XAML
-                    // finishes its own focus cleanup before our
-                    // destructors run. The orphan SplitPanel under
-                    // AppContent comes down with the window, no
-                    // explicit Remove needed.
-                    this->Close();
-                } else {
-                    // Unparent the panel from AppContent before
-                    // destroying the Tab. ~Tab doesn't touch the
-                    // visual tree (Tab doesn't know about AppContent),
-                    // so without this the panel would leak as an
-                    // orphan child of AppContent.
-                    if (auto* t = m_tabs.FindByItem(item)) {
-                        RemoveTabPanelFromAppContent(*t);
-                    }
-                    m_tabs.Remove(item);
-                }
+                auto* t = m_tabs.FindByItem(item);
+                if (!t) return;
+                auto content = Content();
+                auto xamlRoot = content ? content.XamlRoot() : nullptr;
+                auto weak = get_weak();
+                m_closeGate.Submit(
+                    WindowCloseGate::Scope::Tab,
+                    std::move(xamlRoot),
+                    [t]() { return t->NeedsConfirmClose(); },
+                    [weak, item]() {
+                        if (auto self = weak.get()) self->CloseTabByItem(item);
+                    });
             });
 
             // Whenever the selected tab changes — explicit click on a
@@ -671,6 +636,7 @@ namespace winrt::GhosttyWin32::implementation
             // themes with light/dark variants pick the right one at
             // launch without waiting for the first user toggle.
             HookSystemThemeSignal();
+            HookCloseGate();
             PushCurrentSystemColorScheme();
             // Tear-out hosts don't create an initial tab: they adopt
             // the dragged one (possibly before this handler even ran).
@@ -731,6 +697,7 @@ namespace winrt::GhosttyWin32::implementation
         // SizeLimit's (which uses id=1) so both subclasses coexist
         // on the same HWND without either replacing the other.
         constexpr UINT_PTR kSystemThemeSubclassId = 2;
+        constexpr UINT_PTR kCloseGateSubclassId   = 3;
 
         // Read HKCU\...\Themes\Personalize\AppsUseLightTheme. Missing
         // key or read failure defaults to DARK — the terminal's
@@ -768,6 +735,28 @@ namespace winrt::GhosttyWin32::implementation
             }
             return DefSubclassProc(hwnd, msg, wp, lp);
         }
+
+        // Alt+F4 and any other OS-issued WM_CLOSE bypass WinUI's
+        // event routing. Without an intercept the default handler
+        // destroys the window synchronously — no confirmation, and
+        // Actions callbacks queued on the dispatcher blow up on a
+        // dangling m_view (see issue #126). This subclass turns
+        // every WM_CLOSE into a gate submission; the gate's
+        // approval path sets m_bypassCloseGate so the follow-up
+        // Close() gets through this proc unimpeded.
+        LRESULT CALLBACK CloseGateSubclassProc(
+            HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
+            UINT_PTR /*id*/, DWORD_PTR ref) noexcept
+        {
+            if (msg == WM_CLOSE) {
+                auto* self = reinterpret_cast<MainWindow*>(ref);
+                if (self && !self->IsCloseGateBypassed()) {
+                    try { self->TryClose(); } catch (winrt::hresult_error const&) {}
+                    return 0;
+                }
+            }
+            return DefSubclassProc(hwnd, msg, wp, lp);
+        }
     }
 
     void MainWindow::HookSystemThemeSignal() noexcept
@@ -775,6 +764,14 @@ namespace winrt::GhosttyWin32::implementation
         if (!m_hwnd) return;
         SetWindowSubclass(m_hwnd, &SystemThemeSubclassProc,
                           kSystemThemeSubclassId,
+                          reinterpret_cast<DWORD_PTR>(this));
+    }
+
+    void MainWindow::HookCloseGate() noexcept
+    {
+        if (!m_hwnd) return;
+        SetWindowSubclass(m_hwnd, &CloseGateSubclassProc,
+                          kCloseGateSubclassId,
                           reinterpret_cast<DWORD_PTR>(this));
     }
 
@@ -975,6 +972,13 @@ namespace winrt::GhosttyWin32::implementation
 
     void MainWindow::RequestClose()
     {
+        // Every RequestClose is a committed close — the confirmation
+        // (if any) already happened upstream. Setting the bypass here
+        // means the CloseGate subclass won't re-prompt on whatever
+        // WM_CLOSE the framework emits during Close(), and covers
+        // paths that call RequestClose without going through TryClose
+        // (last-tab-close, tear-out empty shell, driver-error exit).
+        m_bypassCloseGate = true;
         // WinUI's Window::Close throws when the window has already
         // begun tearing down; swallow so callers can fire and
         // forget. The hresult_error variant is the only one that
@@ -985,50 +989,28 @@ namespace winrt::GhosttyWin32::implementation
 
     void MainWindow::TryClose()
     {
-        // Ask each Tab whether any of its panes need confirmation.
-        // Tab::NeedsConfirmClose owns the pane-tree walk (Tab owns
-        // the tree, so the query belongs there); the surface-level
-        // ghostty_surface_needs_confirm_quit already factors in the
-        // `confirm-close-surface` config, so users who set it false
-        // sail through without a dialog on every close.
-        bool anyNeedsConfirm = false;
-        for (auto& tab : m_tabs) {
-            if (tab && tab->NeedsConfirmClose()) { anyNeedsConfirm = true; break; }
-        }
-
-        if (!anyNeedsConfirm) {
-            RequestClose();
-            return;
-        }
-
-        // XamlRoot is required for a ContentDialog to know which
-        // Window / island to overlay. Fall back to a plain close
-        // if the tree isn't realised yet (shouldn't happen — a
-        // close reaching TryClose means the window has been shown).
         auto content = Content();
         auto xamlRoot = content ? content.XamlRoot() : nullptr;
-        if (!xamlRoot) {
-            RequestClose();
-            return;
-        }
-
-        muxc::ContentDialog dlg;
-        dlg.XamlRoot(xamlRoot);
-        dlg.Title(winrt::box_value(winrt::hstring{ L"Close window?" }));
-        dlg.Content(winrt::box_value(winrt::hstring{
-            L"One or more terminals in this window still have running "
-            L"processes. They will be terminated." }));
-        dlg.PrimaryButtonText(L"Close");
-        dlg.CloseButtonText(L"Cancel");
-        dlg.DefaultButton(muxc::ContentDialogButton::Close);
-
-        auto op = dlg.ShowAsync();
         auto weak = get_weak();
-        op.Completed([weak](auto&& sender, auto&& status) {
-            if (status != winrt::Windows::Foundation::AsyncStatus::Completed) return;
-            if (sender.GetResults() != muxc::ContentDialogResult::Primary) return;
-            if (auto self = weak.get()) self->RequestClose();
-        });
+        m_closeGate.Submit(
+            WindowCloseGate::Scope::Window,
+            std::move(xamlRoot),
+            // Any pane in any tab reporting needs_confirm_quit means
+            // we should prompt. Tab owns its own tree walk so the
+            // window-level query is a linear scan over tabs.
+            [this]() {
+                for (auto& tab : m_tabs) {
+                    if (tab && tab->NeedsConfirmClose()) return true;
+                }
+                return false;
+            },
+            // Weak ref because the dialog can outlive the C++ object
+            // if teardown starts while it's still up. RequestClose
+            // itself flips the bypass, so any WM_CLOSE the framework
+            // re-emits during Close() sails past the subclass.
+            [weak]() {
+                if (auto self = weak.get()) self->RequestClose();
+            });
     }
 
     void MainWindow::InitGhostty()
@@ -1254,15 +1236,30 @@ namespace winrt::GhosttyWin32::implementation
 
     void MainWindow::CloseTabBySurface(ghostty_surface_t surface)
     {
-        // Mirror the TabCloseRequested handler — see there for why
-        // Detach runs before RemoveAt and why the last tab's Tab
-        // destruction is deferred to ~MainWindow.
         auto* t = m_tabs.FindBySurface(surface);
         if (!t) return;
         auto item = t->Item();
-        // CLOSE_TAB closes the whole tab regardless of pane count —
-        // detach every leaf so each swap chain handle is cleared
-        // before unparent.
+        auto content = Content();
+        auto xamlRoot = content ? content.XamlRoot() : nullptr;
+        auto weak = get_weak();
+        m_closeGate.Submit(
+            WindowCloseGate::Scope::Tab,
+            std::move(xamlRoot),
+            [t]() { return t->NeedsConfirmClose(); },
+            [weak, item]() {
+                if (auto self = weak.get()) self->CloseTabByItem(item);
+            });
+    }
+
+    void MainWindow::CloseTabByItem(muxc::TabViewItem const& item)
+    {
+        auto* t = m_tabs.FindByItem(item);
+        if (!t) return;
+        // Detach every pane before RemoveAt: SetSwapChainHandle(nullptr)
+        // AVs at +0x1F8 inside microsoft.ui.xaml.dll if the panel has
+        // already been unparented. Multi-pane tabs have multiple swap
+        // chains and each one needs clearing before the panel comes
+        // out of the live visual tree.
         t->DetachAll();
         auto tv = TabView();
         uint32_t idx = 0;
@@ -1271,11 +1268,14 @@ namespace winrt::GhosttyWin32::implementation
         }
         DwmFlush();
         if (tv.TabItems().Size() == 0) {
+            // Defer Tab destruction to ~MainWindow's m_tabs.Clear:
+            // tearing down the focused control synchronously here
+            // leaves XAML's focus subsystem holding a stale pointer
+            // that AVs at +0x1F8 once the window teardown starts.
             RequestClose();
         } else {
-            // Mirror the TabCloseRequested handler: unparent the
-            // SplitPanel from AppContent before destroying the Tab so
-            // it doesn't leak as an orphan child.
+            // ~Tab doesn't know about AppContent — unparent here or
+            // the panel leaks as an orphan child.
             RemoveTabPanelFromAppContent(*t);
             m_tabs.Remove(item);
         }
@@ -2192,6 +2192,27 @@ namespace winrt::GhosttyWin32::implementation
     }
 
     void MainWindow::CloseSurfaceByPaneId(PaneId id)
+    {
+        auto lookup = m_tabs.FindByPaneId(id);
+        if (!lookup.tab || !lookup.pane) return;
+        auto* tc = Tab::PaneToTerminalControl(*lookup.pane);
+        auto content = Content();
+        auto xamlRoot = content ? content.XamlRoot() : nullptr;
+        auto weak = get_weak();
+        m_closeGate.Submit(
+            WindowCloseGate::Scope::Surface,
+            std::move(xamlRoot),
+            // Surface-level predicate: ask this pane alone. When the
+            // shell exits naturally ghostty returns false, so
+            // spontaneous close_surface_cb fires (child exit) sail
+            // through without a dialog.
+            [tc]() { return tc && tc->Surface().NeedsConfirmQuit(); },
+            [weak, id]() {
+                if (auto self = weak.get()) self->RemovePaneByIdApproved(id);
+            });
+    }
+
+    void MainWindow::RemovePaneByIdApproved(PaneId id)
     {
         auto lookup = m_tabs.FindByPaneId(id);
         if (!lookup.tab || !lookup.pane) return;
