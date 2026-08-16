@@ -61,6 +61,10 @@ public:
     // was the root). Returns false only if the pane isn't in this
     // tree; a null newSubtree is a caller bug (asserted).
     bool ReplacePane(Pane const& target, std::unique_ptr<Branch> newSubtree) noexcept {
+        // Null newSubtree would leave the tree in a shape we don't
+        // model — RemovePane exists for the "make it empty here" case.
+        // Assert so the caller bug is caught in debug instead of
+        // silently returning false alongside the real not-found case.
         assert(newSubtree && "ReplacePane requires non-null newSubtree");
         Branch* wrapping = TryFindBranch(target);
         if (!wrapping) return false;
