@@ -1938,7 +1938,7 @@ namespace winrt::GhosttyWin32::implementation
             ? MakeSplitBranch(splitDir, 0.5, std::move(newBranch), std::move(sourceWrapper))
             : MakeSplitBranch(splitDir, 0.5, std::move(sourceWrapper), std::move(newBranch));
 
-        if (!panelImpl->ReplacePane(sourcePane, std::move(subtree))) {
+        if (!panelImpl->ReplacePane(*sourcePane, std::move(subtree))) {
             // Tree mutation failed after the new surface was already
             // attached — detach so it doesn't leak.
             if (newControl) {
@@ -2271,7 +2271,7 @@ namespace winrt::GhosttyWin32::implementation
         // would dangle until the SetActivePane calls overwrite it.
         if (closingActive) tab->SetActivePane(nullptr);
 
-        auto result = panelImpl->RemovePane(pane);
+        auto result = panelImpl->RemovePane(*pane);
         if (result == Tree::RemoveResult::Collapsed) {
             // Tab survives; retarget focus to the surviving subtree.
             if (closingActive && siblingPane) {

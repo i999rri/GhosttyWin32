@@ -46,7 +46,7 @@ public:
             throw winrt::hresult_error(E_INVALIDARG, L"Tab: missing resource");
         }
         auto* panelImpl = winrt::get_self<implementation::SplitPanel>(m_panel);
-        if (!panelImpl || panelImpl->Tree().Empty()) {
+        if (!panelImpl || !panelImpl->Tree().HasRoot()) {
             throw winrt::hresult_error(E_INVALIDARG, L"Tab: SplitPanel has no tree");
         }
         // Initial active pane is the first pane found in depth-first

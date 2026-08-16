@@ -41,7 +41,13 @@ public:
     Tree& operator=(Tree&&) = default;
 
     // ─── root access ───
-    bool Empty() const noexcept { return !m_root; }
+    // Positive predicate: this tree has a root Branch (equivalently:
+    // at least one Pane lives in it). Used as the guard in the
+    // walker delegations below and by the WrappingBranchOf lookup
+    // that the structural mutations key off. Named for the specific
+    // state ("root exists") rather than the generic "not empty" —
+    // callers read as `HasRoot()` without wondering "empty of what?".
+    bool HasRoot() const noexcept { return static_cast<bool>(m_root); }
     Branch*       Root()       noexcept { return m_root.get(); }
     Branch const* Root() const noexcept { return m_root.get(); }
 
@@ -61,44 +67,57 @@ public:
     // trees answer conservatively (no matches, nothing to visit).
 
     bool AnyPaneMatches(std::function<bool(Pane const&)> const& pred) const {
-        return m_root && m_root->AnyPaneMatches(pred);
+        return HasRoot() && m_root->AnyPaneMatches(pred);
     }
     void ForEachPane(std::function<void(Pane&)> const& visitor) {
-        if (m_root) m_root->ForEachPane(visitor);
+        if (HasRoot()) m_root->ForEachPane(visitor);
     }
     void ForEachPane(std::function<void(Pane const&)> const& visitor) const {
-        if (m_root) m_root->ForEachPane(visitor);
+        if (HasRoot()) m_root->ForEachPane(visitor);
     }
     Pane* FindPane(std::function<bool(Pane const&)> const& pred) {
-        return m_root ? m_root->FindPane(pred) : nullptr;
+        return HasRoot() ? m_root->FindPane(pred) : nullptr;
     }
     Pane const* FindPane(std::function<bool(Pane const&)> const& pred) const {
-        return m_root ? m_root->FindPane(pred) : nullptr;
+        return HasRoot() ? m_root->FindPane(pred) : nullptr;
     }
 
     // ─── structural mutations ───
 
-    // Replace the Branch currently wrapping `target` (a Pane pointer
-    // reachable from the root) with `newSubtree`. Returns true on
-    // success; false if `target` isn't in this tree or either pointer
-    // is null. Used by NEW_SPLIT to swap a leaf for a split-of-that-
-    // leaf-plus-a-new-leaf, preserving the existing pane's identity.
+    // Look up the Branch that wraps `pane` in this tree, or nullptr
+    // if the tree is empty OR the pane isn't in it. Both structural
+    // mutations (ReplacePane, RemovePane) start the same way — find
+    // the wrapping Branch or bail — so the two failure modes collapse
+    // into one nullable return the callers dispatch on.
+    Branch* WrappingBranchOf(Pane const& pane) noexcept {
+        return HasRoot() ? m_root->FindBranchOfPane(&pane) : nullptr;
+    }
+
+    // Replace the Branch currently wrapping `target` with `newSubtree`.
+    // Returns true on success; false if `target` isn't in this tree or
+    // `newSubtree` is null. Used by NEW_SPLIT to swap a leaf for a
+    // split-of-that-leaf-plus-a-new-leaf, preserving the existing
+    // pane's identity.
+    //
+    // `target` is by-reference — callers must have a real Pane to name.
+    // Non-membership in this tree still returns false; that's a
+    // different failure mode (stale event, wrong tab) from a null
+    // input, which the type prevents up front.
     //
     // The old subtree is destroyed as its unique_ptr is overwritten,
     // and `newSubtree`'s parent back-pointer is rewritten to match
     // the surrounding Split (or cleared, if `target`'s Branch was the
     // root).
-    bool ReplacePane(Pane const* target, std::unique_ptr<Branch> newSubtree) noexcept {
-        if (!target || !newSubtree || !m_root) return false;
-
-        Branch* wrapping = m_root->FindBranchOfPane(target);
+    bool ReplacePane(Pane const& target, std::unique_ptr<Branch> newSubtree) noexcept {
+        if (!newSubtree) return false;
+        Branch* wrapping = WrappingBranchOf(target);
         if (!wrapping) return false;
 
         // Was `target` the root? Swap m_root itself.
         if (wrapping == m_root.get()) {
             newSubtree->parent = nullptr;
             m_root = std::move(newSubtree);
-            if (m_zoomed == target) m_zoomed = nullptr;
+            if (m_zoomed == &target) m_zoomed = nullptr;
             return true;
         }
 
@@ -117,7 +136,7 @@ public:
         } else {
             return false;                                // shouldn't happen
         }
-        if (m_zoomed == target) m_zoomed = nullptr;
+        if (m_zoomed == &target) m_zoomed = nullptr;
         return true;
     }
 
@@ -132,11 +151,11 @@ public:
 
     // Remove the Pane `target` from the tree. If the pane was under a
     // Split, that split collapses and its surviving sibling is
-    // promoted into the split's slot.
-    RemoveResult RemovePane(Pane const* target) noexcept {
-        if (!target || !m_root) return RemoveResult::NotFound;
-
-        Branch* wrapping = m_root->FindBranchOfPane(target);
+    // promoted into the split's slot. `target` is by-reference —
+    // callers must have a real Pane to name; a stale close event on
+    // a pane already gone from this tree still returns NotFound.
+    RemoveResult RemovePane(Pane const& target) noexcept {
+        Branch* wrapping = WrappingBranchOf(target);
         if (!wrapping) return RemoveResult::NotFound;
 
         // Root case: the pane was the whole tree.
@@ -182,7 +201,7 @@ public:
                 return RemoveResult::NotFound;           // shouldn't happen
             }
         }
-        if (m_zoomed == target) m_zoomed = nullptr;
+        if (m_zoomed == &target) m_zoomed = nullptr;
         return RemoveResult::Collapsed;
     }
 

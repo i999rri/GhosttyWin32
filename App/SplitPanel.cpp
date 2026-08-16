@@ -13,7 +13,7 @@ void SplitPanel::SetRoot(std::unique_ptr<Branch> root) {
     InvalidateArrange();
 }
 
-bool SplitPanel::ReplacePane(Pane const* pane, std::unique_ptr<Branch> newSubtree) {
+bool SplitPanel::ReplacePane(Pane const& pane, std::unique_ptr<Branch> newSubtree) {
     if (!m_tree.ReplacePane(pane, std::move(newSubtree))) return false;
     SyncChildrenFromTree();
     InvalidateMeasure();
@@ -21,7 +21,7 @@ bool SplitPanel::ReplacePane(Pane const* pane, std::unique_ptr<Branch> newSubtre
     return true;
 }
 
-Tree::RemoveResult SplitPanel::RemovePane(Pane const* pane) {
+Tree::RemoveResult SplitPanel::RemovePane(Pane const& pane) {
     auto result = m_tree.RemovePane(pane);
     if (result != Tree::RemoveResult::NotFound) {
         SyncChildrenFromTree();

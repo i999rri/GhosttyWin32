@@ -40,14 +40,15 @@ struct SplitPanel : SplitPanelT<SplitPanel> {
     void SetRoot(std::unique_ptr<Branch> root);
 
     // Replace the Branch wrapping `pane` with `newSubtree`. Returns
-    // true on success; false if the pane isn't in this tree or either
-    // pointer is null.
+    // true on success; false if the pane isn't in this tree or
+    // `newSubtree` is null. `pane` is by reference — non-null at the
+    // type level.
     //
     // Used by NEW_SPLIT: the caller builds a split subtree whose left
     // is a new Branch wrapping the existing pane's content (preserving
     // its PaneId so close_surface_cb still routes correctly) plus a
     // fresh Branch for the new pane, then calls this to swap it in.
-    bool ReplacePane(Pane const* pane, std::unique_ptr<Branch> newSubtree);
+    bool ReplacePane(Pane const& pane, std::unique_ptr<Branch> newSubtree);
 
     // Remove `pane` from the tree and collapse its enclosing split by
     // promoting the surviving sibling. Returns the kind of removal so
@@ -60,7 +61,7 @@ struct SplitPanel : SplitPanelT<SplitPanel> {
     // The pane's TerminalControl is NOT detached here; the caller is
     // expected to do that before invoking RemovePane so the surface
     // and DComp handle are released synchronously.
-    Tree::RemoveResult RemovePane(Pane const* pane);
+    Tree::RemoveResult RemovePane(Pane const& pane);
 
     // Reset every Split node's ratio to 0.5 so each split divides
     // its area evenly. Matches EQUALIZE_SPLITS; no-op on a single-pane
