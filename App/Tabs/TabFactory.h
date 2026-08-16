@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Ghostty/App.h"
 #include "Ghostty/Config.h"
 #include "Tabs/Panes/Branch.h"
 #include "Tabs/Panes/PaneId.h"
@@ -22,28 +23,35 @@ namespace winrt::GhosttyWin32::implementation {
 namespace ghostty = core::ghostty;
 
 
-// Builds Tabs. Holds the cross-cutting context (ghostty app handle, the
-// HWND for DPI/initial-size, the PaneIdAllocator that produces fresh
-// per-leaf IDs, and an optional "leaf gained focus" callback that
-// every TerminalControl this factory creates will fire) so callers
-// don't have to thread those through every Make() call.
+// Builds Tabs. Holds the cross-cutting context (the ghostty::App
+// wrapper for the app/config handles, the HWND for DPI/initial-size,
+// the PaneIdAllocator that produces fresh per-leaf IDs, and an
+// optional "leaf gained focus" callback that every TerminalControl
+// this factory creates will fire) so callers don't have to thread
+// those through every Make() call.
 //
 // The focus callback is the one piece of MainWindow-side context that
 // needs to reach into each leaf without each leaf knowing about
 // MainWindow directly. Wiring it here keeps the dependency direction
 // host -> control (the inverse would be a layering violation).
 //
+// Config values are re-read from ghostty::App::ConfigHandle() on
+// every Make/MakePane — never cached across calls. The handle is
+// swapped and the OLD ghostty_config_t FREED on every config change
+// (App::ReplaceConfig; fired by reload and by the system-theme
+// follow), so a cached ghostty::Config would dangle and feed
+// freed-memory garbage into e.g. the unfocused-split overlay color.
+//
 // Stateless beyond the injected references — no mutable state of its
 // own. ID counter mutation lives in PaneIdAllocator; the factory only
 // borrows it.
 class TabFactory {
 public:
-    TabFactory(ghostty_app_t app, ghostty::Config const& cfg, HWND hwnd,
+    TabFactory(ghostty::App const& app, HWND hwnd,
                PaneIdAllocator& idAllocator,
                std::function<void(ghostty_surface_t)> onLeafFocused = {}) noexcept
-        : m_app(app), m_cfg(cfg), m_hwnd(hwnd), m_idAllocator(idAllocator),
-          m_onLeafFocused(std::move(onLeafFocused)),
-          m_dividerColor(cfg.SplitDividerColor()) {}
+        : m_ghostty(app), m_hwnd(hwnd), m_idAllocator(idAllocator),
+          m_onLeafFocused(std::move(onLeafFocused)) {}
 
     TabFactory(const TabFactory&) = delete;
     TabFactory& operator=(const TabFactory&) = delete;
@@ -99,8 +107,11 @@ public:
         }
         // Apply the divider colour before any tree exists so the
         // first splitter Border built by SetRoot already paints
-        // with the correct brush.
-        splitPanelImpl->SetDividerColor(m_dividerColor);
+        // with the correct brush. Resolved fresh from the live config
+        // handle — see the class comment for why nothing config-
+        // derived may be cached across calls.
+        splitPanelImpl->SetDividerColor(
+            ghostty::Config(m_ghostty.ConfigHandle()).SplitDividerColor());
         splitPanelImpl->SetRoot(std::move(branch));
 
         try {
@@ -232,7 +243,7 @@ public:
         // the panel's settled scale changes.
         swapChainChanged->compositionScale.store(scaleX, std::memory_order_release);
 
-        ghostty_surface_t surface = ghostty_surface_new(m_app, &cfg);
+        ghostty_surface_t surface = ghostty_surface_new(m_ghostty.Handle(), &cfg);
         if (!surface) {
             OutputDebugStringA("TabFactory::MakePane: ghostty_surface_new FAILED\n");
             // Callback won't fire — release the renderer's owning handle.
@@ -244,7 +255,7 @@ public:
         // Hand surface ownership to the control. From here on the
         // control's Detach() is responsible for freeing the surface
         // and closing the handle.
-        controlImpl->Attach(m_app, surface, handle, m_hwnd, attach, std::move(swapChainChanged));
+        controlImpl->Attach(m_ghostty.Handle(), surface, handle, m_hwnd, attach, std::move(swapChainChanged));
 
         // Wire the host-supplied focus callback so the control can
         // notify MainWindow whenever it gains keyboard focus without
@@ -256,10 +267,14 @@ public:
         // background fallback so this call site just asks for what
         // it wants. ghostty's `unfocused-split-opacity` measures
         // "how visible the unfocused side should be", so the
-        // overlay alpha is (1 - that).
+        // overlay alpha is (1 - that). Wrap the live handle fresh —
+        // a wrapper cached at construction would read a config that
+        // ReplaceConfig has already freed (the "inactive pane turns
+        // black/pink after a split" garbage-color bug).
+        ghostty::Config liveCfg(m_ghostty.ConfigHandle());
         controlImpl->SetUnfocusedAppearance(
-            1.0 - m_cfg.UnfocusedSplitOpacity(),
-            m_cfg.UnfocusedSplitFill());
+            1.0 - liveCfg.UnfocusedSplitOpacity(),
+            liveCfg.UnfocusedSplitFill());
 
         return MakePaneBranch(control, paneId);
     }
@@ -278,19 +293,17 @@ private:
         });
     }
 
-    ghostty_app_t m_app;
-    ghostty::Config m_cfg;
+    // App-scope wrapper; outlives every MainWindow (and therefore
+    // this factory). Provides the app handle and, crucially, the
+    // CURRENT config handle — the factory reads config through this
+    // on every call instead of caching, because ReplaceConfig frees
+    // the old handle on every config change.
+    ghostty::App const& m_ghostty;
     HWND m_hwnd;
     PaneIdAllocator& m_idAllocator;
     // Optional. Fires with the leaf's ghostty_surface_t whenever the
     // leaf's TerminalControl receives keyboard focus.
     std::function<void(ghostty_surface_t)> m_onLeafFocused;
-    // Resolved once in the ctor (config is read-only here) and
-    // stamped onto every SplitPanel built by Make. Reload-time
-    // updates would re-run m_cfg.SplitDividerColor() and push the
-    // new value into existing SplitPanels via SetDividerColor —
-    // wired but not yet triggered by anyone on this branch.
-    winrt::Windows::UI::Color m_dividerColor;
 };
 
 }  // namespace winrt::GhosttyWin32::implementation

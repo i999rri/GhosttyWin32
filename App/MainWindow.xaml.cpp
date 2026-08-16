@@ -1028,14 +1028,12 @@ namespace winrt::GhosttyWin32::implementation
             auto onLeafFocused = [this](ghostty_surface_t surface) noexcept {
                 NotifySurfaceFocused(surface);
             };
-            // GhosttyConfig wraps the raw ghostty_config_t with
-            // typed, fallback-aware accessors so TabFactory (and
-            // future callers) stop reimplementing the key-length /
-            // fallback dance every time they need a config value.
-            ghostty::Config cfg(m_ghosttyApp->ConfigHandle());
+            // Hand the factory the App wrapper, not a Config snapshot:
+            // the config handle is freed and swapped on every config
+            // change (reload, theme follow), so the factory must
+            // re-resolve it per Make/MakePane call.
             m_tabFactory = std::make_unique<TabFactory>(
-                m_ghosttyApp->Handle(),
-                cfg,
+                *m_ghosttyApp,
                 m_hwnd,
                 App::g_app->PaneIds(),
                 std::move(onLeafFocused));
