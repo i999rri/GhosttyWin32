@@ -636,6 +636,7 @@ namespace winrt::GhosttyWin32::implementation
             // themes with light/dark variants pick the right one at
             // launch without waiting for the first user toggle.
             HookSystemThemeSignal();
+            HookCloseGate();
             PushCurrentSystemColorScheme();
             // Tear-out hosts don't create an initial tab: they adopt
             // the dragged one (possibly before this handler even ran).
@@ -696,6 +697,7 @@ namespace winrt::GhosttyWin32::implementation
         // SizeLimit's (which uses id=1) so both subclasses coexist
         // on the same HWND without either replacing the other.
         constexpr UINT_PTR kSystemThemeSubclassId = 2;
+        constexpr UINT_PTR kCloseGateSubclassId   = 3;
 
         // Read HKCU\...\Themes\Personalize\AppsUseLightTheme. Missing
         // key or read failure defaults to DARK — the terminal's
@@ -733,6 +735,28 @@ namespace winrt::GhosttyWin32::implementation
             }
             return DefSubclassProc(hwnd, msg, wp, lp);
         }
+
+        // Alt+F4 and any other OS-issued WM_CLOSE bypass WinUI's
+        // event routing. Without an intercept the default handler
+        // destroys the window synchronously — no confirmation, and
+        // Actions callbacks queued on the dispatcher blow up on a
+        // dangling m_view (see issue #126). This subclass turns
+        // every WM_CLOSE into a gate submission; the gate's
+        // approval path sets m_bypassCloseGate so the follow-up
+        // Close() gets through this proc unimpeded.
+        LRESULT CALLBACK CloseGateSubclassProc(
+            HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
+            UINT_PTR /*id*/, DWORD_PTR ref) noexcept
+        {
+            if (msg == WM_CLOSE) {
+                auto* self = reinterpret_cast<MainWindow*>(ref);
+                if (self && !self->m_bypassCloseGate) {
+                    try { self->TryClose(); } catch (winrt::hresult_error const&) {}
+                    return 0;
+                }
+            }
+            return DefSubclassProc(hwnd, msg, wp, lp);
+        }
     }
 
     void MainWindow::HookSystemThemeSignal() noexcept
@@ -740,6 +764,14 @@ namespace winrt::GhosttyWin32::implementation
         if (!m_hwnd) return;
         SetWindowSubclass(m_hwnd, &SystemThemeSubclassProc,
                           kSystemThemeSubclassId,
+                          reinterpret_cast<DWORD_PTR>(this));
+    }
+
+    void MainWindow::HookCloseGate() noexcept
+    {
+        if (!m_hwnd) return;
+        SetWindowSubclass(m_hwnd, &CloseGateSubclassProc,
+                          kCloseGateSubclassId,
                           reinterpret_cast<DWORD_PTR>(this));
     }
 
@@ -940,6 +972,13 @@ namespace winrt::GhosttyWin32::implementation
 
     void MainWindow::RequestClose()
     {
+        // Every RequestClose is a committed close — the confirmation
+        // (if any) already happened upstream. Setting the bypass here
+        // means the CloseGate subclass won't re-prompt on whatever
+        // WM_CLOSE the framework emits during Close(), and covers
+        // paths that call RequestClose without going through TryClose
+        // (last-tab-close, tear-out empty shell, driver-error exit).
+        m_bypassCloseGate = true;
         // WinUI's Window::Close throws when the window has already
         // begun tearing down; swallow so callers can fire and
         // forget. The hresult_error variant is the only one that
@@ -966,7 +1005,9 @@ namespace winrt::GhosttyWin32::implementation
                 return false;
             },
             // Weak ref because the dialog can outlive the C++ object
-            // if teardown starts while it's still up.
+            // if teardown starts while it's still up. RequestClose
+            // itself flips the bypass, so any WM_CLOSE the framework
+            // re-emits during Close() sails past the subclass.
             [weak]() {
                 if (auto self = weak.get()) self->RequestClose();
             });

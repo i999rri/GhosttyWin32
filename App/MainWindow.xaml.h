@@ -203,6 +203,10 @@ namespace winrt::GhosttyWin32::implementation
         // updated OS light/dark preference into ghostty. Called once from
         // the one-shot Activated init after m_hwnd is captured.
         void HookSystemThemeSignal() noexcept;
+        // WndProc subclass that intercepts WM_CLOSE (Alt+F4, OS-issued
+        // close) and routes it through the confirmation gate. See
+        // CloseGateSubclassProc.
+        void HookCloseGate() noexcept;
 
         // Publish a single drag rectangle to AppWindowTitleBar covering
         // the DragRegion's current bounds. Called from
@@ -326,6 +330,11 @@ namespace winrt::GhosttyWin32::implementation
         // needs_confirm_quit prompts land once, not one dialog per
         // path. Constructed inline so it's usable from the ctor.
         WindowCloseGate m_closeGate;
+        // Set to true by the gate's approval callback before it calls
+        // Window::Close(); the CloseGate WndProc subclass reads this
+        // to let the resulting WM_CLOSE (if any) through without
+        // re-prompting. One-shot — the window is about to die.
+        bool m_bypassCloseGate = false;
         // Focus-tracked active surface. Set by NotifySurfaceFocused
         // when a TerminalControl gains focus, cleared when the
         // matching surface is torn down through CloseSurfaceByPaneId.
