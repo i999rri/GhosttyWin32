@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Ghostty/Config.h"
-#include "Tabs/Panes/Pane.h"
+#include "Tabs/Panes/Branch.h"
 #include "Tabs/Panes/PaneId.h"
 #include "Tabs/Panes/PaneIdAllocator.h"
 #include "SplitPanel.h"
@@ -82,10 +82,10 @@ public:
         uint32_t initialWidth = 0,
         uint32_t initialHeight = 0)
     {
-        auto leaf = MakeLeaf(initialWidth, initialHeight, std::move(onActivated));
-        if (!leaf) return nullptr;
+        auto branch = MakePane(initialWidth, initialHeight, std::move(onActivated));
+        if (!branch) return nullptr;
 
-        // Wrap the leaf in a SplitPanel. With one leaf the panel
+        // Wrap the pane in a SplitPanel. With one pane the panel
         // collapses to "arrange the single child at the full rect".
         // The host parents the returned panel under AppContent — the
         // factory deliberately doesn't, so it stays unaware of the
@@ -94,36 +94,37 @@ public:
         auto* splitPanelImpl = winrt::get_self<implementation::SplitPanel>(splitPanel);
         if (!splitPanelImpl) {
             OutputDebugStringA("TabFactory::Make: get_self<SplitPanel> FAILED\n");
-            DetachLeaf(*leaf);
+            DetachSubtree(*branch);
             return nullptr;
         }
         // Apply the divider colour before any tree exists so the
         // first splitter Border built by SetRoot already paints
         // with the correct brush.
         splitPanelImpl->SetDividerColor(m_dividerColor);
-        splitPanelImpl->SetRoot(std::move(leaf));
+        splitPanelImpl->SetRoot(std::move(branch));
 
         try {
             return std::make_unique<Tab>(std::move(splitPanel), std::move(item));
         } catch (winrt::hresult_error const&) {
             // Tab construction validation failed. Detach synchronously
-            // so the surface/handle don't leak. The splitPanel /
-            // tree own the leaf at this point.
-            if (auto* root = splitPanelImpl->Root()) DetachLeaf(*root);
+            // so the surface/handle don't leak. The splitPanel / tree
+            // own the pane at this point.
+            if (auto* root = splitPanelImpl->Tree().Root()) DetachSubtree(*root);
             return nullptr;
         }
     }
 
     // Build a new pane: TerminalControl + DComp surface handle +
-    // ghostty surface + freshly-allocated PaneId, returned as a Pane
-    // leaf. Shared between Make() (the leaf becomes the only pane in
-    // a brand-new tab) and the NEW_SPLIT action handler (the leaf is
-    // inserted into an existing tab's tree alongside its source pane).
+    // ghostty surface + freshly-allocated PaneId, wrapped in a
+    // Branch (Pane variant). Shared between Make() (the branch
+    // becomes the only pane in a brand-new tab) and the NEW_SPLIT
+    // action handler (the branch is inserted into an existing tab's
+    // tree alongside its source pane).
     //
     // Returns nullptr on any failure. Resources acquired before the
     // failure point are released before the return — caller doesn't
     // need to clean up after a null result.
-    std::unique_ptr<Pane> MakeLeaf(
+    std::unique_ptr<Branch> MakePane(
         uint32_t initialWidth,
         uint32_t initialHeight,
         std::function<void()> onActivated = {})
@@ -133,12 +134,12 @@ public:
         auto control = winrt::GhosttyWin32::TerminalControl();
         auto* controlImpl = winrt::get_self<implementation::TerminalControl>(control);
         if (!controlImpl) {
-            OutputDebugStringA("TabFactory::MakeLeaf: get_self<TerminalControl> FAILED\n");
+            OutputDebugStringA("TabFactory::MakePane: get_self<TerminalControl> FAILED\n");
             return nullptr;
         }
         auto panel = controlImpl->InnerPanel();
         if (!panel) {
-            OutputDebugStringA("TabFactory::MakeLeaf: TerminalControl has no inner panel\n");
+            OutputDebugStringA("TabFactory::MakePane: TerminalControl has no inner panel\n");
             return nullptr;
         }
 
@@ -152,7 +153,7 @@ public:
 
         HANDLE handle = nullptr;
         if (FAILED(DCompositionCreateSurfaceHandle(COMPOSITIONSURFACE_ALL_ACCESS, nullptr, &handle))) {
-            OutputDebugStringA("TabFactory::MakeLeaf: DCompositionCreateSurfaceHandle FAILED\n");
+            OutputDebugStringA("TabFactory::MakePane: DCompositionCreateSurfaceHandle FAILED\n");
             return nullptr;
         }
 
@@ -233,7 +234,7 @@ public:
 
         ghostty_surface_t surface = ghostty_surface_new(m_app, &cfg);
         if (!surface) {
-            OutputDebugStringA("TabFactory::MakeLeaf: ghostty_surface_new FAILED\n");
+            OutputDebugStringA("TabFactory::MakePane: ghostty_surface_new FAILED\n");
             // Callback won't fire — release the renderer's owning handle.
             delete attachOwned;
             CloseHandle(handle);
@@ -260,24 +261,21 @@ public:
             1.0 - m_cfg.UnfocusedSplitOpacity(),
             m_cfg.UnfocusedSplitFill());
 
-        return Pane::MakeLeaf(control, paneId);
+        return MakePaneBranch(control, paneId);
     }
 
 private:
-    // Synchronously detach every TerminalControl under `node` so the
-    // surface / DComp handle don't leak when an error path discards a
-    // partially-constructed tree. Mirrors Tab::DetachAllLeaves but is
-    // factored locally so the error paths above can call it without
-    // depending on Tab.
-    static void DetachLeaf(Pane const& node) {
-        if (node.IsLeaf()) {
-            if (auto* tc = Tab::LeafToTerminalControl(node)) {
+    // Synchronously detach every TerminalControl under `branch` so
+    // the surface / DComp handle don't leak when an error path
+    // discards a partially-constructed subtree. Mirrors Tab::DetachAll
+    // but is factored locally so the error paths above can call it
+    // without depending on Tab.
+    static void DetachSubtree(Branch& branch) {
+        branch.ForEachPane([](Pane& p) {
+            if (auto* tc = Tab::PaneToTerminalControl(p)) {
                 tc->Detach();
             }
-            return;
-        }
-        if (auto* f = node.First()) DetachLeaf(*f);
-        if (auto* s = node.Second()) DetachLeaf(*s);
+        });
     }
 
     ghostty_app_t m_app;

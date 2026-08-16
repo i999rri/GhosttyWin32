@@ -789,27 +789,16 @@ namespace winrt::GhosttyWin32::implementation
         // old variant and the surface's palette doesn't change until
         // it's recreated. Push the new scheme into each existing
         // surface too so the flip lands immediately.
-        struct Push {
-            ghostty_color_scheme_e scheme;
-            void operator()(Pane* node) const {
-                if (!node) return;
-                if (node->IsLeaf()) {
-                    if (auto* tc = Tab::LeafToTerminalControl(*node)) {
-                        tc->Surface().SetColorScheme(scheme);
-                    }
-                    return;
-                }
-                (*this)(node->First());
-                (*this)(node->Second());
-            }
-        };
-        Push push{ scheme };
         for (auto& tab : m_tabs) {
             if (!tab) continue;
             auto* panelImpl =
                 winrt::get_self<implementation::SplitPanel>(tab->Panel());
             if (!panelImpl) continue;
-            push(panelImpl->Root());
+            panelImpl->Tree().ForEachPane([scheme](Pane& p) {
+                if (auto* tc = Tab::PaneToTerminalControl(p)) {
+                    tc->Surface().SetColorScheme(scheme);
+                }
+            });
         }
         // Mirror the OS preference into the WinUI shell so titlebar,
         // TabView chrome, menus, and any XamlControlsResources-derived
@@ -853,7 +842,7 @@ namespace winrt::GhosttyWin32::implementation
         // Collapsed elements stay parented (no Unloaded fires) so the
         // SwapChainPanel's DComp surface binding survives the switch.
         // No focus-visual pre-apply is needed — UnfocusedDim is owned
-        // by Tab.SetActiveLeaf and is independent of XAML focus, so
+        // by Tab.SetActivePane and is independent of XAML focus, so
         // tab switches don't disturb it.
         auto* tab = ActiveTab();
         winrt::GhosttyWin32::SplitPanel activePanel{ nullptr };
@@ -943,19 +932,19 @@ namespace winrt::GhosttyWin32::implementation
     {
         m_activeSurface = surface;
         // Route the focus event back into the owning Tab so it can
-        // update its per-tab dim invariant. SetActiveLeaf is idempotent
+        // update its per-tab dim invariant. SetActivePane is idempotent
         // when `leaf` is already the tab's active leaf, so the deferred
         // Focus call we issue after tab switches (which re-focuses the
         // same TerminalControl that was already active in the
         // newly-selected tab) doesn't repaint anything. The case that
         // matters is a pointer click on a non-active pane inside a
-        // split — GotFocus fires, we land here, SetActiveLeaf swaps
+        // split — GotFocus fires, we land here, SetActivePane swaps
         // the dim across the panes.
         if (!surface) return;
         try {
-            auto lookup = m_tabs.FindLeafBySurface(surface);
-            if (lookup.tab && lookup.leaf && lookup.tab->ActiveLeaf() != lookup.leaf) {
-                lookup.tab->SetActiveLeaf(lookup.leaf);
+            auto lookup = m_tabs.FindPaneBySurface(surface);
+            if (lookup.tab && lookup.pane && lookup.tab->ActivePane() != lookup.pane) {
+                lookup.tab->SetActivePane(lookup.pane);
             }
         } catch (...) {
             // Defensive: dim update is a UX nicety, never crash the
@@ -996,41 +985,16 @@ namespace winrt::GhosttyWin32::implementation
 
     void MainWindow::TryClose()
     {
-        // Walk every leaf in every tab: if any surface reports
-        // needs_confirm_quit=true, gate the close on a
-        // WinUI ContentDialog. Otherwise close straight through.
-        //
+        // Ask each Tab whether any of its panes need confirmation.
+        // Tab::NeedsConfirmClose owns the pane-tree walk (Tab owns
+        // the tree, so the query belongs there); the surface-level
         // ghostty_surface_needs_confirm_quit already factors in the
         // `confirm-close-surface` config, so users who set it false
         // sail through without a dialog on every close.
-        //
-        // Inline recursion (rather than reusing CollectLeaves defined
-        // later in this file) so this can sit close to RequestClose
-        // where the surrounding close-path handlers already live.
-        struct Check {
-            bool any = false;
-            void operator()(Pane* node) {
-                if (any || !node) return;
-                if (node->IsLeaf()) {
-                    if (auto* tc = Tab::LeafToTerminalControl(*node)) {
-                        if (tc->Surface().NeedsConfirmQuit()) any = true;
-                    }
-                    return;
-                }
-                (*this)(node->First());
-                (*this)(node->Second());
-            }
-        };
-        Check check;
+        bool anyNeedsConfirm = false;
         for (auto& tab : m_tabs) {
-            if (!tab) continue;
-            auto* panelImpl =
-                winrt::get_self<implementation::SplitPanel>(tab->Panel());
-            if (!panelImpl) continue;
-            check(panelImpl->Root());
-            if (check.any) break;
+            if (tab && tab->NeedsConfirmClose()) { anyNeedsConfirm = true; break; }
         }
-        bool anyNeedsConfirm = check.any;
 
         if (!anyNeedsConfirm) {
             RequestClose();
@@ -1590,12 +1554,12 @@ namespace winrt::GhosttyWin32::implementation
         // the tab's active leaf. MOUSE_SHAPE carries the originating
         // surface, and with split panes the pointer can be over a
         // non-active pane — using ActiveControl() landed the shape on
-        // the wrong pane (#65). FindLeafBySurface walks the pane tree
+        // the wrong pane (#65). FindPaneBySurface walks the pane tree
         // and returns the owning leaf; in the single-pane case it
         // resolves to the same control ActiveControl() would.
-        auto lookup = m_tabs.FindLeafBySurface(surface);
-        if (!lookup.leaf) return;
-        if (auto* tc = Tab::LeafToTerminalControl(*lookup.leaf)) {
+        auto lookup = m_tabs.FindPaneBySurface(surface);
+        if (!lookup.pane) return;
+        if (auto* tc = Tab::PaneToTerminalControl(*lookup.pane)) {
             tc->SetCursorShape(shape);
         }
     }
@@ -1665,10 +1629,10 @@ namespace winrt::GhosttyWin32::implementation
             // so a later click routes back to the right pane via
             // PresentNotification. Encoded as semicolon-separated
             // key=value pairs to leave room for future fields.
-            if (auto lookup = m_tabs.FindLeafBySurface(surface);
-                lookup.leaf && lookup.leaf->Id())
+            if (auto lookup = m_tabs.FindPaneBySurface(surface);
+                lookup.pane && lookup.pane->id)
             {
-                auto idStr = std::to_wstring(lookup.leaf->Id().value);
+                auto idStr = std::to_wstring(lookup.pane->id.value);
                 builder.AddArgument(L"action", L"present");
                 builder.AddArgument(L"surfaceId", winrt::hstring(idStr));
             }
@@ -1693,8 +1657,8 @@ namespace winrt::GhosttyWin32::implementation
                 if (tabView) {
                     tabView.SelectedItem(lookup.tab->Item());
                 }
-                if (lookup.leaf) {
-                    lookup.tab->SetActiveLeaf(lookup.leaf);
+                if (lookup.pane) {
+                    lookup.tab->SetActivePane(lookup.pane);
                 }
                 lookup.tab->Focus();
             }
@@ -1746,56 +1710,44 @@ namespace winrt::GhosttyWin32::implementation
     }
 
     namespace {
-        // Depth-first search for the leaf hosting `surface`. The pane
-        // tree is small (a handful of leaves at most) so a flat walk
-        // is strictly cheaper than maintaining a side index.
-        Pane* FindLeafForSurface(Pane* node, ghostty_surface_t surface) {
-            if (!node) return nullptr;
-            if (node->IsLeaf()) {
-                auto* tc = Tab::LeafToTerminalControl(*node);
-                return (tc && tc->Surface().Owns(surface)) ? node : nullptr;
-            }
-            if (auto* p = FindLeafForSurface(node->First(), surface)) return p;
-            return FindLeafForSurface(node->Second(), surface);
+        Pane* FindPaneForSurface(implementation::SplitPanel* panelImpl,
+                                 ghostty_surface_t surface)
+        {
+            if (!panelImpl) return nullptr;
+            return panelImpl->Tree().FindPaneBy([surface](Pane const& p) {
+                auto const* tc = Tab::PaneToTerminalControl(p);
+                return tc && tc->Surface().Owns(surface);
+            });
         }
 
-        // Returns the first leaf reached by depth-first descent — used
-        // to pick a focus target after a split collapses and the
-        // previously-active leaf is gone.
-        Pane* FirstLeafIn(Pane* node) {
-            if (!node) return nullptr;
-            if (node->IsLeaf()) return node;
-            if (auto* p = FirstLeafIn(node->First())) return p;
-            return FirstLeafIn(node->Second());
+        void CollectPanes(Branch& branch, std::vector<Pane*>& out) {
+            branch.ForEachPane([&out](Pane& p) { out.push_back(&p); });
         }
 
-        // Push every leaf under `node` into `out` in depth-first
-        // order — left subtree before right. PREVIOUS / NEXT pane
-        // navigation iterates this list to find neighbours of the
-        // currently active leaf.
-        void CollectLeaves(Pane* node, std::vector<Pane*>& out) {
-            if (!node) return;
-            if (node->IsLeaf()) { out.push_back(node); return; }
-            CollectLeaves(node->First(), out);
-            CollectLeaves(node->Second(), out);
+        // arrangedRect lives on Branch, not Pane — layout callers
+        // resolve the pane back to its wrapping Branch through this.
+        Branch* BranchOfPane(implementation::SplitPanel* panelImpl,
+                             Pane const* pane)
+        {
+            if (!panelImpl || !pane) return nullptr;
+            auto* root = panelImpl->Tree().Root();
+            return root ? root->FindBranchOfPane(*pane) : nullptr;
         }
 
-        // Pick the leaf whose arranged rect is adjacent to `active`
-        // in the requested cardinal direction. Filters to leaves
-        // strictly on the requested side, then scores them by primary
-        // distance (along the axis) plus a perpendicular penalty so
-        // an aligned neighbour beats a far-off-axis one.
-        //
-        // Returns nullptr if no candidate qualifies — caller's job
-        // to decide whether to fall back (today: just ignore the
-        // input, matching how Windows Terminal handles "no neighbour
-        // in this direction").
-        Pane* FindAdjacentLeaf(Pane* active,
-                               std::vector<Pane*> const& leaves,
+        // Score = primary distance + 2 * perpendicular. The 2x
+        // penalty keeps focus moves predictable when an off-axis
+        // pane is technically closer in straight-line distance than
+        // the aligned neighbour. Returns nullptr when no pane sits
+        // on the requested side.
+        Pane* FindAdjacentPane(implementation::SplitPanel* panelImpl,
+                               Pane* active,
+                               std::vector<Pane*> const& panes,
                                ghostty_action_goto_split_e dir)
         {
-            if (!active) return nullptr;
-            auto a = active->ArrangedRect();
+            if (!active || !panelImpl) return nullptr;
+            auto* activeBranch = BranchOfPane(panelImpl, active);
+            if (!activeBranch) return nullptr;
+            auto a = activeBranch->arrangedRect;
             float ax2 = a.X + a.Width;
             float ay2 = a.Y + a.Height;
             float aCenterX = a.X + a.Width  * 0.5f;
@@ -1803,9 +1755,11 @@ namespace winrt::GhosttyWin32::implementation
 
             Pane* best = nullptr;
             double bestScore = std::numeric_limits<double>::max();
-            for (auto* leaf : leaves) {
-                if (leaf == active) continue;
-                auto c = leaf->ArrangedRect();
+            for (auto* candidate : panes) {
+                if (candidate == active) continue;
+                auto* candBranch = BranchOfPane(panelImpl, candidate);
+                if (!candBranch) continue;
+                auto c = candBranch->arrangedRect;
                 float cx2 = c.X + c.Width;
                 float cy2 = c.Y + c.Height;
                 float cCenterX = c.X + c.Width  * 0.5f;
@@ -1815,8 +1769,7 @@ namespace winrt::GhosttyWin32::implementation
                 bool valid = false;
                 switch (dir) {
                 case GHOSTTY_GOTO_SPLIT_LEFT:
-                    // Candidate must end at or before active starts —
-                    // allow a tiny overlap to absorb float rounding.
+                    // 1px slack absorbs float rounding on the boundary.
                     if (cx2 > a.X + 1.0f) break;
                     primary = a.X - cx2;
                     perpendicular = std::abs(cCenterY - aCenterY);
@@ -1844,14 +1797,10 @@ namespace winrt::GhosttyWin32::implementation
                     return nullptr;  // PREVIOUS / NEXT handled elsewhere
                 }
                 if (!valid) continue;
-                // Weight perpendicular gap twice as heavily as primary
-                // distance — keeps focus moves predictable when there
-                // are off-axis panes that are technically closer in
-                // straight-line distance.
                 double score = primary + 2.0 * perpendicular;
                 if (score < bestScore) {
                     bestScore = score;
-                    best = leaf;
+                    best = candidate;
                 }
             }
             return best;
@@ -1865,13 +1814,11 @@ namespace winrt::GhosttyWin32::implementation
             auto* panelImpl =
                 winrt::get_self<implementation::SplitPanel>(tab->Panel());
             if (!panelImpl) continue;
-            std::vector<Pane*> leaves;
-            CollectLeaves(panelImpl->Root(), leaves);
-            for (auto* leaf : leaves) {
-                if (auto* tc = Tab::LeafToTerminalControl(*leaf)) {
+            panelImpl->Tree().ForEachPane([visible](Pane& p) {
+                if (auto* tc = Tab::PaneToTerminalControl(p)) {
                     tc->Surface().SetOcclusion(visible);
                 }
-            }
+            });
         }
     }
 
@@ -1884,27 +1831,24 @@ namespace winrt::GhosttyWin32::implementation
         auto* panelImpl = winrt::get_self<implementation::SplitPanel>(sourceTab->Panel());
         if (!panelImpl) return;
 
-        Pane* sourceLeaf = FindLeafForSurface(panelImpl->Root(), surface);
-        if (!sourceLeaf || !sourceLeaf->IsLeaf()) return;
+        Pane* sourcePane = FindPaneForSurface(panelImpl, surface);
+        if (!sourcePane) return;
 
-        // The source leaf's UIElement + PaneId are about to be moved
-        // into a new wrapper leaf inside the split subtree we build
-        // below. Capturing them here means the wrapper has its own
-        // reference to the underlying TerminalControl before the
-        // ReplaceLeaf call destroys the original Pane node.
-        auto sourceContent = sourceLeaf->Content();
-        PaneId sourcePaneId = sourceLeaf->Id();
+        // Copy out before ReplacePane destroys the original Branch —
+        // the wrapper below needs its own reference to the underlying
+        // TerminalControl and id.
+        auto sourceContent = sourcePane->content;
+        PaneId sourcePaneId = sourcePane->id;
 
-        // ghostty's split-direction maps to (orientation, which-side-
-        // does-the-new-pane-take). RIGHT/DOWN put the new pane after
-        // the source on the layout axis; LEFT/UP put it before.
-        SplitOrientation orient;
+        // RIGHT/DOWN put the new pane after the source on the layout
+        // axis; LEFT/UP put it before.
+        Split::Direction splitDir;
         bool newFirst;
         switch (direction) {
-            case GHOSTTY_SPLIT_DIRECTION_RIGHT: orient = SplitOrientation::Horizontal; newFirst = false; break;
-            case GHOSTTY_SPLIT_DIRECTION_LEFT:  orient = SplitOrientation::Horizontal; newFirst = true;  break;
-            case GHOSTTY_SPLIT_DIRECTION_DOWN:  orient = SplitOrientation::Vertical;   newFirst = false; break;
-            case GHOSTTY_SPLIT_DIRECTION_UP:    orient = SplitOrientation::Vertical;   newFirst = true;  break;
+            case GHOSTTY_SPLIT_DIRECTION_RIGHT: splitDir = Split::Direction::Horizontal; newFirst = false; break;
+            case GHOSTTY_SPLIT_DIRECTION_LEFT:  splitDir = Split::Direction::Horizontal; newFirst = true;  break;
+            case GHOSTTY_SPLIT_DIRECTION_DOWN:  splitDir = Split::Direction::Vertical;   newFirst = false; break;
+            case GHOSTTY_SPLIT_DIRECTION_UP:    splitDir = Split::Direction::Vertical;   newFirst = true;  break;
             default: return;
         }
 
@@ -1913,15 +1857,15 @@ namespace winrt::GhosttyWin32::implementation
         // expressed in PHYSICAL pixels (see display::MeasuredPhysical
         // for why the conversion matters).
         uint32_t srcW = 0, srcH = 0;
-        if (auto* srcTc = Tab::LeafToTerminalControl(*sourceLeaf)) {
+        if (auto* srcTc = Tab::PaneToTerminalControl(*sourcePane)) {
             auto sz = display::MeasuredPhysical(srcTc->InnerPanel());
             srcW = sz.width;
             srcH = sz.height;
         }
-        uint32_t newW = (orient == SplitOrientation::Horizontal) ? srcW / 2 : srcW;
-        uint32_t newH = (orient == SplitOrientation::Vertical)   ? srcH / 2 : srcH;
+        uint32_t newW = (splitDir == Split::Direction::Horizontal) ? srcW / 2 : srcW;
+        uint32_t newH = (splitDir == Split::Direction::Vertical)   ? srcH / 2 : srcH;
 
-        // Wrap MakeLeaf in an SEH guard for the same reason CreateTab
+        // Wrap MakePane in an SEH guard for the same reason CreateTab
         // does — ghostty_surface_new calls into dx_create_texture
         // where NVIDIA drivers have historically thrown hardware
         // exceptions. Without the guard, a driver AV here takes down
@@ -1933,12 +1877,12 @@ namespace winrt::GhosttyWin32::implementation
             TabFactory* factory;
             uint32_t initialWidth;
             uint32_t initialHeight;
-            std::unique_ptr<Pane> result;
+            std::unique_ptr<Branch> result;
         };
         SplitCtx ctx{ m_tabFactory.get(), newW, newH, nullptr };
         int ok = RunSEHGuarded([](void* arg) noexcept {
             auto* c = static_cast<SplitCtx*>(arg);
-            c->result = c->factory->MakeLeaf(c->initialWidth, c->initialHeight);
+            c->result = c->factory->MakePane(c->initialWidth, c->initialHeight);
         }, &ctx);
         if (!ok) {
             // Driver-side hardware exception. Process state is
@@ -1956,20 +1900,21 @@ namespace winrt::GhosttyWin32::implementation
             if (m_hwnd) PostMessageW(m_hwnd, WM_CLOSE, 0, 0);
             return;
         }
-        auto newLeaf = std::move(ctx.result);
-        if (!newLeaf) return;
-        Pane* newLeafPtr = newLeaf.get();
-        auto newControl = newLeaf->Content().try_as<winrt::GhosttyWin32::TerminalControl>();
+        auto newBranch = std::move(ctx.result);
+        if (!newBranch) return;
+        // Cache before newBranch is moved into the subtree — get_if
+        // on the variant is only valid while the branch is around.
+        Pane* newPanePtr = newBranch->TryGet<Pane>();
+        auto newControl = newBranch->TryGet<Pane>()
+            ? newBranch->TryGet<Pane>()->content.try_as<winrt::GhosttyWin32::TerminalControl>()
+            : nullptr;
 
-        // Build the replacement subtree: a split node whose children
-        // are (a) a wrapper around the original source content and
-        // (b) the new leaf, ordered per `newFirst`.
-        auto sourceWrapper = Pane::MakeLeaf(sourceContent, sourcePaneId);
+        auto sourceWrapper = MakePaneBranch(sourceContent, sourcePaneId);
         auto subtree = newFirst
-            ? Pane::MakeSplit(orient, 0.5, std::move(newLeaf), std::move(sourceWrapper))
-            : Pane::MakeSplit(orient, 0.5, std::move(sourceWrapper), std::move(newLeaf));
+            ? MakeSplitBranch(splitDir, 0.5, std::move(newBranch), std::move(sourceWrapper))
+            : MakeSplitBranch(splitDir, 0.5, std::move(sourceWrapper), std::move(newBranch));
 
-        if (!panelImpl->ReplaceLeaf(sourceLeaf, std::move(subtree))) {
+        if (!panelImpl->ReplacePane(*sourcePane, std::move(subtree))) {
             // Tree mutation failed after the new surface was already
             // attached — detach so it doesn't leak.
             if (newControl) {
@@ -1983,7 +1928,7 @@ namespace winrt::GhosttyWin32::implementation
         // Focus shifts to the freshly-created pane: matches the
         // expectation set by every other terminal (a `:vsplit` lands
         // the cursor in the new pane).
-        sourceTab->SetActiveLeaf(newLeafPtr);
+        sourceTab->SetActivePane(newPanePtr);
         if (newControl) {
             newControl.Focus(Microsoft::UI::Xaml::FocusState::Programmatic);
         }
@@ -2010,23 +1955,23 @@ namespace winrt::GhosttyWin32::implementation
         // Already zoomed → unzoom regardless of which pane fired the
         // action. Matches how Windows Terminal / iTerm exit zoom mode:
         // a second press anywhere collapses it back.
-        if (panelImpl->ZoomedLeaf()) {
+        if (panelImpl->Zoomed()) {
             panelImpl->SetZoomed(nullptr);
             return;
         }
 
-        Pane* leaf = FindLeafForSurface(panelImpl->Root(), surface);
-        if (!leaf) return;
-        // Single-leaf tabs skip the zoom — there's nothing to expand
-        // against, and the visual state would be identical to the
-        // normal layout.
-        if (leaf == panelImpl->Root()) return;
+        Pane* pane = FindPaneForSurface(panelImpl, surface);
+        if (!pane) return;
+        // Single-pane tab has nothing to expand against; visual state
+        // would be identical to the normal layout.
+        auto* root = panelImpl->Tree().Root();
+        if (root && root->TryGet<Pane>() == pane) return;
 
-        panelImpl->SetZoomed(leaf);
-        tab->SetActiveLeaf(leaf);
+        panelImpl->SetZoomed(pane);
+        tab->SetActivePane(pane);
         // Re-focus so the zoomed pane keeps input even when zoom was
         // toggled from a non-active pane via a remapped binding.
-        if (auto control = leaf->Content().try_as<winrt::GhosttyWin32::TerminalControl>()) {
+        if (auto control = pane->content.try_as<winrt::GhosttyWin32::TerminalControl>()) {
             control.Focus(Microsoft::UI::Xaml::FocusState::Programmatic);
         }
     }
@@ -2040,35 +1985,35 @@ namespace winrt::GhosttyWin32::implementation
         auto* panelImpl = winrt::get_self<implementation::SplitPanel>(tab->Panel());
         if (!panelImpl) return;
 
-        Pane* active = FindLeafForSurface(panelImpl->Root(), surface);
+        Pane* active = FindPaneForSurface(panelImpl, surface);
         if (!active) return;
 
-        std::vector<Pane*> leaves;
-        CollectLeaves(panelImpl->Root(), leaves);
-        if (leaves.size() <= 1) return;  // nothing to navigate to
+        std::vector<Pane*> panes;
+        if (auto* root = panelImpl->Tree().Root()) CollectPanes(*root, panes);
+        if (panes.size() <= 1) return;  // nothing to navigate to
 
         Pane* target = nullptr;
         if (direction == GHOSTTY_GOTO_SPLIT_PREVIOUS
             || direction == GHOSTTY_GOTO_SPLIT_NEXT) {
             // Cycle through DFS order. wrap-around so the last pane's
             // NEXT lands on the first and vice versa.
-            auto it = std::find(leaves.begin(), leaves.end(), active);
-            if (it == leaves.end()) return;
-            size_t idx = static_cast<size_t>(std::distance(leaves.begin(), it));
+            auto it = std::find(panes.begin(), panes.end(), active);
+            if (it == panes.end()) return;
+            size_t idx = static_cast<size_t>(std::distance(panes.begin(), it));
             size_t newIdx;
             if (direction == GHOSTTY_GOTO_SPLIT_NEXT) {
-                newIdx = (idx + 1) % leaves.size();
+                newIdx = (idx + 1) % panes.size();
             } else {
-                newIdx = (idx == 0) ? leaves.size() - 1 : idx - 1;
+                newIdx = (idx == 0) ? panes.size() - 1 : idx - 1;
             }
-            target = leaves[newIdx];
+            target = panes[newIdx];
         } else {
-            target = FindAdjacentLeaf(active, leaves, direction);
+            target = FindAdjacentPane(panelImpl, active, panes, direction);
         }
         if (!target || target == active) return;
 
-        tab->SetActiveLeaf(target);
-        if (auto element = target->Content()) {
+        tab->SetActivePane(target);
+        if (auto element = target->content) {
             if (auto control = element.try_as<winrt::GhosttyWin32::TerminalControl>()) {
                 control.Focus(Microsoft::UI::Xaml::FocusState::Programmatic);
             }
@@ -2084,37 +2029,34 @@ namespace winrt::GhosttyWin32::implementation
         auto* panelImpl = winrt::get_self<implementation::SplitPanel>(tab->Panel());
         if (!panelImpl) return;
 
-        Pane* leaf = FindLeafForSurface(panelImpl->Root(), surface);
-        if (!leaf) return;
+        Pane* pane = FindPaneForSurface(panelImpl, surface);
+        if (!pane) return;
 
         // The split axis we're resizing matches the direction axis:
         // LEFT/RIGHT → Horizontal split, UP/DOWN → Vertical split.
-        SplitOrientation needOrient =
+        Split::Direction needDir =
             (resize.direction == GHOSTTY_RESIZE_SPLIT_LEFT
              || resize.direction == GHOSTTY_RESIZE_SPLIT_RIGHT)
-            ? SplitOrientation::Horizontal
-            : SplitOrientation::Vertical;
+            ? Split::Direction::Horizontal
+            : Split::Direction::Vertical;
 
-        // Walk up to the nearest ancestor split with the right axis.
-        // `child` is the descendant of that ancestor that contains the
-        // active leaf — used to figure out whether the leaf is on the
-        // first/second side of the split so the direction sign is
-        // applied correctly.
-        Pane* node = leaf;
-        Pane* child = nullptr;
-        while (node && node->Parent()) {
-            auto* parent = node->Parent();
-            if (parent->Orientation() == needOrient) {
-                child = node;
+        // Walk to the nearest ancestor Split whose axis matches.
+        Branch* node = BranchOfPane(panelImpl, pane);
+        while (node && node->parent) {
+            Branch* parent = node->parent;
+            auto* parentSplit = parent ? parent->TryGet<Split>() : nullptr;
+            if (parentSplit && parentSplit->direction == needDir) {
                 node = parent;
                 break;
             }
             node = parent;
         }
-        if (!child || !node || node->IsLeaf()) return;
+        if (!node) return;
+        auto* targetSplit = node->TryGet<Split>();
+        if (!targetSplit || targetSplit->direction != needDir) return;
 
-        auto rect = node->ArrangedRect();
-        float extent = (needOrient == SplitOrientation::Horizontal) ? rect.Width : rect.Height;
+        auto rect = node->arrangedRect;
+        float extent = (needDir == Split::Direction::Horizontal) ? rect.Width : rect.Height;
         float useable = std::max(1.0f,
             extent - static_cast<float>(implementation::SplitPanel::kSplitterThickness));
         double deltaRatio = static_cast<double>(resize.amount) / useable;
@@ -2124,15 +2066,11 @@ namespace winrt::GhosttyWin32::implementation
         //   * RIGHT / DOWN move the boundary toward +axis → ratio
         //     grows (first child gets larger).
         //   * LEFT / UP move the boundary toward -axis → ratio shrinks.
-        // The previous "flip the sign when the active pane is the
-        // second child" logic was a tmux-style "grow the active pane
-        // in the arrow direction" rule that surprised the user when
-        // pressing LEFT from the right-hand pane moved the boundary
-        // right instead of left.
         bool increase = (resize.direction == GHOSTTY_RESIZE_SPLIT_RIGHT
                       || resize.direction == GHOSTTY_RESIZE_SPLIT_DOWN);
 
-        node->SetRatio(node->Ratio() + (increase ? deltaRatio : -deltaRatio));
+        targetSplit->ratio = ClampSplitRatio(
+            targetSplit->ratio + (increase ? deltaRatio : -deltaRatio));
         panelImpl->InvalidateMeasure();
         panelImpl->InvalidateArrange();
     }
@@ -2140,8 +2078,8 @@ namespace winrt::GhosttyWin32::implementation
     TerminalControl* MainWindow::ControlByPaneId(PaneId id) noexcept
     {
         auto lookup = m_tabs.FindByPaneId(id);
-        if (!lookup.leaf) return nullptr;
-        return Tab::LeafToTerminalControl(*lookup.leaf);
+        if (!lookup.pane) return nullptr;
+        return Tab::PaneToTerminalControl(*lookup.pane);
     }
 
     std::unique_ptr<Tab> MainWindow::ReleaseTornOutTab(
@@ -2157,14 +2095,11 @@ namespace winrt::GhosttyWin32::implementation
         if (m_activeSurface) {
             if (auto* panelImpl =
                     winrt::get_self<implementation::SplitPanel>(t->Panel())) {
-                std::vector<Pane*> leaves;
-                CollectLeaves(panelImpl->Root(), leaves);
-                for (auto* leaf : leaves) {
-                    auto* tc = Tab::LeafToTerminalControl(*leaf);
-                    if (tc && tc->Surface().Owns(m_activeSurface)) {
-                        m_activeSurface = nullptr;
-                        break;
-                    }
+                if (panelImpl->Tree().FindPaneBy([this](Pane const& p) {
+                        auto const* tc = Tab::PaneToTerminalControl(p);
+                        return tc && tc->Surface().Owns(m_activeSurface);
+                    })) {
+                    m_activeSurface = nullptr;
                 }
             }
         }
@@ -2211,15 +2146,13 @@ namespace winrt::GhosttyWin32::implementation
         // onLeafFocused — MainWindow outlives every control it hosts.
         if (auto* panelImpl =
                 winrt::get_self<implementation::SplitPanel>(tab->Panel())) {
-            std::vector<Pane*> leaves;
-            CollectLeaves(panelImpl->Root(), leaves);
-            for (auto* leaf : leaves) {
-                if (auto* tc = Tab::LeafToTerminalControl(*leaf)) {
+            panelImpl->Tree().ForEachPane([this](Pane& p) {
+                if (auto* tc = Tab::PaneToTerminalControl(p)) {
                     tc->Rehost(m_hwnd, [this](ghostty_surface_t s) noexcept {
                         NotifySurfaceFocused(s);
                     });
                 }
-            }
+            });
         }
 
         // Same shape as CreateTab's post-Make sequence: parent the
@@ -2261,14 +2194,14 @@ namespace winrt::GhosttyWin32::implementation
     void MainWindow::CloseSurfaceByPaneId(PaneId id)
     {
         auto lookup = m_tabs.FindByPaneId(id);
-        if (!lookup.tab || !lookup.leaf) return;
+        if (!lookup.tab || !lookup.pane) return;
         auto* tab = lookup.tab;
-        auto* leaf = lookup.leaf;
+        auto* pane = lookup.pane;
 
         // Detach first so the surface / DComp handle are released
-        // synchronously, before the Pane node holding the
-        // TerminalControl is destroyed.
-        if (auto* tc = Tab::LeafToTerminalControl(*leaf)) {
+        // synchronously, before the Branch holding the TerminalControl
+        // is destroyed.
+        if (auto* tc = Tab::PaneToTerminalControl(*pane)) {
             // Clear m_activeSurface if it pointed at the surface we're
             // about to free — the focused-surface cache must never
             // outlive the underlying ghostty_surface_t. The next
@@ -2281,31 +2214,38 @@ namespace winrt::GhosttyWin32::implementation
         auto* panelImpl = winrt::get_self<implementation::SplitPanel>(tab->Panel());
         if (!panelImpl) return;
 
-        // Identify the sibling subtree BEFORE the removal so we can
-        // retarget the active leaf into it (the leaf pointer is about
-        // to be invalidated).
-        Pane* sibling = nullptr;
-        bool closingActive = (tab->ActiveLeaf() == leaf);
-        if (auto* parent = leaf->Parent()) {
-            sibling = (parent->First() == leaf) ? parent->Second() : parent->First();
-        }
-        // Clear the active-leaf pointer up front: regardless of which
-        // branch runs below, leaving it pointing at the doomed leaf
-        // would dangle until the SetActiveLeaf calls overwrite it.
-        if (closingActive) tab->SetActiveLeaf(nullptr);
-
-        auto result = panelImpl->RemoveLeaf(leaf);
-        if (result == implementation::SplitPanel::RemovalResult::Collapsed) {
-            // Tab survives; retarget focus to the surviving subtree.
-            if (closingActive && sibling) {
-                if (auto* newActive = FirstLeafIn(sibling)) {
-                    tab->SetActiveLeaf(newActive);
-                    if (auto* tc = Tab::LeafToTerminalControl(*newActive)) {
-                        auto element = newActive->Content();
-                        if (auto control = element.try_as<winrt::GhosttyWin32::TerminalControl>()) {
-                            control.Focus(Microsoft::UI::Xaml::FocusState::Programmatic);
-                        }
+        // Pick a sibling pane before removal invalidates the pointer.
+        // "Sibling" == the first pane on the other child of the
+        // immediate Split ancestor.
+        Pane* siblingPane = nullptr;
+        bool closingActive = (tab->ActivePane() == pane);
+        if (auto* wrapping = BranchOfPane(panelImpl, pane)) {
+            if (auto* parent = wrapping->parent) {
+                if (auto* parentSplit = parent->TryGet<Split>()) {
+                    Branch* siblingBranch =
+                        (parentSplit->left.get() == wrapping)
+                            ? parentSplit->right.get()
+                            : parentSplit->left.get();
+                    if (siblingBranch) {
+                        siblingPane = siblingBranch->FindPaneBy(
+                            [](Pane const&) { return true; });
                     }
+                }
+            }
+        }
+        // Clear the active-pane pointer up front: regardless of which
+        // branch runs below, leaving it pointing at the doomed pane
+        // would dangle until the SetActivePane calls overwrite it.
+        if (closingActive) tab->SetActivePane(nullptr);
+
+        auto result = panelImpl->RemovePane(*pane);
+        if (result.IsCollapsed()) {
+            // Tab survives; retarget focus to the surviving subtree.
+            if (closingActive && siblingPane) {
+                tab->SetActivePane(siblingPane);
+                auto element = siblingPane->content;
+                if (auto control = element.try_as<winrt::GhosttyWin32::TerminalControl>()) {
+                    control.Focus(Microsoft::UI::Xaml::FocusState::Programmatic);
                 }
             }
             return;
