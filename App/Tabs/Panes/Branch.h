@@ -48,11 +48,9 @@ struct Branch {
     Branch(Branch&&) = delete;
     Branch& operator=(Branch&&) = delete;
 
-    // Discriminator — every call site that used to gate on
-    // `pane->IsLeaf()` now asks the branch whether it holds a T.
-    // Templated on the target variant so a future third alternative
-    // wouldn't need a new named method (Is<Pane>() / Is<Split>()
-    // are the current uses).
+    // Discriminator: does this branch hold a T? Templated on the
+    // target variant so a future third alternative wouldn't need a
+    // new named method (Is<Pane>() / Is<Split>() are the current uses).
     template<class T>
     bool Is() const noexcept { return std::holds_alternative<T>(value); }
 

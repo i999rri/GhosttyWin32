@@ -142,8 +142,8 @@ public:
     // path — the dim state is a property of which pane the tab thinks
     // is active, not of XAML keyboard focus, so tab switches and
     // alt-tabs don't disturb it. Pointer clicks and keybind navigation
-    // come in through here too; the corresponding TerminalControl
-    // GotFocus / LostFocus hooks no longer touch the overlay.
+    // funnel through here too; the overlay stays untouched by
+    // TerminalControl's GotFocus / LostFocus hooks.
     void SetActivePane(Pane* pane) {
         m_activePane = pane;
         if (auto* panelImpl = winrt::get_self<implementation::SplitPanel>(m_panel)) {

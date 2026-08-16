@@ -11,12 +11,11 @@ struct Branch;
 // `ratio` of the total extent. Each child is another Branch (which is
 // again either a single Pane or another Split, recursively).
 //
-// Direction here is the axis of the split *bar*, not the layout axis
-// of the children — kept as-is from the legacy Pane class to avoid
-// renaming every call site all at once, but semantically it means:
+// Direction names the axis of the split *bar*, not the layout axis
+// of the children:
 //
 //   Horizontal : children are laid out side by side (bar is vertical)
-//   Vertical   : children are stacked            (bar is horizontal)
+//   Vertical   : children are stacked               (bar is horizontal)
 //
 // A Split isn't move-enabled — Branch back-pointers into left/right
 // children stay valid for the split's lifetime, and moving would

@@ -11,13 +11,6 @@ namespace winrt::GhosttyWin32::implementation {
 // that renders the terminal and the id ghostty uses to route
 // close_surface_cb back to this specific pane.
 //
-// Previously Pane was a Composite tree node (leaf + split roles on the
-// same class). That reading conflicted with the industry meaning:
-// "Pane containing Panes" is unnatural whereas "single terminal" is
-// the immediate mental picture. The split-node role now lives on its
-// own type (Split), and the ambiguous "either" wrapper is Branch. Pane
-// here is strictly the leaf.
-//
 // UIElement rather than TerminalControl so layout-only tests can build
 // a tree with placeholder Borders and the WinUI Panel side doesn't
 // depend on TerminalControl's constructor cost.
