@@ -12,23 +12,24 @@ namespace winrt::GhosttyWin32::implementation {
 // One tab in the window's TabView.
 //
 // Each Tab references:
-//   * A SplitPanel (`m_panel`) that owns the pane tree describing how
-//     this tab's content is partitioned across one or more terminal
-//     panes. The host (MainWindow) parents the panel under AppContent
-//     alongside every other tab's panel; selection drives per-panel
-//     Visibility, which is why TabViewItem.Content stays unset. The
-//     panel keeps its Children() collection in sync with the tree's
-//     pane set so framework input routing, hit-testing, and measure /
-//     arrange work end-to-end.
-//   * A pointer to the currently active pane (`m_activePane`). All
+//   * A SplitPanel (`m_panel`) that owns the Tree of Branches
+//     describing how this tab's content is partitioned across one or
+//     more Panes (single terminals). The host (MainWindow) parents
+//     the panel under AppContent alongside every other tab's panel;
+//     selection drives per-panel Visibility, which is why
+//     TabViewItem.Content stays unset. The panel keeps its
+//     Children() collection in sync with the tree's Pane set so
+//     framework input routing, hit-testing, and measure / arrange
+//     work end-to-end.
+//   * A pointer to the currently active Pane (`m_activePane`). All
 //     "focused terminal" operations (key events, IME, clipboard,
-//     action targets) flow through this. On tree mutations (future
-//     NEW_SPLIT / CLOSE_PANE) `m_activePane` must be reset before any
-//     pane it points at is destroyed.
+//     action targets) flow through this. On tree mutations (NEW_SPLIT
+//     / CLOSE_PANE) `m_activePane` must be reset before any Pane it
+//     points at is destroyed.
 //
-// The tree itself lives inside the SplitPanel — Tab borrows it via
-// `panel.Tree()` for pane walks and reaches into individual panes for
-// TerminalControl bridge calls.
+// The tree lives inside the SplitPanel — Tab borrows it via
+// `panel.Tree()` for Pane walks and reaches into individual Panes
+// for TerminalControl bridge calls.
 //
 // Construction is just validation + member init — failable setup
 // (creating the surface handle, attaching it, calling
