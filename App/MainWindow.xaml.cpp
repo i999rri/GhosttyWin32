@@ -557,55 +557,20 @@ namespace winrt::GhosttyWin32::implementation
                 walk(tv);
             });
 
-            tv.TabCloseRequested([this](muxc::TabView const& sender, muxc::TabViewTabCloseRequestedEventArgs const& args) {
+            tv.TabCloseRequested([this](muxc::TabView const&, muxc::TabViewTabCloseRequestedEventArgs const& args) {
                 auto item = args.Tab();
-                // Detach the control BEFORE removing it from TabView.
-                // Detach calls ISwapChainPanelNative2::SetSwapChainHandle(nullptr)
-                // on the inner panel, and that call AVs at +0x1F8 inside
-                // microsoft.ui.xaml.dll if the panel has already been
-                // unparented from the live visual tree (reproducer:
-                // Ctrl+Shift+W long-press across multiple tabs, where
-                // XAML hasn't finished processing the previous RemoveAt
-                // when the next Detach kicks in). Doing it pre-RemoveAt
-                // keeps the panel in the live tree for the duration of
-                // SetSwapChainHandle. Detach is idempotent, so the
-                // ~Tab → ~TerminalControl path runs it again as a no-op.
-                if (auto* t = m_tabs.FindByItem(item)) {
-                    // Detach every pane in the tab, not just the active
-                    // one — multi-pane tabs have multiple swap chains
-                    // and each needs SetSwapChainHandle(nullptr) before
-                    // the panel is unparented.
-                    t->DetachAll();
-                }
-                uint32_t idx = 0;
-                if (sender.TabItems().IndexOf(item, idx)) {
-                    sender.TabItems().RemoveAt(idx);
-                }
-                DwmFlush();              // wait for compositor to release
-                if (sender.TabItems().Size() == 0) {
-                    // Last tab: defer Tab object destruction to
-                    // ~MainWindow's m_tabs.Clear. Tearing down the
-                    // focused control synchronously here leaves XAML's
-                    // focus subsystem holding a stale pointer that AVs
-                    // at +0x1F8 once mw->Close() kicks off window
-                    // teardown — same path as a normal title-bar X
-                    // close, which works fine precisely because XAML
-                    // finishes its own focus cleanup before our
-                    // destructors run. The orphan SplitPanel under
-                    // AppContent comes down with the window, no
-                    // explicit Remove needed.
-                    this->Close();
-                } else {
-                    // Unparent the panel from AppContent before
-                    // destroying the Tab. ~Tab doesn't touch the
-                    // visual tree (Tab doesn't know about AppContent),
-                    // so without this the panel would leak as an
-                    // orphan child of AppContent.
-                    if (auto* t = m_tabs.FindByItem(item)) {
-                        RemoveTabPanelFromAppContent(*t);
-                    }
-                    m_tabs.Remove(item);
-                }
+                auto* t = m_tabs.FindByItem(item);
+                if (!t) return;
+                auto content = Content();
+                auto xamlRoot = content ? content.XamlRoot() : nullptr;
+                auto weak = get_weak();
+                m_closeGate.Submit(
+                    WindowCloseGate::Scope::Tab,
+                    std::move(xamlRoot),
+                    [t]() { return t->NeedsConfirmClose(); },
+                    [weak, item]() {
+                        if (auto self = weak.get()) self->CloseTabByItem(item);
+                    });
             });
 
             // Whenever the selected tab changes — explicit click on a
@@ -1230,15 +1195,30 @@ namespace winrt::GhosttyWin32::implementation
 
     void MainWindow::CloseTabBySurface(ghostty_surface_t surface)
     {
-        // Mirror the TabCloseRequested handler — see there for why
-        // Detach runs before RemoveAt and why the last tab's Tab
-        // destruction is deferred to ~MainWindow.
         auto* t = m_tabs.FindBySurface(surface);
         if (!t) return;
         auto item = t->Item();
-        // CLOSE_TAB closes the whole tab regardless of pane count —
-        // detach every leaf so each swap chain handle is cleared
-        // before unparent.
+        auto content = Content();
+        auto xamlRoot = content ? content.XamlRoot() : nullptr;
+        auto weak = get_weak();
+        m_closeGate.Submit(
+            WindowCloseGate::Scope::Tab,
+            std::move(xamlRoot),
+            [t]() { return t->NeedsConfirmClose(); },
+            [weak, item]() {
+                if (auto self = weak.get()) self->CloseTabByItem(item);
+            });
+    }
+
+    void MainWindow::CloseTabByItem(muxc::TabViewItem const& item)
+    {
+        auto* t = m_tabs.FindByItem(item);
+        if (!t) return;
+        // Detach every pane before RemoveAt: SetSwapChainHandle(nullptr)
+        // AVs at +0x1F8 inside microsoft.ui.xaml.dll if the panel has
+        // already been unparented. Multi-pane tabs have multiple swap
+        // chains and each one needs clearing before the panel comes
+        // out of the live visual tree.
         t->DetachAll();
         auto tv = TabView();
         uint32_t idx = 0;
@@ -1247,11 +1227,14 @@ namespace winrt::GhosttyWin32::implementation
         }
         DwmFlush();
         if (tv.TabItems().Size() == 0) {
+            // Defer Tab destruction to ~MainWindow's m_tabs.Clear:
+            // tearing down the focused control synchronously here
+            // leaves XAML's focus subsystem holding a stale pointer
+            // that AVs at +0x1F8 once the window teardown starts.
             RequestClose();
         } else {
-            // Mirror the TabCloseRequested handler: unparent the
-            // SplitPanel from AppContent before destroying the Tab so
-            // it doesn't leak as an orphan child.
+            // ~Tab doesn't know about AppContent — unparent here or
+            // the panel leaks as an orphan child.
             RemoveTabPanelFromAppContent(*t);
             m_tabs.Remove(item);
         }

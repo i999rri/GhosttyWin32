@@ -100,6 +100,11 @@ namespace winrt::GhosttyWin32::implementation
         // dispatcher reaches them through the interface.
         void CreateTab() override;
         void CloseTabBySurface(ghostty_surface_t surface) override;
+        // Shared tab-teardown primitive used by every close path (tab
+        // X, close_tab keybind, gate-approved close). Assumes the
+        // caller already ran confirmation; keeps the tricky detach /
+        // unparent / RemoveAt ordering in one place.
+        void CloseTabByItem(winrt::Microsoft::UI::Xaml::Controls::TabViewItem const& item);
         void GoToTab(int requested) override;
         void SetTabTitleForSurface(ghostty_surface_t surface,
                                    std::wstring title) override;
