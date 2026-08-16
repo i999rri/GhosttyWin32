@@ -149,4 +149,4 @@ private:
     uint32_t m_initialHeight = 0;
 };
 
-}  // namespace core::ghostty::actions
+} // namespace core::ghostty::actions
