@@ -39,14 +39,19 @@ public:
     void ForEachPane(std::function<void(Pane&)> const& visitor) {
         if (HasRoot()) m_root->ForEachPane(visitor);
     }
+    // Const overloads go through Root() so the receiver is Branch
+    // const* — otherwise MSVC sees both Branch overloads as viable
+    // (mutable receiver + argument that matches either) and flags
+    // C2666. The mutable overloads work off m_root directly.
     void ForEachPane(std::function<void(Pane const&)> const& visitor) const {
-        if (HasRoot()) m_root->ForEachPane(visitor);
+        if (auto const* root = Root()) root->ForEachPane(visitor);
     }
     Pane* FindPaneBy(std::function<bool(Pane const&)> const& pred) {
         return HasRoot() ? m_root->FindPaneBy(pred) : nullptr;
     }
     Pane const* FindPaneBy(std::function<bool(Pane const&)> const& pred) const {
-        return HasRoot() ? m_root->FindPaneBy(pred) : nullptr;
+        auto const* root = Root();
+        return root ? root->FindPaneBy(pred) : nullptr;
     }
 
     // Both structural mutations start by locating the wrapping Branch
