@@ -41,7 +41,18 @@ struct Branch {
 
     Branch() = default;
     explicit Branch(Pane p) : value(std::move(p)) {}
-    explicit Branch(Split s) : value(std::move(s)) {}
+    // Split-variant construction wires each present child's parent
+    // back-pointer to this new Branch. Keeps the tree-linkage
+    // invariant on the type — direct `make_unique<Branch>(Split{...})`
+    // wouldn't otherwise set parents, and every consumer would need
+    // to remember to fix them up. The MakeSplitBranch factory now
+    // only exists as a convenient one-liner over this constructor.
+    explicit Branch(Split s) : value(std::move(s)) {
+        if (auto* split = TryGet<Split>()) {
+            if (split->left)  split->left ->parent = this;
+            if (split->right) split->right->parent = this;
+        }
+    }
 
     Branch(Branch const&) = delete;
     Branch& operator=(Branch const&) = delete;
@@ -181,21 +192,17 @@ inline std::unique_ptr<Branch> MakePaneBranch(
     return std::make_unique<Branch>(Pane{ std::move(content), id });
 }
 
-// Build a split subtree by combining two existing branches. The
-// parent back-pointers on the children are rewritten to point at the
-// new Branch. Ratio is clamped so both children stay meaningfully
-// visible.
+// Build a split subtree. Convenience wrapper — ratio clamping lives
+// inside Split's constructor and parent back-pointer wiring lives
+// inside Branch(Split), so calling `make_unique<Branch>(Split{...})`
+// directly is equivalent; this factory just spares one nested {} at
+// each call site.
 inline std::unique_ptr<Branch> MakeSplitBranch(
     Split::Direction direction, double ratio,
     std::unique_ptr<Branch> left, std::unique_ptr<Branch> right)
 {
-    auto branch = std::make_unique<Branch>(Split{
-        direction, ClampSplitRatio(ratio), std::move(left), std::move(right)
-    });
-    auto* split = branch->TryGet<Split>();
-    if (split->left)  split->left ->parent = branch.get();
-    if (split->right) split->right->parent = branch.get();
-    return branch;
+    return std::make_unique<Branch>(
+        Split{ direction, ratio, std::move(left), std::move(right) });
 }
 
 }  // namespace winrt::GhosttyWin32::implementation

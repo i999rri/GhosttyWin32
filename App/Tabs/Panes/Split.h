@@ -6,6 +6,15 @@ namespace winrt::GhosttyWin32::implementation {
 
 struct Branch;
 
+// Clamp helper shared by ratio-setters (in Tree / SplitPanel mutation
+// paths) and by the Split constructor. Keeps both children
+// meaningfully visible when the user drags a splitter to the edge.
+constexpr double ClampSplitRatio(double r) noexcept {
+    if (r < 0.05) return 0.05;
+    if (r > 0.95) return 0.95;
+    return r;
+}
+
 // Split — an internal node in the pane tree. Divides its region into
 // two subregions along `direction`, with the first child taking
 // `ratio` of the total extent. Each child is another Branch (which is
@@ -40,6 +49,18 @@ struct Split {
     // the pattern for every new walker.
     std::unique_ptr<Branch> left;
     std::unique_ptr<Branch> right;
+
+    Split() = default;
+    // Full-init constructor. Clamps `r` into the safe range so bad
+    // ratios can't sneak in via direct construction — the invariant
+    // lives on the type, not on the MakeSplitBranch factory.
+    Split(Direction d, double r,
+          std::unique_ptr<Branch> l,
+          std::unique_ptr<Branch> right_)
+        : direction(d)
+        , ratio(ClampSplitRatio(r))
+        , left(std::move(l))
+        , right(std::move(right_)) {}
 
     // ─── child iteration helpers (used by Branch walker methods) ───
     //
@@ -94,14 +115,5 @@ struct Split {
         if (right) fn(*right);
     }
 };
-
-// Clamp helper shared by ratio-setters (in Tree / SplitPanel mutation
-// paths). Keeps both children meaningfully visible when the user
-// drags a splitter to the edge.
-constexpr double ClampSplitRatio(double r) noexcept {
-    if (r < 0.05) return 0.05;
-    if (r > 0.95) return 0.95;
-    return r;
-}
 
 }  // namespace winrt::GhosttyWin32::implementation
