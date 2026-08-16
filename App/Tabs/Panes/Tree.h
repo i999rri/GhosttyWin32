@@ -106,7 +106,7 @@ public:
         // Split and rewire the matching unique_ptr slot.
         Branch* parent = wrapping->parent;
         if (!parent) return false;                       // shouldn't happen
-        auto* parentSplit = parent->AsSplit();
+        auto* parentSplit = parent->TryGet<Split>();
         if (!parentSplit) return false;                  // shouldn't happen
 
         newSubtree->parent = parent;
@@ -149,7 +149,7 @@ public:
         // Under a Split: promote the sibling into the split's slot.
         Branch* parent = wrapping->parent;
         if (!parent) return RemoveResult::NotFound;      // shouldn't happen
-        auto* parentSplit = parent->AsSplit();
+        auto* parentSplit = parent->TryGet<Split>();
         if (!parentSplit) return RemoveResult::NotFound; // shouldn't happen
 
         // Pick the sibling; detach it from the Split so we can hand
@@ -171,7 +171,7 @@ public:
             sibling->parent = nullptr;
             m_root = std::move(sibling);
         } else {
-            auto* grandSplit = grand->AsSplit();
+            auto* grandSplit = grand->TryGet<Split>();
             if (!grandSplit) return RemoveResult::NotFound; // shouldn't happen
             sibling->parent = grand;
             if (grandSplit->left.get() == parent) {

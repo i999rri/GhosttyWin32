@@ -1925,9 +1925,9 @@ namespace winrt::GhosttyWin32::implementation
         // Capture a stable pointer to the new Pane before newBranch
         // moves into the subtree; get_if on the variant is only
         // valid while the branch is still around.
-        Pane* newPanePtr = newBranch->AsPane();
-        auto newControl = newBranch->AsPane()
-            ? newBranch->AsPane()->content.try_as<winrt::GhosttyWin32::TerminalControl>()
+        Pane* newPanePtr = newBranch->TryGet<Pane>();
+        auto newControl = newBranch->TryGet<Pane>()
+            ? newBranch->TryGet<Pane>()->content.try_as<winrt::GhosttyWin32::TerminalControl>()
             : nullptr;
 
         // Build the replacement subtree: a Split branch whose left/right
@@ -1991,7 +1991,7 @@ namespace winrt::GhosttyWin32::implementation
         // normal layout. Detect by asking whether the root Branch is
         // itself the wrapping Branch for this pane.
         auto* root = panelImpl->Tree().Root();
-        if (root && root->AsPane() == pane) return;
+        if (root && root->TryGet<Pane>() == pane) return;
 
         panelImpl->SetZoomed(pane);
         tab->SetActivePane(pane);
@@ -2074,7 +2074,7 @@ namespace winrt::GhosttyWin32::implementation
         Branch* node = BranchOfPane(panelImpl, pane);
         while (node && node->parent) {
             Branch* parent = node->parent;
-            auto* parentSplit = parent ? parent->AsSplit() : nullptr;
+            auto* parentSplit = parent ? parent->TryGet<Split>() : nullptr;
             if (parentSplit && parentSplit->direction == needDir) {
                 node = parent;  // target: this Split branch
                 break;
@@ -2082,7 +2082,7 @@ namespace winrt::GhosttyWin32::implementation
             node = parent;
         }
         if (!node) return;
-        auto* targetSplit = node->AsSplit();
+        auto* targetSplit = node->TryGet<Split>();
         if (!targetSplit || targetSplit->direction != needDir) return;
 
         auto rect = node->arrangedRect;
@@ -2254,7 +2254,7 @@ namespace winrt::GhosttyWin32::implementation
         bool closingActive = (tab->ActivePane() == pane);
         if (auto* wrapping = BranchOfPane(panelImpl, pane)) {
             if (auto* parent = wrapping->parent) {
-                if (auto* parentSplit = parent->AsSplit()) {
+                if (auto* parentSplit = parent->TryGet<Split>()) {
                     Branch* siblingBranch =
                         (parentSplit->left.get() == wrapping)
                             ? parentSplit->right.get()

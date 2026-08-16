@@ -78,7 +78,7 @@ void SplitPanel::EqualizeAll() {
     if (m_splitters.empty()) return;
     for (auto const& entry : m_splitters) {
         if (entry.branch) {
-            if (auto* split = entry.branch->AsSplit()) {
+            if (auto* split = entry.branch->TryGet<Split>()) {
                 split->ratio = 0.5;
             }
         }
@@ -100,13 +100,13 @@ void SplitPanel::SyncChildrenFromTree() {
 }
 
 void SplitPanel::AppendBranchToChildren(Branch& branch) {
-    if (auto* pane = branch.AsPane()) {
+    if (auto* pane = branch.TryGet<Pane>()) {
         if (auto element = pane->content) {
             Children().Append(element);
         }
         return;
     }
-    auto* split = branch.AsSplit();
+    auto* split = branch.TryGet<Split>();
     if (!split) return;
     // Walk left → splitter → right. Placing the splitter between the
     // children in Children() means it paints on top of the junction so
@@ -189,7 +189,7 @@ Windows::Foundation::Size SplitPanel::MeasureOverride(Windows::Foundation::Size 
 }
 
 Windows::Foundation::Size SplitPanel::MeasureBranch(Branch& branch, Windows::Foundation::Size available) {
-    if (auto* pane = branch.AsPane()) {
+    if (auto* pane = branch.TryGet<Pane>()) {
         if (auto element = pane->content) {
             element.Measure(available);
             return element.DesiredSize();
@@ -197,7 +197,7 @@ Windows::Foundation::Size SplitPanel::MeasureBranch(Branch& branch, Windows::Fou
         return { 0, 0 };
     }
 
-    auto* split = branch.AsSplit();
+    auto* split = branch.TryGet<Split>();
     if (!split) return { 0, 0 };
     auto* first  = split->left.get();
     auto* second = split->right.get();
@@ -250,14 +250,14 @@ Windows::Foundation::Size SplitPanel::ArrangeOverride(Windows::Foundation::Size 
 void SplitPanel::ArrangeBranch(Branch& branch, Windows::Foundation::Rect rect) {
     branch.arrangedRect = rect;
 
-    if (auto* pane = branch.AsPane()) {
+    if (auto* pane = branch.TryGet<Pane>()) {
         if (auto element = pane->content) {
             element.Arrange(rect);
         }
         return;
     }
 
-    auto* split = branch.AsSplit();
+    auto* split = branch.TryGet<Split>();
     if (!split) return;
     auto* first  = split->left.get();
     auto* second = split->right.get();
@@ -304,7 +304,7 @@ void SplitPanel::OnSplitterPointerMoved(Branch* splitBranch,
                                         Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args)
 {
     if (!m_draggingBranch || m_draggingBranch != splitBranch) return;
-    auto* split = splitBranch ? splitBranch->AsSplit() : nullptr;
+    auto* split = splitBranch ? splitBranch->TryGet<Split>() : nullptr;
     if (!split) return;
 
     auto self = get_strong().as<winrt::Microsoft::UI::Xaml::UIElement>();
