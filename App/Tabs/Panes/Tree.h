@@ -93,29 +93,40 @@ public:
         return true;
     }
 
-    // Callers key UI reactions off the result: last-pane closes the
-    // whole tab, split-collapse just relayouts, not-found is a stale
-    // close event.
-    enum class RemoveResult {
-        NotFound,
-        Collapsed,
-        RemovedRoot,
+    // Callers key UI reactions off which case fired: last-pane closes
+    // the whole tab, split-collapse just relayouts, not-found is a
+    // stale close event. Predicate methods so call sites read as
+    // `result.IsCollapsed()` rather than `result == …::Collapsed`.
+    class RemoveResult {
+    public:
+        static constexpr RemoveResult NotFound()    noexcept { return { Kind::NotFound }; }
+        static constexpr RemoveResult Collapsed()   noexcept { return { Kind::Collapsed }; }
+        static constexpr RemoveResult RemovedRoot() noexcept { return { Kind::RemovedRoot }; }
+
+        constexpr bool IsNotFound()    const noexcept { return m_kind == Kind::NotFound; }
+        constexpr bool IsCollapsed()   const noexcept { return m_kind == Kind::Collapsed; }
+        constexpr bool IsRemovedRoot() const noexcept { return m_kind == Kind::RemovedRoot; }
+
+    private:
+        enum class Kind { NotFound, Collapsed, RemovedRoot };
+        constexpr RemoveResult(Kind k) noexcept : m_kind(k) {}
+        Kind m_kind;
     };
 
     RemoveResult RemovePane(Pane const& target) noexcept {
         Branch* wrapping = TryFindBranch(target);
-        if (!wrapping) return RemoveResult::NotFound;
+        if (!wrapping) return RemoveResult::NotFound();
 
         if (wrapping == m_root.get()) {
             m_root.reset();
             m_zoomed = nullptr;
-            return RemoveResult::RemovedRoot;
+            return RemoveResult::RemovedRoot();
         }
 
         Branch* parent = wrapping->parent;
-        if (!parent) return RemoveResult::NotFound;
+        if (!parent) return RemoveResult::NotFound();
         auto* parentSplit = parent->TryGet<Split>();
-        if (!parentSplit) return RemoveResult::NotFound;
+        if (!parentSplit) return RemoveResult::NotFound();
 
         // Detach the sibling first so its unique_ptr survives when
         // the parent Split is overwritten below.
@@ -125,9 +136,9 @@ public:
         } else if (parentSplit->right.get() == wrapping) {
             sibling = std::move(parentSplit->left);
         } else {
-            return RemoveResult::NotFound;
+            return RemoveResult::NotFound();
         }
-        if (!sibling) return RemoveResult::NotFound;
+        if (!sibling) return RemoveResult::NotFound();
 
         // Promote the sibling into the grandparent's slot (or the
         // root if the collapsing Split was the root).
@@ -137,18 +148,18 @@ public:
             m_root = std::move(sibling);
         } else {
             auto* grandSplit = grand->TryGet<Split>();
-            if (!grandSplit) return RemoveResult::NotFound;
+            if (!grandSplit) return RemoveResult::NotFound();
             sibling->parent = grand;
             if (grandSplit->left.get() == parent) {
                 grandSplit->left = std::move(sibling);
             } else if (grandSplit->right.get() == parent) {
                 grandSplit->right = std::move(sibling);
             } else {
-                return RemoveResult::NotFound;
+                return RemoveResult::NotFound();
             }
         }
         if (m_zoomed == &target) m_zoomed = nullptr;
-        return RemoveResult::Collapsed;
+        return RemoveResult::Collapsed();
     }
 
     // toggle_split_zoom support: SplitPanel consults Zoomed() in its

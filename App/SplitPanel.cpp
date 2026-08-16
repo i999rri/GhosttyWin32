@@ -23,7 +23,7 @@ bool SplitPanel::ReplacePane(Pane const& pane, std::unique_ptr<Branch> newSubtre
 
 Tree::RemoveResult SplitPanel::RemovePane(Pane const& pane) {
     auto result = m_tree.RemovePane(pane);
-    if (result != Tree::RemoveResult::NotFound) {
+    if (!result.IsNotFound()) {
         SyncChildrenFromTree();
         InvalidateMeasure();
         InvalidateArrange();

@@ -2239,7 +2239,7 @@ namespace winrt::GhosttyWin32::implementation
         if (closingActive) tab->SetActivePane(nullptr);
 
         auto result = panelImpl->RemovePane(*pane);
-        if (result == Tree::RemoveResult::Collapsed) {
+        if (result.IsCollapsed()) {
             // Tab survives; retarget focus to the surviving subtree.
             if (closingActive && siblingPane) {
                 tab->SetActivePane(siblingPane);
