@@ -52,7 +52,7 @@ public:
         // Initial active pane is the first pane found in depth-first
         // order — SetActivePane keeps the per-tab dim invariant
         // consistent (active bright, everything else dim).
-        auto* firstPane = panelImpl->Tree().FindPane(
+        auto* firstPane = panelImpl->Tree().FindPaneBy(
             [](Pane const&) { return true; });
         if (!firstPane) {
             throw winrt::hresult_error(E_INVALIDARG, L"Tab: pane tree has no pane");

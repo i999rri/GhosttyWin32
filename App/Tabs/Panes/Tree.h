@@ -76,11 +76,11 @@ public:
     void ForEachPane(std::function<void(Pane const&)> const& visitor) const {
         if (HasRoot()) m_root->ForEachPane(visitor);
     }
-    Pane* FindPane(std::function<bool(Pane const&)> const& pred) {
-        return HasRoot() ? m_root->FindPane(pred) : nullptr;
+    Pane* FindPaneBy(std::function<bool(Pane const&)> const& pred) {
+        return HasRoot() ? m_root->FindPaneBy(pred) : nullptr;
     }
-    Pane const* FindPane(std::function<bool(Pane const&)> const& pred) const {
-        return HasRoot() ? m_root->FindPane(pred) : nullptr;
+    Pane const* FindPaneBy(std::function<bool(Pane const&)> const& pred) const {
+        return HasRoot() ? m_root->FindPaneBy(pred) : nullptr;
     }
 
     // ─── structural mutations ───

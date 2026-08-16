@@ -63,13 +63,13 @@ struct Split {
     // findable children have to be mutable for the callers who use
     // this (tree walkers rewiring the tree).
     template<class Pred>
-    Branch* FindChild(Pred&& pred) {
+    Branch* FindChildBy(Pred&& pred) {
         if (left  && pred(*left))  return left.get();
         if (right && pred(*right)) return right.get();
         return nullptr;
     }
     template<class Pred>
-    Branch const* FindChild(Pred&& pred) const {
+    Branch const* FindChildBy(Pred&& pred) const {
         if (left  && pred(*left))  return left.get();
         if (right && pred(*right)) return right.get();
         return nullptr;

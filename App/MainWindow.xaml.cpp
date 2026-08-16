@@ -1717,7 +1717,7 @@ namespace winrt::GhosttyWin32::implementation
                                  ghostty_surface_t surface)
         {
             if (!panelImpl) return nullptr;
-            return panelImpl->Tree().FindPane([surface](Pane const& p) {
+            return panelImpl->Tree().FindPaneBy([surface](Pane const& p) {
                 auto const* tc = Tab::PaneToTerminalControl(p);
                 return tc && tc->Surface().Owns(surface);
             });
@@ -2125,7 +2125,7 @@ namespace winrt::GhosttyWin32::implementation
         if (m_activeSurface) {
             if (auto* panelImpl =
                     winrt::get_self<implementation::SplitPanel>(t->Panel())) {
-                if (panelImpl->Tree().FindPane([this](Pane const& p) {
+                if (panelImpl->Tree().FindPaneBy([this](Pane const& p) {
                         auto const* tc = Tab::PaneToTerminalControl(p);
                         return tc && tc->Surface().Owns(m_activeSurface);
                     })) {
@@ -2260,7 +2260,7 @@ namespace winrt::GhosttyWin32::implementation
                             ? parentSplit->right.get()
                             : parentSplit->left.get();
                     if (siblingBranch) {
-                        siblingPane = siblingBranch->FindPane(
+                        siblingPane = siblingBranch->FindPaneBy(
                             [](Pane const&) { return true; });
                     }
                 }

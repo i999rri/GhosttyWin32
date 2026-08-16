@@ -63,7 +63,7 @@ public:
             if (!t) continue;
             auto* panelImpl = winrt::get_self<implementation::SplitPanel>(t->Panel());
             if (!panelImpl) continue;
-            if (auto* pane = panelImpl->Tree().FindPane(
+            if (auto* pane = panelImpl->Tree().FindPaneBy(
                     [id](Pane const& p) { return p.id == id; })) {
                 return { t.get(), pane };
             }
@@ -80,7 +80,7 @@ public:
             if (!t) continue;
             auto* panelImpl = winrt::get_self<implementation::SplitPanel>(t->Panel());
             if (!panelImpl) continue;
-            if (auto* pane = panelImpl->Tree().FindPane(
+            if (auto* pane = panelImpl->Tree().FindPaneBy(
                     [surface](Pane const& p) {
                         auto const* tc = Tab::PaneToTerminalControl(p);
                         return tc && tc->Surface().Owns(surface);
