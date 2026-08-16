@@ -43,7 +43,7 @@ public:
     // ─── root access ───
     // Positive predicate: this tree has a root Branch (equivalently:
     // at least one Pane lives in it). Used as the guard in the
-    // walker delegations below and by the WrappingBranchOf lookup
+    // walker delegations below and by the TryFindBranch lookup
     // that the structural mutations key off. Named for the specific
     // state ("root exists") rather than the generic "not empty" —
     // callers read as `HasRoot()` without wondering "empty of what?".
@@ -84,12 +84,14 @@ public:
 
     // ─── structural mutations ───
 
-    // Look up the Branch that wraps `pane` in this tree, or nullptr
+    // Locate the Branch that wraps `pane` in this tree, or nullptr
     // if the tree is empty OR the pane isn't in it. Both structural
     // mutations (ReplacePane, RemovePane) start the same way — find
     // the wrapping Branch or bail — so the two failure modes collapse
-    // into one nullable return the callers dispatch on.
-    Branch* WrappingBranchOf(Pane const& pane) noexcept {
+    // into one nullable return the callers dispatch on. `Try` +
+    // `Find` matches the fallible-lookup convention we already use
+    // for Branch::TryGet<T>().
+    Branch* TryFindBranch(Pane const& pane) noexcept {
         return HasRoot() ? m_root->FindBranchOfPane(&pane) : nullptr;
     }
 
@@ -110,7 +112,7 @@ public:
     // root).
     bool ReplacePane(Pane const& target, std::unique_ptr<Branch> newSubtree) noexcept {
         if (!newSubtree) return false;
-        Branch* wrapping = WrappingBranchOf(target);
+        Branch* wrapping = TryFindBranch(target);
         if (!wrapping) return false;
 
         // Was `target` the root? Swap m_root itself.
@@ -155,7 +157,7 @@ public:
     // callers must have a real Pane to name; a stale close event on
     // a pane already gone from this tree still returns NotFound.
     RemoveResult RemovePane(Pane const& target) noexcept {
-        Branch* wrapping = WrappingBranchOf(target);
+        Branch* wrapping = TryFindBranch(target);
         if (!wrapping) return RemoveResult::NotFound;
 
         // Root case: the pane was the whole tree.
