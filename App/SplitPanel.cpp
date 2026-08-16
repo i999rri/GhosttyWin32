@@ -208,7 +208,7 @@ Windows::Foundation::Size SplitPanel::MeasureBranch(Branch& branch, Windows::Fou
     auto firstAvail  = available;
     auto secondAvail = available;
     float thickness  = static_cast<float>(kSplitterThickness);
-    if (split->direction == Split::Direction::Horizontal) {
+    if (split->IsHorizontal()) {
         float useable = std::max(0.0f, available.Width - thickness);
         firstAvail.Width  = static_cast<float>(useable * split->ratio);
         secondAvail.Width = static_cast<float>(useable * (1.0 - split->ratio));
@@ -221,7 +221,7 @@ Windows::Foundation::Size SplitPanel::MeasureBranch(Branch& branch, Windows::Fou
     auto a = MeasureBranch(*first, firstAvail);
     auto b = MeasureBranch(*second, secondAvail);
 
-    if (split->direction == Split::Direction::Horizontal) {
+    if (split->IsHorizontal()) {
         return { a.Width + b.Width + thickness, std::max(a.Height, b.Height) };
     }
     return { std::max(a.Width, b.Width), a.Height + b.Height + thickness };
@@ -267,7 +267,7 @@ void SplitPanel::ArrangeBranch(Branch& branch, Windows::Foundation::Rect rect) {
 
     float thickness = static_cast<float>(kSplitterThickness);
 
-    if (split->direction == Split::Direction::Horizontal) {
+    if (split->IsHorizontal()) {
         float useable = std::max(0.0f, rect.Width - thickness);
         float firstW  = useable * static_cast<float>(split->ratio);
         float secondW = useable - firstW;
@@ -314,7 +314,7 @@ void SplitPanel::OnSplitterPointerMoved(Branch* splitBranch,
     double newRatio = split->ratio;
     float thickness = static_cast<float>(kSplitterThickness);
 
-    if (split->direction == Split::Direction::Horizontal) {
+    if (split->IsHorizontal()) {
         float useable = std::max(1.0f, rect.Width - thickness);
         newRatio = (point.X - rect.X) / useable;
     } else {

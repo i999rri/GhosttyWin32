@@ -62,6 +62,13 @@ struct Split {
         , left(std::move(l))
         , right(std::move(right_)) {}
 
+    // Direction predicates. Reads as `split->IsHorizontal()` at the
+    // call site instead of `split->direction == Direction::Horizontal`
+    // — same semantic, English clause style consistent with the
+    // Is<T>() / HasRoot() predicates elsewhere in this layer.
+    bool IsHorizontal() const noexcept { return direction == Direction::Horizontal; }
+    bool IsVertical()   const noexcept { return direction == Direction::Vertical; }
+
     // ─── child iteration helpers (used by Branch walker methods) ───
     //
     // Template + inline: the parameter pack references Branch::methods
