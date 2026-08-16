@@ -89,10 +89,12 @@ struct Branch {
 
     // The enclosing Branch that carries a specific Pane back to its
     // owner. Used when a pane needs to be replaced/removed and the
-    // caller only has a Pane* — the tree walker locates the Branch
-    // wrapping it so the unique_ptr can be rewired.
-    Branch*       FindBranchOfPane(Pane const* target);
-    Branch const* FindBranchOfPane(Pane const* target) const;
+    // caller only has a Pane& — the tree walker locates the Branch
+    // wrapping it so the unique_ptr can be rewired. Takes the target
+    // by reference so the "null target" failure mode doesn't exist
+    // as far as this API is concerned.
+    Branch*       FindBranchOfPane(Pane const& target);
+    Branch const* FindBranchOfPane(Pane const& target) const;
 };
 
 // ─── inline implementations ───
@@ -130,12 +132,9 @@ inline Pane* Branch::FindPaneBy(
 {
     if (auto* p = TryGet<Pane>()) return pred(*p) ? p : nullptr;
     if (auto* s = TryGet<Split>()) {
-        Pane* hit = nullptr;
-        s->FindChildBy([&](Branch& c) {
-            hit = c.FindPaneBy(pred);
-            return hit != nullptr;
+        return s->FirstChildResult([&](Branch& c) -> Pane* {
+            return c.FindPaneBy(pred);
         });
-        return hit;
     }
     return nullptr;
 }
@@ -145,40 +144,29 @@ inline Pane const* Branch::FindPaneBy(
 {
     if (auto* p = TryGet<Pane>()) return pred(*p) ? p : nullptr;
     if (auto* s = TryGet<Split>()) {
-        Pane const* hit = nullptr;
-        s->FindChildBy([&](Branch const& c) {
-            hit = c.FindPaneBy(pred);
-            return hit != nullptr;
+        return s->FirstChildResult([&](Branch const& c) -> Pane const* {
+            return c.FindPaneBy(pred);
         });
-        return hit;
     }
     return nullptr;
 }
 
-inline Branch* Branch::FindBranchOfPane(Pane const* target) {
-    if (!target) return nullptr;
-    if (auto* p = TryGet<Pane>()) return (p == target) ? this : nullptr;
+inline Branch* Branch::FindBranchOfPane(Pane const& target) {
+    if (auto* p = TryGet<Pane>()) return (p == &target) ? this : nullptr;
     if (auto* s = TryGet<Split>()) {
-        Branch* hit = nullptr;
-        s->FindChildBy([&](Branch& c) {
-            hit = c.FindBranchOfPane(target);
-            return hit != nullptr;
+        return s->FirstChildResult([&](Branch& c) -> Branch* {
+            return c.FindBranchOfPane(target);
         });
-        return hit;
     }
     return nullptr;
 }
 
-inline Branch const* Branch::FindBranchOfPane(Pane const* target) const {
-    if (!target) return nullptr;
-    if (auto* p = TryGet<Pane>()) return (p == target) ? this : nullptr;
+inline Branch const* Branch::FindBranchOfPane(Pane const& target) const {
+    if (auto* p = TryGet<Pane>()) return (p == &target) ? this : nullptr;
     if (auto* s = TryGet<Split>()) {
-        Branch const* hit = nullptr;
-        s->FindChildBy([&](Branch const& c) {
-            hit = c.FindBranchOfPane(target);
-            return hit != nullptr;
+        return s->FirstChildResult([&](Branch const& c) -> Branch const* {
+            return c.FindBranchOfPane(target);
         });
-        return hit;
     }
     return nullptr;
 }

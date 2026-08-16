@@ -235,7 +235,7 @@ Windows::Foundation::Size SplitPanel::ArrangeOverride(Windows::Foundation::Size 
         // Zoom: only the zoomed pane is arranged. Cache the rect on
         // its wrapping Branch so downstream code (drag-resize,
         // GOTO_SPLIT direction navigation) can still recover it.
-        if (auto* zoomedBranch = root->FindBranchOfPane(zoomed)) {
+        if (auto* zoomedBranch = root->FindBranchOfPane(*zoomed)) {
             zoomedBranch->arrangedRect = fullRect;
         }
         if (auto element = zoomed->content) {

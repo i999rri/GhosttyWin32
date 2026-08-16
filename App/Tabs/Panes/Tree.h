@@ -93,7 +93,7 @@ public:
     // `Find` matches the fallible-lookup convention we already use
     // for Branch::TryGet<T>().
     Branch* TryFindBranch(Pane const& pane) noexcept {
-        return HasRoot() ? m_root->FindBranchOfPane(&pane) : nullptr;
+        return HasRoot() ? m_root->FindBranchOfPane(pane) : nullptr;
     }
 
     // Replace the Branch currently wrapping `target` with `newSubtree`.

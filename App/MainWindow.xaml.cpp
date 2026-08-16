@@ -1738,7 +1738,7 @@ namespace winrt::GhosttyWin32::implementation
         {
             if (!panelImpl || !pane) return nullptr;
             auto* root = panelImpl->Tree().Root();
-            return root ? root->FindBranchOfPane(pane) : nullptr;
+            return root ? root->FindBranchOfPane(*pane) : nullptr;
         }
 
         // Pick the pane whose arranged rect is adjacent to `active`

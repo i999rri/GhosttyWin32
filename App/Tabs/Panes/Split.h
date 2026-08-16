@@ -58,21 +58,27 @@ struct Split {
             || (right && pred(*right));
     }
 
-    // Returns a pointer to the first child for which pred(*child) is
-    // true, or nullptr if neither matches. Non-const overload only —
-    // findable children have to be mutable for the callers who use
-    // this (tree walkers rewiring the tree).
-    template<class Pred>
-    Branch* FindChildBy(Pred&& pred) {
-        if (left  && pred(*left))  return left.get();
-        if (right && pred(*right)) return right.get();
-        return nullptr;
+    // Applies fn to each present child in order (left, right) and
+    // returns the first result that converts to true (non-null
+    // pointer, engaged optional, etc.). Falls back to a default-
+    // constructed R when no child yields one — nullptr for pointer
+    // returns, empty for optional returns. Mirrors Rust's find_map:
+    // callers propagate a value the child produced (a Pane* found
+    // deeper in the subtree, say) up through the composite without
+    // routing it via a captured outer variable.
+    template<class F>
+    auto FirstChildResult(F&& fn) -> decltype(fn(std::declval<Branch&>())) {
+        using R = decltype(fn(std::declval<Branch&>()));
+        if (left)  { if (auto r = fn(*left);  r) return r; }
+        if (right) { if (auto r = fn(*right); r) return r; }
+        return R{};
     }
-    template<class Pred>
-    Branch const* FindChildBy(Pred&& pred) const {
-        if (left  && pred(*left))  return left.get();
-        if (right && pred(*right)) return right.get();
-        return nullptr;
+    template<class F>
+    auto FirstChildResult(F&& fn) const -> decltype(fn(std::declval<Branch const&>())) {
+        using R = decltype(fn(std::declval<Branch const&>()));
+        if (left)  { if (auto r = fn(*left);  r) return r; }
+        if (right) { if (auto r = fn(*right); r) return r; }
+        return R{};
     }
 
     // Non-short-circuit visit — calls fn on every present child.
