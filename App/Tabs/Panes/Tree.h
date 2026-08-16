@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Tabs/Panes/Branch.h"
+#include <cassert>
 #include <functional>
 #include <memory>
 #include <utility>
@@ -96,22 +97,26 @@ public:
     }
 
     // Replace the Branch currently wrapping `target` with `newSubtree`.
-    // Returns true on success; false if `target` isn't in this tree or
-    // `newSubtree` is null. Used by NEW_SPLIT to swap a leaf for a
-    // split-of-that-leaf-plus-a-new-leaf, preserving the existing
-    // pane's identity.
+    // Returns true on success; false only when `target` isn't in this
+    // tree (a stale event, a Pane from a sibling window, etc.). Used
+    // by NEW_SPLIT to swap a leaf for a split-of-that-leaf-plus-a-
+    // new-leaf, preserving the existing pane's identity.
     //
-    // `target` is by-reference — callers must have a real Pane to name.
-    // Non-membership in this tree still returns false; that's a
-    // different failure mode (stale event, wrong tab) from a null
-    // input, which the type prevents up front.
+    // Preconditions (checked by assert in debug builds; UB otherwise):
+    //   * `target` is a real Pane — the reference parameter guarantees
+    //     it up front, no runtime guard.
+    //   * `newSubtree` is a non-null unique_ptr, i.e. the caller
+    //     actually built one. Passing a default-constructed or
+    //     moved-from unique_ptr is a programming bug — factory
+    //     helpers (MakePaneBranch / MakeSplitBranch) always return
+    //     non-null, so real call sites shouldn't hit the assert.
     //
     // The old subtree is destroyed as its unique_ptr is overwritten,
     // and `newSubtree`'s parent back-pointer is rewritten to match
     // the surrounding Split (or cleared, if `target`'s Branch was the
     // root).
     bool ReplacePane(Pane const& target, std::unique_ptr<Branch> newSubtree) noexcept {
-        if (!newSubtree) return false;
+        assert(newSubtree && "ReplacePane requires non-null newSubtree");
         Branch* wrapping = TryFindBranch(target);
         if (!wrapping) return false;
 
