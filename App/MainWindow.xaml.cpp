@@ -353,15 +353,27 @@ namespace winrt::GhosttyWin32::implementation
                 // Same-strip drops are reorders, which CanReorderTabs
                 // already handled natively.
                 if (!source || source == self.get()) return;
-                // Insert where the tab was dropped: before the first
-                // tab whose slot the pointer hasn't fully passed.
+                // Insert before the first tab whose midpoint lies
+                // right of the drop point. One coordinate space for
+                // everything: the drop position and each tab's origin
+                // are both expressed relative to the strip
+                // (TransformToVisual), instead of asking GetPosition
+                // for a fresh relative position per container — that
+                // per-container form resolved to index 0 regardless
+                // of where the drop landed, wedging the tab in first
+                // place. Past every midpoint means -1: append.
+                auto dropPos = e.GetPosition(strip);
                 int32_t index = -1;
                 auto items = strip.TabItems();
                 for (uint32_t i = 0; i < items.Size(); ++i) {
                     auto container = strip.ContainerFromIndex(i)
                         .template try_as<muxc::TabViewItem>();
                     if (!container) continue;
-                    if (e.GetPosition(container).X - container.ActualWidth() < 0) {
+                    auto origin = container.TransformToVisual(strip)
+                        .TransformPoint({ 0, 0 });
+                    float mid = origin.X
+                        + static_cast<float>(container.ActualWidth()) / 2.0f;
+                    if (dropPos.X < mid) {
                         index = static_cast<int32_t>(i);
                         break;
                     }
