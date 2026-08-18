@@ -4,6 +4,7 @@
 #include "Ghostty/App.h"
 #include "MainWindows.h"
 #include "Tabs/Panes/PaneIdAllocator.h"
+#include "Tabs/PressedTab.h"
 #include <winrt/Microsoft.Windows.AppLifecycle.h>
 #include <winrt/Microsoft.Windows.AppNotifications.h>
 #include <memory>
@@ -147,6 +148,12 @@ namespace winrt::GhosttyWin32::implementation
             return m_draggedTab;
         }
 
+        // App-scope like the slot above: the press handler travels
+        // with the TabViewItem across tear-out windows, so the slot
+        // it writes must not belong to any one window.
+        BasicPressedTab<Microsoft::UI::Xaml::Controls::TabViewItem>&
+        PressedTab() noexcept { return m_pressedTab; }
+
     private:
         // Shared tail of CreateNewWindow / CreateTearOutWindow:
         // strong-ref the window in m_topLevelWindows and subscribe
@@ -219,5 +226,6 @@ namespace winrt::GhosttyWin32::implementation
         // See SetDraggedTab. Strong ref for the duration of the drag
         // only; TabDragCompleted always clears it.
         Microsoft::UI::Xaml::Controls::TabViewItem m_draggedTab{ nullptr };
+        BasicPressedTab<Microsoft::UI::Xaml::Controls::TabViewItem> m_pressedTab;
     };
 }

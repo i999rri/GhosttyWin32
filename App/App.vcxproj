@@ -165,6 +165,7 @@
     <ClInclude Include="Tabs\Panes\Split.h" />
     <ClInclude Include="Tabs\Panes\Tree.h" />
     <ClInclude Include="Tabs\Tab.h" />
+    <ClInclude Include="Tabs\PressedTab.h" />
     <ClInclude Include="Tabs\TabFactory.h" />
     <ClInclude Include="Tabs\Tabs.h" />
     <ClInclude Include="Display\PhysicalPixels.h" />

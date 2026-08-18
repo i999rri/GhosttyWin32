@@ -1080,6 +1080,21 @@ namespace winrt::GhosttyWin32::implementation
         // it's driven by click, not keyboard tab order.
         item.IsTabStop(false);
         item.AllowFocusOnInteraction(false);
+        // Record header presses so TabDrag::Begin knows which tab a
+        // drag started on (TabView's own args can't say — see
+        // TabDrag). handledEventsToo: the inner ListViewItem marks
+        // the press handled before it would reach a plain subscriber.
+        // The handler travels with the item across tear-out windows.
+        item.AddHandler(
+            UIElement::PointerPressedEvent(),
+            box_value(Input::PointerEventHandler(
+                [](winrt::Windows::Foundation::IInspectable const& s,
+                   Input::PointerRoutedEventArgs const&) {
+                    if (auto tab = s.try_as<muxc::TabViewItem>()) {
+                        App::g_app->PressedTab().Record(tab);
+                    }
+                })),
+            /*handledEventsToo*/ true);
         tv.TabItems().Append(item);
         // Append-only — don't switch to the new tab yet. The SelectedItem
         // call (which is what makes the panel visible) is deferred to the
@@ -1253,6 +1268,8 @@ namespace winrt::GhosttyWin32::implementation
     {
         auto* t = m_tabs.FindByItem(item);
         if (!t) return;
+        // A stale press record must not keep the closed item alive.
+        App::g_app->PressedTab().Forget(item);
         // The focused-surface cache must not outlive the surfaces this
         // close is about to free — same invariant CloseSurfaceByPaneId
         // and ReleaseTornOutTab already hold. m_activeSurface can point
@@ -2294,6 +2311,7 @@ namespace winrt::GhosttyWin32::implementation
         // already detached above and sweeps any remaining ones.
         tab->DetachAll();
         auto item = tab->Item();
+        App::g_app->PressedTab().Forget(item);
         auto tv = TabView();
         uint32_t idx = 0;
         if (tv.TabItems().IndexOf(item, idx)) {
