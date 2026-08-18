@@ -662,6 +662,14 @@ namespace winrt::GhosttyWin32::implementation
 
     MainWindow::~MainWindow()
     {
+        // Disarm dispatched ghostty callbacks first: work already
+        // queued on the UI thread runs after this destructor and
+        // would touch the destroyed view (issue #131 — AV in a
+        // dispatched OnMouseShape after a fast Alt+F4 close). The
+        // destructor is the one point every close path passes
+        // through, including the direct Close() calls that skip
+        // RequestClose.
+        if (m_ghosttyDispatcher) m_ghosttyDispatcher->DetachActions();
         // Stop the foreground-pid poll before anything else in this
         // destructor runs — its Tick callback captures a weak_ref
         // that would return null at this point anyway, but Stopping

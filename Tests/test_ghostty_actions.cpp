@@ -409,3 +409,36 @@ TEST(GhosttyActionsTest, OnInitialSizeFollowedByResetIsSafe) {
     // integration tests where a real window exists.
     EXPECT_TRUE(actions.OnResetWindowSize());
 }
+
+// ----- Detach: dispatched work must not reach a closing view -----
+
+TEST(GhosttyActionsTest, DispatchedWorkReachesTheViewWhileAttached) {
+    MockMainWindowView view;
+    Actions actions(view);
+    EXPECT_TRUE(actions.OnMouseShape(FakeSurface(0x10),
+                                     GHOSTTY_MOUSE_SHAPE_TEXT));
+    EXPECT_EQ(view.setCursorShapeCalls, 1);
+}
+
+TEST(GhosttyActionsTest, DetachDisarmsDispatchedWork) {
+    // The mock runs Dispatch inline, so this models the issue #131
+    // ordering: work enqueued before the window died would run after
+    // it. With the liveness gate cleared, the lambda must no-op
+    // instead of touching the view.
+    MockMainWindowView view;
+    Actions actions(view);
+    actions.Detach();
+    EXPECT_TRUE(actions.OnMouseShape(FakeSurface(0x10),
+                                     GHOSTTY_MOUSE_SHAPE_TEXT));
+    EXPECT_EQ(view.setCursorShapeCalls, 0);
+}
+
+TEST(GhosttyActionsTest, DetachIsIdempotent) {
+    MockMainWindowView view;
+    Actions actions(view);
+    actions.Detach();
+    actions.Detach();
+    EXPECT_TRUE(actions.OnMouseShape(FakeSurface(0x10),
+                                     GHOSTTY_MOUSE_SHAPE_TEXT));
+    EXPECT_EQ(view.setCursorShapeCalls, 0);
+}
