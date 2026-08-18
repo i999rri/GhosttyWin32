@@ -1,7 +1,8 @@
 #pragma once
 
+#include "Ghostty/App.h"
 #include "Ghostty/Config.h"
-#include "Tabs/Panes/Pane.h"
+#include "Tabs/Panes/Branch.h"
 #include "Tabs/Panes/PaneId.h"
 #include "Tabs/Panes/PaneIdAllocator.h"
 #include "SplitPanel.h"
@@ -22,28 +23,35 @@ namespace winrt::GhosttyWin32::implementation {
 namespace ghostty = core::ghostty;
 
 
-// Builds Tabs. Holds the cross-cutting context (ghostty app handle, the
-// HWND for DPI/initial-size, the PaneIdAllocator that produces fresh
-// per-leaf IDs, and an optional "leaf gained focus" callback that
-// every TerminalControl this factory creates will fire) so callers
-// don't have to thread those through every Make() call.
+// Builds Tabs. Holds the cross-cutting context (the ghostty::App
+// wrapper for the app/config handles, the HWND for DPI/initial-size,
+// the PaneIdAllocator that produces fresh per-leaf IDs, and an
+// optional "leaf gained focus" callback that every TerminalControl
+// this factory creates will fire) so callers don't have to thread
+// those through every Make() call.
 //
 // The focus callback is the one piece of MainWindow-side context that
 // needs to reach into each leaf without each leaf knowing about
 // MainWindow directly. Wiring it here keeps the dependency direction
 // host -> control (the inverse would be a layering violation).
 //
+// Config values are re-read from ghostty::App::ConfigHandle() on
+// every Make/MakePane — never cached across calls. The handle is
+// swapped and the OLD ghostty_config_t FREED on every config change
+// (App::ReplaceConfig; fired by reload and by the system-theme
+// follow), so a cached ghostty::Config would dangle and feed
+// freed-memory garbage into e.g. the unfocused-split overlay color.
+//
 // Stateless beyond the injected references — no mutable state of its
 // own. ID counter mutation lives in PaneIdAllocator; the factory only
 // borrows it.
 class TabFactory {
 public:
-    TabFactory(ghostty_app_t app, ghostty::Config const& cfg, HWND hwnd,
+    TabFactory(ghostty::App const& app, HWND hwnd,
                PaneIdAllocator& idAllocator,
                std::function<void(ghostty_surface_t)> onLeafFocused = {}) noexcept
-        : m_app(app), m_cfg(cfg), m_hwnd(hwnd), m_idAllocator(idAllocator),
-          m_onLeafFocused(std::move(onLeafFocused)),
-          m_dividerColor(cfg.SplitDividerColor()) {}
+        : m_ghostty(app), m_hwnd(hwnd), m_idAllocator(idAllocator),
+          m_onLeafFocused(std::move(onLeafFocused)) {}
 
     TabFactory(const TabFactory&) = delete;
     TabFactory& operator=(const TabFactory&) = delete;
@@ -82,10 +90,10 @@ public:
         uint32_t initialWidth = 0,
         uint32_t initialHeight = 0)
     {
-        auto leaf = MakeLeaf(initialWidth, initialHeight, std::move(onActivated));
-        if (!leaf) return nullptr;
+        auto branch = MakePane(initialWidth, initialHeight, std::move(onActivated));
+        if (!branch) return nullptr;
 
-        // Wrap the leaf in a SplitPanel. With one leaf the panel
+        // Wrap the pane in a SplitPanel. With one pane the panel
         // collapses to "arrange the single child at the full rect".
         // The host parents the returned panel under AppContent — the
         // factory deliberately doesn't, so it stays unaware of the
@@ -94,36 +102,40 @@ public:
         auto* splitPanelImpl = winrt::get_self<implementation::SplitPanel>(splitPanel);
         if (!splitPanelImpl) {
             OutputDebugStringA("TabFactory::Make: get_self<SplitPanel> FAILED\n");
-            DetachLeaf(*leaf);
+            DetachSubtree(*branch);
             return nullptr;
         }
         // Apply the divider colour before any tree exists so the
         // first splitter Border built by SetRoot already paints
-        // with the correct brush.
-        splitPanelImpl->SetDividerColor(m_dividerColor);
-        splitPanelImpl->SetRoot(std::move(leaf));
+        // with the correct brush. Resolved fresh from the live config
+        // handle — see the class comment for why nothing config-
+        // derived may be cached across calls.
+        splitPanelImpl->SetDividerColor(
+            ghostty::Config(m_ghostty.ConfigHandle()).SplitDividerColor());
+        splitPanelImpl->SetRoot(std::move(branch));
 
         try {
             return std::make_unique<Tab>(std::move(splitPanel), std::move(item));
         } catch (winrt::hresult_error const&) {
             // Tab construction validation failed. Detach synchronously
-            // so the surface/handle don't leak. The splitPanel /
-            // tree own the leaf at this point.
-            if (auto* root = splitPanelImpl->Root()) DetachLeaf(*root);
+            // so the surface/handle don't leak. The splitPanel / tree
+            // own the pane at this point.
+            if (auto* root = splitPanelImpl->Tree().Root()) DetachSubtree(*root);
             return nullptr;
         }
     }
 
     // Build a new pane: TerminalControl + DComp surface handle +
-    // ghostty surface + freshly-allocated PaneId, returned as a Pane
-    // leaf. Shared between Make() (the leaf becomes the only pane in
-    // a brand-new tab) and the NEW_SPLIT action handler (the leaf is
-    // inserted into an existing tab's tree alongside its source pane).
+    // ghostty surface + freshly-allocated PaneId, wrapped in a
+    // Branch (Pane variant). Shared between Make() (the branch
+    // becomes the only pane in a brand-new tab) and the NEW_SPLIT
+    // action handler (the branch is inserted into an existing tab's
+    // tree alongside its source pane).
     //
     // Returns nullptr on any failure. Resources acquired before the
     // failure point are released before the return — caller doesn't
     // need to clean up after a null result.
-    std::unique_ptr<Pane> MakeLeaf(
+    std::unique_ptr<Branch> MakePane(
         uint32_t initialWidth,
         uint32_t initialHeight,
         std::function<void()> onActivated = {})
@@ -133,12 +145,12 @@ public:
         auto control = winrt::GhosttyWin32::TerminalControl();
         auto* controlImpl = winrt::get_self<implementation::TerminalControl>(control);
         if (!controlImpl) {
-            OutputDebugStringA("TabFactory::MakeLeaf: get_self<TerminalControl> FAILED\n");
+            OutputDebugStringA("TabFactory::MakePane: get_self<TerminalControl> FAILED\n");
             return nullptr;
         }
         auto panel = controlImpl->InnerPanel();
         if (!panel) {
-            OutputDebugStringA("TabFactory::MakeLeaf: TerminalControl has no inner panel\n");
+            OutputDebugStringA("TabFactory::MakePane: TerminalControl has no inner panel\n");
             return nullptr;
         }
 
@@ -152,7 +164,7 @@ public:
 
         HANDLE handle = nullptr;
         if (FAILED(DCompositionCreateSurfaceHandle(COMPOSITIONSURFACE_ALL_ACCESS, nullptr, &handle))) {
-            OutputDebugStringA("TabFactory::MakeLeaf: DCompositionCreateSurfaceHandle FAILED\n");
+            OutputDebugStringA("TabFactory::MakePane: DCompositionCreateSurfaceHandle FAILED\n");
             return nullptr;
         }
 
@@ -231,9 +243,9 @@ public:
         // the panel's settled scale changes.
         swapChainChanged->compositionScale.store(scaleX, std::memory_order_release);
 
-        ghostty_surface_t surface = ghostty_surface_new(m_app, &cfg);
+        ghostty_surface_t surface = ghostty_surface_new(m_ghostty.Handle(), &cfg);
         if (!surface) {
-            OutputDebugStringA("TabFactory::MakeLeaf: ghostty_surface_new FAILED\n");
+            OutputDebugStringA("TabFactory::MakePane: ghostty_surface_new FAILED\n");
             // Callback won't fire — release the renderer's owning handle.
             delete attachOwned;
             CloseHandle(handle);
@@ -243,7 +255,7 @@ public:
         // Hand surface ownership to the control. From here on the
         // control's Detach() is responsible for freeing the surface
         // and closing the handle.
-        controlImpl->Attach(m_app, surface, handle, m_hwnd, attach, std::move(swapChainChanged));
+        controlImpl->Attach(m_ghostty.Handle(), surface, handle, m_hwnd, attach, std::move(swapChainChanged));
 
         // Wire the host-supplied focus callback so the control can
         // notify MainWindow whenever it gains keyboard focus without
@@ -255,44 +267,43 @@ public:
         // background fallback so this call site just asks for what
         // it wants. ghostty's `unfocused-split-opacity` measures
         // "how visible the unfocused side should be", so the
-        // overlay alpha is (1 - that).
+        // overlay alpha is (1 - that). Wrap the live handle fresh —
+        // a wrapper cached at construction would read a config that
+        // ReplaceConfig has already freed (the "inactive pane turns
+        // black/pink after a split" garbage-color bug).
+        ghostty::Config liveCfg(m_ghostty.ConfigHandle());
         controlImpl->SetUnfocusedAppearance(
-            1.0 - m_cfg.UnfocusedSplitOpacity(),
-            m_cfg.UnfocusedSplitFill());
+            1.0 - liveCfg.UnfocusedSplitOpacity(),
+            liveCfg.UnfocusedSplitFill());
 
-        return Pane::MakeLeaf(control, paneId);
+        return MakePaneBranch(control, paneId);
     }
 
 private:
-    // Synchronously detach every TerminalControl under `node` so the
-    // surface / DComp handle don't leak when an error path discards a
-    // partially-constructed tree. Mirrors Tab::DetachAllLeaves but is
-    // factored locally so the error paths above can call it without
-    // depending on Tab.
-    static void DetachLeaf(Pane const& node) {
-        if (node.IsLeaf()) {
-            if (auto* tc = Tab::LeafToTerminalControl(node)) {
+    // Synchronously detach every TerminalControl under `branch` so
+    // the surface / DComp handle don't leak when an error path
+    // discards a partially-constructed subtree. Mirrors Tab::DetachAll
+    // but is factored locally so the error paths above can call it
+    // without depending on Tab.
+    static void DetachSubtree(Branch& branch) {
+        branch.ForEachPane([](Pane& p) {
+            if (auto* tc = Tab::PaneToTerminalControl(p)) {
                 tc->Detach();
             }
-            return;
-        }
-        if (auto* f = node.First()) DetachLeaf(*f);
-        if (auto* s = node.Second()) DetachLeaf(*s);
+        });
     }
 
-    ghostty_app_t m_app;
-    ghostty::Config m_cfg;
+    // App-scope wrapper; outlives every MainWindow (and therefore
+    // this factory). Provides the app handle and, crucially, the
+    // CURRENT config handle — the factory reads config through this
+    // on every call instead of caching, because ReplaceConfig frees
+    // the old handle on every config change.
+    ghostty::App const& m_ghostty;
     HWND m_hwnd;
     PaneIdAllocator& m_idAllocator;
     // Optional. Fires with the leaf's ghostty_surface_t whenever the
     // leaf's TerminalControl receives keyboard focus.
     std::function<void(ghostty_surface_t)> m_onLeafFocused;
-    // Resolved once in the ctor (config is read-only here) and
-    // stamped onto every SplitPanel built by Make. Reload-time
-    // updates would re-run m_cfg.SplitDividerColor() and push the
-    // new value into existing SplitPanels via SetDividerColor —
-    // wired but not yet triggered by anyone on this branch.
-    winrt::Windows::UI::Color m_dividerColor;
 };
 
 }  // namespace winrt::GhosttyWin32::implementation

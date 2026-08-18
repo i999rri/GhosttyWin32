@@ -57,7 +57,7 @@ bool Actions::OnRender() {
     // serialises ticks on the UI thread, so we go through the
     // same path. ghostty_app_tick is idempotent — calling it
     // when nothing is dirty is a cheap no-op.
-    m_view.Dispatch([this]() {
+    DispatchToView([this]() {
         m_view.Tick();
     });
     return true;
@@ -95,11 +95,11 @@ bool Actions::OnOpenUrl(ghostty_action_open_url_s ou) {
 
 bool Actions::OnCloseWindow() {
     // Close the window that owns the action's target and nothing
-    // else. This Actions instance is per-window (the runtime routed
-    // the action here from its target surface), so m_view is that
-    // window; siblings survive.
-    m_view.Dispatch([this]() {
-        m_view.RequestClose();
+    // else. Same intent as the X button — go through TryClose so
+    // needs_confirm_quit prompts the user before we tear anything
+    // down. Sibling windows survive either way.
+    DispatchToView([this]() {
+        m_view.TryClose();
     });
     return true;
 }
@@ -110,7 +110,7 @@ bool Actions::OnCloseAllWindows() {
     if (!m_hooks.closeAllWindows) return OnCloseWindow();
     // UI-thread hop for the same reason as OnNewWindow: window
     // teardown is XAML work, and every window shares this thread.
-    m_view.Dispatch([this]() {
+    DispatchToView([this]() {
         m_hooks.closeAllWindows();
     });
     return true;
@@ -118,7 +118,7 @@ bool Actions::OnCloseAllWindows() {
 
 bool Actions::OnQuit() {
     if (!m_hooks.quit) return OnCloseWindow();
-    m_view.Dispatch([this]() {
+    DispatchToView([this]() {
         m_hooks.quit();
     });
     return true;
@@ -132,7 +132,7 @@ bool Actions::OnToggleVisibility() {
     // window with no taskbar entry can only be recovered by
     // relaunching. Minimizing keeps the window reachable via
     // taskbar click / alt-tab.
-    m_view.Dispatch([this]() {
+    DispatchToView([this]() {
         HWND hwnd = m_view.Hwnd();
         if (!hwnd) return;
         if (IsIconic(hwnd)) {
@@ -151,7 +151,7 @@ bool Actions::OnToggleMaximize() {
     // SendMessage runs on the UI thread; dispatch through
     // Dispatcher() because action_cb fires from the renderer
     // thread.
-    m_view.Dispatch([this]() {
+    DispatchToView([this]() {
         HWND hwnd = m_view.Hwnd();
         if (!hwnd) return;
         SendMessageW(hwnd, WM_SYSCOMMAND,
@@ -166,8 +166,18 @@ bool Actions::OnPresentTerminal() {
     // SetForegroundWindow alone would silently fail when our
     // window isn't already in the allowed-set per Win32's
     // foreground rules.
-    m_view.Dispatch([this]() {
+    DispatchToView([this]() {
         m_view.PresentTerminal();
+    });
+    return true;
+}
+
+bool Actions::OnFloatWindow(ghostty_action_float_window_e mode) {
+    // Route through the view: the view owns the HWND and remembers
+    // the current topmost state so TOGGLE can flip without the
+    // dispatcher tracking it.
+    DispatchToView([this, mode]() {
+        m_view.SetFloatOnTop(mode);
     });
     return true;
 }
@@ -176,7 +186,7 @@ bool Actions::OnShowOnScreenKeyboard() {
     // Touch / pen users without a physical keyboard. The OSK is
     // its own top-level window; we just launch it and let the user
     // dismiss it normally.
-    m_view.Dispatch([this]() {
+    DispatchToView([this]() {
         m_view.ShowOnScreenKeyboard();
     });
     return true;
@@ -223,7 +233,7 @@ bool Actions::OnResetWindowSize() {
     // 80×24-ish terminal at common font sizes.
     uint32_t w = m_initialWidth;
     uint32_t h = m_initialHeight;
-    m_view.Dispatch([this, w, h]() {
+    DispatchToView([this, w, h]() {
         HWND hwnd = m_view.Hwnd();
         if (!hwnd) return;
         int width, height;
@@ -244,7 +254,7 @@ bool Actions::OnResetWindowSize() {
 // ===== tab lifecycle / navigation / title =====
 
 bool Actions::OnNewTab() {
-    m_view.Dispatch([this]() {
+    DispatchToView([this]() {
         m_view.CreateTab();
     });
     return true;
@@ -256,22 +266,32 @@ bool Actions::OnNewWindow() {
     // and every Xaml touch has to happen there. The `m_view`
     // dispatch is a UI-thread hop that any live window can provide;
     // we don't need our own dispatcher for this to arrive there.
-    m_view.Dispatch([this]() {
+    DispatchToView([this]() {
         m_hooks.newWindow();
+    });
+    return true;
+}
+
+bool Actions::OnGotoWindow(ghostty_action_goto_window_e direction) {
+    if (!m_hooks.gotoWindow) return false;
+    // Same UI-thread hop rationale as OnNewWindow — the hook calls
+    // Xaml Window::Activate under the hood.
+    DispatchToView([this, direction]() {
+        m_hooks.gotoWindow(direction);
     });
     return true;
 }
 
 bool Actions::OnCloseTab(ghostty_surface_t surface) {
     if (!surface) return true;
-    m_view.Dispatch([this, surface]() {
+    DispatchToView([this, surface]() {
         m_view.CloseTabBySurface(surface);
     });
     return true;
 }
 
 bool Actions::OnGotoTab(int requested) {
-    m_view.Dispatch([this, requested]() {
+    DispatchToView([this, requested]() {
         m_view.GoToTab(requested);
     });
     return true;
@@ -281,7 +301,7 @@ bool Actions::OnMoveTab(ghostty_action_move_tab_s move) {
     // ghostty hands us a signed offset; semantics are "shift the
     // currently selected tab by N positions, clamped to the
     // TabView's bounds" (no wrap-around — matches upstream).
-    m_view.Dispatch([this, move]() {
+    DispatchToView([this, move]() {
         m_view.MoveActiveTabBy(move.amount);
     });
     return true;
@@ -294,7 +314,7 @@ bool Actions::OnSetTitle(ghostty_surface_t surface, const char* utf8Title) {
     if (!surface || !utf8Title) return true;
     std::wstring wide = interop::Encoding::toUtf16(utf8Title);
     if (wide.empty()) return true;
-    m_view.Dispatch([this, surface, wide = std::move(wide)]() mutable {
+    DispatchToView([this, surface, wide = std::move(wide)]() mutable {
         m_view.SetTabTitleForSurface(surface, std::move(wide));
     });
     return true;
@@ -302,7 +322,7 @@ bool Actions::OnSetTitle(ghostty_surface_t surface, const char* utf8Title) {
 
 bool Actions::OnCopyTitleToClipboard(ghostty_surface_t surface) {
     if (!surface) return true;
-    m_view.Dispatch([this, surface]() {
+    DispatchToView([this, surface]() {
         m_view.CopyTabTitleForSurface(surface);
     });
     return true;
@@ -316,7 +336,7 @@ bool Actions::OnColorChange(ghostty_action_color_change_s cc) {
     // visible only and ghostty handles them internally.
     if (cc.kind != GHOSTTY_ACTION_COLOR_KIND_BACKGROUND) return true;
     uint8_t r = cc.r, g = cc.g, b = cc.b;
-    m_view.Dispatch([this, r, g, b]() {
+    DispatchToView([this, r, g, b]() {
         m_view.ApplyBackgroundColor(r, g, b);
     });
     return true;
@@ -325,7 +345,7 @@ bool Actions::OnColorChange(ghostty_action_color_change_s cc) {
 bool Actions::OnMouseShape(ghostty_surface_t surface,
                                   ghostty_action_mouse_shape_e shape) {
     if (!surface) return true;
-    m_view.Dispatch([this, surface, shape]() {
+    DispatchToView([this, surface, shape]() {
         m_view.SetCursorShapeForSurface(surface, shape);
     });
     return true;
@@ -346,7 +366,7 @@ bool Actions::OnConfigChange(ghostty_config_t newCfg) {
     if (!newCfg) return true;
     auto cloned = ghostty_config_clone(newCfg);
     if (!cloned) return true;
-    m_view.Dispatch([this, cloned]() {
+    DispatchToView([this, cloned]() {
         m_view.ReplaceConfig(cloned);
     });
     return true;
@@ -359,7 +379,7 @@ bool Actions::OnDesktopNotification(ghostty_surface_t surface,
     std::wstring title = (dn.title && dn.title[0]) ? interop::Encoding::toUtf16(dn.title) : L"";
     std::wstring body  = (dn.body  && dn.body[0])  ? interop::Encoding::toUtf16(dn.body)  : L"";
     if (title.empty() && body.empty()) return true;
-    m_view.Dispatch([this, surface, title = std::move(title),
+    DispatchToView([this, surface, title = std::move(title),
                                     body = std::move(body)]() mutable {
         m_view.ShowDesktopNotification(surface, std::move(title), std::move(body));
     });
@@ -367,7 +387,7 @@ bool Actions::OnDesktopNotification(ghostty_surface_t surface,
 }
 
 bool Actions::OnProgressReport(ghostty_action_progress_report_s pr) {
-    m_view.Dispatch([this, pr]() {
+    DispatchToView([this, pr]() {
         m_view.ReportProgress(pr);
     });
     return true;
@@ -376,7 +396,7 @@ bool Actions::OnProgressReport(ghostty_action_progress_report_s pr) {
 // ===== window state =====
 
 bool Actions::OnSizeLimit(ghostty_action_size_limit_s limit) {
-    m_view.Dispatch([this, limit]() {
+    DispatchToView([this, limit]() {
         m_view.ApplySizeLimit(limit);
     });
     return true;
@@ -388,7 +408,7 @@ bool Actions::OnToggleFullscreen() {
     // same borderless-fullscreen behaviour, so the value is
     // ignored here. The Fullscreen value on the view side
     // owns the placement/style snapshot for restore.
-    m_view.Dispatch([this]() {
+    DispatchToView([this]() {
         m_view.ToggleFullscreen();
     });
     return true;
@@ -400,7 +420,7 @@ bool Actions::OnToggleWindowDecorations() {
     // bounces the trigger through the UI dispatcher. action_cb fires
     // from the renderer thread, so the dispatcher hop is required
     // before touching XAML.
-    m_view.Dispatch([this]() {
+    DispatchToView([this]() {
         m_view.ToggleWindowDecorations();
     });
     return true;
@@ -414,7 +434,7 @@ bool Actions::OnToggleWindowDecorations() {
 bool Actions::OnNewSplit(ghostty_surface_t surface,
                                 ghostty_action_split_direction_e direction) {
     if (!surface) return true;
-    m_view.Dispatch([this, surface, direction]() {
+    DispatchToView([this, surface, direction]() {
         m_view.SplitActivePane(surface, direction);
     });
     return true;
@@ -423,7 +443,7 @@ bool Actions::OnNewSplit(ghostty_surface_t surface,
 bool Actions::OnResizeSplit(ghostty_surface_t surface,
                                    ghostty_action_resize_split_s resize) {
     if (!surface) return true;
-    m_view.Dispatch([this, surface, resize]() {
+    DispatchToView([this, surface, resize]() {
         m_view.ResizeSplitFromAction(surface, resize);
     });
     return true;
@@ -432,7 +452,7 @@ bool Actions::OnResizeSplit(ghostty_surface_t surface,
 bool Actions::OnGotoSplit(ghostty_surface_t surface,
                                  ghostty_action_goto_split_e direction) {
     if (!surface) return true;
-    m_view.Dispatch([this, surface, direction]() {
+    DispatchToView([this, surface, direction]() {
         m_view.GotoSplitFromAction(surface, direction);
     });
     return true;
@@ -440,7 +460,7 @@ bool Actions::OnGotoSplit(ghostty_surface_t surface,
 
 bool Actions::OnEqualizeSplits(ghostty_surface_t surface) {
     if (!surface) return true;
-    m_view.Dispatch([this, surface]() {
+    DispatchToView([this, surface]() {
         m_view.EqualizeSplitsForSurface(surface);
     });
     return true;
@@ -448,7 +468,7 @@ bool Actions::OnEqualizeSplits(ghostty_surface_t surface) {
 
 bool Actions::OnToggleSplitZoom(ghostty_surface_t surface) {
     if (!surface) return true;
-    m_view.Dispatch([this, surface]() {
+    DispatchToView([this, surface]() {
         m_view.ToggleSplitZoomForSurface(surface);
     });
     return true;

@@ -52,6 +52,15 @@ struct IWindow {
     // down, so handlers can call it unconditionally.
     virtual void RequestClose() = 0;
 
+    // User-intent close: same effect as RequestClose, but consults
+    // each surface's ghostty_surface_needs_confirm_quit first and
+    // shows a WinUI ContentDialog when any pane reports true. Only
+    // reachable from paths that represent explicit user intent (X
+    // button click, close_window keybind) — internal cleanup paths
+    // (tear-out empty shell, etc.) skip the confirmation and call
+    // RequestClose directly.
+    virtual void TryClose() = 0;
+
     // ----- split-pane operations -----
     // Surface-target split actions all share the same shape: find
     // the pane owning `surface` in its tab, mutate the tree, leave
@@ -146,6 +155,14 @@ struct IWindow {
     // type without a physical keyboard. The OSK is its own top-level
     // window; we don't track it and the user dismisses it normally.
     virtual void ShowOnScreenKeyboard() = 0;
+
+    // FLOAT_WINDOW / toggle_window_float_on_top on macOS maps to
+    // NSWindowLevelFloating; on Windows the equivalent is the
+    // topmost Z-order via SetWindowPos(HWND_TOPMOST / HWND_NOTOPMOST).
+    // Payload is ON/OFF/TOGGLE; the view owns the current-state
+    // tracking so TOGGLE can flip without the dispatcher having to
+    // remember anything.
+    virtual void SetFloatOnTop(ghostty_action_float_window_e mode) = 0;
 
     // ----- terminal-driven appearance + lifecycle -----
 

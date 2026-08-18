@@ -14,6 +14,7 @@
 #include "Tabs/Tab.h"
 #include "Tabs/TabFactory.h"
 #include "Tabs/Tabs.h"
+#include "WindowCloseGate.h"
 
 namespace winrt::GhosttyWin32::implementation
 {
@@ -78,6 +79,7 @@ namespace winrt::GhosttyWin32::implementation
         void Dispatch(std::function<void()> fn) override;
         void Tick() override;
         void RequestClose() override;
+        void TryClose() override;
 
         // Split-pane operations from IMainWindowView. Bodies are in
         // MainWindow.xaml.cpp; behaviour is unchanged from when these
@@ -98,6 +100,11 @@ namespace winrt::GhosttyWin32::implementation
         // dispatcher reaches them through the interface.
         void CreateTab() override;
         void CloseTabBySurface(ghostty_surface_t surface) override;
+        // Shared tab-teardown primitive used by every close path (tab
+        // X, close_tab keybind, gate-approved close). Assumes the
+        // caller already ran confirmation; keeps the tricky detach /
+        // unparent / RemoveAt ordering in one place.
+        void CloseTabByItem(winrt::Microsoft::UI::Xaml::Controls::TabViewItem const& item);
         void GoToTab(int requested) override;
         void SetTabTitleForSurface(ghostty_surface_t surface,
                                    std::wstring title) override;
@@ -111,6 +118,7 @@ namespace winrt::GhosttyWin32::implementation
         void ApplySizeLimit(ghostty_action_size_limit_s limit) override;
         void ToggleFullscreen() override;
         void ToggleWindowDecorations() override;
+        void SetFloatOnTop(ghostty_action_float_window_e mode) override;
         // Apply the current decoration state (config + any override
         // installed by ToggleWindowDecorations) to the XAML caption
         // buttons / drag region. Called once at startup so the config
@@ -140,6 +148,13 @@ namespace winrt::GhosttyWin32::implementation
         void PresentNotification(PaneId id);
         void ReportProgress(ghostty_action_progress_report_s pr) override;
 
+        // Read HKCU\...\Themes\Personalize\AppsUseLightTheme and forward
+        // to core::ghostty::App::SetColorScheme. Fired at first activation
+        // and from the WM_SETTINGCHANGE subclass proc in the .cpp — the
+        // subclass proc is a plain free function (not a friend), so this
+        // has to be reachable through the class's public surface.
+        void PushCurrentSystemColorScheme() noexcept;
+
     private:
         // The MainWindowRuntime implementation of the ghostty runtime
         // callbacks needs to reach into m_ghosttyDispatcher / m_hwnd /
@@ -158,6 +173,10 @@ namespace winrt::GhosttyWin32::implementation
 
 
         void InitGhostty();
+        // Post-gate teardown for CloseSurfaceByPaneId. Runs when the
+        // close gate has already asked the user (or determined the
+        // surface doesn't need confirmation).
+        void RemovePaneByIdApproved(PaneId id);
         Tab* ActiveTab();
         // Convenience wrapper around ActiveTab()->ActiveControl(). Most
         // input/IME paths only care about the focused TerminalControl,
@@ -179,6 +198,23 @@ namespace winrt::GhosttyWin32::implementation
         // panel doesn't leak as an orphan child. ~Tab can't do this
         // itself because Tab is deliberately unaware of AppContent.
         void RemoveTabPanelFromAppContent(Tab const& tab);
+        // Install a subclass on m_hwnd that watches for WM_SETTINGCHANGE
+        // events carrying the "ImmersiveColorSet" payload and pushes the
+        // updated OS light/dark preference into ghostty. Called once from
+        // the one-shot Activated init after m_hwnd is captured.
+        void HookSystemThemeSignal() noexcept;
+        // WndProc subclass that intercepts WM_CLOSE (Alt+F4, OS-issued
+        // close) and routes it through the confirmation gate. See
+        // CloseGateSubclassProc.
+        void HookCloseGate() noexcept;
+
+    public:
+        // Read by CloseGateSubclassProc (free function in the .cpp)
+        // so the subclass can honour the bypass without needing a
+        // friend declaration for an anonymous-namespace function.
+        bool IsCloseGateBypassed() const noexcept { return m_bypassCloseGate; }
+    private:
+
         // Publish a single drag rectangle to AppWindowTitleBar covering
         // the DragRegion's current bounds. Called from
         // DragRegion.SizeChanged so the rect tracks the strip's free
@@ -190,6 +226,8 @@ namespace winrt::GhosttyWin32::implementation
 
         // Tear down the pane carrying `id` and update the tree / tab
         // list. Dispatched from close_surface_cb. UI thread only.
+        // Goes through the close gate — the actual mutation lives in
+        // RemovePaneByIdApproved and only runs on approval.
         void CloseSurfaceByPaneId(PaneId id);
 
         // The TerminalControl hosting the pane carrying `id`, or null
@@ -295,6 +333,15 @@ namespace winrt::GhosttyWin32::implementation
         ghostty::actions::tags::Fullscreen         m_fullscreen;
         ghostty::actions::tags::WindowDecorations  m_windowDecorations;
         Tabs m_tabs;
+        // Guards every close intent (window / tab / surface) so
+        // needs_confirm_quit prompts land once, not one dialog per
+        // path. Constructed inline so it's usable from the ctor.
+        WindowCloseGate m_closeGate;
+        // Set to true by the gate's approval callback before it calls
+        // Window::Close(); the CloseGate WndProc subclass reads this
+        // to let the resulting WM_CLOSE (if any) through without
+        // re-prompting. One-shot — the window is about to die.
+        bool m_bypassCloseGate = false;
         // Focus-tracked active surface. Set by NotifySurfaceFocused
         // when a TerminalControl gains focus, cleared when the
         // matching surface is torn down through CloseSurfaceByPaneId.
@@ -309,6 +356,24 @@ namespace winrt::GhosttyWin32::implementation
         // member ordering), so the dispatcher can't observe a
         // half-torn-down ghostty handle from any of its handlers.
         std::unique_ptr<ghostty::CallbackDispatcher> m_ghosttyDispatcher;
+
+        // 1 Hz poll that walks each Tab, asks ghostty for the
+        // foreground process pid of the active pane, resolves it to
+        // an executable basename, and (if the shell hasn't set an
+        // OSC title on this tab yet) writes the name into the
+        // TabViewItem header. See StartForegroundPidPoll for the
+        // scheduling story.
+        winrt::Microsoft::UI::Dispatching::DispatcherQueueTimer
+            m_foregroundPidTimer{ nullptr };
+
+        // Kick off the foreground-pid poll after the first tab
+        // exists. Idempotent — safe to call more than once (won't
+        // create a second timer).
+        void StartForegroundPidPoll();
+
+        // One tick of the poll. Body is inline in the .cpp; walks
+        // m_tabs and updates the header where appropriate.
+        void UpdateForegroundNames() noexcept;
     };
 }
 

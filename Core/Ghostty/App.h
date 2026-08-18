@@ -75,6 +75,15 @@ public:
     ghostty_config_t ConfigHandle() const noexcept { return m_config; }
     void Tick() noexcept { if (m_app) ghostty_app_tick(m_app); }
 
+    // Forward the OS light/dark preference to ghostty's app-scope
+    // color scheme signal. ghostty then propagates the change to
+    // every surface, so surfaces with light/dark theme variants
+    // switch automatically without a config reload. Idempotent —
+    // repeated calls with the same value are cheap in libghostty.
+    void SetColorScheme(ghostty_color_scheme_e scheme) noexcept {
+        if (m_app) ghostty_app_set_color_scheme(m_app, scheme);
+    }
+
     // Replace the owned config with newConfig and free the old one.
     // Used by the reload_config path: the worker thread parses a fresh
     // config off-thread, then the UI thread hands the result here AFTER

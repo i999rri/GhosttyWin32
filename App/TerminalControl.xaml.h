@@ -160,7 +160,7 @@ namespace winrt::GhosttyWin32::implementation
         // Surface() returns the wrapper itself so call sites can issue
         // typed operations (Refresh, Key, MouseButton, …) without
         // touching raw ghostty C API. Identity-comparison call sites
-        // (action callbacks, FindLeafBySurface) compare via
+        // (action callbacks, FindPaneBySurface) compare via
         // `tc->Surface().Handle()` against ghostty's raw handle.
         core::ghostty::Surface const& Surface() const noexcept { return m_surface; }
         core::ghostty::Surface& Surface() noexcept { return m_surface; }

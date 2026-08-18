@@ -157,10 +157,16 @@
     </ClInclude>
     <ClInclude Include="MainWindows.h" />
     <ClInclude Include="SplitPanel.h" />
+    <ClInclude Include="WindowCloseGate.h" />
+    <ClInclude Include="Tabs\Panes\Branch.h" />
     <ClInclude Include="Tabs\Panes\Pane.h" />
     <ClInclude Include="Tabs\Panes\PaneId.h" />
     <ClInclude Include="Tabs\Panes\PaneIdAllocator.h" />
+    <ClInclude Include="Tabs\Panes\Split.h" />
+    <ClInclude Include="Tabs\Panes\Tree.h" />
     <ClInclude Include="Tabs\Tab.h" />
+    <ClInclude Include="Tabs\PressedTab.h" />
+    <ClInclude Include="Tabs\TabDrag.h" />
     <ClInclude Include="Tabs\TabFactory.h" />
     <ClInclude Include="Tabs\Tabs.h" />
     <ClInclude Include="Display\PhysicalPixels.h" />
@@ -190,6 +196,7 @@
     <ClCompile Include="MainWindows.cpp" />
     <ClCompile Include="Ghostty\MainWindowRuntime.cpp" />
     <ClCompile Include="SplitPanel.cpp" />
+    <ClCompile Include="WindowCloseGate.cpp" />
     <ClCompile Include="TerminalControl.xaml.cpp">
       <DependentUpon>TerminalControl.xaml</DependentUpon>
     </ClCompile>

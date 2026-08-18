@@ -99,3 +99,35 @@ jobs:
           git tag -a "$VERSION" -m "Release $VERSION"
           git push origin "$VERSION"
           echo "Pushed tag $VERSION as ${APP_SLUG}[bot] → release.yml will fire."
+
+      # Record the just-tagged main commit as an ancestor of dev via
+      # a `-s ours` merge. Squash-merging the release PR into main
+      # produces a commit that ISN'T an ancestor of dev's history —
+      # dev still holds the individual PR commits that got squashed.
+      # Left as-is, every subsequent release PR's compare-base walks
+      # back to whichever commit was shared before the first squash,
+      # and the PR shows a 100+ file "diff" the reviewer has to scroll
+      # past + the notes generator lists every PR since v0.2.x. The
+      # `-s ours` strategy keeps dev's tree untouched (dev already has
+      # main's content, just split across PRs) but records main as
+      # merged, so the next release PR sees a sane merge-base.
+      #
+      # If the merge somehow conflicts (shouldn't — same content on
+      # both sides), warn and continue so the tag still triggers
+      # release.yml; the sync can be replayed manually.
+      - name: Record release in dev history
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+        run: |
+          set -euo pipefail
+          git fetch origin dev:dev
+          git checkout dev
+          if ! git merge -s ours --no-edit main \
+               -m "Record v${VERSION#v} release in dev history"; then
+            echo "::warning::main→dev sync failed; leaving dev untouched. Run 'git merge -s ours main' on dev manually."
+            git merge --abort || true
+            exit 0
+          fi
+          git push origin dev
+          echo "Synced main into dev with an ours-strategy merge; next release PR will compare cleanly."

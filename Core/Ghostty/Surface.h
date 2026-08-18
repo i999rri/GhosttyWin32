@@ -115,6 +115,33 @@ public:
     void SetContentScale(double x, double y) noexcept {
         if (m_handle) ghostty_surface_set_content_scale(m_handle, x, y);
     }
+    // Per-surface light/dark override. ghostty_app_set_color_scheme
+    // updates only the app-level conditional state, so a soft reload
+    // triggered by that path re-derives each surface's config against
+    // the surface's OLD scheme and the theme fails to switch until the
+    // surface is recreated. Calling this per surface after the app-level
+    // push forces each one to pick up the new scheme immediately.
+    void SetColorScheme(ghostty_color_scheme_e scheme) noexcept {
+        if (m_handle) ghostty_surface_set_color_scheme(m_handle, scheme);
+    }
+
+    // PID of the current foreground process in this surface's PTY —
+    // not necessarily the shell (that's the ancestor). Used by the
+    // tab-title poll to show the running command's name (`vim`,
+    // `ssh host`) instead of just the shell name. Returns 0 when
+    // no surface, no PTY yet, or no foreground process.
+    uint32_t ForegroundPid() const noexcept {
+        return m_handle ? ghostty_surface_foreground_pid(m_handle) : 0;
+    }
+
+    // Ghostty's per-surface prompt-on-quit signal. Reflects the
+    // `confirm-close-surface` config and whether the surface actually
+    // has non-shell child processes running — hosts consult this on
+    // user-initiated close paths and only show a dialog when it
+    // reports true.
+    bool NeedsConfirmQuit() const noexcept {
+        return m_handle && ghostty_surface_needs_confirm_quit(m_handle);
+    }
 
     // ---- selection ----
     bool HasSelection() const noexcept {

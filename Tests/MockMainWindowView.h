@@ -20,6 +20,7 @@ struct MockMainWindowView : core::host::IWindow {
     int dispatchCalls = 0;
     int tickCalls = 0;
     int requestCloseCalls = 0;
+    int tryCloseCalls = 0;
 
     HWND Hwnd() const noexcept override { return nullptr; }
     void Dispatch(std::function<void()> fn) override {
@@ -28,6 +29,7 @@ struct MockMainWindowView : core::host::IWindow {
     }
     void Tick() override { ++tickCalls; }
     void RequestClose() override { ++requestCloseCalls; }
+    void TryClose() override { ++tryCloseCalls; }
 
     // ----- split-pane -----
     int splitActivePaneCalls = 0;
@@ -128,6 +130,13 @@ struct MockMainWindowView : core::host::IWindow {
 
     int toggleWindowDecorationsCalls = 0;
     void ToggleWindowDecorations() override { ++toggleWindowDecorationsCalls; }
+
+    int setFloatOnTopCalls = 0;
+    ghostty_action_float_window_e lastFloatOnTopMode{};
+    void SetFloatOnTop(ghostty_action_float_window_e mode) override {
+        ++setFloatOnTopCalls;
+        lastFloatOnTopMode = mode;
+    }
 
     int presentTerminalCalls = 0;
     void PresentTerminal() override { ++presentTerminalCalls; }

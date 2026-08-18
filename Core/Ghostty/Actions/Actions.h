@@ -2,8 +2,10 @@
 
 #include "Host/IWindow.h"
 #include "ghostty.h"
+#include <atomic>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <utility>
 
 namespace core::ghostty::actions {
@@ -42,11 +44,26 @@ public:
         std::function<void()> newWindow;
         std::function<void()> closeAllWindows;
         std::function<void()> quit;
+        // GOTO_WINDOW: bring another top-level window forward. App
+        // owns the window vector, so the traversal (previous / next
+        // relative to the currently-foreground window) lives there.
+        std::function<void(ghostty_action_goto_window_e)> gotoWindow;
     };
 
     Actions(host::IWindow& view, AppHooks hooks = {}) noexcept
         : m_view(view)
         , m_hooks(std::move(hooks)) {}
+
+    // Severs the view before its teardown starts. Ghostty callbacks
+    // land on renderer/io threads and hop to the UI thread through
+    // m_view.Dispatch; work still queued when the window closes would
+    // otherwise run against a destroyed view (observed as an AV in a
+    // dispatched OnMouseShape lambda — issue #131). After Detach,
+    // queued and future dispatched work no-ops. Call on the UI thread
+    // before Window::Close(); idempotent.
+    void Detach() noexcept {
+        m_alive->store(false, std::memory_order_release);
+    }
 
     // ----- terminal events -----
     bool OnRingBell();
@@ -76,6 +93,11 @@ public:
     bool OnPresentTerminal();
     bool OnShowOnScreenKeyboard();
     bool OnOpenConfig();
+    // FLOAT_WINDOW: toggle always-on-top for this window. macOS's
+    // NSWindowLevelFloating maps to Win32 HWND_TOPMOST via
+    // SetWindowPos; the actual call lives on the view (state tracking
+    // + HWND access), this handler just bounces there.
+    bool OnFloatWindow(ghostty_action_float_window_e mode);
 
     // ----- sizing -----
     bool OnInitialSize(ghostty_action_initial_size_s size);
@@ -90,6 +112,10 @@ public:
     bool OnNewWindow();
     bool OnCloseTab(ghostty_surface_t surface);
     bool OnGotoTab(int requested);
+    // GOTO_WINDOW: navigate to the previous / next top-level
+    // MainWindow. Bounces through the injected gotoWindow hook (App
+    // owns the window vector, so the traversal lives there).
+    bool OnGotoWindow(ghostty_action_goto_window_e direction);
     bool OnMoveTab(ghostty_action_move_tab_s move);
     // SET_TITLE and SET_TAB_TITLE collapse to the same handler —
     // this port has one title surface per tab.
@@ -128,6 +154,29 @@ private:
     host::IWindow& m_view;
     AppHooks       m_hooks;
 
+    // Shared with every dispatched lambda so the liveness check stays
+    // readable even after this Actions object is gone with its
+    // window. Ordering is safe without further synchronisation: the
+    // flag is cleared on the UI thread and the lambdas run on the UI
+    // thread, so a lambda either ran before Detach or observes false.
+    std::shared_ptr<std::atomic<bool>> m_alive{
+        std::make_shared<std::atomic<bool>>(true) };
+
+    // Every UI-thread hop goes through here instead of calling
+    // m_view.Dispatch directly: the wrapper adds the liveness gate
+    // that keeps queued work from touching a destroyed view.
+    // mutable: several handlers pass mutable lambdas (they move
+    // captured strings out when they run), and a const call operator
+    // on this wrapper couldn't invoke them.
+    template <class F>
+    void DispatchToView(F&& work) {
+        m_view.Dispatch(
+            [alive = m_alive, work = std::forward<F>(work)]() mutable {
+                if (!alive->load(std::memory_order_acquire)) return;
+                work();
+            });
+    }
+
     // Initial window size from GHOSTTY_ACTION_INITIAL_SIZE
     // (physical pixels). Zero means "not yet received" —
     // OnResetWindowSize falls back to a DPI-scaled 1280×720 in
@@ -136,4 +185,4 @@ private:
     uint32_t m_initialHeight = 0;
 };
 
-}  // namespace core::ghostty::actions
+} // namespace core::ghostty::actions
