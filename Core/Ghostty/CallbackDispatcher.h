@@ -44,6 +44,11 @@ public:
     // "unhandled" telemetry on libghostty's side).
     bool DispatchAction(ghostty_target_s target, ghostty_action_s action);
 
+    // Forwarded to Actions::Detach — see there. The host calls this
+    // before closing its window so queued UI-thread work stops
+    // touching the view.
+    void DetachActions() noexcept { m_actions.Detach(); }
+
 private:
     CallbackDispatcher(host::IWindow& view,
                        actions::Actions::AppHooks hooks) noexcept

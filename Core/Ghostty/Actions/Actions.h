@@ -2,8 +2,10 @@
 
 #include "Host/IWindow.h"
 #include "ghostty.h"
+#include <atomic>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <utility>
 
 namespace core::ghostty::actions {
@@ -51,6 +53,17 @@ public:
     Actions(host::IWindow& view, AppHooks hooks = {}) noexcept
         : m_view(view)
         , m_hooks(std::move(hooks)) {}
+
+    // Severs the view before its teardown starts. Ghostty callbacks
+    // land on renderer/io threads and hop to the UI thread through
+    // m_view.Dispatch; work still queued when the window closes would
+    // otherwise run against a destroyed view (observed as an AV in a
+    // dispatched OnMouseShape lambda — issue #131). After Detach,
+    // queued and future dispatched work no-ops. Call on the UI thread
+    // before Window::Close(); idempotent.
+    void Detach() noexcept {
+        m_alive->store(false, std::memory_order_release);
+    }
 
     // ----- terminal events -----
     bool OnRingBell();
@@ -140,6 +153,29 @@ public:
 private:
     host::IWindow& m_view;
     AppHooks       m_hooks;
+
+    // Shared with every dispatched lambda so the liveness check stays
+    // readable even after this Actions object is gone with its
+    // window. Ordering is safe without further synchronisation: the
+    // flag is cleared on the UI thread and the lambdas run on the UI
+    // thread, so a lambda either ran before Detach or observes false.
+    std::shared_ptr<std::atomic<bool>> m_alive{
+        std::make_shared<std::atomic<bool>>(true) };
+
+    // Every UI-thread hop goes through here instead of calling
+    // m_view.Dispatch directly: the wrapper adds the liveness gate
+    // that keeps queued work from touching a destroyed view.
+    // mutable: several handlers pass mutable lambdas (they move
+    // captured strings out when they run), and a const call operator
+    // on this wrapper couldn't invoke them.
+    template <class F>
+    void DispatchToView(F&& work) {
+        m_view.Dispatch(
+            [alive = m_alive, work = std::forward<F>(work)]() mutable {
+                if (!alive->load(std::memory_order_acquire)) return;
+                work();
+            });
+    }
 
     // Initial window size from GHOSTTY_ACTION_INITIAL_SIZE
     // (physical pixels). Zero means "not yet received" —
