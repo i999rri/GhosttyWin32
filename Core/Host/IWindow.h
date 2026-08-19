@@ -197,6 +197,14 @@ struct IWindow {
     virtual void SetSecureInputForSurface(ghostty_surface_t surface,
                                           ghostty_action_secure_input_e mode) = 0;
 
+    // PROMPT_TITLE: the prompt_surface_title / prompt_tab_title
+    // keybind asked for a rename-title prompt. Both variants
+    // collapse to renaming the tab — this port has one title
+    // surface per tab, the same collapse SET_TITLE/SET_TAB_TITLE
+    // already use. UI thread hop happens in the handler; the view
+    // shows a ContentDialog and applies the result itself.
+    virtual void PromptTitleForSurface(ghostty_surface_t surface) = 0;
+
     // READONLY: the toggle_readonly keybind flipped the surface's
     // read-only state. The functional half (pty writes blocked)
     // lives in libghostty and already works — this is purely the

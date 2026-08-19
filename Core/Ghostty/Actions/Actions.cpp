@@ -386,6 +386,14 @@ bool Actions::OnPwd(ghostty_surface_t surface, const char* utf8Pwd) {
     return true;
 }
 
+bool Actions::OnPromptTitle(ghostty_surface_t surface) {
+    if (!surface) return true;
+    DispatchToView([this, surface]() {
+        m_view.PromptTitleForSurface(surface);
+    });
+    return true;
+}
+
 bool Actions::OnReadonly(ghostty_surface_t surface,
                          ghostty_action_readonly_e readonly) {
     if (!surface) return true;
