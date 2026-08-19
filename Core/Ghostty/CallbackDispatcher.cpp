@@ -100,6 +100,14 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
                 return m_actions.OnMouseVisibility(target.target.surface,
                                                    action.action.mouse_visibility);
             return false;
+        // PROMPT_TITLE: rename-title prompt. The SURFACE/TAB payload
+        // variants collapse in the handler (one title per tab, same
+        // as SET_TITLE/SET_TAB_TITLE). App-targeted is a no-op
+        // upstream — ack.
+        case GHOSTTY_ACTION_PROMPT_TITLE:
+            if (target.tag == GHOSTTY_TARGET_SURFACE)
+                return m_actions.OnPromptTitle(target.target.surface);
+            return true;
         // READONLY: toggle_readonly indicator (the blocking itself
         // is core-side). App-targeted is a no-op upstream — ack.
         case GHOSTTY_ACTION_READONLY:
@@ -198,10 +206,6 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
         // here keeps libghostty's future "unhandled action" audit
         // quiet without inventing empty GhosttyActions methods.
         //
-        // PROMPT_TITLE: "show a rename-title prompt" keybind action.
-        // Pending its own PR (ContentDialog + TextBox); acked until
-        // then so the keybind doesn't read as unhandled.
-        case GHOSTTY_ACTION_PROMPT_TITLE:
         // Feature surfaces intentionally not on this port's plate
         // (search bar, ImGui inspector, tab overview, quick
         // terminal, command palette, terminal-level undo/redo):

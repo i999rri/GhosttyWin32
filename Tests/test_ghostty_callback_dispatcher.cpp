@@ -135,6 +135,30 @@ TEST(GhosttyCallbackDispatcherTest, MouseVisibilityRoutesToTheOwningSurface) {
     EXPECT_FALSE(DispatchTag(*d, GHOSTTY_ACTION_MOUSE_VISIBILITY));
 }
 
+TEST(GhosttyCallbackDispatcherTest, PromptTitleRoutesToTheOwningSurface) {
+    MockMainWindowView view;
+    auto d = CallbackDispatcher::Create(view);
+
+    ghostty_target_s target{};
+    target.tag = GHOSTTY_TARGET_SURFACE;
+    target.target.surface = reinterpret_cast<ghostty_surface_t>(0xBEEF);
+    ghostty_action_s action{};
+    action.tag = GHOSTTY_ACTION_PROMPT_TITLE;
+
+    // Both payload variants land on the same handler — one title
+    // surface per tab (same collapse as SET_TITLE/SET_TAB_TITLE).
+    action.action.prompt_title = GHOSTTY_PROMPT_TITLE_SURFACE;
+    EXPECT_TRUE(d->DispatchAction(target, action));
+    action.action.prompt_title = GHOSTTY_PROMPT_TITLE_TAB;
+    EXPECT_TRUE(d->DispatchAction(target, action));
+    EXPECT_EQ(view.promptTitleCalls, 2);
+    EXPECT_EQ(view.lastPromptTitleSurface, target.target.surface);
+
+    // App-targeted: upstream logs and ignores — acked.
+    EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_PROMPT_TITLE));
+    EXPECT_EQ(view.promptTitleCalls, 2);
+}
+
 TEST(GhosttyCallbackDispatcherTest, ReadonlyRoutesToTheOwningSurface) {
     MockMainWindowView view;
     auto d = CallbackDispatcher::Create(view);

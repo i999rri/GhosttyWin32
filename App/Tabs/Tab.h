@@ -98,6 +98,20 @@ public:
     bool HasExplicitTitle() const noexcept { return m_hasExplicitTitle; }
     void MarkExplicitTitle() noexcept { m_hasExplicitTitle = true; }
 
+    // True once the USER named this tab via the rename prompt
+    // (PROMPT_TITLE). One level stronger than the shell latch above:
+    // upstream documents that a prompt-set title "overrides any
+    // title set by the terminal", so SET_TITLE / SET_TAB_TITLE must
+    // skip a user-titled tab (the shell keeps re-asserting its OSC
+    // title on every prompt, which would instantly undo the rename).
+    // Marking a user title implies the explicit latch too, so the
+    // pid poll stays out without callers having to set both.
+    bool HasUserTitle() const noexcept { return m_hasUserTitle; }
+    void MarkUserTitle() noexcept {
+        m_hasUserTitle = true;
+        m_hasExplicitTitle = true;
+    }
+
     // Last PID resolved for this tab's active pane's foreground
     // process, and the basename cached from it. The poll updates both
     // when the PID changes so QueryFullProcessImageNameW only runs on
@@ -211,6 +225,10 @@ private:
     // pane is destroyed.
     Pane* m_activePane{ nullptr };
 
+    // See HasUserTitle. Sticky for the tab's lifetime — there is no
+    // inverse yet (the rename prompt treats empty input as cancel
+    // for exactly this reason).
+    bool m_hasUserTitle{ false };
     // See HasExplicitTitle. Sticky: once the shell sets a title the
     // poll leaves it alone for the rest of the tab's life.
     bool m_hasExplicitTitle{ false };

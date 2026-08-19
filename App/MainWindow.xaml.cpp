@@ -261,6 +261,22 @@ namespace winrt::GhosttyWin32::implementation
                                 if (!self->IsForeground()) {
                                     return;
                                 }
+                                // A modal ContentDialog (rename
+                                // prompt, close confirm) owns focus
+                                // while it's up; restoring the
+                                // terminal here would steal it and
+                                // let keystrokes leak into the shell
+                                // behind the dialog. Any open popup
+                                // on this XamlRoot means skip — the
+                                // dialog puts focus back on its own
+                                // when it closes.
+                                if (auto content = self->Content()) {
+                                    if (auto root = content.XamlRoot()) {
+                                        auto popups = winrt::Microsoft::UI::Xaml::Media::
+                                            VisualTreeHelper::GetOpenPopupsForXamlRoot(root);
+                                        if (popups && popups.Size() > 0) return;
+                                    }
+                                }
                                 if (auto* tab = self->ActiveTab()) {
                                     tab->Focus();
                                 }
@@ -1360,6 +1376,12 @@ namespace winrt::GhosttyWin32::implementation
     void MainWindow::SetTabTitleForSurface(ghostty_surface_t surface, std::wstring title)
     {
         if (auto* t = m_tabs.FindBySurface(surface)) {
+            // A user-chosen name (rename prompt) outranks the shell:
+            // upstream documents the prompt title as overriding any
+            // terminal-set title, and shells re-assert their OSC
+            // title on every prompt — honouring it here would undo
+            // the rename within seconds.
+            if (t->HasUserTitle()) return;
             t->Item().Header(box_value(winrt::hstring(title)));
             // Once the shell has spoken, the foreground-pid poll
             // stops overwriting the header for this tab.
@@ -1683,6 +1705,65 @@ namespace winrt::GhosttyWin32::implementation
             }
             ShowDesktopNotification(surface, std::move(title), std::move(body));
         }
+    }
+
+    void MainWindow::PromptTitleForSurface(ghostty_surface_t surface)
+    {
+        // One ContentDialog per XamlRoot is a WinUI rule; a second
+        // ShowAsync throws. If a rename prompt (or the close-confirm
+        // dialog) is already up, dropping the request matches how
+        // repeated keypresses should feel anyway.
+        if (m_renamePromptOpen) return;
+        auto* t = m_tabs.FindBySurface(surface);
+        if (!t) return;
+        auto content = Content();
+        auto xamlRoot = content ? content.XamlRoot() : nullptr;
+        if (!xamlRoot) return;
+
+        muxc::TextBox input;
+        input.Text(unbox_value_or<winrt::hstring>(t->Item().Header(), L""));
+        // Pre-select so typing replaces the old title outright —
+        // the common case is a full rename, not an edit.
+        input.SelectAll();
+
+        muxc::ContentDialog dlg;
+        dlg.XamlRoot(xamlRoot);
+        dlg.Title(box_value(L"Rename tab"));
+        dlg.Content(input);
+        dlg.PrimaryButtonText(L"Rename");
+        dlg.CloseButtonText(L"Cancel");
+        dlg.DefaultButton(muxc::ContentDialogButton::Primary);
+
+        m_renamePromptOpen = true;
+        auto op = dlg.ShowAsync();
+        // Weak ref: the dialog can outlive this window if teardown
+        // starts while it's up (same rationale as WindowCloseGate).
+        // The TabViewItem is captured by value — WinRT projections
+        // are refcounted handles, so applying the rename to a tab
+        // that got torn out or closed mid-prompt is a safe no-op on
+        // a still-alive object rather than a dangling pointer.
+        auto weak = get_weak();
+        auto item = t->Item();
+        op.Completed([weak, item, input](auto const& sender, auto const&) {
+            auto self = weak.get();
+            if (self) self->m_renamePromptOpen = false;
+            if (sender.GetResults() != muxc::ContentDialogResult::Primary) return;
+            auto text = input.Text();
+            // Empty input is treated as cancel: this port has no
+            // inverse of MarkExplicitTitle yet, so "reset to the
+            // automatic title" can't be honoured truthfully.
+            if (text.empty()) return;
+            item.Header(box_value(text));
+            if (self) {
+                if (auto* tab = self->m_tabs.FindByItem(item)) {
+                    // User latch: outranks both the foreground-pid
+                    // poll AND shell SET_TITLE (see HasUserTitle) —
+                    // shells re-assert their OSC title constantly,
+                    // so anything weaker gets undone in seconds.
+                    tab->MarkUserTitle();
+                }
+            }
+        });
     }
 
     void MainWindow::SetReadonlyForSurface(ghostty_surface_t surface, bool readonly)
