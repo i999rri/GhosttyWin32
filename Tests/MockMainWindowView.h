@@ -183,6 +183,38 @@ struct MockMainWindowView : core::host::IWindow {
         lastSecureInputMode = mode;
     }
 
+    int appendKeySequenceCalls = 0;
+    ghostty_surface_t lastKeySequenceSurface = nullptr;
+    std::wstring lastKeySequenceLabel;
+    void AppendKeySequenceForSurface(ghostty_surface_t s, std::wstring label) override {
+        ++appendKeySequenceCalls;
+        lastKeySequenceSurface = s;
+        lastKeySequenceLabel = std::move(label);
+    }
+
+    int clearKeySequenceCalls = 0;
+    void ClearKeySequenceForSurface(ghostty_surface_t s) override {
+        ++clearKeySequenceCalls;
+        lastKeySequenceSurface = s;
+    }
+
+    int pushKeyTableCalls = 0;
+    ghostty_surface_t lastKeyTableSurface = nullptr;
+    std::wstring lastKeyTableName;
+    void PushKeyTableForSurface(ghostty_surface_t s, std::wstring name) override {
+        ++pushKeyTableCalls;
+        lastKeyTableSurface = s;
+        lastKeyTableName = std::move(name);
+    }
+
+    int popKeyTableCalls = 0;
+    bool lastPopKeyTableAll = false;
+    void PopKeyTableForSurface(ghostty_surface_t s, bool all) override {
+        ++popKeyTableCalls;
+        lastKeyTableSurface = s;
+        lastPopKeyTableAll = all;
+    }
+
     int setMouseVisibilityCalls = 0;
     ghostty_surface_t lastMouseVisibilitySurface = nullptr;
     bool lastMouseVisible = true;

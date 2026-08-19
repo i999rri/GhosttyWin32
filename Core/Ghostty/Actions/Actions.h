@@ -136,6 +136,13 @@ public:
     // SECURE_INPUT (surface-targeted): password-prompt indicator.
     bool OnSecureInput(ghostty_surface_t surface,
                        ghostty_action_secure_input_e mode);
+    // KEY_SEQUENCE: pending-chord progress. Formats the trigger via
+    // TriggerLabel on the renderer thread so the view only sees text.
+    bool OnKeySequence(ghostty_surface_t surface,
+                       ghostty_action_key_sequence_s seq);
+    // KEY_TABLE: named modal key-table activate/deactivate stack ops.
+    bool OnKeyTable(ghostty_surface_t surface,
+                    ghostty_action_key_table_s table);
     bool OnReloadConfig(bool soft);
     bool OnConfigChange(ghostty_config_t newCfg);
     bool OnDesktopNotification(ghostty_surface_t surface,

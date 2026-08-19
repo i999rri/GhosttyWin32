@@ -170,6 +170,7 @@
     <ClCompile Include="test_window_decorations.cpp" />
     <ClCompile Include="test_tab_drag.cpp" />
     <ClCompile Include="test_pressed_tab.cpp" />
+    <ClCompile Include="test_trigger_label.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="MockMainWindowView.h" />

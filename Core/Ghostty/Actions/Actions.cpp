@@ -1,4 +1,5 @@
 #include "Actions.h"
+#include "Tags/TriggerLabel.h"
 #include "Interop/Encoding.h"
 #include <windows.h>
 #include <shellapi.h>
@@ -369,6 +370,51 @@ bool Actions::OnSecureInput(ghostty_surface_t surface,
     DispatchToView([this, surface, mode]() {
         m_view.SetSecureInputForSurface(surface, mode);
     });
+    return true;
+}
+
+bool Actions::OnKeySequence(ghostty_surface_t surface,
+                            ghostty_action_key_sequence_s seq) {
+    if (!surface) return true;
+    if (!seq.active) {
+        DispatchToView([this, surface]() {
+            m_view.ClearKeySequenceForSurface(surface);
+        });
+        return true;
+    }
+    std::wstring label = TriggerLabel(seq.trigger);
+    DispatchToView([this, surface, label = std::move(label)]() mutable {
+        m_view.AppendKeySequenceForSurface(surface, std::move(label));
+    });
+    return true;
+}
+
+bool Actions::OnKeyTable(ghostty_surface_t surface,
+                         ghostty_action_key_table_s table) {
+    if (!surface) return true;
+    switch (table.tag) {
+        case GHOSTTY_KEY_TABLE_ACTIVATE: {
+            // The name is length-bounded, not NUL-terminated.
+            std::wstring name;
+            if (table.value.activate.name && table.value.activate.len > 0) {
+                name = interop::Encoding::toUtf16(
+                    table.value.activate.name,
+                    static_cast<int>(table.value.activate.len));
+            }
+            DispatchToView([this, surface, name = std::move(name)]() mutable {
+                m_view.PushKeyTableForSurface(surface, std::move(name));
+            });
+            return true;
+        }
+        case GHOSTTY_KEY_TABLE_DEACTIVATE:
+        case GHOSTTY_KEY_TABLE_DEACTIVATE_ALL: {
+            const bool all = table.tag == GHOSTTY_KEY_TABLE_DEACTIVATE_ALL;
+            DispatchToView([this, surface, all]() {
+                m_view.PopKeyTableForSurface(surface, all);
+            });
+            return true;
+        }
+    }
     return true;
 }
 
