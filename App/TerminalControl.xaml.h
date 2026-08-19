@@ -11,6 +11,7 @@
 #include <atomic>
 #include <functional>
 #include <memory>
+#include <vector>
 
 namespace winrt::GhosttyWin32::implementation
 {
@@ -174,6 +175,15 @@ namespace winrt::GhosttyWin32::implementation
         // borders, etc.
         void SetCursorShape(ghostty_action_mouse_shape_e shape);
 
+        // ----- key-state badge (KEY_SEQUENCE / KEY_TABLE) -----
+        // The pane owns the accumulated state (pending chord labels,
+        // key-table name stack) because the actions only carry
+        // deltas. All UI thread only.
+        void AppendKeySequence(winrt::hstring const& label);
+        void ClearKeySequence();
+        void PushKeyTable(winrt::hstring const& name);
+        void PopKeyTable(bool all);
+
         // Reflect SECURE_INPUT on this pane's badge. ON/OFF set the
         // state directly; TOGGLE flips it here because the pane owns
         // the indicator state (ghostty's toggle keybind carries no
@@ -285,6 +295,13 @@ namespace winrt::GhosttyWin32::implementation
         // SECURE_INPUT indicator state; owned here so TOGGLE can
         // flip without the dispatcher tracking anything.
         bool m_secureInput = false;
+
+        // Key-state badge state. Rebuilds the badge text from both
+        // lists on every change — the lists are tiny (a table stack
+        // is 1-2 deep, a chord is 2-3 keys).
+        void UpdateKeyStateBadge();
+        std::vector<winrt::hstring> m_keyTables;
+        std::vector<winrt::hstring> m_keySequence;
     };
 }
 

@@ -358,6 +358,76 @@ TEST(GhosttyActionsTest, OnSecureInputIgnoresNullSurface) {
     EXPECT_EQ(view.setSecureInputCalls, 0);
 }
 
+TEST(GhosttyActionsTest, OnKeySequenceAppendsFormattedTrigger) {
+    MockMainWindowView view;
+    Actions actions(view);
+    auto surface = FakeSurface(0x5E9);
+    ghostty_action_key_sequence_s seq{};
+    seq.active = true;
+    seq.trigger.tag = GHOSTTY_TRIGGER_UNICODE;
+    seq.trigger.key.unicode = U'a';
+    seq.trigger.mods = GHOSTTY_MODS_CTRL;
+    EXPECT_TRUE(actions.OnKeySequence(surface, seq));
+    EXPECT_EQ(view.appendKeySequenceCalls, 1);
+    EXPECT_EQ(view.lastKeySequenceSurface, surface);
+    EXPECT_EQ(view.lastKeySequenceLabel, L"ctrl+a");
+    EXPECT_EQ(view.clearKeySequenceCalls, 0);
+}
+
+TEST(GhosttyActionsTest, OnKeySequenceInactiveClears) {
+    MockMainWindowView view;
+    Actions actions(view);
+    auto surface = FakeSurface(0x5E9);
+    ghostty_action_key_sequence_s seq{};
+    seq.active = false;
+    EXPECT_TRUE(actions.OnKeySequence(surface, seq));
+    EXPECT_EQ(view.clearKeySequenceCalls, 1);
+    EXPECT_EQ(view.appendKeySequenceCalls, 0);
+}
+
+TEST(GhosttyActionsTest, OnKeyTableActivatePushesLengthBoundedName) {
+    MockMainWindowView view;
+    Actions actions(view);
+    auto surface = FakeSurface(0x7AB);
+    // Longer buffer than len — the name is not NUL-terminated.
+    const char buf[] = "resizeTRAILING";
+    ghostty_action_key_table_s kt{};
+    kt.tag = GHOSTTY_KEY_TABLE_ACTIVATE;
+    kt.value.activate = { buf, 6 };
+    EXPECT_TRUE(actions.OnKeyTable(surface, kt));
+    EXPECT_EQ(view.pushKeyTableCalls, 1);
+    EXPECT_EQ(view.lastKeyTableSurface, surface);
+    EXPECT_EQ(view.lastKeyTableName, L"resize");
+}
+
+TEST(GhosttyActionsTest, OnKeyTableDeactivateVariantsPop) {
+    MockMainWindowView view;
+    Actions actions(view);
+    auto surface = FakeSurface(0x7AB);
+    ghostty_action_key_table_s kt{};
+    kt.tag = GHOSTTY_KEY_TABLE_DEACTIVATE;
+    EXPECT_TRUE(actions.OnKeyTable(surface, kt));
+    EXPECT_EQ(view.popKeyTableCalls, 1);
+    EXPECT_FALSE(view.lastPopKeyTableAll);
+    kt.tag = GHOSTTY_KEY_TABLE_DEACTIVATE_ALL;
+    EXPECT_TRUE(actions.OnKeyTable(surface, kt));
+    EXPECT_EQ(view.popKeyTableCalls, 2);
+    EXPECT_TRUE(view.lastPopKeyTableAll);
+}
+
+TEST(GhosttyActionsTest, KeyStateHandlersIgnoreNullSurface) {
+    MockMainWindowView view;
+    Actions actions(view);
+    ghostty_action_key_sequence_s seq{};
+    seq.active = true;
+    EXPECT_TRUE(actions.OnKeySequence(nullptr, seq));
+    ghostty_action_key_table_s kt{};
+    kt.tag = GHOSTTY_KEY_TABLE_DEACTIVATE;
+    EXPECT_TRUE(actions.OnKeyTable(nullptr, kt));
+    EXPECT_EQ(view.appendKeySequenceCalls, 0);
+    EXPECT_EQ(view.popKeyTableCalls, 0);
+}
+
 TEST(GhosttyActionsTest, OnMouseOverLinkIgnoresNullSurface) {
     MockMainWindowView view;
     Actions actions(view);

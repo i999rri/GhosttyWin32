@@ -100,6 +100,19 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
                 return m_actions.OnMouseVisibility(target.target.surface,
                                                    action.action.mouse_visibility);
             return false;
+        // KEY_SEQUENCE / KEY_TABLE: modal keyboard state indicators.
+        // Upstream treats the app-targeted variants as no-ops (logged
+        // warnings), so those ack rather than refuse.
+        case GHOSTTY_ACTION_KEY_SEQUENCE:
+            if (target.tag == GHOSTTY_TARGET_SURFACE)
+                return m_actions.OnKeySequence(target.target.surface,
+                                               action.action.key_sequence);
+            return true;
+        case GHOSTTY_ACTION_KEY_TABLE:
+            if (target.tag == GHOSTTY_TARGET_SURFACE)
+                return m_actions.OnKeyTable(target.target.surface,
+                                            action.action.key_table);
+            return true;
         case GHOSTTY_ACTION_SECURE_INPUT:
             if (target.tag == GHOSTTY_TARGET_SURFACE)
                 return m_actions.OnSecureInput(target.target.surface,
@@ -165,12 +178,9 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
         // quiet without inventing empty GhosttyActions methods.
         //
         // Informational actions whose UI surfaces this port
-        // doesn't have yet (read-only banner, pending chord,
-        // modal-key-table label, shell-supplied title source flag,
-        // PWD breadcrumb, post-command summary):
+        // doesn't have yet (read-only banner, shell-supplied title
+        // source flag, PWD breadcrumb, post-command summary):
         case GHOSTTY_ACTION_READONLY:
-        case GHOSTTY_ACTION_KEY_SEQUENCE:
-        case GHOSTTY_ACTION_KEY_TABLE:
         case GHOSTTY_ACTION_PROMPT_TITLE:
         case GHOSTTY_ACTION_PWD:
         case GHOSTTY_ACTION_COMMAND_FINISHED:

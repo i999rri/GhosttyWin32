@@ -197,6 +197,29 @@ struct IWindow {
     virtual void SetSecureInputForSurface(ghostty_surface_t surface,
                                           ghostty_action_secure_input_e mode) = 0;
 
+    // ----- key-state indicator (KEY_SEQUENCE / KEY_TABLE) -----
+    // Both actions are surface-targeted progress reports about
+    // modal keyboard state; the pane owns the accumulated state
+    // (pending chord list, key-table stack) because that is where
+    // the indicator renders. Labels arrive pre-formatted from the
+    // Core side (TriggerLabel) so the view never touches ghostty
+    // trigger structs.
+
+    // KEY_SEQUENCE active=true: one more trigger was consumed by a
+    // pending multi-chord binding — append its label to the pane's
+    // pending display.
+    virtual void AppendKeySequenceForSurface(ghostty_surface_t surface,
+                                             std::wstring triggerLabel) = 0;
+    // KEY_SEQUENCE active=false: the sequence completed or aborted —
+    // clear the pane's pending display.
+    virtual void ClearKeySequenceForSurface(ghostty_surface_t surface) = 0;
+    // KEY_TABLE ACTIVATE: push a named table onto the pane's stack.
+    virtual void PushKeyTableForSurface(ghostty_surface_t surface,
+                                        std::wstring name) = 0;
+    // KEY_TABLE DEACTIVATE (all=false) / DEACTIVATE_ALL (all=true).
+    virtual void PopKeyTableForSurface(ghostty_surface_t surface,
+                                       bool all) = 0;
+
     // Show or clear the hovered-link banner on the pane owning
     // `surface`. MOUSE_OVER_LINK fires with the URL while the pointer
     // is on a link and with an empty payload when it leaves, so an

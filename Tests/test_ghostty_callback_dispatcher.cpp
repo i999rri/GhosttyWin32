@@ -37,8 +37,13 @@ TEST(GhosttyCallbackDispatcherTest, InformationalAcksReturnTrue) {
     // surface-targeted variant routes (see the routing tests below).
     EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_SECURE_INPUT));
     EXPECT_EQ(view.setSecureInputCalls, 0);
+    // KEY_SEQUENCE / KEY_TABLE with an app target: upstream logs a
+    // warning and ignores them — acked here. Surface-targeted
+    // delivery routes (see the routing tests below).
     EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_KEY_SEQUENCE));
     EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_KEY_TABLE));
+    EXPECT_EQ(view.appendKeySequenceCalls + view.clearKeySequenceCalls +
+              view.pushKeyTableCalls + view.popKeyTableCalls, 0);
     EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_PROMPT_TITLE));
     EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_PWD));
     EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_COMMAND_FINISHED));
@@ -125,6 +130,32 @@ TEST(GhosttyCallbackDispatcherTest, MouseVisibilityRoutesToTheOwningSurface) {
 
     // App-targeted delivery has no owning pane — refuse.
     EXPECT_FALSE(DispatchTag(*d, GHOSTTY_ACTION_MOUSE_VISIBILITY));
+}
+
+TEST(GhosttyCallbackDispatcherTest, KeyStateActionsRouteToTheOwningSurface) {
+    MockMainWindowView view;
+    auto d = CallbackDispatcher::Create(view);
+
+    ghostty_target_s target{};
+    target.tag = GHOSTTY_TARGET_SURFACE;
+    target.target.surface = reinterpret_cast<ghostty_surface_t>(0xBEEF);
+
+    ghostty_action_s action{};
+    action.tag = GHOSTTY_ACTION_KEY_SEQUENCE;
+    action.action.key_sequence.active = true;
+    action.action.key_sequence.trigger.tag = GHOSTTY_TRIGGER_UNICODE;
+    action.action.key_sequence.trigger.key.unicode = U'a';
+    action.action.key_sequence.trigger.mods = GHOSTTY_MODS_CTRL;
+    EXPECT_TRUE(d->DispatchAction(target, action));
+    EXPECT_EQ(view.appendKeySequenceCalls, 1);
+    EXPECT_EQ(view.lastKeySequenceLabel, L"ctrl+a");
+
+    ghostty_action_s tableAction{};
+    tableAction.tag = GHOSTTY_ACTION_KEY_TABLE;
+    tableAction.action.key_table.tag = GHOSTTY_KEY_TABLE_DEACTIVATE_ALL;
+    EXPECT_TRUE(d->DispatchAction(target, tableAction));
+    EXPECT_EQ(view.popKeyTableCalls, 1);
+    EXPECT_TRUE(view.lastPopKeyTableAll);
 }
 
 TEST(GhosttyCallbackDispatcherTest, SecureInputRoutesToTheOwningSurface) {

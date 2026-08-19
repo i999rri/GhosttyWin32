@@ -1622,6 +1622,47 @@ namespace winrt::GhosttyWin32::implementation
         }
     }
 
+    // KEY_SEQUENCE / KEY_TABLE: owning-leaf routing like the other
+    // pane-visual actions; the four operations share the lookup and
+    // differ only in which TerminalControl mutator they call.
+    void MainWindow::AppendKeySequenceForSurface(ghostty_surface_t surface,
+                                                 std::wstring triggerLabel)
+    {
+        auto lookup = m_tabs.FindPaneBySurface(surface);
+        if (!lookup.pane) return;
+        if (auto* tc = Tab::PaneToTerminalControl(*lookup.pane)) {
+            tc->AppendKeySequence(winrt::hstring{ triggerLabel });
+        }
+    }
+
+    void MainWindow::ClearKeySequenceForSurface(ghostty_surface_t surface)
+    {
+        auto lookup = m_tabs.FindPaneBySurface(surface);
+        if (!lookup.pane) return;
+        if (auto* tc = Tab::PaneToTerminalControl(*lookup.pane)) {
+            tc->ClearKeySequence();
+        }
+    }
+
+    void MainWindow::PushKeyTableForSurface(ghostty_surface_t surface,
+                                            std::wstring name)
+    {
+        auto lookup = m_tabs.FindPaneBySurface(surface);
+        if (!lookup.pane) return;
+        if (auto* tc = Tab::PaneToTerminalControl(*lookup.pane)) {
+            tc->PushKeyTable(winrt::hstring{ name });
+        }
+    }
+
+    void MainWindow::PopKeyTableForSurface(ghostty_surface_t surface, bool all)
+    {
+        auto lookup = m_tabs.FindPaneBySurface(surface);
+        if (!lookup.pane) return;
+        if (auto* tc = Tab::PaneToTerminalControl(*lookup.pane)) {
+            tc->PopKeyTable(all);
+        }
+    }
+
     void MainWindow::SetMouseVisibilityForSurface(ghostty_surface_t surface,
                                                   bool visible)
     {

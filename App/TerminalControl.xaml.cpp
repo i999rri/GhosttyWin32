@@ -309,6 +309,63 @@ namespace winrt::GhosttyWin32::implementation
         }
     }
 
+    void TerminalControl::AppendKeySequence(winrt::hstring const& label)
+    {
+        m_keySequence.push_back(label);
+        UpdateKeyStateBadge();
+    }
+
+    void TerminalControl::ClearKeySequence()
+    {
+        if (m_keySequence.empty()) return;
+        m_keySequence.clear();
+        UpdateKeyStateBadge();
+    }
+
+    void TerminalControl::PushKeyTable(winrt::hstring const& name)
+    {
+        m_keyTables.push_back(name);
+        UpdateKeyStateBadge();
+    }
+
+    void TerminalControl::PopKeyTable(bool all)
+    {
+        if (m_keyTables.empty()) return;
+        if (all) {
+            m_keyTables.clear();
+        } else {
+            m_keyTables.pop_back();
+        }
+        UpdateKeyStateBadge();
+    }
+
+    void TerminalControl::UpdateKeyStateBadge()
+    {
+        // Table stack first ("resize"), pending chord second
+        // ("ctrl+a …"), separated when both are live. Mirrors the
+        // information upstream's KeyStateIndicator carries, minus
+        // its popover chrome.
+        std::wstring text;
+        for (auto const& name : m_keyTables) {
+            if (!text.empty()) text += L" · ";
+            text += name;
+        }
+        if (!m_keySequence.empty()) {
+            if (!text.empty()) text += L" · ";
+            for (auto const& label : m_keySequence) {
+                text += label;
+                text += L' ';
+            }
+            text += L'…';
+        }
+        if (text.empty()) {
+            KeyStateBadge().Visibility(winrt::Microsoft::UI::Xaml::Visibility::Collapsed);
+            return;
+        }
+        KeyStateBadgeText().Text(text);
+        KeyStateBadge().Visibility(winrt::Microsoft::UI::Xaml::Visibility::Visible);
+    }
+
     void TerminalControl::SetSecureInput(ghostty_action_secure_input_e mode)
     {
         const bool on = mode == GHOSTTY_SECURE_INPUT_ON    ? true
