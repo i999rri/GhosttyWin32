@@ -183,6 +183,15 @@ struct MockMainWindowView : core::host::IWindow {
         lastSecureInputMode = mode;
     }
 
+    int setPwdCalls = 0;
+    ghostty_surface_t lastPwdSurface = nullptr;
+    std::wstring lastPwd;
+    void SetPwdForSurface(ghostty_surface_t s, std::wstring pwd) override {
+        ++setPwdCalls;
+        lastPwdSurface = s;
+        lastPwd = std::move(pwd);
+    }
+
     int appendKeySequenceCalls = 0;
     ghostty_surface_t lastKeySequenceSurface = nullptr;
     std::wstring lastKeySequenceLabel;

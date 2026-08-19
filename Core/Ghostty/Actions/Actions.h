@@ -136,6 +136,8 @@ public:
     // SECURE_INPUT (surface-targeted): password-prompt indicator.
     bool OnSecureInput(ghostty_surface_t surface,
                        ghostty_action_secure_input_e mode);
+    // PWD: shell-reported working directory (OSC 7).
+    bool OnPwd(ghostty_surface_t surface, const char* utf8Pwd);
     // KEY_SEQUENCE: pending-chord progress. Formats the trigger via
     // TriggerLabel on the renderer thread so the view only sees text.
     bool OnKeySequence(ghostty_surface_t surface,

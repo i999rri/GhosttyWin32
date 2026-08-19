@@ -197,6 +197,13 @@ struct IWindow {
     virtual void SetSecureInputForSurface(ghostty_surface_t surface,
                                           ghostty_action_secure_input_e mode) = 0;
 
+    // PWD: the shell reported its working directory (OSC 7). Shown
+    // as the tooltip of the tab containing `surface` — with splits,
+    // the last pane to report wins, which matches "the directory
+    // the user last worked in". An empty pwd clears the tooltip.
+    virtual void SetPwdForSurface(ghostty_surface_t surface,
+                                  std::wstring pwd) = 0;
+
     // ----- key-state indicator (KEY_SEQUENCE / KEY_TABLE) -----
     // Both actions are surface-targeted progress reports about
     // modal keyboard state; the pane owns the accumulated state

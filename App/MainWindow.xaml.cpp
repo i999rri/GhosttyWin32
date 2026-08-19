@@ -1622,6 +1622,18 @@ namespace winrt::GhosttyWin32::implementation
         }
     }
 
+    void MainWindow::SetPwdForSurface(ghostty_surface_t surface, std::wstring pwd)
+    {
+        // Tab-level, not pane-level: the tooltip hangs off the
+        // TabViewItem. With splits the last pane to report wins —
+        // "the directory the user last worked in".
+        auto* t = m_tabs.FindBySurface(surface);
+        if (!t) return;
+        Microsoft::UI::Xaml::Controls::ToolTipService::SetToolTip(
+            t->Item(),
+            pwd.empty() ? nullptr : box_value(winrt::hstring{ pwd }));
+    }
+
     // KEY_SEQUENCE / KEY_TABLE: owning-leaf routing like the other
     // pane-visual actions; the four operations share the lookup and
     // differ only in which TerminalControl mutator they call.
