@@ -386,6 +386,17 @@ bool Actions::OnPwd(ghostty_surface_t surface, const char* utf8Pwd) {
     return true;
 }
 
+bool Actions::OnCommandFinished(ghostty_surface_t surface,
+                                ghostty_action_command_finished_s cf) {
+    if (!surface) return true;
+    const int exitCode = cf.exit_code;   // -1 = not reported
+    const uint64_t durationNs = cf.duration;
+    DispatchToView([this, surface, exitCode, durationNs]() {
+        m_view.NotifyCommandFinishedForSurface(surface, exitCode, durationNs);
+    });
+    return true;
+}
+
 bool Actions::OnKeySequence(ghostty_surface_t surface,
                             ghostty_action_key_sequence_s seq) {
     if (!surface) return true;

@@ -197,6 +197,16 @@ struct IWindow {
     virtual void SetSecureInputForSurface(ghostty_surface_t surface,
                                           ghostty_action_secure_input_e mode) = 0;
 
+    // COMMAND_FINISHED: a shell-integration-tracked command ended.
+    // The view owns the whole policy: it reads the notify-on-
+    // command-finish config trio (mode / threshold / actions),
+    // knows whether the surface is focused and the window is
+    // foreground, and fires bell / toast accordingly. exitCode is
+    // -1 when the shell didn't report one.
+    virtual void NotifyCommandFinishedForSurface(ghostty_surface_t surface,
+                                                 int exitCode,
+                                                 uint64_t durationNs) = 0;
+
     // PWD: the shell reported its working directory (OSC 7). Shown
     // as the tooltip of the tab containing `surface` — with splits,
     // the last pane to report wins, which matches "the directory

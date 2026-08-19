@@ -100,6 +100,13 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
                 return m_actions.OnMouseVisibility(target.target.surface,
                                                    action.action.mouse_visibility);
             return false;
+        // COMMAND_FINISHED: shell-integration command tracking. The
+        // app-targeted variant is a no-op upstream — ack.
+        case GHOSTTY_ACTION_COMMAND_FINISHED:
+            if (target.tag == GHOSTTY_TARGET_SURFACE)
+                return m_actions.OnCommandFinished(target.target.surface,
+                                                   action.action.command_finished);
+            return true;
         // PWD: shell-reported working directory. Upstream treats the
         // app-targeted variant as a no-op (logged warning) — ack.
         case GHOSTTY_ACTION_PWD:
@@ -186,10 +193,9 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
         //
         // Informational actions whose UI surfaces this port
         // doesn't have yet (read-only banner, shell-supplied title
-        // source flag, post-command summary):
+        // source flag):
         case GHOSTTY_ACTION_READONLY:
         case GHOSTTY_ACTION_PROMPT_TITLE:
-        case GHOSTTY_ACTION_COMMAND_FINISHED:
         // Feature surfaces intentionally not on this port's plate
         // (search bar, ImGui inspector, tab overview, quick
         // terminal, command palette, terminal-level undo/redo):

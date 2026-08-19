@@ -358,6 +358,28 @@ TEST(GhosttyActionsTest, OnSecureInputIgnoresNullSurface) {
     EXPECT_EQ(view.setSecureInputCalls, 0);
 }
 
+TEST(GhosttyActionsTest, OnCommandFinishedForwardsExitCodeAndDuration) {
+    MockMainWindowView view;
+    Actions actions(view);
+    auto surface = FakeSurface(0xCF);
+    ghostty_action_command_finished_s cf{};
+    cf.exit_code = 2;
+    cf.duration = 7'000'000'000ull;
+    EXPECT_TRUE(actions.OnCommandFinished(surface, cf));
+    EXPECT_EQ(view.notifyCommandFinishedCalls, 1);
+    EXPECT_EQ(view.lastCommandFinishedSurface, surface);
+    EXPECT_EQ(view.lastCommandExitCode, 2);
+    EXPECT_EQ(view.lastCommandDurationNs, 7'000'000'000ull);
+}
+
+TEST(GhosttyActionsTest, OnCommandFinishedIgnoresNullSurface) {
+    MockMainWindowView view;
+    Actions actions(view);
+    ghostty_action_command_finished_s cf{};
+    EXPECT_TRUE(actions.OnCommandFinished(nullptr, cf));
+    EXPECT_EQ(view.notifyCommandFinishedCalls, 0);
+}
+
 TEST(GhosttyActionsTest, OnPwdForwardsUtf16Path) {
     MockMainWindowView view;
     Actions actions(view);

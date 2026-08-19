@@ -2,6 +2,7 @@
 #include "MainWindow.xaml.h"
 #include "App.xaml.h"
 #include "Ghostty/CallbackDispatcher.h"
+#include "Ghostty/Config.h"
 #include "Host/KeyModifiers.h"
 #include "Interop/Encoding.h"
 #include "Display/PhysicalPixels.h"
@@ -1619,6 +1620,68 @@ namespace winrt::GhosttyWin32::implementation
         if (!lookup.pane) return;
         if (auto* tc = Tab::PaneToTerminalControl(*lookup.pane)) {
             tc->SetSecureInput(mode);
+        }
+    }
+
+    namespace {
+        // "2m 5s" / "12s" style, for the command-finished toast body.
+        // Sub-second commands rarely qualify (the default threshold
+        // is 5s), so second granularity is enough.
+        winrt::hstring FormatDurationNs(uint64_t ns) {
+            const uint64_t totalSec = ns / 1'000'000'000ull;
+            wchar_t buf[64];
+            if (totalSec >= 3600) {
+                swprintf_s(buf, L"%lluh %llum",
+                           totalSec / 3600, (totalSec % 3600) / 60);
+            } else if (totalSec >= 60) {
+                swprintf_s(buf, L"%llum %llus",
+                           totalSec / 60, totalSec % 60);
+            } else {
+                swprintf_s(buf, L"%llus", totalSec);
+            }
+            return winrt::hstring{ buf };
+        }
+    }
+
+    void MainWindow::NotifyCommandFinishedForSurface(ghostty_surface_t surface,
+                                                     int exitCode,
+                                                     uint64_t durationNs)
+    {
+        // Policy mirrors macOS commandFinished: config gate first
+        // (mode, then duration threshold), then the configured
+        // actions. Config is read fresh per event so a reload takes
+        // effect without replumbing.
+        core::ghostty::Config cfg{ m_ghosttyApp->ConfigHandle() };
+        using Notify = core::ghostty::Config::NotifyOnCommandFinish;
+        const auto mode = cfg.CommandFinishNotify();
+        if (mode == Notify::Never) return;
+        if (mode == Notify::Unfocused) {
+            // "Focused" means the pane is this window's active
+            // surface AND the window is in the foreground — a
+            // command finishing in a visible, focused pane needs no
+            // announcement.
+            const bool focused = surface == m_activeSurface &&
+                                 GetForegroundWindow() == m_hwnd;
+            if (focused) return;
+        }
+        if (durationNs < cfg.CommandFinishNotifyAfterNs()) return;
+
+        const auto actions = cfg.CommandFinishNotifyActions();
+        if (actions.bell) MessageBeep(MB_OK);
+        if (actions.notify) {
+            // Title wording matches upstream macOS; exitCode < 0
+            // means the shell didn't report one.
+            std::wstring title = exitCode < 0 ? L"Command Finished"
+                                : exitCode == 0 ? L"Command Succeeded"
+                                                : L"Command Failed";
+            std::wstring body = L"Finished in ";
+            body += FormatDurationNs(durationNs);
+            if (exitCode >= 0) {
+                body += L" (exit ";
+                body += std::to_wstring(exitCode);
+                body += L")";
+            }
+            ShowDesktopNotification(surface, std::move(title), std::move(body));
         }
     }
 
