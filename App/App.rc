@@ -1,0 +1,3 @@
+#include "resource.h"
+
+IDC_GHOSTTY_BLANK_CURSOR CURSOR "Assets\\blank.cur"

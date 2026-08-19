@@ -176,6 +176,16 @@ struct IWindow {
     virtual void SetCursorShapeForSurface(ghostty_surface_t surface,
                                           ghostty_action_mouse_shape_e shape) = 0;
 
+    // Show or hide the pointer cursor over the pane owning `surface`.
+    // MOUSE_VISIBILITY fires with HIDDEN while the user types (config
+    // `mouse-hide-while-typing`) and with VISIBLE again on the next
+    // pointer move — ghostty drives both directions, the host only
+    // mirrors them. Hiding goes through WinUI's ProtectedCursor
+    // (issue #60: a WM_SETCURSOR subclass loses to WinUI re-asserting
+    // the shape on every pointer move).
+    virtual void SetMouseVisibilityForSurface(ghostty_surface_t surface,
+                                              bool visible) = 0;
+
     // Show or clear the hovered-link banner on the pane owning
     // `surface`. MOUSE_OVER_LINK fires with the URL while the pointer
     // is on a link and with an empty payload when it leaves, so an

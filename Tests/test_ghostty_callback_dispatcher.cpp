@@ -69,15 +69,14 @@ TEST(GhosttyCallbackDispatcherTest, NoConsumerAcksReturnTrue) {
     EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_CELL_SIZE));
 }
 
-TEST(GhosttyCallbackDispatcherTest, DisabledFeaturesAckedNotDropped) {
+TEST(GhosttyCallbackDispatcherTest, FloatWindowRoutesToTheView) {
+    // Was part of the "disabled features" ack set; now routed for
+    // real (#109). Kept here so the tag can't silently fall back to
+    // the default branch.
     MockMainWindowView view;
     auto d = CallbackDispatcher::Create(view);
-
-    // FLOAT_WINDOW: dispatch path not understood yet, but tag
-    // routes to ack so the future re-enable doesn't surprise us.
     EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_FLOAT_WINDOW));
-    // MOUSE_VISIBILITY: disabled per #60.
-    EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_MOUSE_VISIBILITY));
+    EXPECT_EQ(view.setFloatOnTopCalls, 1);
 }
 
 // ----- surface-targeted routing -----
@@ -102,6 +101,26 @@ TEST(GhosttyCallbackDispatcherTest, MouseOverLinkRoutesToTheOwningSurface) {
     // App-targeted MOUSE_OVER_LINK has no owning pane — refuse
     // (return false) rather than silently ack.
     EXPECT_FALSE(DispatchTag(*d, GHOSTTY_ACTION_MOUSE_OVER_LINK));
+}
+
+TEST(GhosttyCallbackDispatcherTest, MouseVisibilityRoutesToTheOwningSurface) {
+    MockMainWindowView view;
+    auto d = CallbackDispatcher::Create(view);
+
+    ghostty_target_s target{};
+    target.tag = GHOSTTY_TARGET_SURFACE;
+    target.target.surface = reinterpret_cast<ghostty_surface_t>(0xBEEF);
+    ghostty_action_s action{};
+    action.tag = GHOSTTY_ACTION_MOUSE_VISIBILITY;
+    action.action.mouse_visibility = GHOSTTY_MOUSE_HIDDEN;
+
+    EXPECT_TRUE(d->DispatchAction(target, action));
+    EXPECT_EQ(view.setMouseVisibilityCalls, 1);
+    EXPECT_EQ(view.lastMouseVisibilitySurface, target.target.surface);
+    EXPECT_FALSE(view.lastMouseVisible);
+
+    // App-targeted delivery has no owning pane — refuse.
+    EXPECT_FALSE(DispatchTag(*d, GHOSTTY_ACTION_MOUSE_VISIBILITY));
 }
 
 // ----- view-free live handlers -----

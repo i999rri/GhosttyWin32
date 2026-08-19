@@ -146,6 +146,9 @@
     <Manifest Include="app.manifest" />
   </ItemGroup>
   <ItemGroup>
+    <ResourceCompile Include="App.rc" />
+  </ItemGroup>
+  <ItemGroup>
     <!--
       Core static library holds the winrt-free implementation
       (action handlers, callback dispatch, value objects, host-side

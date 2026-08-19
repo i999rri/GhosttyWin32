@@ -351,6 +351,16 @@ bool Actions::OnMouseShape(ghostty_surface_t surface,
     return true;
 }
 
+bool Actions::OnMouseVisibility(ghostty_surface_t surface,
+                                ghostty_action_mouse_visibility_e visibility) {
+    if (!surface) return true;
+    const bool visible = visibility == GHOSTTY_MOUSE_VISIBLE;
+    DispatchToView([this, surface, visible]() {
+        m_view.SetMouseVisibilityForSurface(surface, visible);
+    });
+    return true;
+}
+
 bool Actions::OnMouseOverLink(ghostty_surface_t surface,
                               ghostty_action_mouse_over_link_s link) {
     if (!surface) return true;

@@ -136,6 +136,8 @@ namespace winrt::GhosttyWin32::implementation
                                       ghostty_action_mouse_shape_e shape) override;
         void SetHoveredLinkForSurface(ghostty_surface_t surface,
                                       std::wstring url) override;
+        void SetMouseVisibilityForSurface(ghostty_surface_t surface,
+                                          bool visible) override;
         void ReplaceConfig(ghostty_config_t cloned) override;
         void ReloadConfig(bool soft) override;
         void ShowDesktopNotification(ghostty_surface_t surface,

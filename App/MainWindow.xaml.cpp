@@ -1610,6 +1610,20 @@ namespace winrt::GhosttyWin32::implementation
         }
     }
 
+    void MainWindow::SetMouseVisibilityForSurface(ghostty_surface_t surface,
+                                                  bool visible)
+    {
+        // Owning-leaf routing, same as the other pointer-adjacent
+        // actions: the hide belongs to the pane the user is typing
+        // in, which with splits is not necessarily the active leaf
+        // of every tab.
+        auto lookup = m_tabs.FindPaneBySurface(surface);
+        if (!lookup.pane) return;
+        if (auto* tc = Tab::PaneToTerminalControl(*lookup.pane)) {
+            tc->SetMouseVisibility(visible);
+        }
+    }
+
     void MainWindow::SetHoveredLinkForSurface(ghostty_surface_t surface,
                                               std::wstring url)
     {
