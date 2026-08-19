@@ -173,6 +173,15 @@ struct MockMainWindowView : core::host::IWindow {
         lastHoveredLinkUrl = std::move(url);
     }
 
+    int setMouseVisibilityCalls = 0;
+    ghostty_surface_t lastMouseVisibilitySurface = nullptr;
+    bool lastMouseVisible = true;
+    void SetMouseVisibilityForSurface(ghostty_surface_t s, bool visible) override {
+        ++setMouseVisibilityCalls;
+        lastMouseVisibilitySurface = s;
+        lastMouseVisible = visible;
+    }
+
     int replaceConfigCalls = 0;
     // Records whether the clone passed in differed from the
     // original. The production view takes ownership; the mock

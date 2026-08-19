@@ -321,6 +321,26 @@ TEST(GhosttyActionsTest, OnMouseOverLinkEmptyPayloadClearsTheBanner) {
     EXPECT_TRUE(view.lastHoveredLinkUrl.empty());
 }
 
+TEST(GhosttyActionsTest, OnMouseVisibilityMapsEnumToBool) {
+    MockMainWindowView view;
+    Actions actions(view);
+    auto surface = FakeSurface(0xF0);
+    EXPECT_TRUE(actions.OnMouseVisibility(surface, GHOSTTY_MOUSE_HIDDEN));
+    EXPECT_EQ(view.setMouseVisibilityCalls, 1);
+    EXPECT_EQ(view.lastMouseVisibilitySurface, surface);
+    EXPECT_FALSE(view.lastMouseVisible);
+    EXPECT_TRUE(actions.OnMouseVisibility(surface, GHOSTTY_MOUSE_VISIBLE));
+    EXPECT_EQ(view.setMouseVisibilityCalls, 2);
+    EXPECT_TRUE(view.lastMouseVisible);
+}
+
+TEST(GhosttyActionsTest, OnMouseVisibilityIgnoresNullSurface) {
+    MockMainWindowView view;
+    Actions actions(view);
+    EXPECT_TRUE(actions.OnMouseVisibility(nullptr, GHOSTTY_MOUSE_HIDDEN));
+    EXPECT_EQ(view.setMouseVisibilityCalls, 0);
+}
+
 TEST(GhosttyActionsTest, OnMouseOverLinkIgnoresNullSurface) {
     MockMainWindowView view;
     Actions actions(view);

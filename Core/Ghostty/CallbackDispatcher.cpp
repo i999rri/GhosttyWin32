@@ -95,6 +95,11 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
                 return m_actions.OnMouseOverLink(target.target.surface,
                                                  action.action.mouse_over_link);
             return false;
+        case GHOSTTY_ACTION_MOUSE_VISIBILITY:
+            if (target.tag == GHOSTTY_TARGET_SURFACE)
+                return m_actions.OnMouseVisibility(target.target.surface,
+                                                   action.action.mouse_visibility);
+            return false;
         case GHOSTTY_ACTION_RELOAD_CONFIG:
             return m_actions.OnReloadConfig(action.action.reload_config.soft);
         case GHOSTTY_ACTION_CONFIG_CHANGE:
@@ -193,10 +198,6 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
         // premultiplied-alpha change. Ack to keep the action_cb
         // path quiet meanwhile.)
         case GHOSTTY_ACTION_TOGGLE_BACKGROUND_OPACITY:
-        // MOUSE_VISIBILITY disabled pending #60 (the renderer-
-        // side ghostty_surface_key call doesn't populate the
-        // event fields ghostty checks before firing this).
-        case GHOSTTY_ACTION_MOUSE_VISIBILITY:
             return true;
 
         default:

@@ -130,6 +130,9 @@ public:
     // payload when the pointer leaves (clears the banner).
     bool OnMouseOverLink(ghostty_surface_t surface,
                          ghostty_action_mouse_over_link_s link);
+    // MOUSE_VISIBILITY: HIDDEN while typing, VISIBLE on pointer move.
+    bool OnMouseVisibility(ghostty_surface_t surface,
+                           ghostty_action_mouse_visibility_e visibility);
     bool OnReloadConfig(bool soft);
     bool OnConfigChange(ghostty_config_t newCfg);
     bool OnDesktopNotification(ghostty_surface_t surface,

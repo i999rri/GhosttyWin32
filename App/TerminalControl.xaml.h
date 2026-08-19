@@ -174,6 +174,13 @@ namespace winrt::GhosttyWin32::implementation
         // borders, etc.
         void SetCursorShape(ghostty_action_mouse_shape_e shape);
 
+        // Mirror ghostty's MOUSE_VISIBILITY on this pane: false hides
+        // the pointer (mouse-hide-while-typing), true restores the
+        // last MOUSE_SHAPE. UI thread only. ghostty drives both
+        // directions (hide on keypress, show on pointer move), so
+        // this holds no policy — just the ProtectedCursor mechanics.
+        void SetMouseVisibility(bool visible);
+
         // Show the hovered-link banner with `url`, or hide it when
         // `url` is empty. UI thread only — the caller dispatches from
         // the renderer thread. See the LinkBanner comment in the XAML
@@ -261,6 +268,13 @@ namespace winrt::GhosttyWin32::implementation
         // avoid reallocating per focus event.
         double m_unfocusedOpacity = 0.3;
         winrt::Microsoft::UI::Xaml::Media::SolidColorBrush m_unfocusedFillBrush{ nullptr };
+
+        // MOUSE_VISIBILITY state. m_visibleCursor caches the cursor
+        // built by the last SetCursorShape call so a show can restore
+        // it; m_cursorHidden gates shape updates from resurrecting a
+        // hidden cursor. See SetMouseVisibility().
+        bool m_cursorHidden = false;
+        winrt::Microsoft::UI::Input::InputCursor m_visibleCursor{ nullptr };
     };
 }
 

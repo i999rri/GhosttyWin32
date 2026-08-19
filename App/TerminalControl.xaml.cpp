@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "TerminalControl.xaml.h"
+#include "resource.h"
 #include "Interop/Encoding.h"
 #include "Host/KeyModifiers.h"
 #include "Input/KeyEventTranslator.h"
@@ -297,7 +298,38 @@ namespace winrt::GhosttyWin32::implementation
             case GHOSTTY_MOUSE_SHAPE_NWSE_RESIZE:      mapped = muxi::SizeNorthwestSoutheast; break;
             default:                                   mapped = muxi::Arrow; break;
         }
-        ProtectedCursor(winrt::Microsoft::UI::Input::InputSystemCursor::Create(mapped));
+        // Cache the shape instead of applying it unconditionally:
+        // while MOUSE_VISIBILITY has the cursor hidden, a shape
+        // update (ghostty re-sends TEXT/POINTER as the pointer
+        // moves over cells) must not resurrect the cursor — the
+        // cached value is applied when visibility comes back.
+        m_visibleCursor = winrt::Microsoft::UI::Input::InputSystemCursor::Create(mapped);
+        if (!m_cursorHidden) {
+            ProtectedCursor(m_visibleCursor);
+        }
+    }
+
+    void TerminalControl::SetMouseVisibility(bool visible)
+    {
+        if (m_cursorHidden == !visible) return;
+        m_cursorHidden = !visible;
+        // WinUI 3 has no "hide" on ProtectedCursor: null means
+        // "inherit the parent's cursor" and renders as Arrow
+        // (verified during #60). Hiding is therefore expressed as
+        // showing a fully-transparent cursor embedded as a Win32
+        // resource in the EXE. Created once; UI thread only, so the
+        // local static needs no synchronization.
+        static const auto blank = []() -> winrt::Microsoft::UI::Input::InputCursor {
+            try {
+                return winrt::Microsoft::UI::Input::InputDesktopResourceCursor::CreateFromModule(
+                    L"GhosttyWin32.exe", IDC_GHOSTTY_BLANK_CURSOR);
+            } catch (winrt::hresult_error const&) {
+                // Resource lookup failed — degrade to the inherited
+                // Arrow rather than crashing over a cosmetic feature.
+                return nullptr;
+            }
+        }();
+        ProtectedCursor(visible ? m_visibleCursor : blank);
     }
 
     void TerminalControl::SetUnfocusedAppearance(double overlayOpacity,
