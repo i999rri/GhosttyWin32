@@ -28,6 +28,11 @@
       <Configuration>Release</Configuration>
       <Platform>ARM64</Platform>
     </ProjectConfiguration>
+    <!-- ASan = Debug + /fsanitize=address; see Directory.Build.props. -->
+    <ProjectConfiguration Include="ASan|x64">
+      <Configuration>ASan</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup>
     <WapProjPath Condition="'$(WapProjPath)'==''">$(MSBuildExtensionsPath)\Microsoft\DesktopBridge\</WapProjPath>
@@ -48,30 +53,33 @@
   <!--
     Manifest per configuration.
 
-    Debug|* → Package.Debug.appxmanifest (Identity Name ends in ".Dev",
-      distinct DisplayName + toast CLSID). Lets an F5-registered debug
-      loose install coexist with an installed production MSIX on the
-      same machine instead of tripping 0x80073cfb every round.
-
     Release|* → Package.appxmanifest (the production identity CI signs
       and ships). Every CI channel — dev-build / RC / production —
       builds Release, so this is what ends up in every MSIX we publish.
 
+    Everything else (Debug, ASan) → Package.Debug.appxmanifest
+      (Identity Name ends in ".Dev", distinct DisplayName + toast
+      CLSID). Lets an F5-registered loose install coexist with an
+      installed production MSIX on the same machine instead of
+      tripping 0x80073cfb every round. Keyed on "not Release" rather
+      than listing dev configurations so a future local-only
+      configuration can't silently pick up the production identity.
+
     See the comment at the top of Package.Debug.appxmanifest for the
     fuller rationale and the two-file maintenance cost.
   -->
-  <ItemGroup Condition="'$(Configuration)'!='Debug'">
+  <ItemGroup Condition="'$(Configuration)'=='Release'">
     <AppxManifest Include="Package.appxmanifest">
       <SubType>Designer</SubType>
     </AppxManifest>
   </ItemGroup>
-  <ItemGroup Condition="'$(Configuration)'=='Debug'">
+  <ItemGroup Condition="'$(Configuration)'!='Release'">
     <AppxManifest Include="Package.Debug.appxmanifest">
       <SubType>Designer</SubType>
     </AppxManifest>
     <None Include="Package.appxmanifest" />
   </ItemGroup>
-  <ItemGroup Condition="'$(Configuration)'!='Debug'">
+  <ItemGroup Condition="'$(Configuration)'=='Release'">
     <None Include="Package.Debug.appxmanifest" />
   </ItemGroup>
   <ItemGroup>

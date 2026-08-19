@@ -17,6 +17,11 @@
       <Configuration>Release</Configuration>
       <Platform>x64</Platform>
     </ProjectConfiguration>
+    <!-- ASan = Debug + /fsanitize=address; see Directory.Build.props. -->
+    <ProjectConfiguration Include="ASan|x64">
+      <Configuration>ASan</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{265c76cb-58a2-4632-b6fe-ec5093b04d10}</ProjectGuid>
@@ -59,7 +64,7 @@
       <SubSystem>Console</SubSystem>
     </Link>
   </ItemDefinitionGroup>
-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64' or '$(Configuration)|$(Platform)'=='ASan|x64'">
     <ClCompile>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
@@ -83,6 +88,28 @@
       -->
       <AdditionalLibraryDirectories>$(ProjectDir)..\external\ghostty\zig-out\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalDependencies>ghostty-internal.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <PropertyGroup Condition="'$(Configuration)'=='ASan'">
+    <!-- ASan does not support incremental linking. -->
+    <LinkIncremental>false</LinkIncremental>
+    <!--
+      The googletest package targets pick the gtest flavor by
+      configuration NAME ('Debug' vs everything else), so under
+      "ASan" they would inject the Release gtest (/MD) into our
+      /MDd build and the link would fail with runtime-library
+      mismatches. Force the package's injection off and hand-wire
+      the Debug flavor below instead.
+    -->
+    <Force-Disable-Microsoft-googletest-v140-windesktop-msvcstl-static-rt-dyn>true</Force-Disable-Microsoft-googletest-v140-windesktop-msvcstl-static-rt-dyn>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='ASan|x64'">
+    <ClCompile>
+      <!-- Hand-wired replacement for the disabled gtest targets. -->
+      <AdditionalIncludeDirectories>$(ProjectDir)..\packages\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.1.8.1.8\build\native\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>$(ProjectDir)..\packages\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.1.8.1.8\lib\native\v140\windesktop\msvcstl\static\rt-dyn\x64\Debug\gtestd.lib;$(ProjectDir)..\packages\Microsoft.googletest.v140.windesktop.msvcstl.static.rt-dyn.1.8.1.8\lib\native\v140\windesktop\msvcstl\static\rt-dyn\x64\Debug\gtest_maind.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -129,6 +156,7 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='ASan|x64'">Create</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="test_ime_buffer.cpp" />
     <ClCompile Include="test_key_modifiers.cpp" />
@@ -171,6 +199,19 @@
     next to the test EXE after every build so direct execution
     (and Test Explorer's runner) finds it.
   -->
+  <!--
+    The ASan runtime is a DLL and the loader must find it next to
+    the EXE, but the build does NOT copy it to OutDir automatically
+    (verified: Tests.exe failed to start with "clang_rt.asan_
+    dynamic-x86_64.dll not found", which also left Test Explorer's
+    discovery silently empty). Copy it ourselves, same pattern as
+    the ghostty.dll copy below.
+  -->
+  <Target Name="CopyAsanRuntimeToOutput" AfterTargets="Build" Condition="'$(Configuration)'=='ASan'">
+    <Copy SourceFiles="$(VCToolsInstallDir)bin\Hostx64\x64\clang_rt.asan_dynamic-x86_64.dll"
+          DestinationFolder="$(OutDir)"
+          SkipUnchangedFiles="true" />
+  </Target>
   <Target Name="CopyGhosttyDllToOutput" AfterTargets="Build">
     <!--
       The on-disk artifact is ghostty-internal.dll but the import
