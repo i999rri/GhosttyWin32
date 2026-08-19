@@ -358,6 +358,26 @@ TEST(GhosttyActionsTest, OnSecureInputIgnoresNullSurface) {
     EXPECT_EQ(view.setSecureInputCalls, 0);
 }
 
+TEST(GhosttyActionsTest, OnReadonlyMapsEnumToBool) {
+    MockMainWindowView view;
+    Actions actions(view);
+    auto surface = FakeSurface(0x20);
+    EXPECT_TRUE(actions.OnReadonly(surface, GHOSTTY_READONLY_ON));
+    EXPECT_EQ(view.setReadonlyCalls, 1);
+    EXPECT_EQ(view.lastReadonlySurface, surface);
+    EXPECT_TRUE(view.lastReadonly);
+    EXPECT_TRUE(actions.OnReadonly(surface, GHOSTTY_READONLY_OFF));
+    EXPECT_EQ(view.setReadonlyCalls, 2);
+    EXPECT_FALSE(view.lastReadonly);
+}
+
+TEST(GhosttyActionsTest, OnReadonlyIgnoresNullSurface) {
+    MockMainWindowView view;
+    Actions actions(view);
+    EXPECT_TRUE(actions.OnReadonly(nullptr, GHOSTTY_READONLY_ON));
+    EXPECT_EQ(view.setReadonlyCalls, 0);
+}
+
 TEST(GhosttyActionsTest, OnCommandFinishedForwardsExitCodeAndDuration) {
     MockMainWindowView view;
     Actions actions(view);

@@ -138,6 +138,9 @@ public:
                        ghostty_action_secure_input_e mode);
     // PWD: shell-reported working directory (OSC 7).
     bool OnPwd(ghostty_surface_t surface, const char* utf8Pwd);
+    // READONLY: indicator only — the write blocking is in core.
+    bool OnReadonly(ghostty_surface_t surface,
+                    ghostty_action_readonly_e readonly);
     // COMMAND_FINISHED: policy (config + focus) lives in the view.
     bool OnCommandFinished(ghostty_surface_t surface,
                            ghostty_action_command_finished_s cf);

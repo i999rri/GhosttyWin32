@@ -44,18 +44,37 @@
           collides with the LinkBanner in the bottom-left; same
           in-tree hit-test-transparent overlay pattern.
         -->
-        <Border x:Name="SecureInputBadge"
-                IsHitTestVisible="False"
-                Visibility="Collapsed"
-                HorizontalAlignment="Right"
-                VerticalAlignment="Top"
-                CornerRadius="0,0,0,6"
-                Padding="8,4,8,4"
-                Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}">
-            <TextBlock FontSize="12"
-                       Text="&#x1F512;"
-                       Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
-        </Border>
+        <StackPanel Orientation="Horizontal"
+                    Spacing="4"
+                    IsHitTestVisible="False"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Top">
+            <!--
+              read-only chip (READONLY, from the toggle_readonly
+              keybind). The write blocking itself happens inside
+              libghostty; without the chip the keyboard just "goes
+              silent" with no explanation — same problem class the
+              key-state badge solves.
+            -->
+            <Border x:Name="ReadonlyBadge"
+                    Visibility="Collapsed"
+                    CornerRadius="0,0,6,6"
+                    Padding="8,4,8,4"
+                    Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}">
+                <TextBlock FontSize="12"
+                           Text="read-only"
+                           Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+            </Border>
+            <Border x:Name="SecureInputBadge"
+                    Visibility="Collapsed"
+                    CornerRadius="0,0,0,6"
+                    Padding="8,4,8,4"
+                    Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}">
+                <TextBlock FontSize="12"
+                           Text="&#x1F512;"
+                           Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+            </Border>
+        </StackPanel>
         <!--
           Key-state badge (KEY_SEQUENCE / KEY_TABLE). Shows the
           active key-table stack and/or the pending multi-chord

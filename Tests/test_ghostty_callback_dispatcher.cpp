@@ -31,7 +31,10 @@ TEST(GhosttyCallbackDispatcherTest, InformationalAcksReturnTrue) {
     MockMainWindowView view;
     auto d = CallbackDispatcher::Create(view);
 
+    // READONLY with an app target: upstream logs and ignores —
+    // acked. Surface-targeted delivery routes (routing tests below).
     EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_READONLY));
+    EXPECT_EQ(view.setReadonlyCalls, 0);
     // SECURE_INPUT with an app target: macOS's EnableSecureEventInput
     // concept, no Windows counterpart — deliberately acked. The
     // surface-targeted variant routes (see the routing tests below).
@@ -130,6 +133,23 @@ TEST(GhosttyCallbackDispatcherTest, MouseVisibilityRoutesToTheOwningSurface) {
 
     // App-targeted delivery has no owning pane — refuse.
     EXPECT_FALSE(DispatchTag(*d, GHOSTTY_ACTION_MOUSE_VISIBILITY));
+}
+
+TEST(GhosttyCallbackDispatcherTest, ReadonlyRoutesToTheOwningSurface) {
+    MockMainWindowView view;
+    auto d = CallbackDispatcher::Create(view);
+
+    ghostty_target_s target{};
+    target.tag = GHOSTTY_TARGET_SURFACE;
+    target.target.surface = reinterpret_cast<ghostty_surface_t>(0xBEEF);
+    ghostty_action_s action{};
+    action.tag = GHOSTTY_ACTION_READONLY;
+    action.action.readonly = GHOSTTY_READONLY_ON;
+
+    EXPECT_TRUE(d->DispatchAction(target, action));
+    EXPECT_EQ(view.setReadonlyCalls, 1);
+    EXPECT_EQ(view.lastReadonlySurface, target.target.surface);
+    EXPECT_TRUE(view.lastReadonly);
 }
 
 TEST(GhosttyCallbackDispatcherTest, CommandFinishedRoutesToTheOwningSurface) {
