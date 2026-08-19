@@ -28,5 +28,26 @@
         <Rectangle x:Name="UnfocusedDim"
                    IsHitTestVisible="False"
                    Visibility="Collapsed" />
+        <!--
+          Hovered-link banner (issue #61). Mirrors upstream's bottom-
+          corner URL display (macOS URLHoverBanner / GTK mouse-hover-url
+          label) instead of a popup: the original Win32 TOPMOST tooltip
+          over the DComp surface crashed the process on URL click, while
+          an in-tree, hit-test-transparent sibling cannot interfere with
+          input routing by construction.
+        -->
+        <Border x:Name="LinkBanner"
+                IsHitTestVisible="False"
+                Visibility="Collapsed"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Bottom"
+                CornerRadius="0,6,0,0"
+                Padding="8,4,8,4"
+                Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}">
+            <TextBlock x:Name="LinkBannerText"
+                       FontSize="12"
+                       TextTrimming="CharacterEllipsis"
+                       Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+        </Border>
     </Grid>
 </UserControl>

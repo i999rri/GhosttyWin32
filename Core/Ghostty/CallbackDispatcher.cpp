@@ -90,6 +90,11 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
                 return m_actions.OnMouseShape(target.target.surface,
                                               action.action.mouse_shape);
             return false;
+        case GHOSTTY_ACTION_MOUSE_OVER_LINK:
+            if (target.tag == GHOSTTY_TARGET_SURFACE)
+                return m_actions.OnMouseOverLink(target.target.surface,
+                                                 action.action.mouse_over_link);
+            return false;
         case GHOSTTY_ACTION_RELOAD_CONFIG:
             return m_actions.OnReloadConfig(action.action.reload_config.soft);
         case GHOSTTY_ACTION_CONFIG_CHANGE:
@@ -181,11 +186,6 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
         case GHOSTTY_ACTION_QUIT_TIMER:
         // Cell metrics — no host-side consumer today:
         case GHOSTTY_ACTION_CELL_SIZE:
-        // MOUSE_OVER_LINK is acked while the TOOLTIPS popup is
-        // disabled (issue #61: a TTM_TRACKACTIVATE / SetWindowPos
-        // interaction with the DComp surface crashed the process
-        // on URL click); the URL click path itself still works.
-        case GHOSTTY_ACTION_MOUSE_OVER_LINK:
         // TOGGLE_BACKGROUND_OPACITY: dispatched but not yet
         // implemented — tracked in #69. (The layered-alpha approach
         // sketched in the issue body doesn't work over a flip-model

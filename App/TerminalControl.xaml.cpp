@@ -320,6 +320,18 @@ namespace winrt::GhosttyWin32::implementation
         }
     }
 
+    void TerminalControl::SetHoveredLink(winrt::hstring const& url)
+    {
+        auto banner = LinkBanner();
+        if (!banner) return;
+        if (url.empty()) {
+            banner.Visibility(winrt::Microsoft::UI::Xaml::Visibility::Collapsed);
+            return;
+        }
+        LinkBannerText().Text(url);
+        banner.Visibility(winrt::Microsoft::UI::Xaml::Visibility::Visible);
+    }
+
     void TerminalControl::ApplyFocusVisual(bool focused)
     {
         auto dim = UnfocusedDim();

@@ -176,6 +176,16 @@ struct IWindow {
     virtual void SetCursorShapeForSurface(ghostty_surface_t surface,
                                           ghostty_action_mouse_shape_e shape) = 0;
 
+    // Show or clear the hovered-link banner on the pane owning
+    // `surface`. MOUSE_OVER_LINK fires with the URL while the pointer
+    // is on a link and with an empty payload when it leaves, so an
+    // empty `url` means hide. The banner mirrors upstream's bottom-
+    // corner URL display (macOS URLHoverBanner / GTK mouse-hover-url
+    // label); issue #61 ruled out a Win32 tooltip popup — a TOPMOST
+    // window over the DComp surface crashed the process on URL click.
+    virtual void SetHoveredLinkForSurface(ghostty_surface_t surface,
+                                          std::wstring url) = 0;
+
     // Replace the GhosttyApp's stored config with `cloned`. Takes
     // ownership: the implementation is responsible for freeing it
     // when superseded. Pass a clone from CONFIG_CHANGE (ghostty
