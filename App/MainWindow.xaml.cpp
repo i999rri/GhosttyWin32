@@ -1610,6 +1610,18 @@ namespace winrt::GhosttyWin32::implementation
         }
     }
 
+    void MainWindow::SetSecureInputForSurface(ghostty_surface_t surface,
+                                              ghostty_action_secure_input_e mode)
+    {
+        // Owning-leaf routing: the password prompt lives in a
+        // specific pane, and the badge belongs there.
+        auto lookup = m_tabs.FindPaneBySurface(surface);
+        if (!lookup.pane) return;
+        if (auto* tc = Tab::PaneToTerminalControl(*lookup.pane)) {
+            tc->SetSecureInput(mode);
+        }
+    }
+
     void MainWindow::SetMouseVisibilityForSurface(ghostty_surface_t surface,
                                                   bool visible)
     {

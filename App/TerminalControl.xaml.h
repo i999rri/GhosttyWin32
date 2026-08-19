@@ -174,6 +174,12 @@ namespace winrt::GhosttyWin32::implementation
         // borders, etc.
         void SetCursorShape(ghostty_action_mouse_shape_e shape);
 
+        // Reflect SECURE_INPUT on this pane's badge. ON/OFF set the
+        // state directly; TOGGLE flips it here because the pane owns
+        // the indicator state (ghostty's toggle keybind carries no
+        // absolute value). UI thread only.
+        void SetSecureInput(ghostty_action_secure_input_e mode);
+
         // Mirror ghostty's MOUSE_VISIBILITY on this pane: false hides
         // the pointer (mouse-hide-while-typing), true restores the
         // last MOUSE_SHAPE. UI thread only. ghostty drives both
@@ -275,6 +281,10 @@ namespace winrt::GhosttyWin32::implementation
         // hidden cursor. See SetMouseVisibility().
         bool m_cursorHidden = false;
         winrt::Microsoft::UI::Input::InputCursor m_visibleCursor{ nullptr };
+
+        // SECURE_INPUT indicator state; owned here so TOGGLE can
+        // flip without the dispatcher tracking anything.
+        bool m_secureInput = false;
     };
 }
 

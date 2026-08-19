@@ -173,6 +173,16 @@ struct MockMainWindowView : core::host::IWindow {
         lastHoveredLinkUrl = std::move(url);
     }
 
+    int setSecureInputCalls = 0;
+    ghostty_surface_t lastSecureInputSurface = nullptr;
+    ghostty_action_secure_input_e lastSecureInputMode{};
+    void SetSecureInputForSurface(ghostty_surface_t s,
+                                  ghostty_action_secure_input_e mode) override {
+        ++setSecureInputCalls;
+        lastSecureInputSurface = s;
+        lastSecureInputMode = mode;
+    }
+
     int setMouseVisibilityCalls = 0;
     ghostty_surface_t lastMouseVisibilitySurface = nullptr;
     bool lastMouseVisible = true;

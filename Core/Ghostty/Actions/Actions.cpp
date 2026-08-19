@@ -361,6 +361,17 @@ bool Actions::OnMouseVisibility(ghostty_surface_t surface,
     return true;
 }
 
+bool Actions::OnSecureInput(ghostty_surface_t surface,
+                            ghostty_action_secure_input_e mode) {
+    if (!surface) return true;
+    // TOGGLE resolution happens in the view: the indicator is
+    // per-pane visual state, so the pane owns the current value.
+    DispatchToView([this, surface, mode]() {
+        m_view.SetSecureInputForSurface(surface, mode);
+    });
+    return true;
+}
+
 bool Actions::OnMouseOverLink(ghostty_surface_t surface,
                               ghostty_action_mouse_over_link_s link) {
     if (!surface) return true;

@@ -36,6 +36,26 @@
           an in-tree, hit-test-transparent sibling cannot interfere with
           input routing by construction.
         -->
+        <!--
+          Secure-input badge (SECURE_INPUT, surface-targeted).
+          ghostty's shell integration turns it on while a password
+          prompt is active; the badge tells the user why their
+          keystrokes deserve extra care. Top-right so it never
+          collides with the LinkBanner in the bottom-left; same
+          in-tree hit-test-transparent overlay pattern.
+        -->
+        <Border x:Name="SecureInputBadge"
+                IsHitTestVisible="False"
+                Visibility="Collapsed"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Top"
+                CornerRadius="0,0,0,6"
+                Padding="8,4,8,4"
+                Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}">
+            <TextBlock FontSize="12"
+                       Text="&#x1F512;"
+                       Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+        </Border>
         <Border x:Name="LinkBanner"
                 IsHitTestVisible="False"
                 Visibility="Collapsed"

@@ -186,6 +186,17 @@ struct IWindow {
     virtual void SetMouseVisibilityForSurface(ghostty_surface_t surface,
                                               bool visible) = 0;
 
+    // Reflect SECURE_INPUT on the pane owning `surface`: ghostty's
+    // shell integration fires ON when a password prompt is detected
+    // and OFF when it ends; the toggle_secure_input keybind fires
+    // TOGGLE. The view resolves TOGGLE against its own per-pane
+    // state (the indicator is pane-visual state, so the pane owns
+    // it). App-targeted SECURE_INPUT never reaches this — that
+    // variant is macOS's EnableSecureEventInput, which has no
+    // Windows counterpart and stays acked in the dispatcher.
+    virtual void SetSecureInputForSurface(ghostty_surface_t surface,
+                                          ghostty_action_secure_input_e mode) = 0;
+
     // Show or clear the hovered-link banner on the pane owning
     // `surface`. MOUSE_OVER_LINK fires with the URL while the pointer
     // is on a link and with an empty payload when it leaves, so an
