@@ -358,6 +358,35 @@ TEST(GhosttyActionsTest, OnSecureInputIgnoresNullSurface) {
     EXPECT_EQ(view.setSecureInputCalls, 0);
 }
 
+TEST(GhosttyActionsTest, OnPwdForwardsUtf16Path) {
+    MockMainWindowView view;
+    Actions actions(view);
+    auto surface = FakeSurface(0x9D);
+    EXPECT_TRUE(actions.OnPwd(surface, "C:/Users/dev/repos"));
+    EXPECT_EQ(view.setPwdCalls, 1);
+    EXPECT_EQ(view.lastPwdSurface, surface);
+    EXPECT_EQ(view.lastPwd, L"C:/Users/dev/repos");
+}
+
+TEST(GhosttyActionsTest, OnPwdEmptyOrNullClearsTooltip) {
+    // Both reach the view as an empty string — the view clears the
+    // tooltip; dropping them would leave a stale path displayed.
+    MockMainWindowView view;
+    Actions actions(view);
+    auto surface = FakeSurface(0x9D);
+    EXPECT_TRUE(actions.OnPwd(surface, ""));
+    EXPECT_TRUE(actions.OnPwd(surface, nullptr));
+    EXPECT_EQ(view.setPwdCalls, 2);
+    EXPECT_TRUE(view.lastPwd.empty());
+}
+
+TEST(GhosttyActionsTest, OnPwdIgnoresNullSurface) {
+    MockMainWindowView view;
+    Actions actions(view);
+    EXPECT_TRUE(actions.OnPwd(nullptr, "C:/x"));
+    EXPECT_EQ(view.setPwdCalls, 0);
+}
+
 TEST(GhosttyActionsTest, OnKeySequenceAppendsFormattedTrigger) {
     MockMainWindowView view;
     Actions actions(view);

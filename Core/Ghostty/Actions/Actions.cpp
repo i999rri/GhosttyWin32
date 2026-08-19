@@ -373,6 +373,19 @@ bool Actions::OnSecureInput(ghostty_surface_t surface,
     return true;
 }
 
+bool Actions::OnPwd(ghostty_surface_t surface, const char* utf8Pwd) {
+    if (!surface) return true;
+    // Unlike most string payloads, pwd IS NUL-terminated (matches
+    // the macOS apprt's String(cString:) usage). An empty string is
+    // dispatched through so the view can clear the tooltip.
+    std::wstring wide = utf8Pwd ? interop::Encoding::toUtf16(utf8Pwd)
+                                : std::wstring{};
+    DispatchToView([this, surface, wide = std::move(wide)]() mutable {
+        m_view.SetPwdForSurface(surface, std::move(wide));
+    });
+    return true;
+}
+
 bool Actions::OnKeySequence(ghostty_surface_t surface,
                             ghostty_action_key_sequence_s seq) {
     if (!surface) return true;

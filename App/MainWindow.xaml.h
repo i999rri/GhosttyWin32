@@ -140,6 +140,8 @@ namespace winrt::GhosttyWin32::implementation
                                           bool visible) override;
         void SetSecureInputForSurface(ghostty_surface_t surface,
                                       ghostty_action_secure_input_e mode) override;
+        void SetPwdForSurface(ghostty_surface_t surface,
+                              std::wstring pwd) override;
         void AppendKeySequenceForSurface(ghostty_surface_t surface,
                                          std::wstring triggerLabel) override;
         void ClearKeySequenceForSurface(ghostty_surface_t surface) override;

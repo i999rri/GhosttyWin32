@@ -132,6 +132,26 @@ TEST(GhosttyCallbackDispatcherTest, MouseVisibilityRoutesToTheOwningSurface) {
     EXPECT_FALSE(DispatchTag(*d, GHOSTTY_ACTION_MOUSE_VISIBILITY));
 }
 
+TEST(GhosttyCallbackDispatcherTest, PwdRoutesToTheOwningSurface) {
+    MockMainWindowView view;
+    auto d = CallbackDispatcher::Create(view);
+
+    ghostty_target_s target{};
+    target.tag = GHOSTTY_TARGET_SURFACE;
+    target.target.surface = reinterpret_cast<ghostty_surface_t>(0xBEEF);
+    ghostty_action_s action{};
+    action.tag = GHOSTTY_ACTION_PWD;
+    action.action.pwd.pwd = "C:/Users/dev";
+
+    EXPECT_TRUE(d->DispatchAction(target, action));
+    EXPECT_EQ(view.setPwdCalls, 1);
+    EXPECT_EQ(view.lastPwd, L"C:/Users/dev");
+
+    // App-targeted PWD: upstream logs and ignores — acked.
+    EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_PWD));
+    EXPECT_EQ(view.setPwdCalls, 1);
+}
+
 TEST(GhosttyCallbackDispatcherTest, KeyStateActionsRouteToTheOwningSurface) {
     MockMainWindowView view;
     auto d = CallbackDispatcher::Create(view);
