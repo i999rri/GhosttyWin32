@@ -145,6 +145,8 @@ namespace winrt::GhosttyWin32::implementation
         void NotifyCommandFinishedForSurface(ghostty_surface_t surface,
                                              int exitCode,
                                              uint64_t durationNs) override;
+        void SetReadonlyForSurface(ghostty_surface_t surface,
+                                   bool readonly) override;
         void AppendKeySequenceForSurface(ghostty_surface_t surface,
                                          std::wstring triggerLabel) override;
         void ClearKeySequenceForSurface(ghostty_surface_t surface) override;

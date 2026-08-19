@@ -386,6 +386,16 @@ bool Actions::OnPwd(ghostty_surface_t surface, const char* utf8Pwd) {
     return true;
 }
 
+bool Actions::OnReadonly(ghostty_surface_t surface,
+                         ghostty_action_readonly_e readonly) {
+    if (!surface) return true;
+    const bool on = readonly == GHOSTTY_READONLY_ON;
+    DispatchToView([this, surface, on]() {
+        m_view.SetReadonlyForSurface(surface, on);
+    });
+    return true;
+}
+
 bool Actions::OnCommandFinished(ghostty_surface_t surface,
                                 ghostty_action_command_finished_s cf) {
     if (!surface) return true;

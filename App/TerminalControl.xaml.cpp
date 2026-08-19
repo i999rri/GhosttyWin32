@@ -366,6 +366,13 @@ namespace winrt::GhosttyWin32::implementation
         KeyStateBadge().Visibility(winrt::Microsoft::UI::Xaml::Visibility::Visible);
     }
 
+    void TerminalControl::SetReadonly(bool readonly)
+    {
+        ReadonlyBadge().Visibility(readonly
+            ? winrt::Microsoft::UI::Xaml::Visibility::Visible
+            : winrt::Microsoft::UI::Xaml::Visibility::Collapsed);
+    }
+
     void TerminalControl::SetSecureInput(ghostty_action_secure_input_e mode)
     {
         const bool on = mode == GHOSTTY_SECURE_INPUT_ON    ? true

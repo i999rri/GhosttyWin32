@@ -183,6 +183,15 @@ struct MockMainWindowView : core::host::IWindow {
         lastSecureInputMode = mode;
     }
 
+    int setReadonlyCalls = 0;
+    ghostty_surface_t lastReadonlySurface = nullptr;
+    bool lastReadonly = false;
+    void SetReadonlyForSurface(ghostty_surface_t s, bool readonly) override {
+        ++setReadonlyCalls;
+        lastReadonlySurface = s;
+        lastReadonly = readonly;
+    }
+
     int notifyCommandFinishedCalls = 0;
     ghostty_surface_t lastCommandFinishedSurface = nullptr;
     int lastCommandExitCode = 0;

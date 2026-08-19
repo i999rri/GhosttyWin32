@@ -197,6 +197,14 @@ struct IWindow {
     virtual void SetSecureInputForSurface(ghostty_surface_t surface,
                                           ghostty_action_secure_input_e mode) = 0;
 
+    // READONLY: the toggle_readonly keybind flipped the surface's
+    // read-only state. The functional half (pty writes blocked)
+    // lives in libghostty and already works — this is purely the
+    // indicator, so the user can tell why their keystrokes stopped
+    // reaching the shell.
+    virtual void SetReadonlyForSurface(ghostty_surface_t surface,
+                                       bool readonly) = 0;
+
     // COMMAND_FINISHED: a shell-integration-tracked command ended.
     // The view owns the whole policy: it reads the notify-on-
     // command-finish config trio (mode / threshold / actions),

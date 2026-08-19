@@ -1685,6 +1685,17 @@ namespace winrt::GhosttyWin32::implementation
         }
     }
 
+    void MainWindow::SetReadonlyForSurface(ghostty_surface_t surface, bool readonly)
+    {
+        // Owning-leaf routing: the read-only state belongs to the
+        // pane whose pty stopped accepting writes.
+        auto lookup = m_tabs.FindPaneBySurface(surface);
+        if (!lookup.pane) return;
+        if (auto* tc = Tab::PaneToTerminalControl(*lookup.pane)) {
+            tc->SetReadonly(readonly);
+        }
+    }
+
     void MainWindow::SetPwdForSurface(ghostty_surface_t surface, std::wstring pwd)
     {
         // Tab-level, not pane-level: the tooltip hangs off the

@@ -100,6 +100,13 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
                 return m_actions.OnMouseVisibility(target.target.surface,
                                                    action.action.mouse_visibility);
             return false;
+        // READONLY: toggle_readonly indicator (the blocking itself
+        // is core-side). App-targeted is a no-op upstream — ack.
+        case GHOSTTY_ACTION_READONLY:
+            if (target.tag == GHOSTTY_TARGET_SURFACE)
+                return m_actions.OnReadonly(target.target.surface,
+                                            action.action.readonly);
+            return true;
         // COMMAND_FINISHED: shell-integration command tracking. The
         // app-targeted variant is a no-op upstream — ack.
         case GHOSTTY_ACTION_COMMAND_FINISHED:
@@ -191,10 +198,9 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
         // here keeps libghostty's future "unhandled action" audit
         // quiet without inventing empty GhosttyActions methods.
         //
-        // Informational actions whose UI surfaces this port
-        // doesn't have yet (read-only banner, shell-supplied title
-        // source flag):
-        case GHOSTTY_ACTION_READONLY:
+        // PROMPT_TITLE: "show a rename-title prompt" keybind action.
+        // Pending its own PR (ContentDialog + TextBox); acked until
+        // then so the keybind doesn't read as unhandled.
         case GHOSTTY_ACTION_PROMPT_TITLE:
         // Feature surfaces intentionally not on this port's plate
         // (search bar, ImGui inspector, tab overview, quick

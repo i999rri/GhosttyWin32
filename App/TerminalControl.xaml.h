@@ -184,6 +184,10 @@ namespace winrt::GhosttyWin32::implementation
         void PushKeyTable(winrt::hstring const& name);
         void PopKeyTable(bool all);
 
+        // Show/hide the read-only chip (READONLY action). The write
+        // blocking is core-side; this is indicator only. UI thread.
+        void SetReadonly(bool readonly);
+
         // Reflect SECURE_INPUT on this pane's badge. ON/OFF set the
         // state directly; TOGGLE flips it here because the pane owns
         // the indicator state (ghostty's toggle keybind carries no
