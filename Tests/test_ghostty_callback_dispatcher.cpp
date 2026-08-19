@@ -32,7 +32,11 @@ TEST(GhosttyCallbackDispatcherTest, InformationalAcksReturnTrue) {
     auto d = CallbackDispatcher::Create(view);
 
     EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_READONLY));
+    // SECURE_INPUT with an app target: macOS's EnableSecureEventInput
+    // concept, no Windows counterpart — deliberately acked. The
+    // surface-targeted variant routes (see the routing tests below).
     EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_SECURE_INPUT));
+    EXPECT_EQ(view.setSecureInputCalls, 0);
     EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_KEY_SEQUENCE));
     EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_KEY_TABLE));
     EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_PROMPT_TITLE));
@@ -121,6 +125,23 @@ TEST(GhosttyCallbackDispatcherTest, MouseVisibilityRoutesToTheOwningSurface) {
 
     // App-targeted delivery has no owning pane — refuse.
     EXPECT_FALSE(DispatchTag(*d, GHOSTTY_ACTION_MOUSE_VISIBILITY));
+}
+
+TEST(GhosttyCallbackDispatcherTest, SecureInputRoutesToTheOwningSurface) {
+    MockMainWindowView view;
+    auto d = CallbackDispatcher::Create(view);
+
+    ghostty_target_s target{};
+    target.tag = GHOSTTY_TARGET_SURFACE;
+    target.target.surface = reinterpret_cast<ghostty_surface_t>(0xBEEF);
+    ghostty_action_s action{};
+    action.tag = GHOSTTY_ACTION_SECURE_INPUT;
+    action.action.secure_input = GHOSTTY_SECURE_INPUT_ON;
+
+    EXPECT_TRUE(d->DispatchAction(target, action));
+    EXPECT_EQ(view.setSecureInputCalls, 1);
+    EXPECT_EQ(view.lastSecureInputSurface, target.target.surface);
+    EXPECT_EQ(view.lastSecureInputMode, GHOSTTY_SECURE_INPUT_ON);
 }
 
 // ----- view-free live handlers -----

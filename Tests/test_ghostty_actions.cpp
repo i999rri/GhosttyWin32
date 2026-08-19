@@ -341,6 +341,23 @@ TEST(GhosttyActionsTest, OnMouseVisibilityIgnoresNullSurface) {
     EXPECT_EQ(view.setMouseVisibilityCalls, 0);
 }
 
+TEST(GhosttyActionsTest, OnSecureInputForwardsSurfaceAndMode) {
+    MockMainWindowView view;
+    Actions actions(view);
+    auto surface = FakeSurface(0x5EC);
+    EXPECT_TRUE(actions.OnSecureInput(surface, GHOSTTY_SECURE_INPUT_TOGGLE));
+    EXPECT_EQ(view.setSecureInputCalls, 1);
+    EXPECT_EQ(view.lastSecureInputSurface, surface);
+    EXPECT_EQ(view.lastSecureInputMode, GHOSTTY_SECURE_INPUT_TOGGLE);
+}
+
+TEST(GhosttyActionsTest, OnSecureInputIgnoresNullSurface) {
+    MockMainWindowView view;
+    Actions actions(view);
+    EXPECT_TRUE(actions.OnSecureInput(nullptr, GHOSTTY_SECURE_INPUT_ON));
+    EXPECT_EQ(view.setSecureInputCalls, 0);
+}
+
 TEST(GhosttyActionsTest, OnMouseOverLinkIgnoresNullSurface) {
     MockMainWindowView view;
     Actions actions(view);

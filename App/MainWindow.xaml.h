@@ -138,6 +138,8 @@ namespace winrt::GhosttyWin32::implementation
                                       std::wstring url) override;
         void SetMouseVisibilityForSurface(ghostty_surface_t surface,
                                           bool visible) override;
+        void SetSecureInputForSurface(ghostty_surface_t surface,
+                                      ghostty_action_secure_input_e mode) override;
         void ReplaceConfig(ghostty_config_t cloned) override;
         void ReloadConfig(bool soft) override;
         void ShowDesktopNotification(ghostty_surface_t surface,

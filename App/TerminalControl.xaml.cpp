@@ -309,6 +309,18 @@ namespace winrt::GhosttyWin32::implementation
         }
     }
 
+    void TerminalControl::SetSecureInput(ghostty_action_secure_input_e mode)
+    {
+        const bool on = mode == GHOSTTY_SECURE_INPUT_ON    ? true
+                      : mode == GHOSTTY_SECURE_INPUT_OFF   ? false
+                                                           : !m_secureInput;
+        if (on == m_secureInput) return;
+        m_secureInput = on;
+        SecureInputBadge().Visibility(on
+            ? winrt::Microsoft::UI::Xaml::Visibility::Visible
+            : winrt::Microsoft::UI::Xaml::Visibility::Collapsed);
+    }
+
     void TerminalControl::SetMouseVisibility(bool visible)
     {
         if (m_cursorHidden == !visible) return;

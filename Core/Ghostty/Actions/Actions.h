@@ -133,6 +133,9 @@ public:
     // MOUSE_VISIBILITY: HIDDEN while typing, VISIBLE on pointer move.
     bool OnMouseVisibility(ghostty_surface_t surface,
                            ghostty_action_mouse_visibility_e visibility);
+    // SECURE_INPUT (surface-targeted): password-prompt indicator.
+    bool OnSecureInput(ghostty_surface_t surface,
+                       ghostty_action_secure_input_e mode);
     bool OnReloadConfig(bool soft);
     bool OnConfigChange(ghostty_config_t newCfg);
     bool OnDesktopNotification(ghostty_surface_t surface,

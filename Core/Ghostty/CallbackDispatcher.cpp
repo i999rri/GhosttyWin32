@@ -100,6 +100,15 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
                 return m_actions.OnMouseVisibility(target.target.surface,
                                                    action.action.mouse_visibility);
             return false;
+        case GHOSTTY_ACTION_SECURE_INPUT:
+            if (target.tag == GHOSTTY_TARGET_SURFACE)
+                return m_actions.OnSecureInput(target.target.surface,
+                                               action.action.secure_input);
+            // App-targeted SECURE_INPUT is macOS's
+            // EnableSecureEventInput (OS-level keylogger protection);
+            // Windows has no counterpart, so the app variant stays a
+            // deliberate ack.
+            return true;
         case GHOSTTY_ACTION_RELOAD_CONFIG:
             return m_actions.OnReloadConfig(action.action.reload_config.soft);
         case GHOSTTY_ACTION_CONFIG_CHANGE:
@@ -156,12 +165,10 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
         // quiet without inventing empty GhosttyActions methods.
         //
         // Informational actions whose UI surfaces this port
-        // doesn't have yet (read-only banner, secure-input
-        // padlock, pending chord, modal-key-table label, shell-
-        // supplied title source flag, PWD breadcrumb, post-
-        // command summary):
+        // doesn't have yet (read-only banner, pending chord,
+        // modal-key-table label, shell-supplied title source flag,
+        // PWD breadcrumb, post-command summary):
         case GHOSTTY_ACTION_READONLY:
-        case GHOSTTY_ACTION_SECURE_INPUT:
         case GHOSTTY_ACTION_KEY_SEQUENCE:
         case GHOSTTY_ACTION_KEY_TABLE:
         case GHOSTTY_ACTION_PROMPT_TITLE:
