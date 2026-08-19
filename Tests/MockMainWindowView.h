@@ -183,6 +183,18 @@ struct MockMainWindowView : core::host::IWindow {
         lastSecureInputMode = mode;
     }
 
+    int notifyCommandFinishedCalls = 0;
+    ghostty_surface_t lastCommandFinishedSurface = nullptr;
+    int lastCommandExitCode = 0;
+    uint64_t lastCommandDurationNs = 0;
+    void NotifyCommandFinishedForSurface(ghostty_surface_t s, int exitCode,
+                                         uint64_t durationNs) override {
+        ++notifyCommandFinishedCalls;
+        lastCommandFinishedSurface = s;
+        lastCommandExitCode = exitCode;
+        lastCommandDurationNs = durationNs;
+    }
+
     int setPwdCalls = 0;
     ghostty_surface_t lastPwdSurface = nullptr;
     std::wstring lastPwd;

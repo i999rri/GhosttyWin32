@@ -138,6 +138,9 @@ public:
                        ghostty_action_secure_input_e mode);
     // PWD: shell-reported working directory (OSC 7).
     bool OnPwd(ghostty_surface_t surface, const char* utf8Pwd);
+    // COMMAND_FINISHED: policy (config + focus) lives in the view.
+    bool OnCommandFinished(ghostty_surface_t surface,
+                           ghostty_action_command_finished_s cf);
     // KEY_SEQUENCE: pending-chord progress. Formats the trigger via
     // TriggerLabel on the renderer thread so the view only sees text.
     bool OnKeySequence(ghostty_surface_t surface,

@@ -132,6 +132,27 @@ TEST(GhosttyCallbackDispatcherTest, MouseVisibilityRoutesToTheOwningSurface) {
     EXPECT_FALSE(DispatchTag(*d, GHOSTTY_ACTION_MOUSE_VISIBILITY));
 }
 
+TEST(GhosttyCallbackDispatcherTest, CommandFinishedRoutesToTheOwningSurface) {
+    MockMainWindowView view;
+    auto d = CallbackDispatcher::Create(view);
+
+    ghostty_target_s target{};
+    target.tag = GHOSTTY_TARGET_SURFACE;
+    target.target.surface = reinterpret_cast<ghostty_surface_t>(0xBEEF);
+    ghostty_action_s action{};
+    action.tag = GHOSTTY_ACTION_COMMAND_FINISHED;
+    action.action.command_finished = { /*exit_code=*/1,
+                                       /*duration=*/6'000'000'000ull };
+
+    EXPECT_TRUE(d->DispatchAction(target, action));
+    EXPECT_EQ(view.notifyCommandFinishedCalls, 1);
+    EXPECT_EQ(view.lastCommandExitCode, 1);
+
+    // App-targeted: upstream logs and ignores — acked.
+    EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_COMMAND_FINISHED));
+    EXPECT_EQ(view.notifyCommandFinishedCalls, 1);
+}
+
 TEST(GhosttyCallbackDispatcherTest, PwdRoutesToTheOwningSurface) {
     MockMainWindowView view;
     auto d = CallbackDispatcher::Create(view);
