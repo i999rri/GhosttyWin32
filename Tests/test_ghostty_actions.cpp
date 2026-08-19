@@ -294,6 +294,41 @@ TEST(GhosttyActionsTest, OnMouseShapeIgnoresNullSurface) {
     EXPECT_EQ(view.setCursorShapeCalls, 0);
 }
 
+TEST(GhosttyActionsTest, OnMouseOverLinkForwardsLengthBoundedUrl) {
+    MockMainWindowView view;
+    Actions actions(view);
+    auto surface = FakeSurface(0xBEEF);
+    // Buffer deliberately longer than len: the url field is not
+    // NUL-terminated, so len must bound the conversion — reading to
+    // the buffer's NUL would leak the trailing bytes into the banner.
+    const char buf[] = "https://example.com/aaaaTRAILING";
+    ghostty_action_mouse_over_link_s link{ buf, 24 };
+    EXPECT_TRUE(actions.OnMouseOverLink(surface, link));
+    EXPECT_EQ(view.setHoveredLinkCalls, 1);
+    EXPECT_EQ(view.lastHoveredLinkSurface, surface);
+    EXPECT_EQ(view.lastHoveredLinkUrl, L"https://example.com/aaaa");
+}
+
+TEST(GhosttyActionsTest, OnMouseOverLinkEmptyPayloadClearsTheBanner) {
+    // len == 0 is how ghostty says "the pointer left the link" — the
+    // empty string must still reach the view so the banner hides.
+    MockMainWindowView view;
+    Actions actions(view);
+    auto surface = FakeSurface(0xBEEF);
+    ghostty_action_mouse_over_link_s link{ nullptr, 0 };
+    EXPECT_TRUE(actions.OnMouseOverLink(surface, link));
+    EXPECT_EQ(view.setHoveredLinkCalls, 1);
+    EXPECT_TRUE(view.lastHoveredLinkUrl.empty());
+}
+
+TEST(GhosttyActionsTest, OnMouseOverLinkIgnoresNullSurface) {
+    MockMainWindowView view;
+    Actions actions(view);
+    ghostty_action_mouse_over_link_s link{ "https://x", 9 };
+    EXPECT_TRUE(actions.OnMouseOverLink(nullptr, link));
+    EXPECT_EQ(view.setHoveredLinkCalls, 0);
+}
+
 // ----- config -----
 
 TEST(GhosttyActionsTest, OnReloadConfigPassesSoftFlagThrough) {

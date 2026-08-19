@@ -73,13 +73,35 @@ TEST(GhosttyCallbackDispatcherTest, DisabledFeaturesAckedNotDropped) {
     MockMainWindowView view;
     auto d = CallbackDispatcher::Create(view);
 
-    // MOUSE_OVER_LINK: TOOLTIPS popup disabled per #61.
-    EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_MOUSE_OVER_LINK));
     // FLOAT_WINDOW: dispatch path not understood yet, but tag
     // routes to ack so the future re-enable doesn't surprise us.
     EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_FLOAT_WINDOW));
     // MOUSE_VISIBILITY: disabled per #60.
     EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_MOUSE_VISIBILITY));
+}
+
+// ----- surface-targeted routing -----
+
+TEST(GhosttyCallbackDispatcherTest, MouseOverLinkRoutesToTheOwningSurface) {
+    MockMainWindowView view;
+    auto d = CallbackDispatcher::Create(view);
+
+    const char url[] = "https://example.com/x";
+    ghostty_target_s target{};
+    target.tag = GHOSTTY_TARGET_SURFACE;
+    target.target.surface = reinterpret_cast<ghostty_surface_t>(0xBEEF);
+    ghostty_action_s action{};
+    action.tag = GHOSTTY_ACTION_MOUSE_OVER_LINK;
+    action.action.mouse_over_link = { url, sizeof(url) - 1 };
+
+    EXPECT_TRUE(d->DispatchAction(target, action));
+    EXPECT_EQ(view.setHoveredLinkCalls, 1);
+    EXPECT_EQ(view.lastHoveredLinkSurface, target.target.surface);
+    EXPECT_EQ(view.lastHoveredLinkUrl, L"https://example.com/x");
+
+    // App-targeted MOUSE_OVER_LINK has no owning pane — refuse
+    // (return false) rather than silently ack.
+    EXPECT_FALSE(DispatchTag(*d, GHOSTTY_ACTION_MOUSE_OVER_LINK));
 }
 
 // ----- view-free live handlers -----

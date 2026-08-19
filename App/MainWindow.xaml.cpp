@@ -1610,6 +1610,19 @@ namespace winrt::GhosttyWin32::implementation
         }
     }
 
+    void MainWindow::SetHoveredLinkForSurface(ghostty_surface_t surface,
+                                              std::wstring url)
+    {
+        // Same owning-leaf routing as SetCursorShapeForSurface: the
+        // pointer can hover a link in a non-active pane, and the
+        // banner belongs to the pane the link lives in.
+        auto lookup = m_tabs.FindPaneBySurface(surface);
+        if (!lookup.pane) return;
+        if (auto* tc = Tab::PaneToTerminalControl(*lookup.pane)) {
+            tc->SetHoveredLink(winrt::hstring{ url });
+        }
+    }
+
     void MainWindow::ReplaceConfig(ghostty_config_t cloned)
     {
         m_ghosttyApp->ReplaceConfig(cloned);

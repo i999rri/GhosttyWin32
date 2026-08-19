@@ -174,6 +174,12 @@ namespace winrt::GhosttyWin32::implementation
         // borders, etc.
         void SetCursorShape(ghostty_action_mouse_shape_e shape);
 
+        // Show the hovered-link banner with `url`, or hide it when
+        // `url` is empty. UI thread only — the caller dispatches from
+        // the renderer thread. See the LinkBanner comment in the XAML
+        // for why this is an in-tree overlay and not a popup (#61).
+        void SetHoveredLink(winrt::hstring const& url);
+
         // Set the callback that fires when this control receives
         // keyboard focus. Passed the underlying ghostty surface so
         // the host can update its "currently focused surface"

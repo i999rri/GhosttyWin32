@@ -351,6 +351,21 @@ bool Actions::OnMouseShape(ghostty_surface_t surface,
     return true;
 }
 
+bool Actions::OnMouseOverLink(ghostty_surface_t surface,
+                              ghostty_action_mouse_over_link_s link) {
+    if (!surface) return true;
+    // The url field is NOT NUL-terminated — len bounds it. len == 0
+    // means the pointer left the link; the empty string flows through
+    // so the view hides the banner.
+    std::wstring wide;
+    if (link.url && link.len > 0)
+        wide = interop::Encoding::toUtf16(link.url, static_cast<int>(link.len));
+    DispatchToView([this, surface, wide = std::move(wide)]() mutable {
+        m_view.SetHoveredLinkForSurface(surface, std::move(wide));
+    });
+    return true;
+}
+
 bool Actions::OnReloadConfig(bool soft) {
     // The view-side implementation handles thread placement
     // (soft re-uses UI thread, hard spins a 4MB-stack worker

@@ -126,6 +126,10 @@ public:
     bool OnColorChange(ghostty_action_color_change_s cc);
     bool OnMouseShape(ghostty_surface_t surface,
                       ghostty_action_mouse_shape_e shape);
+    // MOUSE_OVER_LINK: url/len payload while hovering a link, empty
+    // payload when the pointer leaves (clears the banner).
+    bool OnMouseOverLink(ghostty_surface_t surface,
+                         ghostty_action_mouse_over_link_s link);
     bool OnReloadConfig(bool soft);
     bool OnConfigChange(ghostty_config_t newCfg);
     bool OnDesktopNotification(ghostty_surface_t surface,

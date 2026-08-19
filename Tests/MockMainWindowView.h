@@ -164,6 +164,15 @@ struct MockMainWindowView : core::host::IWindow {
         lastCursorShape = shape;
     }
 
+    int setHoveredLinkCalls = 0;
+    ghostty_surface_t lastHoveredLinkSurface = nullptr;
+    std::wstring lastHoveredLinkUrl;
+    void SetHoveredLinkForSurface(ghostty_surface_t s, std::wstring url) override {
+        ++setHoveredLinkCalls;
+        lastHoveredLinkSurface = s;
+        lastHoveredLinkUrl = std::move(url);
+    }
+
     int replaceConfigCalls = 0;
     // Records whether the clone passed in differed from the
     // original. The production view takes ownership; the mock
