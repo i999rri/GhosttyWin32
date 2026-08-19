@@ -1,5 +1,14 @@
 <Solution>
   <Configurations>
+    <!--
+      ASan = Debug + /fsanitize=address, x64 only (defined in the
+      vcxprojs; the switch lives in Directory.Build.props). Declaring
+      any BuildType replaces the implicit Debug/Release pair, so all
+      three are spelled out.
+    -->
+    <BuildType Name="ASan" />
+    <BuildType Name="Debug" />
+    <BuildType Name="Release" />
     <Platform Name="ARM64" />
     <Platform Name="x64" />
     <Platform Name="x86" />
