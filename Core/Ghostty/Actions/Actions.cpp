@@ -475,6 +475,15 @@ bool Actions::OnMouseOverLink(ghostty_surface_t surface,
     return true;
 }
 
+bool Actions::OnToggleBackgroundOpacity() {
+    // Guards (opacity >= 1.0, fullscreen) live in the view — it
+    // owns config access and the fullscreen state.
+    DispatchToView([this]() {
+        m_view.ToggleBackgroundOpacity();
+    });
+    return true;
+}
+
 bool Actions::OnReloadConfig(bool soft) {
     // The view-side implementation handles thread placement
     // (soft re-uses UI thread, hard spins a 4MB-stack worker

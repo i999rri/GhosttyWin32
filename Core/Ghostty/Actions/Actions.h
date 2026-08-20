@@ -153,6 +153,7 @@ public:
     // KEY_TABLE: named modal key-table activate/deactivate stack ops.
     bool OnKeyTable(ghostty_surface_t surface,
                     ghostty_action_key_table_s table);
+    bool OnToggleBackgroundOpacity();
     bool OnReloadConfig(bool soft);
     bool OnConfigChange(ghostty_config_t newCfg);
     bool OnDesktopNotification(ghostty_surface_t surface,

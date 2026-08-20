@@ -145,6 +145,13 @@ struct IWindow {
     // the "flip now" trigger from the dispatcher.
     virtual void ToggleWindowDecorations() = 0;
 
+    // TOGGLE_BACKGROUND_OPACITY: flip this window between "as
+    // configured" translucency and fully opaque. Window-scoped like
+    // upstream macOS (NSWindow.alphaValue flip), with the same
+    // guards: no-op when background-opacity >= 1.0 (no transparency
+    // configured) and while fullscreen.
+    virtual void ToggleBackgroundOpacity() = 0;
+
     // Bring the window to the foreground (restoring it from a
     // minimized state first) and give it focus. Used by
     // PRESENT_TERMINAL — typically triggered by an external

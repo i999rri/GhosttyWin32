@@ -366,6 +366,18 @@ namespace winrt::GhosttyWin32::implementation
         KeyStateBadge().Visibility(winrt::Microsoft::UI::Xaml::Visibility::Visible);
     }
 
+    void TerminalControl::SetOpaqueBackground(bool opaque, winrt::Windows::UI::Color bg)
+    {
+        auto underlay = OpaqueUnderlay();
+        if (!underlay) return;
+        if (opaque) {
+            underlay.Fill(winrt::Microsoft::UI::Xaml::Media::SolidColorBrush(bg));
+            underlay.Visibility(winrt::Microsoft::UI::Xaml::Visibility::Visible);
+        } else {
+            underlay.Visibility(winrt::Microsoft::UI::Xaml::Visibility::Collapsed);
+        }
+    }
+
     void TerminalControl::SetReadonly(bool readonly)
     {
         ReadonlyBadge().Visibility(readonly

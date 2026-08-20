@@ -119,7 +119,7 @@
     </ClCompile>
     <Link>
       <AdditionalLibraryDirectories>$(ProjectDir)..\external\ghostty\zig-out\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>ghostty-internal.lib;d3d11.lib;dxgi.lib;comctl32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>ghostty-internal.lib;d3d11.lib;dxgi.lib;comctl32.lib;gdi32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)'=='Debug' or '$(Configuration)'=='ASan'">
@@ -170,6 +170,7 @@
     </ClInclude>
     <ClInclude Include="MainWindows.h" />
     <ClInclude Include="SplitPanel.h" />
+    <ClInclude Include="TransparentBackdrop.h" />
     <ClInclude Include="WindowCloseGate.h" />
     <ClInclude Include="Tabs\Panes\Branch.h" />
     <ClInclude Include="Tabs\Panes\Pane.h" />
@@ -209,6 +210,7 @@
     <ClCompile Include="MainWindows.cpp" />
     <ClCompile Include="Ghostty\MainWindowRuntime.cpp" />
     <ClCompile Include="SplitPanel.cpp" />
+    <ClCompile Include="TransparentBackdrop.cpp" />
     <ClCompile Include="WindowCloseGate.cpp" />
     <ClCompile Include="TerminalControl.xaml.cpp">
       <DependentUpon>TerminalControl.xaml</DependentUpon>
@@ -221,6 +223,9 @@
       <DependentUpon>MainWindow.xaml</DependentUpon>
     </Midl>
     <Midl Include="SplitPanel.idl">
+      <SubType>Code</SubType>
+    </Midl>
+    <Midl Include="TransparentBackdrop.idl">
       <SubType>Code</SubType>
     </Midl>
     <Midl Include="TerminalControl.idl">

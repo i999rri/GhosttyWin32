@@ -81,6 +81,16 @@ TEST(GhosttyCallbackDispatcherTest, NoConsumerAcksReturnTrue) {
     EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_CELL_SIZE));
 }
 
+TEST(GhosttyCallbackDispatcherTest, ToggleBackgroundOpacityRoutesToTheView) {
+    // Was the last "disabled by bug" ack (#69); now routed. The
+    // opacity/fullscreen guards are view-side, so the dispatcher's
+    // contract is just delivery.
+    MockMainWindowView view;
+    auto d = CallbackDispatcher::Create(view);
+    EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_TOGGLE_BACKGROUND_OPACITY));
+    EXPECT_EQ(view.toggleBackgroundOpacityCalls, 1);
+}
+
 TEST(GhosttyCallbackDispatcherTest, FloatWindowRoutesToTheView) {
     // Was part of the "disabled features" ack set; now routed for
     // real (#109). Kept here so the tag can't silently fall back to

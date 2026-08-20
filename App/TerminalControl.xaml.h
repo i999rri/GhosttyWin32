@@ -184,6 +184,13 @@ namespace winrt::GhosttyWin32::implementation
         void PushKeyTable(winrt::hstring const& name);
         void PopKeyTable(bool all);
 
+        // Show/hide the opaque background underlay beneath the swap
+        // chain (#69 — see the XAML comment on OpaqueUnderlay for
+        // the compositing math). `bg` is the terminal's current
+        // background colour so opaque mode is pixel-identical to
+        // opacity 1.0. UI thread only.
+        void SetOpaqueBackground(bool opaque, winrt::Windows::UI::Color bg);
+
         // Show/hide the read-only chip (READONLY action). The write
         // blocking is core-side; this is indicator only. UI thread.
         void SetReadonly(bool readonly);

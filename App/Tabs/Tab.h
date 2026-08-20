@@ -170,6 +170,18 @@ public:
         }
     }
 
+    // Apply the window's background-opacity mode to every pane in
+    // the tree (#69). See TerminalControl::SetOpaqueBackground.
+    void ApplyBackgroundOpacity(bool opaque, winrt::Windows::UI::Color bg) {
+        if (auto* panelImpl = winrt::get_self<implementation::SplitPanel>(m_panel)) {
+            panelImpl->Tree().ForEachPane([&](Pane& p) {
+                if (auto* tc = PaneToTerminalControl(p)) {
+                    tc->SetOpaqueBackground(opaque, bg);
+                }
+            });
+        }
+    }
+
     // Detach every TerminalControl in the tree (surface free, swap
     // chain release, composition handle close, SizeChanged unhook).
     // Must run while the SplitPanel is still in the live visual tree
