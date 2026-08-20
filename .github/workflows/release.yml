@@ -131,8 +131,17 @@ jobs:
           set -euo pipefail
           # The checkout above is shallow and tagless; ancestry checks
           # need the full graph.
-          git fetch --quiet --unshallow --tags origin 2>/dev/null \
-            || git fetch --quiet --tags origin
+          #
+          # --force is load-bearing: on a tag push actions/checkout
+          # plants github.sha (the PEELED commit) at refs/tags/<tag>,
+          # while auto-tag-release-pr.yml creates ANNOTATED production
+          # tags. The mismatched local tag makes a plain --tags fetch
+          # refuse to clobber and exit 1 — and --quiet suppresses the
+          # rejection table, so the step dies with no output at all
+          # (this killed the v0.6.0 release run). RC tags are
+          # lightweight, which is why rc runs never tripped this.
+          git fetch --quiet --force --unshallow --tags origin 2>/dev/null \
+            || git fetch --quiet --force --tags origin
           prev=""
           while read -r tag; do
             if git merge-base --is-ancestor "$tag" HEAD 2>/dev/null; then
