@@ -88,8 +88,33 @@ jobs:
           prev_tag=$(gh release list --json tagName,isPrerelease \
             --jq '[.[] | select(.isPrerelease == false) | .tagName] | first // ""')
 
+          # Enumerate the PRs ourselves instead of calling the
+          # generate-notes API anchored at $prev_tag: that tag points
+          # at a squash commit on main which cannot reach dev's
+          # per-PR merge commits, so the API lists every PR since
+          # squash releases began (issue #139's PR-body sibling; the
+          # v0.6.0 release PR opened with 70 entries back to #41).
+          # The correct baseline is the previous release PR's
+          # dev-side head — walk first-parent from there to HEAD and
+          # collect the squash subjects' (#N) suffixes.
+          prev_head=""
           if [[ -n "$prev_tag" ]]; then
-            echo "Generating notes vs previous tag: $prev_tag"
+            prev_head=$(gh pr list --state closed \
+              --search "head:release/${prev_tag} base:main" \
+              --json headRefOid --jq '.[0].headRefOid // empty')
+          fi
+
+          if [[ -n "$prev_head" ]]; then
+            echo "Enumerating PRs in $prev_head..HEAD (since $prev_tag)"
+            notes="## What's Changed"
+            for n in $(git log --first-parent --format='%s' "$prev_head..HEAD" \
+                | grep -oE '\(#[0-9]+\)$' | tr -d '(#)' | sort -n || true); do
+              notes+=$'\n'"$(gh pr view "$n" --json number,title,author --jq \
+                '"* \(.title) by @\(.author.login) in https://github.com/'"${GITHUB_REPOSITORY}"'/pull/\(.number)"')"
+            done
+            notes+=$'\n\n'"**Full Changelog**: https://github.com/${GITHUB_REPOSITORY}/compare/${prev_tag}...v${VERSION}"
+          elif [[ -n "$prev_tag" ]]; then
+            echo "No release PR found for $prev_tag — falling back to generate-notes."
             notes=$(gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
               --method POST \
               -f tag_name="v$VERSION" \
