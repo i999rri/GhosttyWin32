@@ -175,6 +175,8 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
             return m_actions.OnToggleWindowDecorations();
         case GHOSTTY_ACTION_FLOAT_WINDOW:
             return m_actions.OnFloatWindow(action.action.float_window);
+        case GHOSTTY_ACTION_TOGGLE_BACKGROUND_OPACITY:
+            return m_actions.OnToggleBackgroundOpacity();
 
         // ----- split-pane (surface-targeted) -----
         case GHOSTTY_ACTION_NEW_SPLIT:
@@ -230,13 +232,6 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
         case GHOSTTY_ACTION_QUIT_TIMER:
         // Cell metrics — no host-side consumer today:
         case GHOSTTY_ACTION_CELL_SIZE:
-        // TOGGLE_BACKGROUND_OPACITY: dispatched but not yet
-        // implemented — tracked in #69. (The layered-alpha approach
-        // sketched in the issue body doesn't work over a flip-model
-        // DComp swap chain; the real fix is a libghostty
-        // premultiplied-alpha change. Ack to keep the action_cb
-        // path quiet meanwhile.)
-        case GHOSTTY_ACTION_TOGGLE_BACKGROUND_OPACITY:
             return true;
 
         default:

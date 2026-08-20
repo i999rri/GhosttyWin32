@@ -30,6 +30,11 @@ public:
     // HWND is null.
     void Toggle(HWND hwnd) noexcept;
 
+    // Whether borderless fullscreen is currently active. Used by
+    // guards that must no-op while fullscreen (e.g. background-
+    // opacity toggling, mirroring upstream macOS).
+    bool Active() const noexcept { return m_active; }
+
 private:
     bool m_active = false;
     WINDOWPLACEMENT m_prevPlacement{};

@@ -525,6 +525,13 @@ TEST(GhosttyActionsTest, OnMouseOverLinkIgnoresNullSurface) {
 
 // ----- config -----
 
+TEST(GhosttyActionsTest, OnToggleBackgroundOpacityAsksTheView) {
+    MockMainWindowView view;
+    Actions actions(view);
+    EXPECT_TRUE(actions.OnToggleBackgroundOpacity());
+    EXPECT_EQ(view.toggleBackgroundOpacityCalls, 1);
+}
+
 TEST(GhosttyActionsTest, OnReloadConfigPassesSoftFlagThrough) {
     MockMainWindowView view;
     Actions actions(view);
