@@ -171,21 +171,22 @@ jobs:
           echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
           echo "Release-PR head SHA: ${head_sha:-<none>}"
 
-      # Generate the changelog body manually so we can pass
-      # previous_tag_name explicitly. softprops/action-gh-release's
-      # generate_release_notes: true would call the same API but with
-      # GitHub's default baseline.
+      # Generate the changelog body. Two regimes:
       #
-      # Production tags need a workaround: the tag already exists by the
-      # time this workflow runs (we're triggered by its push), so the
-      # generate-notes API resolves tag_name → the squashed commit main
-      # actually holds and ignores target_commitish. That loses every
-      # dev-side PR that landed as an intermediate merge (the release/
-      # branch's history) because those commits aren't reachable from
-      # main's history. Pass a UNIQUE probe tag_name that doesn't exist,
-      # which forces the API to honour target_commitish=<release-PR head>,
-      # then rewrite the probe name in the returned body so the
-      # "Full Changelog" URL uses the real tag.
+      # Production tags: enumerate the PRs ourselves. generate-notes
+      # anchored at the previous production tag is structurally wrong
+      # under squash releases — that tag points at a squash commit on
+      # main which cannot reach dev's per-PR merge commits, so the API
+      # lists every PR since squash releases began (issue #139; the
+      # #140 ancestor rule fixed only the RC chain, whose anchor tags
+      # live on dev). The correct baseline is the PREVIOUS release
+      # PR's dev-side head: walk first-parent between the two release
+      # snapshots and collect the squash subjects' (#N) suffixes.
+      #
+      # RC tags: generate-notes with previous_tag_name from the
+      # ancestor rule above — anchor and target share the dev lineage,
+      # so the API range is right. Also the fallback for a production
+      # bootstrap without a previous release PR.
       - name: Generate release notes body
         id: notes
         shell: bash
@@ -196,23 +197,32 @@ jobs:
           RELPR_HEAD_SHA: ${{ steps.relpr.outputs.head_sha }}
         run: |
           set -euo pipefail
-          args=(--method POST)
-          if [[ -n "$RELPR_HEAD_SHA" ]]; then
-            probe_tag="${REF_NAME}-notes-probe"
-            args+=(-f "tag_name=$probe_tag" -f "target_commitish=$RELPR_HEAD_SHA")
-          else
-            probe_tag=""
-            args+=(-f "tag_name=$REF_NAME")
+          body=""
+          if [[ -n "$RELPR_HEAD_SHA" && -n "$PREV_TAG" ]]; then
+            prev_head=$(gh pr list --state closed \
+              --search "head:release/${PREV_TAG} base:main" \
+              --json headRefOid --jq '.[0].headRefOid // empty')
+            if [[ -n "$prev_head" ]]; then
+              # Release branches persist after merge; fetching them
+              # brings the dev-lineage commits that the tag checkout
+              # of main doesn't have.
+              git fetch --quiet origin 'refs/heads/release/*:refs/remotes/origin/release/*'
+              body="## What's Changed"
+              for n in $(git log --first-parent --format='%s' "$prev_head..$RELPR_HEAD_SHA" \
+                  | grep -oE '\(#[0-9]+\)$' | tr -d '(#)' | sort -n || true); do
+                body+=$'\n'"$(gh pr view "$n" --json number,title,author --jq \
+                  '"* \(.title) by @\(.author.login) in https://github.com/'"${GITHUB_REPOSITORY}"'/pull/\(.number)"')"
+              done
+              body+=$'\n\n'"**Full Changelog**: https://github.com/${GITHUB_REPOSITORY}/compare/${PREV_TAG}...${REF_NAME}"
+            fi
           fi
-          if [[ -n "$PREV_TAG" ]]; then
-            args+=(-f "previous_tag_name=$PREV_TAG")
-          fi
-          body=$(gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
-            "${args[@]}" --jq '.body')
-          # Undo the probe substitution so the Full Changelog URL points
-          # at the real tag.
-          if [[ -n "$probe_tag" ]]; then
-            body="${body//$probe_tag/$REF_NAME}"
+          if [[ -z "$body" ]]; then
+            args=(--method POST -f "tag_name=$REF_NAME")
+            if [[ -n "$PREV_TAG" ]]; then
+              args+=(-f "previous_tag_name=$PREV_TAG")
+            fi
+            body=$(gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+              "${args[@]}" --jq '.body')
           fi
           {
             echo "body<<RELEASE_NOTES_EOF"
