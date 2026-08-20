@@ -1,0 +1,29 @@
+namespace GhosttyWin32
+{
+    // System backdrop whose brush is a plain transparent color:
+    // combined with a transparent XAML root this yields crisp,
+    // unblurred per-pixel window transparency (Windows Terminal's
+    // "vintage opacity" look). Used when background-opacity < 1
+    // and background-blur is off; blur uses DesktopAcrylicBackdrop
+    // instead.
+    // [default_interface] is required: the class body only declares
+    // a constructor (the behavior lives in base-class overrides,
+    // which don't count as members in IDL), and midlrt rejects an
+    // "empty" activatable/composable runtimeclass without it.
+    [default_interface]
+    runtimeclass TransparentBackdrop : Microsoft.UI.Xaml.Media.SystemBackdrop
+    {
+        TransparentBackdrop();
+    }
+
+    // Acrylic blur with the tint dialed to zero: full blur of what's
+    // behind the window with no color wash, so background-opacity's
+    // translucency and background-blur compose ("frosted glass")
+    // instead of the stock DesktopAcrylicBackdrop's heavy material
+    // tint swallowing the transparency.
+    [default_interface]
+    runtimeclass ClearAcrylicBackdrop : Microsoft.UI.Xaml.Media.SystemBackdrop
+    {
+        ClearAcrylicBackdrop();
+    }
+}

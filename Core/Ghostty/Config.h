@@ -64,6 +64,26 @@ public:
     // own default of `.auto`. Used by the TOGGLE_WINDOW_DECORATIONS
     // tag (#68) to know what "the config default" means before
     // applying per-window overrides.
+    // `background-opacity` as configured (clamped by ghostty to
+    // [0,1] at load). 1.0 = fully opaque; the TOGGLE_BACKGROUND_
+    // OPACITY guards treat >= 1.0 as "no transparency configured",
+    // mirroring upstream macOS.
+    double BackgroundOpacity() const noexcept {
+        double opacity = 1.0;
+        GetRaw("background-opacity", &opacity);
+        return opacity;
+    }
+
+    // `background-blur` crosses the C API via cval() as an i16:
+    // 0 = off, 20 = a bare `true`, positive = the radius, negative
+    // = macOS glass sentinels ("imply some blur" per upstream, so
+    // any non-zero value counts as enabled here).
+    bool BackgroundBlurEnabled() const noexcept {
+        short v = 0;
+        if (!GetRaw("background-blur", &v)) return false;
+        return v != 0;
+    }
+
     // ----- notify-on-command-finish (v1.3.0+, default: never) -----
     // The whole feature is opt-in; every getter falls back to the
     // documented default when the key is unreadable.

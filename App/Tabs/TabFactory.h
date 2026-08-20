@@ -49,9 +49,11 @@ class TabFactory {
 public:
     TabFactory(ghostty::App const& app, HWND hwnd,
                PaneIdAllocator& idAllocator,
-               std::function<void(ghostty_surface_t)> onLeafFocused = {}) noexcept
+               std::function<void(ghostty_surface_t)> onLeafFocused = {},
+               std::function<void(implementation::TerminalControl&)> onLeafCreated = {}) noexcept
         : m_ghostty(app), m_hwnd(hwnd), m_idAllocator(idAllocator),
-          m_onLeafFocused(std::move(onLeafFocused)) {}
+          m_onLeafFocused(std::move(onLeafFocused)),
+          m_onLeafCreated(std::move(onLeafCreated)) {}
 
     TabFactory(const TabFactory&) = delete;
     TabFactory& operator=(const TabFactory&) = delete;
@@ -276,6 +278,14 @@ public:
             1.0 - liveCfg.UnfocusedSplitOpacity(),
             liveCfg.UnfocusedSplitFill());
 
+        // Host-supplied per-leaf initialization that depends on
+        // window state the factory can't know (today: the window's
+        // background-opacity mode, #69). Runs for every creation
+        // path — first tab, split, new window — so window-scoped
+        // visual state can't be missed by a pane born after a
+        // toggle.
+        if (m_onLeafCreated) m_onLeafCreated(*controlImpl);
+
         return MakePaneBranch(control, paneId);
     }
 
@@ -304,6 +314,9 @@ private:
     // Optional. Fires with the leaf's ghostty_surface_t whenever the
     // leaf's TerminalControl receives keyboard focus.
     std::function<void(ghostty_surface_t)> m_onLeafFocused;
+    // See the call site in MakePane: window-state-dependent per-leaf
+    // initialization supplied by the host.
+    std::function<void(implementation::TerminalControl&)> m_onLeafCreated;
 };
 
 }  // namespace winrt::GhosttyWin32::implementation
