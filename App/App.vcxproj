@@ -66,6 +66,11 @@
       <Configuration>Release</Configuration>
       <Platform>ARM64</Platform>
     </ProjectConfiguration>
+    <!-- ASan = Debug + /fsanitize=address; see Directory.Build.props. -->
+    <ProjectConfiguration Include="ASan|x64">
+      <Configuration>ASan</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
@@ -76,6 +81,11 @@
   <PropertyGroup Condition="'$(Configuration)'=='Debug'" Label="Configuration">
     <UseDebugLibraries>true</UseDebugLibraries>
     <LinkIncremental>true</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)'=='ASan'" Label="Configuration">
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <!-- ASan does not support incremental linking. -->
+    <LinkIncremental>false</LinkIncremental>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)'=='Release'" Label="Configuration">
     <UseDebugLibraries>false</UseDebugLibraries>
@@ -112,7 +122,7 @@
       <AdditionalDependencies>ghostty-internal.lib;d3d11.lib;dxgi.lib;comctl32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
-  <ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='Debug' or '$(Configuration)'=='ASan'">
     <ClCompile>
       <!--
         DISABLE_XAML_GENERATED_MAIN suppresses the wWinMain stub
@@ -134,6 +144,9 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <Manifest Include="app.manifest" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="App.rc" />
   </ItemGroup>
   <ItemGroup>
     <!--
@@ -232,6 +245,18 @@
     -->
     <None Include="..\external\ghostty\zig-out\lib\ghostty-internal.dll">
       <Link>ghostty.dll</Link>
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+  </ItemGroup>
+  <ItemGroup Condition="'$(Configuration)'=='ASan'">
+    <!--
+      The ASan runtime is a DLL and the loader must find it next to
+      the EXE. VS copies it into OutDir for plain desktop apps, but
+      the MSIX layout only picks up declared content — an F5 packaged
+      run would die at startup with STATUS_DLL_NOT_FOUND without this.
+      x64 hardcoded: the ASan configuration only exists for x64.
+    -->
+    <None Include="$(VCToolsInstallDir)bin\Hostx64\x64\clang_rt.asan_dynamic-x86_64.dll">
       <DeploymentContent>true</DeploymentContent>
     </None>
   </ItemGroup>

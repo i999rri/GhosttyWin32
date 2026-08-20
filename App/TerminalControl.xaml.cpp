@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "TerminalControl.xaml.h"
+#include "resource.h"
 #include "Interop/Encoding.h"
 #include "Host/KeyModifiers.h"
 #include "Input/KeyEventTranslator.h"
@@ -297,7 +298,114 @@ namespace winrt::GhosttyWin32::implementation
             case GHOSTTY_MOUSE_SHAPE_NWSE_RESIZE:      mapped = muxi::SizeNorthwestSoutheast; break;
             default:                                   mapped = muxi::Arrow; break;
         }
-        ProtectedCursor(winrt::Microsoft::UI::Input::InputSystemCursor::Create(mapped));
+        // Cache the shape instead of applying it unconditionally:
+        // while MOUSE_VISIBILITY has the cursor hidden, a shape
+        // update (ghostty re-sends TEXT/POINTER as the pointer
+        // moves over cells) must not resurrect the cursor — the
+        // cached value is applied when visibility comes back.
+        m_visibleCursor = winrt::Microsoft::UI::Input::InputSystemCursor::Create(mapped);
+        if (!m_cursorHidden) {
+            ProtectedCursor(m_visibleCursor);
+        }
+    }
+
+    void TerminalControl::AppendKeySequence(winrt::hstring const& label)
+    {
+        m_keySequence.push_back(label);
+        UpdateKeyStateBadge();
+    }
+
+    void TerminalControl::ClearKeySequence()
+    {
+        if (m_keySequence.empty()) return;
+        m_keySequence.clear();
+        UpdateKeyStateBadge();
+    }
+
+    void TerminalControl::PushKeyTable(winrt::hstring const& name)
+    {
+        m_keyTables.push_back(name);
+        UpdateKeyStateBadge();
+    }
+
+    void TerminalControl::PopKeyTable(bool all)
+    {
+        if (m_keyTables.empty()) return;
+        if (all) {
+            m_keyTables.clear();
+        } else {
+            m_keyTables.pop_back();
+        }
+        UpdateKeyStateBadge();
+    }
+
+    void TerminalControl::UpdateKeyStateBadge()
+    {
+        // Table stack first ("resize"), pending chord second
+        // ("ctrl+a …"), separated when both are live. Mirrors the
+        // information upstream's KeyStateIndicator carries, minus
+        // its popover chrome.
+        std::wstring text;
+        for (auto const& name : m_keyTables) {
+            if (!text.empty()) text += L" · ";
+            text += name;
+        }
+        if (!m_keySequence.empty()) {
+            if (!text.empty()) text += L" · ";
+            for (auto const& label : m_keySequence) {
+                text += label;
+                text += L' ';
+            }
+            text += L'…';
+        }
+        if (text.empty()) {
+            KeyStateBadge().Visibility(winrt::Microsoft::UI::Xaml::Visibility::Collapsed);
+            return;
+        }
+        KeyStateBadgeText().Text(text);
+        KeyStateBadge().Visibility(winrt::Microsoft::UI::Xaml::Visibility::Visible);
+    }
+
+    void TerminalControl::SetReadonly(bool readonly)
+    {
+        ReadonlyBadge().Visibility(readonly
+            ? winrt::Microsoft::UI::Xaml::Visibility::Visible
+            : winrt::Microsoft::UI::Xaml::Visibility::Collapsed);
+    }
+
+    void TerminalControl::SetSecureInput(ghostty_action_secure_input_e mode)
+    {
+        const bool on = mode == GHOSTTY_SECURE_INPUT_ON    ? true
+                      : mode == GHOSTTY_SECURE_INPUT_OFF   ? false
+                                                           : !m_secureInput;
+        if (on == m_secureInput) return;
+        m_secureInput = on;
+        SecureInputBadge().Visibility(on
+            ? winrt::Microsoft::UI::Xaml::Visibility::Visible
+            : winrt::Microsoft::UI::Xaml::Visibility::Collapsed);
+    }
+
+    void TerminalControl::SetMouseVisibility(bool visible)
+    {
+        if (m_cursorHidden == !visible) return;
+        m_cursorHidden = !visible;
+        // WinUI 3 has no "hide" on ProtectedCursor: null means
+        // "inherit the parent's cursor" and renders as Arrow
+        // (verified during #60). Hiding is therefore expressed as
+        // showing a fully-transparent cursor embedded as a Win32
+        // resource in the EXE. Created once; UI thread only, so the
+        // local static needs no synchronization.
+        static const auto blank = []() -> winrt::Microsoft::UI::Input::InputCursor {
+            try {
+                return winrt::Microsoft::UI::Input::InputDesktopResourceCursor::CreateFromModule(
+                    L"GhosttyWin32.exe", IDC_GHOSTTY_BLANK_CURSOR);
+            } catch (winrt::hresult_error const&) {
+                // Resource lookup failed — degrade to the inherited
+                // Arrow rather than crashing over a cosmetic feature.
+                return nullptr;
+            }
+        }();
+        ProtectedCursor(visible ? m_visibleCursor : blank);
     }
 
     void TerminalControl::SetUnfocusedAppearance(double overlayOpacity,
@@ -318,6 +426,18 @@ namespace winrt::GhosttyWin32::implementation
             dim.Fill(m_unfocusedFillBrush);
             dim.Opacity(m_unfocusedOpacity);
         }
+    }
+
+    void TerminalControl::SetHoveredLink(winrt::hstring const& url)
+    {
+        auto banner = LinkBanner();
+        if (!banner) return;
+        if (url.empty()) {
+            banner.Visibility(winrt::Microsoft::UI::Xaml::Visibility::Collapsed);
+            return;
+        }
+        LinkBannerText().Text(url);
+        banner.Visibility(winrt::Microsoft::UI::Xaml::Visibility::Visible);
     }
 
     void TerminalControl::ApplyFocusVisual(bool focused)

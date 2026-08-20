@@ -164,6 +164,103 @@ struct MockMainWindowView : core::host::IWindow {
         lastCursorShape = shape;
     }
 
+    int setHoveredLinkCalls = 0;
+    ghostty_surface_t lastHoveredLinkSurface = nullptr;
+    std::wstring lastHoveredLinkUrl;
+    void SetHoveredLinkForSurface(ghostty_surface_t s, std::wstring url) override {
+        ++setHoveredLinkCalls;
+        lastHoveredLinkSurface = s;
+        lastHoveredLinkUrl = std::move(url);
+    }
+
+    int setSecureInputCalls = 0;
+    ghostty_surface_t lastSecureInputSurface = nullptr;
+    ghostty_action_secure_input_e lastSecureInputMode{};
+    void SetSecureInputForSurface(ghostty_surface_t s,
+                                  ghostty_action_secure_input_e mode) override {
+        ++setSecureInputCalls;
+        lastSecureInputSurface = s;
+        lastSecureInputMode = mode;
+    }
+
+    int promptTitleCalls = 0;
+    ghostty_surface_t lastPromptTitleSurface = nullptr;
+    void PromptTitleForSurface(ghostty_surface_t s) override {
+        ++promptTitleCalls;
+        lastPromptTitleSurface = s;
+    }
+
+    int setReadonlyCalls = 0;
+    ghostty_surface_t lastReadonlySurface = nullptr;
+    bool lastReadonly = false;
+    void SetReadonlyForSurface(ghostty_surface_t s, bool readonly) override {
+        ++setReadonlyCalls;
+        lastReadonlySurface = s;
+        lastReadonly = readonly;
+    }
+
+    int notifyCommandFinishedCalls = 0;
+    ghostty_surface_t lastCommandFinishedSurface = nullptr;
+    int lastCommandExitCode = 0;
+    uint64_t lastCommandDurationNs = 0;
+    void NotifyCommandFinishedForSurface(ghostty_surface_t s, int exitCode,
+                                         uint64_t durationNs) override {
+        ++notifyCommandFinishedCalls;
+        lastCommandFinishedSurface = s;
+        lastCommandExitCode = exitCode;
+        lastCommandDurationNs = durationNs;
+    }
+
+    int setPwdCalls = 0;
+    ghostty_surface_t lastPwdSurface = nullptr;
+    std::wstring lastPwd;
+    void SetPwdForSurface(ghostty_surface_t s, std::wstring pwd) override {
+        ++setPwdCalls;
+        lastPwdSurface = s;
+        lastPwd = std::move(pwd);
+    }
+
+    int appendKeySequenceCalls = 0;
+    ghostty_surface_t lastKeySequenceSurface = nullptr;
+    std::wstring lastKeySequenceLabel;
+    void AppendKeySequenceForSurface(ghostty_surface_t s, std::wstring label) override {
+        ++appendKeySequenceCalls;
+        lastKeySequenceSurface = s;
+        lastKeySequenceLabel = std::move(label);
+    }
+
+    int clearKeySequenceCalls = 0;
+    void ClearKeySequenceForSurface(ghostty_surface_t s) override {
+        ++clearKeySequenceCalls;
+        lastKeySequenceSurface = s;
+    }
+
+    int pushKeyTableCalls = 0;
+    ghostty_surface_t lastKeyTableSurface = nullptr;
+    std::wstring lastKeyTableName;
+    void PushKeyTableForSurface(ghostty_surface_t s, std::wstring name) override {
+        ++pushKeyTableCalls;
+        lastKeyTableSurface = s;
+        lastKeyTableName = std::move(name);
+    }
+
+    int popKeyTableCalls = 0;
+    bool lastPopKeyTableAll = false;
+    void PopKeyTableForSurface(ghostty_surface_t s, bool all) override {
+        ++popKeyTableCalls;
+        lastKeyTableSurface = s;
+        lastPopKeyTableAll = all;
+    }
+
+    int setMouseVisibilityCalls = 0;
+    ghostty_surface_t lastMouseVisibilitySurface = nullptr;
+    bool lastMouseVisible = true;
+    void SetMouseVisibilityForSurface(ghostty_surface_t s, bool visible) override {
+        ++setMouseVisibilityCalls;
+        lastMouseVisibilitySurface = s;
+        lastMouseVisible = visible;
+    }
+
     int replaceConfigCalls = 0;
     // Records whether the clone passed in differed from the
     // original. The production view takes ownership; the mock

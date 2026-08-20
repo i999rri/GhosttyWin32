@@ -2,6 +2,7 @@
 #include "MainWindow.xaml.h"
 #include "App.xaml.h"
 #include "Ghostty/CallbackDispatcher.h"
+#include "Ghostty/Config.h"
 #include "Host/KeyModifiers.h"
 #include "Interop/Encoding.h"
 #include "Display/PhysicalPixels.h"
@@ -259,6 +260,22 @@ namespace winrt::GhosttyWin32::implementation
                                 // a stale restore becomes a no-op.
                                 if (!self->IsForeground()) {
                                     return;
+                                }
+                                // A modal ContentDialog (rename
+                                // prompt, close confirm) owns focus
+                                // while it's up; restoring the
+                                // terminal here would steal it and
+                                // let keystrokes leak into the shell
+                                // behind the dialog. Any open popup
+                                // on this XamlRoot means skip — the
+                                // dialog puts focus back on its own
+                                // when it closes.
+                                if (auto content = self->Content()) {
+                                    if (auto root = content.XamlRoot()) {
+                                        auto popups = winrt::Microsoft::UI::Xaml::Media::
+                                            VisualTreeHelper::GetOpenPopupsForXamlRoot(root);
+                                        if (popups && popups.Size() > 0) return;
+                                    }
                                 }
                                 if (auto* tab = self->ActiveTab()) {
                                     tab->Focus();
@@ -1359,6 +1376,12 @@ namespace winrt::GhosttyWin32::implementation
     void MainWindow::SetTabTitleForSurface(ghostty_surface_t surface, std::wstring title)
     {
         if (auto* t = m_tabs.FindBySurface(surface)) {
+            // A user-chosen name (rename prompt) outranks the shell:
+            // upstream documents the prompt title as overriding any
+            // terminal-set title, and shells re-assert their OSC
+            // title on every prompt — honouring it here would undo
+            // the rename within seconds.
+            if (t->HasUserTitle()) return;
             t->Item().Header(box_value(winrt::hstring(title)));
             // Once the shell has spoken, the foreground-pid poll
             // stops overwriting the header for this tab.
@@ -1607,6 +1630,230 @@ namespace winrt::GhosttyWin32::implementation
         if (!lookup.pane) return;
         if (auto* tc = Tab::PaneToTerminalControl(*lookup.pane)) {
             tc->SetCursorShape(shape);
+        }
+    }
+
+    void MainWindow::SetSecureInputForSurface(ghostty_surface_t surface,
+                                              ghostty_action_secure_input_e mode)
+    {
+        // Owning-leaf routing: the password prompt lives in a
+        // specific pane, and the badge belongs there.
+        auto lookup = m_tabs.FindPaneBySurface(surface);
+        if (!lookup.pane) return;
+        if (auto* tc = Tab::PaneToTerminalControl(*lookup.pane)) {
+            tc->SetSecureInput(mode);
+        }
+    }
+
+    namespace {
+        // "2m 5s" / "12s" style, for the command-finished toast body.
+        // Sub-second commands rarely qualify (the default threshold
+        // is 5s), so second granularity is enough.
+        winrt::hstring FormatDurationNs(uint64_t ns) {
+            const uint64_t totalSec = ns / 1'000'000'000ull;
+            wchar_t buf[64];
+            if (totalSec >= 3600) {
+                swprintf_s(buf, L"%lluh %llum",
+                           totalSec / 3600, (totalSec % 3600) / 60);
+            } else if (totalSec >= 60) {
+                swprintf_s(buf, L"%llum %llus",
+                           totalSec / 60, totalSec % 60);
+            } else {
+                swprintf_s(buf, L"%llus", totalSec);
+            }
+            return winrt::hstring{ buf };
+        }
+    }
+
+    void MainWindow::NotifyCommandFinishedForSurface(ghostty_surface_t surface,
+                                                     int exitCode,
+                                                     uint64_t durationNs)
+    {
+        // Policy mirrors macOS commandFinished: config gate first
+        // (mode, then duration threshold), then the configured
+        // actions. Config is read fresh per event so a reload takes
+        // effect without replumbing.
+        core::ghostty::Config cfg{ m_ghosttyApp->ConfigHandle() };
+        using Notify = core::ghostty::Config::NotifyOnCommandFinish;
+        const auto mode = cfg.CommandFinishNotify();
+        if (mode == Notify::Never) return;
+        if (mode == Notify::Unfocused) {
+            // "Focused" means the pane is this window's active
+            // surface AND the window is in the foreground — a
+            // command finishing in a visible, focused pane needs no
+            // announcement.
+            const bool focused = surface == m_activeSurface &&
+                                 GetForegroundWindow() == m_hwnd;
+            if (focused) return;
+        }
+        if (durationNs < cfg.CommandFinishNotifyAfterNs()) return;
+
+        const auto actions = cfg.CommandFinishNotifyActions();
+        if (actions.bell) MessageBeep(MB_OK);
+        if (actions.notify) {
+            // Title wording matches upstream macOS; exitCode < 0
+            // means the shell didn't report one.
+            std::wstring title = exitCode < 0 ? L"Command Finished"
+                                : exitCode == 0 ? L"Command Succeeded"
+                                                : L"Command Failed";
+            std::wstring body = L"Finished in ";
+            body += FormatDurationNs(durationNs);
+            if (exitCode >= 0) {
+                body += L" (exit ";
+                body += std::to_wstring(exitCode);
+                body += L")";
+            }
+            ShowDesktopNotification(surface, std::move(title), std::move(body));
+        }
+    }
+
+    void MainWindow::PromptTitleForSurface(ghostty_surface_t surface)
+    {
+        // One ContentDialog per XamlRoot is a WinUI rule; a second
+        // ShowAsync throws. If a rename prompt (or the close-confirm
+        // dialog) is already up, dropping the request matches how
+        // repeated keypresses should feel anyway.
+        if (m_renamePromptOpen) return;
+        auto* t = m_tabs.FindBySurface(surface);
+        if (!t) return;
+        auto content = Content();
+        auto xamlRoot = content ? content.XamlRoot() : nullptr;
+        if (!xamlRoot) return;
+
+        muxc::TextBox input;
+        input.Text(unbox_value_or<winrt::hstring>(t->Item().Header(), L""));
+        // Pre-select so typing replaces the old title outright —
+        // the common case is a full rename, not an edit.
+        input.SelectAll();
+
+        muxc::ContentDialog dlg;
+        dlg.XamlRoot(xamlRoot);
+        dlg.Title(box_value(L"Rename tab"));
+        dlg.Content(input);
+        dlg.PrimaryButtonText(L"Rename");
+        dlg.CloseButtonText(L"Cancel");
+        dlg.DefaultButton(muxc::ContentDialogButton::Primary);
+
+        m_renamePromptOpen = true;
+        auto op = dlg.ShowAsync();
+        // Weak ref: the dialog can outlive this window if teardown
+        // starts while it's up (same rationale as WindowCloseGate).
+        // The TabViewItem is captured by value — WinRT projections
+        // are refcounted handles, so applying the rename to a tab
+        // that got torn out or closed mid-prompt is a safe no-op on
+        // a still-alive object rather than a dangling pointer.
+        auto weak = get_weak();
+        auto item = t->Item();
+        op.Completed([weak, item, input](auto const& sender, auto const&) {
+            auto self = weak.get();
+            if (self) self->m_renamePromptOpen = false;
+            if (sender.GetResults() != muxc::ContentDialogResult::Primary) return;
+            auto text = input.Text();
+            // Empty input is treated as cancel: this port has no
+            // inverse of MarkExplicitTitle yet, so "reset to the
+            // automatic title" can't be honoured truthfully.
+            if (text.empty()) return;
+            item.Header(box_value(text));
+            if (self) {
+                if (auto* tab = self->m_tabs.FindByItem(item)) {
+                    // User latch: outranks both the foreground-pid
+                    // poll AND shell SET_TITLE (see HasUserTitle) —
+                    // shells re-assert their OSC title constantly,
+                    // so anything weaker gets undone in seconds.
+                    tab->MarkUserTitle();
+                }
+            }
+        });
+    }
+
+    void MainWindow::SetReadonlyForSurface(ghostty_surface_t surface, bool readonly)
+    {
+        // Owning-leaf routing: the read-only state belongs to the
+        // pane whose pty stopped accepting writes.
+        auto lookup = m_tabs.FindPaneBySurface(surface);
+        if (!lookup.pane) return;
+        if (auto* tc = Tab::PaneToTerminalControl(*lookup.pane)) {
+            tc->SetReadonly(readonly);
+        }
+    }
+
+    void MainWindow::SetPwdForSurface(ghostty_surface_t surface, std::wstring pwd)
+    {
+        // Tab-level, not pane-level: the tooltip hangs off the
+        // TabViewItem. With splits the last pane to report wins —
+        // "the directory the user last worked in".
+        auto* t = m_tabs.FindBySurface(surface);
+        if (!t) return;
+        Microsoft::UI::Xaml::Controls::ToolTipService::SetToolTip(
+            t->Item(),
+            pwd.empty() ? nullptr : box_value(winrt::hstring{ pwd }));
+    }
+
+    // KEY_SEQUENCE / KEY_TABLE: owning-leaf routing like the other
+    // pane-visual actions; the four operations share the lookup and
+    // differ only in which TerminalControl mutator they call.
+    void MainWindow::AppendKeySequenceForSurface(ghostty_surface_t surface,
+                                                 std::wstring triggerLabel)
+    {
+        auto lookup = m_tabs.FindPaneBySurface(surface);
+        if (!lookup.pane) return;
+        if (auto* tc = Tab::PaneToTerminalControl(*lookup.pane)) {
+            tc->AppendKeySequence(winrt::hstring{ triggerLabel });
+        }
+    }
+
+    void MainWindow::ClearKeySequenceForSurface(ghostty_surface_t surface)
+    {
+        auto lookup = m_tabs.FindPaneBySurface(surface);
+        if (!lookup.pane) return;
+        if (auto* tc = Tab::PaneToTerminalControl(*lookup.pane)) {
+            tc->ClearKeySequence();
+        }
+    }
+
+    void MainWindow::PushKeyTableForSurface(ghostty_surface_t surface,
+                                            std::wstring name)
+    {
+        auto lookup = m_tabs.FindPaneBySurface(surface);
+        if (!lookup.pane) return;
+        if (auto* tc = Tab::PaneToTerminalControl(*lookup.pane)) {
+            tc->PushKeyTable(winrt::hstring{ name });
+        }
+    }
+
+    void MainWindow::PopKeyTableForSurface(ghostty_surface_t surface, bool all)
+    {
+        auto lookup = m_tabs.FindPaneBySurface(surface);
+        if (!lookup.pane) return;
+        if (auto* tc = Tab::PaneToTerminalControl(*lookup.pane)) {
+            tc->PopKeyTable(all);
+        }
+    }
+
+    void MainWindow::SetMouseVisibilityForSurface(ghostty_surface_t surface,
+                                                  bool visible)
+    {
+        // Owning-leaf routing, same as the other pointer-adjacent
+        // actions: the hide belongs to the pane the user is typing
+        // in, which with splits is not necessarily the active leaf
+        // of every tab.
+        auto lookup = m_tabs.FindPaneBySurface(surface);
+        if (!lookup.pane) return;
+        if (auto* tc = Tab::PaneToTerminalControl(*lookup.pane)) {
+            tc->SetMouseVisibility(visible);
+        }
+    }
+
+    void MainWindow::SetHoveredLinkForSurface(ghostty_surface_t surface,
+                                              std::wstring url)
+    {
+        // Same owning-leaf routing as SetCursorShapeForSurface: the
+        // pointer can hover a link in a non-active pane, and the
+        // banner belongs to the pane the link lives in.
+        auto lookup = m_tabs.FindPaneBySurface(surface);
+        if (!lookup.pane) return;
+        if (auto* tc = Tab::PaneToTerminalControl(*lookup.pane)) {
+            tc->SetHoveredLink(winrt::hstring{ url });
         }
     }
 

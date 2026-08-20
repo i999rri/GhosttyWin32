@@ -134,6 +134,26 @@ namespace winrt::GhosttyWin32::implementation
         void ApplyBackgroundColor(uint8_t r, uint8_t g, uint8_t b) override;
         void SetCursorShapeForSurface(ghostty_surface_t surface,
                                       ghostty_action_mouse_shape_e shape) override;
+        void SetHoveredLinkForSurface(ghostty_surface_t surface,
+                                      std::wstring url) override;
+        void SetMouseVisibilityForSurface(ghostty_surface_t surface,
+                                          bool visible) override;
+        void SetSecureInputForSurface(ghostty_surface_t surface,
+                                      ghostty_action_secure_input_e mode) override;
+        void SetPwdForSurface(ghostty_surface_t surface,
+                              std::wstring pwd) override;
+        void NotifyCommandFinishedForSurface(ghostty_surface_t surface,
+                                             int exitCode,
+                                             uint64_t durationNs) override;
+        void SetReadonlyForSurface(ghostty_surface_t surface,
+                                   bool readonly) override;
+        void PromptTitleForSurface(ghostty_surface_t surface) override;
+        void AppendKeySequenceForSurface(ghostty_surface_t surface,
+                                         std::wstring triggerLabel) override;
+        void ClearKeySequenceForSurface(ghostty_surface_t surface) override;
+        void PushKeyTableForSurface(ghostty_surface_t surface,
+                                    std::wstring name) override;
+        void PopKeyTableForSurface(ghostty_surface_t surface, bool all) override;
         void ReplaceConfig(ghostty_config_t cloned) override;
         void ReloadConfig(bool soft) override;
         void ShowDesktopNotification(ghostty_surface_t surface,
@@ -346,6 +366,11 @@ namespace winrt::GhosttyWin32::implementation
         // when a TerminalControl gains focus, cleared when the
         // matching surface is torn down through CloseSurfaceByPaneId.
         ghostty_surface_t m_activeSurface = nullptr;
+        // Re-entrancy guard for the rename-title prompt: WinUI allows
+        // one ContentDialog per XamlRoot, and a second ShowAsync while
+        // one is up throws. Set when the dialog opens, cleared in its
+        // Completed handler.
+        bool m_renamePromptOpen = false;
         // Constructed once ghostty is initialized — needs the app handle
         // and HWND, neither available until InitGhostty has run.
         std::unique_ptr<TabFactory> m_tabFactory;

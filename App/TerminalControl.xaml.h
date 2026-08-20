@@ -11,6 +11,7 @@
 #include <atomic>
 #include <functional>
 #include <memory>
+#include <vector>
 
 namespace winrt::GhosttyWin32::implementation
 {
@@ -174,6 +175,38 @@ namespace winrt::GhosttyWin32::implementation
         // borders, etc.
         void SetCursorShape(ghostty_action_mouse_shape_e shape);
 
+        // ----- key-state badge (KEY_SEQUENCE / KEY_TABLE) -----
+        // The pane owns the accumulated state (pending chord labels,
+        // key-table name stack) because the actions only carry
+        // deltas. All UI thread only.
+        void AppendKeySequence(winrt::hstring const& label);
+        void ClearKeySequence();
+        void PushKeyTable(winrt::hstring const& name);
+        void PopKeyTable(bool all);
+
+        // Show/hide the read-only chip (READONLY action). The write
+        // blocking is core-side; this is indicator only. UI thread.
+        void SetReadonly(bool readonly);
+
+        // Reflect SECURE_INPUT on this pane's badge. ON/OFF set the
+        // state directly; TOGGLE flips it here because the pane owns
+        // the indicator state (ghostty's toggle keybind carries no
+        // absolute value). UI thread only.
+        void SetSecureInput(ghostty_action_secure_input_e mode);
+
+        // Mirror ghostty's MOUSE_VISIBILITY on this pane: false hides
+        // the pointer (mouse-hide-while-typing), true restores the
+        // last MOUSE_SHAPE. UI thread only. ghostty drives both
+        // directions (hide on keypress, show on pointer move), so
+        // this holds no policy — just the ProtectedCursor mechanics.
+        void SetMouseVisibility(bool visible);
+
+        // Show the hovered-link banner with `url`, or hide it when
+        // `url` is empty. UI thread only — the caller dispatches from
+        // the renderer thread. See the LinkBanner comment in the XAML
+        // for why this is an in-tree overlay and not a popup (#61).
+        void SetHoveredLink(winrt::hstring const& url);
+
         // Set the callback that fires when this control receives
         // keyboard focus. Passed the underlying ghostty surface so
         // the host can update its "currently focused surface"
@@ -255,6 +288,24 @@ namespace winrt::GhosttyWin32::implementation
         // avoid reallocating per focus event.
         double m_unfocusedOpacity = 0.3;
         winrt::Microsoft::UI::Xaml::Media::SolidColorBrush m_unfocusedFillBrush{ nullptr };
+
+        // MOUSE_VISIBILITY state. m_visibleCursor caches the cursor
+        // built by the last SetCursorShape call so a show can restore
+        // it; m_cursorHidden gates shape updates from resurrecting a
+        // hidden cursor. See SetMouseVisibility().
+        bool m_cursorHidden = false;
+        winrt::Microsoft::UI::Input::InputCursor m_visibleCursor{ nullptr };
+
+        // SECURE_INPUT indicator state; owned here so TOGGLE can
+        // flip without the dispatcher tracking anything.
+        bool m_secureInput = false;
+
+        // Key-state badge state. Rebuilds the badge text from both
+        // lists on every change — the lists are tiny (a table stack
+        // is 1-2 deep, a chord is 2-3 keys).
+        void UpdateKeyStateBadge();
+        std::vector<winrt::hstring> m_keyTables;
+        std::vector<winrt::hstring> m_keySequence;
     };
 }
 

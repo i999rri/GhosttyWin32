@@ -64,6 +64,52 @@ public:
     // own default of `.auto`. Used by the TOGGLE_WINDOW_DECORATIONS
     // tag (#68) to know what "the config default" means before
     // applying per-window overrides.
+    // ----- notify-on-command-finish (v1.3.0+, default: never) -----
+    // The whole feature is opt-in; every getter falls back to the
+    // documented default when the key is unreadable.
+
+    enum class NotifyOnCommandFinish { Never, Unfocused, Always };
+    NotifyOnCommandFinish CommandFinishNotify() const noexcept {
+        // Enum values arrive as their @tagName string — see the
+        // pointer-width warning on WindowDecoratedByConfig below.
+        const char* tag = nullptr;
+        if (!GetRaw("notify-on-command-finish", &tag) || !tag) {
+            return NotifyOnCommandFinish::Never;
+        }
+        if (std::strcmp(tag, "unfocused") == 0) return NotifyOnCommandFinish::Unfocused;
+        if (std::strcmp(tag, "always") == 0) return NotifyOnCommandFinish::Always;
+        return NotifyOnCommandFinish::Never;
+    }
+
+    // Minimum run time before a finished command qualifies.
+    // ghostty's Duration crosses the C API via cval() as
+    // MILLISECONDS (a usize) — NOT the nanoseconds the
+    // COMMAND_FINISHED action payload uses. Convert here so
+    // callers compare ns against ns; comparing the raw value made
+    // a 1s threshold behave as 1µs (caught during #148 testing).
+    uint64_t CommandFinishNotifyAfterNs() const noexcept {
+        size_t ms = 0;
+        if (!GetRaw("notify-on-command-finish-after", &ms)) {
+            return 5'000'000'000ull;  // documented default: 5s
+        }
+        return static_cast<uint64_t>(ms) * 1'000'000ull;
+    }
+
+    // How to notify. The packed struct crosses the C API as its bit
+    // representation in a c_uint: bit 0 = bell (field order in
+    // ghostty's NotifyOnCommandFinishAction), bit 1 = notify.
+    struct CommandFinishActions {
+        bool bell;
+        bool notify;
+    };
+    CommandFinishActions CommandFinishNotifyActions() const noexcept {
+        unsigned bits = 0;
+        if (!GetRaw("notify-on-command-finish-action", &bits)) {
+            return { true, false };  // documented default: bell only
+        }
+        return { (bits & 1u) != 0, (bits & 2u) != 0 };
+    }
+
     bool WindowDecoratedByConfig() const noexcept {
         // ghostty exposes enum config values as their @tagName — a
         // pointer to a null-terminated string — NOT as the

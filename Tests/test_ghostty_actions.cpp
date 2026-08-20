@@ -294,6 +294,235 @@ TEST(GhosttyActionsTest, OnMouseShapeIgnoresNullSurface) {
     EXPECT_EQ(view.setCursorShapeCalls, 0);
 }
 
+TEST(GhosttyActionsTest, OnMouseOverLinkForwardsLengthBoundedUrl) {
+    MockMainWindowView view;
+    Actions actions(view);
+    auto surface = FakeSurface(0xBEEF);
+    // Buffer deliberately longer than len: the url field is not
+    // NUL-terminated, so len must bound the conversion — reading to
+    // the buffer's NUL would leak the trailing bytes into the banner.
+    const char buf[] = "https://example.com/aaaaTRAILING";
+    ghostty_action_mouse_over_link_s link{ buf, 24 };
+    EXPECT_TRUE(actions.OnMouseOverLink(surface, link));
+    EXPECT_EQ(view.setHoveredLinkCalls, 1);
+    EXPECT_EQ(view.lastHoveredLinkSurface, surface);
+    EXPECT_EQ(view.lastHoveredLinkUrl, L"https://example.com/aaaa");
+}
+
+TEST(GhosttyActionsTest, OnMouseOverLinkEmptyPayloadClearsTheBanner) {
+    // len == 0 is how ghostty says "the pointer left the link" — the
+    // empty string must still reach the view so the banner hides.
+    MockMainWindowView view;
+    Actions actions(view);
+    auto surface = FakeSurface(0xBEEF);
+    ghostty_action_mouse_over_link_s link{ nullptr, 0 };
+    EXPECT_TRUE(actions.OnMouseOverLink(surface, link));
+    EXPECT_EQ(view.setHoveredLinkCalls, 1);
+    EXPECT_TRUE(view.lastHoveredLinkUrl.empty());
+}
+
+TEST(GhosttyActionsTest, OnMouseVisibilityMapsEnumToBool) {
+    MockMainWindowView view;
+    Actions actions(view);
+    auto surface = FakeSurface(0xF0);
+    EXPECT_TRUE(actions.OnMouseVisibility(surface, GHOSTTY_MOUSE_HIDDEN));
+    EXPECT_EQ(view.setMouseVisibilityCalls, 1);
+    EXPECT_EQ(view.lastMouseVisibilitySurface, surface);
+    EXPECT_FALSE(view.lastMouseVisible);
+    EXPECT_TRUE(actions.OnMouseVisibility(surface, GHOSTTY_MOUSE_VISIBLE));
+    EXPECT_EQ(view.setMouseVisibilityCalls, 2);
+    EXPECT_TRUE(view.lastMouseVisible);
+}
+
+TEST(GhosttyActionsTest, OnMouseVisibilityIgnoresNullSurface) {
+    MockMainWindowView view;
+    Actions actions(view);
+    EXPECT_TRUE(actions.OnMouseVisibility(nullptr, GHOSTTY_MOUSE_HIDDEN));
+    EXPECT_EQ(view.setMouseVisibilityCalls, 0);
+}
+
+TEST(GhosttyActionsTest, OnSecureInputForwardsSurfaceAndMode) {
+    MockMainWindowView view;
+    Actions actions(view);
+    auto surface = FakeSurface(0x5EC);
+    EXPECT_TRUE(actions.OnSecureInput(surface, GHOSTTY_SECURE_INPUT_TOGGLE));
+    EXPECT_EQ(view.setSecureInputCalls, 1);
+    EXPECT_EQ(view.lastSecureInputSurface, surface);
+    EXPECT_EQ(view.lastSecureInputMode, GHOSTTY_SECURE_INPUT_TOGGLE);
+}
+
+TEST(GhosttyActionsTest, OnSecureInputIgnoresNullSurface) {
+    MockMainWindowView view;
+    Actions actions(view);
+    EXPECT_TRUE(actions.OnSecureInput(nullptr, GHOSTTY_SECURE_INPUT_ON));
+    EXPECT_EQ(view.setSecureInputCalls, 0);
+}
+
+TEST(GhosttyActionsTest, OnPromptTitleForwardsSurface) {
+    MockMainWindowView view;
+    Actions actions(view);
+    auto surface = FakeSurface(0x71);
+    EXPECT_TRUE(actions.OnPromptTitle(surface));
+    EXPECT_EQ(view.promptTitleCalls, 1);
+    EXPECT_EQ(view.lastPromptTitleSurface, surface);
+}
+
+TEST(GhosttyActionsTest, OnPromptTitleIgnoresNullSurface) {
+    MockMainWindowView view;
+    Actions actions(view);
+    EXPECT_TRUE(actions.OnPromptTitle(nullptr));
+    EXPECT_EQ(view.promptTitleCalls, 0);
+}
+
+TEST(GhosttyActionsTest, OnReadonlyMapsEnumToBool) {
+    MockMainWindowView view;
+    Actions actions(view);
+    auto surface = FakeSurface(0x20);
+    EXPECT_TRUE(actions.OnReadonly(surface, GHOSTTY_READONLY_ON));
+    EXPECT_EQ(view.setReadonlyCalls, 1);
+    EXPECT_EQ(view.lastReadonlySurface, surface);
+    EXPECT_TRUE(view.lastReadonly);
+    EXPECT_TRUE(actions.OnReadonly(surface, GHOSTTY_READONLY_OFF));
+    EXPECT_EQ(view.setReadonlyCalls, 2);
+    EXPECT_FALSE(view.lastReadonly);
+}
+
+TEST(GhosttyActionsTest, OnReadonlyIgnoresNullSurface) {
+    MockMainWindowView view;
+    Actions actions(view);
+    EXPECT_TRUE(actions.OnReadonly(nullptr, GHOSTTY_READONLY_ON));
+    EXPECT_EQ(view.setReadonlyCalls, 0);
+}
+
+TEST(GhosttyActionsTest, OnCommandFinishedForwardsExitCodeAndDuration) {
+    MockMainWindowView view;
+    Actions actions(view);
+    auto surface = FakeSurface(0xCF);
+    ghostty_action_command_finished_s cf{};
+    cf.exit_code = 2;
+    cf.duration = 7'000'000'000ull;
+    EXPECT_TRUE(actions.OnCommandFinished(surface, cf));
+    EXPECT_EQ(view.notifyCommandFinishedCalls, 1);
+    EXPECT_EQ(view.lastCommandFinishedSurface, surface);
+    EXPECT_EQ(view.lastCommandExitCode, 2);
+    EXPECT_EQ(view.lastCommandDurationNs, 7'000'000'000ull);
+}
+
+TEST(GhosttyActionsTest, OnCommandFinishedIgnoresNullSurface) {
+    MockMainWindowView view;
+    Actions actions(view);
+    ghostty_action_command_finished_s cf{};
+    EXPECT_TRUE(actions.OnCommandFinished(nullptr, cf));
+    EXPECT_EQ(view.notifyCommandFinishedCalls, 0);
+}
+
+TEST(GhosttyActionsTest, OnPwdForwardsUtf16Path) {
+    MockMainWindowView view;
+    Actions actions(view);
+    auto surface = FakeSurface(0x9D);
+    EXPECT_TRUE(actions.OnPwd(surface, "C:/Users/dev/repos"));
+    EXPECT_EQ(view.setPwdCalls, 1);
+    EXPECT_EQ(view.lastPwdSurface, surface);
+    EXPECT_EQ(view.lastPwd, L"C:/Users/dev/repos");
+}
+
+TEST(GhosttyActionsTest, OnPwdEmptyOrNullClearsTooltip) {
+    // Both reach the view as an empty string — the view clears the
+    // tooltip; dropping them would leave a stale path displayed.
+    MockMainWindowView view;
+    Actions actions(view);
+    auto surface = FakeSurface(0x9D);
+    EXPECT_TRUE(actions.OnPwd(surface, ""));
+    EXPECT_TRUE(actions.OnPwd(surface, nullptr));
+    EXPECT_EQ(view.setPwdCalls, 2);
+    EXPECT_TRUE(view.lastPwd.empty());
+}
+
+TEST(GhosttyActionsTest, OnPwdIgnoresNullSurface) {
+    MockMainWindowView view;
+    Actions actions(view);
+    EXPECT_TRUE(actions.OnPwd(nullptr, "C:/x"));
+    EXPECT_EQ(view.setPwdCalls, 0);
+}
+
+TEST(GhosttyActionsTest, OnKeySequenceAppendsFormattedTrigger) {
+    MockMainWindowView view;
+    Actions actions(view);
+    auto surface = FakeSurface(0x5E9);
+    ghostty_action_key_sequence_s seq{};
+    seq.active = true;
+    seq.trigger.tag = GHOSTTY_TRIGGER_UNICODE;
+    seq.trigger.key.unicode = U'a';
+    seq.trigger.mods = GHOSTTY_MODS_CTRL;
+    EXPECT_TRUE(actions.OnKeySequence(surface, seq));
+    EXPECT_EQ(view.appendKeySequenceCalls, 1);
+    EXPECT_EQ(view.lastKeySequenceSurface, surface);
+    EXPECT_EQ(view.lastKeySequenceLabel, L"ctrl+a");
+    EXPECT_EQ(view.clearKeySequenceCalls, 0);
+}
+
+TEST(GhosttyActionsTest, OnKeySequenceInactiveClears) {
+    MockMainWindowView view;
+    Actions actions(view);
+    auto surface = FakeSurface(0x5E9);
+    ghostty_action_key_sequence_s seq{};
+    seq.active = false;
+    EXPECT_TRUE(actions.OnKeySequence(surface, seq));
+    EXPECT_EQ(view.clearKeySequenceCalls, 1);
+    EXPECT_EQ(view.appendKeySequenceCalls, 0);
+}
+
+TEST(GhosttyActionsTest, OnKeyTableActivatePushesLengthBoundedName) {
+    MockMainWindowView view;
+    Actions actions(view);
+    auto surface = FakeSurface(0x7AB);
+    // Longer buffer than len — the name is not NUL-terminated.
+    const char buf[] = "resizeTRAILING";
+    ghostty_action_key_table_s kt{};
+    kt.tag = GHOSTTY_KEY_TABLE_ACTIVATE;
+    kt.value.activate = { buf, 6 };
+    EXPECT_TRUE(actions.OnKeyTable(surface, kt));
+    EXPECT_EQ(view.pushKeyTableCalls, 1);
+    EXPECT_EQ(view.lastKeyTableSurface, surface);
+    EXPECT_EQ(view.lastKeyTableName, L"resize");
+}
+
+TEST(GhosttyActionsTest, OnKeyTableDeactivateVariantsPop) {
+    MockMainWindowView view;
+    Actions actions(view);
+    auto surface = FakeSurface(0x7AB);
+    ghostty_action_key_table_s kt{};
+    kt.tag = GHOSTTY_KEY_TABLE_DEACTIVATE;
+    EXPECT_TRUE(actions.OnKeyTable(surface, kt));
+    EXPECT_EQ(view.popKeyTableCalls, 1);
+    EXPECT_FALSE(view.lastPopKeyTableAll);
+    kt.tag = GHOSTTY_KEY_TABLE_DEACTIVATE_ALL;
+    EXPECT_TRUE(actions.OnKeyTable(surface, kt));
+    EXPECT_EQ(view.popKeyTableCalls, 2);
+    EXPECT_TRUE(view.lastPopKeyTableAll);
+}
+
+TEST(GhosttyActionsTest, KeyStateHandlersIgnoreNullSurface) {
+    MockMainWindowView view;
+    Actions actions(view);
+    ghostty_action_key_sequence_s seq{};
+    seq.active = true;
+    EXPECT_TRUE(actions.OnKeySequence(nullptr, seq));
+    ghostty_action_key_table_s kt{};
+    kt.tag = GHOSTTY_KEY_TABLE_DEACTIVATE;
+    EXPECT_TRUE(actions.OnKeyTable(nullptr, kt));
+    EXPECT_EQ(view.appendKeySequenceCalls, 0);
+    EXPECT_EQ(view.popKeyTableCalls, 0);
+}
+
+TEST(GhosttyActionsTest, OnMouseOverLinkIgnoresNullSurface) {
+    MockMainWindowView view;
+    Actions actions(view);
+    ghostty_action_mouse_over_link_s link{ "https://x", 9 };
+    EXPECT_TRUE(actions.OnMouseOverLink(nullptr, link));
+    EXPECT_EQ(view.setHoveredLinkCalls, 0);
+}
+
 // ----- config -----
 
 TEST(GhosttyActionsTest, OnReloadConfigPassesSoftFlagThrough) {

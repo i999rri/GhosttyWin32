@@ -90,6 +90,67 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
                 return m_actions.OnMouseShape(target.target.surface,
                                               action.action.mouse_shape);
             return false;
+        case GHOSTTY_ACTION_MOUSE_OVER_LINK:
+            if (target.tag == GHOSTTY_TARGET_SURFACE)
+                return m_actions.OnMouseOverLink(target.target.surface,
+                                                 action.action.mouse_over_link);
+            return false;
+        case GHOSTTY_ACTION_MOUSE_VISIBILITY:
+            if (target.tag == GHOSTTY_TARGET_SURFACE)
+                return m_actions.OnMouseVisibility(target.target.surface,
+                                                   action.action.mouse_visibility);
+            return false;
+        // PROMPT_TITLE: rename-title prompt. The SURFACE/TAB payload
+        // variants collapse in the handler (one title per tab, same
+        // as SET_TITLE/SET_TAB_TITLE). App-targeted is a no-op
+        // upstream — ack.
+        case GHOSTTY_ACTION_PROMPT_TITLE:
+            if (target.tag == GHOSTTY_TARGET_SURFACE)
+                return m_actions.OnPromptTitle(target.target.surface);
+            return true;
+        // READONLY: toggle_readonly indicator (the blocking itself
+        // is core-side). App-targeted is a no-op upstream — ack.
+        case GHOSTTY_ACTION_READONLY:
+            if (target.tag == GHOSTTY_TARGET_SURFACE)
+                return m_actions.OnReadonly(target.target.surface,
+                                            action.action.readonly);
+            return true;
+        // COMMAND_FINISHED: shell-integration command tracking. The
+        // app-targeted variant is a no-op upstream — ack.
+        case GHOSTTY_ACTION_COMMAND_FINISHED:
+            if (target.tag == GHOSTTY_TARGET_SURFACE)
+                return m_actions.OnCommandFinished(target.target.surface,
+                                                   action.action.command_finished);
+            return true;
+        // PWD: shell-reported working directory. Upstream treats the
+        // app-targeted variant as a no-op (logged warning) — ack.
+        case GHOSTTY_ACTION_PWD:
+            if (target.tag == GHOSTTY_TARGET_SURFACE)
+                return m_actions.OnPwd(target.target.surface,
+                                       action.action.pwd.pwd);
+            return true;
+        // KEY_SEQUENCE / KEY_TABLE: modal keyboard state indicators.
+        // Upstream treats the app-targeted variants as no-ops (logged
+        // warnings), so those ack rather than refuse.
+        case GHOSTTY_ACTION_KEY_SEQUENCE:
+            if (target.tag == GHOSTTY_TARGET_SURFACE)
+                return m_actions.OnKeySequence(target.target.surface,
+                                               action.action.key_sequence);
+            return true;
+        case GHOSTTY_ACTION_KEY_TABLE:
+            if (target.tag == GHOSTTY_TARGET_SURFACE)
+                return m_actions.OnKeyTable(target.target.surface,
+                                            action.action.key_table);
+            return true;
+        case GHOSTTY_ACTION_SECURE_INPUT:
+            if (target.tag == GHOSTTY_TARGET_SURFACE)
+                return m_actions.OnSecureInput(target.target.surface,
+                                               action.action.secure_input);
+            // App-targeted SECURE_INPUT is macOS's
+            // EnableSecureEventInput (OS-level keylogger protection);
+            // Windows has no counterpart, so the app variant stays a
+            // deliberate ack.
+            return true;
         case GHOSTTY_ACTION_RELOAD_CONFIG:
             return m_actions.OnReloadConfig(action.action.reload_config.soft);
         case GHOSTTY_ACTION_CONFIG_CHANGE:
@@ -145,18 +206,6 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
         // here keeps libghostty's future "unhandled action" audit
         // quiet without inventing empty GhosttyActions methods.
         //
-        // Informational actions whose UI surfaces this port
-        // doesn't have yet (read-only banner, secure-input
-        // padlock, pending chord, modal-key-table label, shell-
-        // supplied title source flag, PWD breadcrumb, post-
-        // command summary):
-        case GHOSTTY_ACTION_READONLY:
-        case GHOSTTY_ACTION_SECURE_INPUT:
-        case GHOSTTY_ACTION_KEY_SEQUENCE:
-        case GHOSTTY_ACTION_KEY_TABLE:
-        case GHOSTTY_ACTION_PROMPT_TITLE:
-        case GHOSTTY_ACTION_PWD:
-        case GHOSTTY_ACTION_COMMAND_FINISHED:
         // Feature surfaces intentionally not on this port's plate
         // (search bar, ImGui inspector, tab overview, quick
         // terminal, command palette, terminal-level undo/redo):
@@ -181,11 +230,6 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
         case GHOSTTY_ACTION_QUIT_TIMER:
         // Cell metrics — no host-side consumer today:
         case GHOSTTY_ACTION_CELL_SIZE:
-        // MOUSE_OVER_LINK is acked while the TOOLTIPS popup is
-        // disabled (issue #61: a TTM_TRACKACTIVATE / SetWindowPos
-        // interaction with the DComp surface crashed the process
-        // on URL click); the URL click path itself still works.
-        case GHOSTTY_ACTION_MOUSE_OVER_LINK:
         // TOGGLE_BACKGROUND_OPACITY: dispatched but not yet
         // implemented — tracked in #69. (The layered-alpha approach
         // sketched in the issue body doesn't work over a flip-model
@@ -193,10 +237,6 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
         // premultiplied-alpha change. Ack to keep the action_cb
         // path quiet meanwhile.)
         case GHOSTTY_ACTION_TOGGLE_BACKGROUND_OPACITY:
-        // MOUSE_VISIBILITY disabled pending #60 (the renderer-
-        // side ghostty_surface_key call doesn't populate the
-        // event fields ghostty checks before firing this).
-        case GHOSTTY_ACTION_MOUSE_VISIBILITY:
             return true;
 
         default:

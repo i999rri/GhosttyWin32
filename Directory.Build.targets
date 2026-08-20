@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project>
+  <!--
+    Flag repairs for the ASan configuration (see
+    Directory.Build.props). This file is evaluated after each
+    project's own ItemDefinitionGroups, so these settings win the
+    metadata merge over the Debug settings the ASan configuration
+    inherits by or-condition:
+
+    - /RTC1 (Tests sets EnableFastChecks in Debug) is a hard
+      compiler error together with ASan (D8016).
+    - /ZI (edit-and-continue) is unsupported under ASan; /Zi keeps
+      full PDB info so reports resolve to file:line.
+  -->
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='ASan'">
+    <ClCompile>
+      <BasicRuntimeChecks>Default</BasicRuntimeChecks>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+    </ClCompile>
+  </ItemDefinitionGroup>
+</Project>

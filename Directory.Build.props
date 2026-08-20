@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project>
+  <!--
+    The ASan configuration (Debug + /fsanitize=address) is defined
+    by exactly one property, here, so every project in the solution
+    agrees on it — mixing instrumented and uninstrumented objects of
+    our own code is what the ASan docs warn against, and per-config
+    IntDir/OutDir keep the instrumented tree (x64\ASan\) fully
+    separate from the daily Debug tree. See docs/ASAN.md.
+
+    Everything else about the configuration (debug libraries, /RTC
+    removal, gtest wiring, MSIX manifest choice) lives in the
+    projects that own those concerns.
+  -->
+  <PropertyGroup Condition="'$(Configuration)'=='ASan'">
+    <EnableASAN>true</EnableASAN>
+  </PropertyGroup>
+</Project>

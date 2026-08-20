@@ -28,5 +28,86 @@
         <Rectangle x:Name="UnfocusedDim"
                    IsHitTestVisible="False"
                    Visibility="Collapsed" />
+        <!--
+          Hovered-link banner (issue #61). Mirrors upstream's bottom-
+          corner URL display (macOS URLHoverBanner / GTK mouse-hover-url
+          label) instead of a popup: the original Win32 TOPMOST tooltip
+          over the DComp surface crashed the process on URL click, while
+          an in-tree, hit-test-transparent sibling cannot interfere with
+          input routing by construction.
+        -->
+        <!--
+          Secure-input badge (SECURE_INPUT, surface-targeted).
+          ghostty's shell integration turns it on while a password
+          prompt is active; the badge tells the user why their
+          keystrokes deserve extra care. Top-right so it never
+          collides with the LinkBanner in the bottom-left; same
+          in-tree hit-test-transparent overlay pattern.
+        -->
+        <StackPanel Orientation="Horizontal"
+                    Spacing="4"
+                    IsHitTestVisible="False"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Top">
+            <!--
+              read-only chip (READONLY, from the toggle_readonly
+              keybind). The write blocking itself happens inside
+              libghostty; without the chip the keyboard just "goes
+              silent" with no explanation — same problem class the
+              key-state badge solves.
+            -->
+            <Border x:Name="ReadonlyBadge"
+                    Visibility="Collapsed"
+                    CornerRadius="0,0,6,6"
+                    Padding="8,4,8,4"
+                    Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}">
+                <TextBlock FontSize="12"
+                           Text="read-only"
+                           Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+            </Border>
+            <Border x:Name="SecureInputBadge"
+                    Visibility="Collapsed"
+                    CornerRadius="0,0,0,6"
+                    Padding="8,4,8,4"
+                    Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}">
+                <TextBlock FontSize="12"
+                           Text="&#x1F512;"
+                           Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+            </Border>
+        </StackPanel>
+        <!--
+          Key-state badge (KEY_SEQUENCE / KEY_TABLE). Shows the
+          active key-table stack and/or the pending multi-chord
+          triggers so a user mid-sequence can see why their keys
+          aren't typing. Bottom-right, so all three overlays keep
+          distinct corners (link banner bottom-left, secure input
+          top-right). Same in-tree hit-test-transparent pattern.
+        -->
+        <Border x:Name="KeyStateBadge"
+                IsHitTestVisible="False"
+                Visibility="Collapsed"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Bottom"
+                CornerRadius="6,0,0,0"
+                Padding="8,4,8,4"
+                Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}">
+            <TextBlock x:Name="KeyStateBadgeText"
+                       FontSize="12"
+                       TextTrimming="CharacterEllipsis"
+                       Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+        </Border>
+        <Border x:Name="LinkBanner"
+                IsHitTestVisible="False"
+                Visibility="Collapsed"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Bottom"
+                CornerRadius="0,6,0,0"
+                Padding="8,4,8,4"
+                Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}">
+            <TextBlock x:Name="LinkBannerText"
+                       FontSize="12"
+                       TextTrimming="CharacterEllipsis"
+                       Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+        </Border>
     </Grid>
 </UserControl>

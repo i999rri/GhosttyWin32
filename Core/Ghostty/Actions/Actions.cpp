@@ -1,4 +1,5 @@
 #include "Actions.h"
+#include "Tags/TriggerLabel.h"
 #include "Interop/Encoding.h"
 #include <windows.h>
 #include <shellapi.h>
@@ -347,6 +348,129 @@ bool Actions::OnMouseShape(ghostty_surface_t surface,
     if (!surface) return true;
     DispatchToView([this, surface, shape]() {
         m_view.SetCursorShapeForSurface(surface, shape);
+    });
+    return true;
+}
+
+bool Actions::OnMouseVisibility(ghostty_surface_t surface,
+                                ghostty_action_mouse_visibility_e visibility) {
+    if (!surface) return true;
+    const bool visible = visibility == GHOSTTY_MOUSE_VISIBLE;
+    DispatchToView([this, surface, visible]() {
+        m_view.SetMouseVisibilityForSurface(surface, visible);
+    });
+    return true;
+}
+
+bool Actions::OnSecureInput(ghostty_surface_t surface,
+                            ghostty_action_secure_input_e mode) {
+    if (!surface) return true;
+    // TOGGLE resolution happens in the view: the indicator is
+    // per-pane visual state, so the pane owns the current value.
+    DispatchToView([this, surface, mode]() {
+        m_view.SetSecureInputForSurface(surface, mode);
+    });
+    return true;
+}
+
+bool Actions::OnPwd(ghostty_surface_t surface, const char* utf8Pwd) {
+    if (!surface) return true;
+    // Unlike most string payloads, pwd IS NUL-terminated (matches
+    // the macOS apprt's String(cString:) usage). An empty string is
+    // dispatched through so the view can clear the tooltip.
+    std::wstring wide = utf8Pwd ? interop::Encoding::toUtf16(utf8Pwd)
+                                : std::wstring{};
+    DispatchToView([this, surface, wide = std::move(wide)]() mutable {
+        m_view.SetPwdForSurface(surface, std::move(wide));
+    });
+    return true;
+}
+
+bool Actions::OnPromptTitle(ghostty_surface_t surface) {
+    if (!surface) return true;
+    DispatchToView([this, surface]() {
+        m_view.PromptTitleForSurface(surface);
+    });
+    return true;
+}
+
+bool Actions::OnReadonly(ghostty_surface_t surface,
+                         ghostty_action_readonly_e readonly) {
+    if (!surface) return true;
+    const bool on = readonly == GHOSTTY_READONLY_ON;
+    DispatchToView([this, surface, on]() {
+        m_view.SetReadonlyForSurface(surface, on);
+    });
+    return true;
+}
+
+bool Actions::OnCommandFinished(ghostty_surface_t surface,
+                                ghostty_action_command_finished_s cf) {
+    if (!surface) return true;
+    const int exitCode = cf.exit_code;   // -1 = not reported
+    const uint64_t durationNs = cf.duration;
+    DispatchToView([this, surface, exitCode, durationNs]() {
+        m_view.NotifyCommandFinishedForSurface(surface, exitCode, durationNs);
+    });
+    return true;
+}
+
+bool Actions::OnKeySequence(ghostty_surface_t surface,
+                            ghostty_action_key_sequence_s seq) {
+    if (!surface) return true;
+    if (!seq.active) {
+        DispatchToView([this, surface]() {
+            m_view.ClearKeySequenceForSurface(surface);
+        });
+        return true;
+    }
+    std::wstring label = TriggerLabel(seq.trigger);
+    DispatchToView([this, surface, label = std::move(label)]() mutable {
+        m_view.AppendKeySequenceForSurface(surface, std::move(label));
+    });
+    return true;
+}
+
+bool Actions::OnKeyTable(ghostty_surface_t surface,
+                         ghostty_action_key_table_s table) {
+    if (!surface) return true;
+    switch (table.tag) {
+        case GHOSTTY_KEY_TABLE_ACTIVATE: {
+            // The name is length-bounded, not NUL-terminated.
+            std::wstring name;
+            if (table.value.activate.name && table.value.activate.len > 0) {
+                name = interop::Encoding::toUtf16(
+                    table.value.activate.name,
+                    static_cast<int>(table.value.activate.len));
+            }
+            DispatchToView([this, surface, name = std::move(name)]() mutable {
+                m_view.PushKeyTableForSurface(surface, std::move(name));
+            });
+            return true;
+        }
+        case GHOSTTY_KEY_TABLE_DEACTIVATE:
+        case GHOSTTY_KEY_TABLE_DEACTIVATE_ALL: {
+            const bool all = table.tag == GHOSTTY_KEY_TABLE_DEACTIVATE_ALL;
+            DispatchToView([this, surface, all]() {
+                m_view.PopKeyTableForSurface(surface, all);
+            });
+            return true;
+        }
+    }
+    return true;
+}
+
+bool Actions::OnMouseOverLink(ghostty_surface_t surface,
+                              ghostty_action_mouse_over_link_s link) {
+    if (!surface) return true;
+    // The url field is NOT NUL-terminated — len bounds it. len == 0
+    // means the pointer left the link; the empty string flows through
+    // so the view hides the banner.
+    std::wstring wide;
+    if (link.url && link.len > 0)
+        wide = interop::Encoding::toUtf16(link.url, static_cast<int>(link.len));
+    DispatchToView([this, surface, wide = std::move(wide)]() mutable {
+        m_view.SetHoveredLinkForSurface(surface, std::move(wide));
     });
     return true;
 }

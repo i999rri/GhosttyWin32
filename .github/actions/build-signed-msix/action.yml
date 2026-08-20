@@ -71,7 +71,14 @@ runs:
         $ErrorActionPreference = 'Stop'
         $PSNativeCommandUseErrorActionPreference = $true
         cd external/ghostty
-        zig build -Doptimize=ReleaseSafe -Drenderer=directx
+        # -Dcpu=baseline: Zig's standardTargetOptions defaults to the
+        # BUILD machine's native CPU. GitHub's windows runners are a
+        # mixed fleet (some with AVX-512, some without), so an
+        # unpinned build ships whatever ISA extensions the runner
+        # happened to have — a DLL built on an AVX-512 runner dies
+        # with STATUS_ILLEGAL_INSTRUCTION at ghostty_init on any CPU
+        # without it. Baseline x86-64 runs everywhere.
+        zig build -Doptimize=ReleaseSafe -Drenderer=directx -Dcpu=baseline
         # The DLL lands in zig-out/lib/ghostty-internal.dll already;
         # ghostty.h is read directly from external/ghostty/include/
         # via the vcxprojs' AdditionalIncludeDirectories. The one

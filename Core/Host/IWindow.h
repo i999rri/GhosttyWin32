@@ -176,6 +176,93 @@ struct IWindow {
     virtual void SetCursorShapeForSurface(ghostty_surface_t surface,
                                           ghostty_action_mouse_shape_e shape) = 0;
 
+    // Show or hide the pointer cursor over the pane owning `surface`.
+    // MOUSE_VISIBILITY fires with HIDDEN while the user types (config
+    // `mouse-hide-while-typing`) and with VISIBLE again on the next
+    // pointer move — ghostty drives both directions, the host only
+    // mirrors them. Hiding goes through WinUI's ProtectedCursor
+    // (issue #60: a WM_SETCURSOR subclass loses to WinUI re-asserting
+    // the shape on every pointer move).
+    virtual void SetMouseVisibilityForSurface(ghostty_surface_t surface,
+                                              bool visible) = 0;
+
+    // Reflect SECURE_INPUT on the pane owning `surface`: ghostty's
+    // shell integration fires ON when a password prompt is detected
+    // and OFF when it ends; the toggle_secure_input keybind fires
+    // TOGGLE. The view resolves TOGGLE against its own per-pane
+    // state (the indicator is pane-visual state, so the pane owns
+    // it). App-targeted SECURE_INPUT never reaches this — that
+    // variant is macOS's EnableSecureEventInput, which has no
+    // Windows counterpart and stays acked in the dispatcher.
+    virtual void SetSecureInputForSurface(ghostty_surface_t surface,
+                                          ghostty_action_secure_input_e mode) = 0;
+
+    // PROMPT_TITLE: the prompt_surface_title / prompt_tab_title
+    // keybind asked for a rename-title prompt. Both variants
+    // collapse to renaming the tab — this port has one title
+    // surface per tab, the same collapse SET_TITLE/SET_TAB_TITLE
+    // already use. UI thread hop happens in the handler; the view
+    // shows a ContentDialog and applies the result itself.
+    virtual void PromptTitleForSurface(ghostty_surface_t surface) = 0;
+
+    // READONLY: the toggle_readonly keybind flipped the surface's
+    // read-only state. The functional half (pty writes blocked)
+    // lives in libghostty and already works — this is purely the
+    // indicator, so the user can tell why their keystrokes stopped
+    // reaching the shell.
+    virtual void SetReadonlyForSurface(ghostty_surface_t surface,
+                                       bool readonly) = 0;
+
+    // COMMAND_FINISHED: a shell-integration-tracked command ended.
+    // The view owns the whole policy: it reads the notify-on-
+    // command-finish config trio (mode / threshold / actions),
+    // knows whether the surface is focused and the window is
+    // foreground, and fires bell / toast accordingly. exitCode is
+    // -1 when the shell didn't report one.
+    virtual void NotifyCommandFinishedForSurface(ghostty_surface_t surface,
+                                                 int exitCode,
+                                                 uint64_t durationNs) = 0;
+
+    // PWD: the shell reported its working directory (OSC 7). Shown
+    // as the tooltip of the tab containing `surface` — with splits,
+    // the last pane to report wins, which matches "the directory
+    // the user last worked in". An empty pwd clears the tooltip.
+    virtual void SetPwdForSurface(ghostty_surface_t surface,
+                                  std::wstring pwd) = 0;
+
+    // ----- key-state indicator (KEY_SEQUENCE / KEY_TABLE) -----
+    // Both actions are surface-targeted progress reports about
+    // modal keyboard state; the pane owns the accumulated state
+    // (pending chord list, key-table stack) because that is where
+    // the indicator renders. Labels arrive pre-formatted from the
+    // Core side (TriggerLabel) so the view never touches ghostty
+    // trigger structs.
+
+    // KEY_SEQUENCE active=true: one more trigger was consumed by a
+    // pending multi-chord binding — append its label to the pane's
+    // pending display.
+    virtual void AppendKeySequenceForSurface(ghostty_surface_t surface,
+                                             std::wstring triggerLabel) = 0;
+    // KEY_SEQUENCE active=false: the sequence completed or aborted —
+    // clear the pane's pending display.
+    virtual void ClearKeySequenceForSurface(ghostty_surface_t surface) = 0;
+    // KEY_TABLE ACTIVATE: push a named table onto the pane's stack.
+    virtual void PushKeyTableForSurface(ghostty_surface_t surface,
+                                        std::wstring name) = 0;
+    // KEY_TABLE DEACTIVATE (all=false) / DEACTIVATE_ALL (all=true).
+    virtual void PopKeyTableForSurface(ghostty_surface_t surface,
+                                       bool all) = 0;
+
+    // Show or clear the hovered-link banner on the pane owning
+    // `surface`. MOUSE_OVER_LINK fires with the URL while the pointer
+    // is on a link and with an empty payload when it leaves, so an
+    // empty `url` means hide. The banner mirrors upstream's bottom-
+    // corner URL display (macOS URLHoverBanner / GTK mouse-hover-url
+    // label); issue #61 ruled out a Win32 tooltip popup — a TOPMOST
+    // window over the DComp surface crashed the process on URL click.
+    virtual void SetHoveredLinkForSurface(ghostty_surface_t surface,
+                                          std::wstring url) = 0;
+
     // Replace the GhosttyApp's stored config with `cloned`. Takes
     // ownership: the implementation is responsible for freeing it
     // when superseded. Pass a clone from CONFIG_CHANGE (ghostty
