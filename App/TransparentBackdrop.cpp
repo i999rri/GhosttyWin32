@@ -83,23 +83,35 @@ namespace winrt::GhosttyWin32::implementation
         // No base call, same reasoning as TransparentBackdrop: a
         // constant blur has no theme/activation policy to react to.
         namespace wuc = winrt::Windows::UI::Composition;
-        wuc::Compositor compositor;
+        try {
+            wuc::Compositor compositor;
 
-        auto effect = winrt::make_self<GaussianBlurEffect>();
-        // ghostty's radius follows the macOS CGS blur-radius
-        // convention (pixels); D2D takes a standard deviation with
-        // the documented relation radius = 3 * sigma.
-        effect->StandardDeviation = m_radius / 3.0f;
-        effect->Source = wuc::CompositionEffectSourceParameter{ L"backdrop" };
+            auto effect = winrt::make_self<GaussianBlurEffect>();
+            // ghostty's radius follows the macOS CGS blur-radius
+            // convention (pixels); D2D takes a standard deviation with
+            // the documented relation radius = 3 * sigma.
+            effect->StandardDeviation = m_radius / 3.0f;
+            effect->Source = wuc::CompositionEffectSourceParameter{ L"backdrop" };
 
-        auto factory = compositor.CreateEffectFactory(
-            effect.as<winrt::Windows::Graphics::Effects::IGraphicsEffect>());
-        auto brush = factory.CreateBrush();
-        // Host backdrop = what is behind the WINDOW (desktop,
-        // other apps), as opposed to CreateBackdropBrush's
-        // behind-the-visual-within-this-window.
-        brush.SetSourceParameter(L"backdrop", compositor.CreateHostBackdropBrush());
-        target.SystemBackdrop(brush);
+            auto factory = compositor.CreateEffectFactory(
+                effect.as<winrt::Windows::Graphics::Effects::IGraphicsEffect>());
+            auto brush = factory.CreateBrush();
+            // Host backdrop = what is behind the WINDOW (desktop,
+            // other apps), as opposed to CreateBackdropBrush's
+            // behind-the-visual-within-this-window.
+            brush.SetSourceParameter(L"backdrop", compositor.CreateHostBackdropBrush());
+            target.SystemBackdrop(brush);
+            OutputDebugStringW(L"GaussianBlurBackdrop: effect brush connected\n");
+        } catch (winrt::hresult_error const& e) {
+            // DIAGNOSTIC (pre-merge): an unmissable red backdrop +
+            // debug output instead of a silent fallback, so a failed
+            // effect chain can't masquerade as "blur looks the same".
+            OutputDebugStringW(
+                (L"GaussianBlurBackdrop FAILED: " + e.message() + L"\n").c_str());
+            wuc::Compositor fallback;
+            target.SystemBackdrop(fallback.CreateColorBrush(
+                winrt::Windows::UI::Color{ 128, 255, 0, 0 }));
+        }
     }
 
     void GaussianBlurBackdrop::OnTargetDisconnected(
