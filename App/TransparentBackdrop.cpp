@@ -101,16 +101,62 @@ namespace winrt::GhosttyWin32::implementation
             // behind-the-visual-within-this-window.
             brush.SetSourceParameter(L"backdrop", compositor.CreateHostBackdropBrush());
 #if 1
-            // DIAGNOSTIC step 2 (pre-merge): the effect brush connects
-            // but the picture doesn't change with sigma. Substitute an
-            // unconditional red brush: red on screen = the SystemBackdrop
-            // brush is what's visible (effect binding is the bug); the
-            // same fixed blur = DWM's host-backdrop layer is what's
-            // visible and our brush contributes nothing (wiring is the
-            // bug).
-            target.SystemBackdrop(compositor.CreateColorBrush(
-                winrt::Windows::UI::Color{ 128, 255, 0, 0 }));
-            OutputDebugStringW(L"GaussianBlurBackdrop: DIAGNOSTIC red brush connected\n");
+            // DIAGNOSTIC step 3 (pre-merge): red proved the
+            // SystemBackdrop brush is the visible layer. Now swap the
+            // Gaussian for a saturation-0 (grayscale) effect over the
+            // same host backdrop source. Grayscale on screen = the
+            // effect pipeline (including property delivery) works, so
+            // the sigma invisibility is the pre-blurred/downscaled
+            // host backdrop source saturating perceptually. Colors
+            // unchanged = property/effect application is broken.
+            struct DiagnosticSaturationEffect : winrt::implements<DiagnosticSaturationEffect,
+                winrt::Windows::Graphics::Effects::IGraphicsEffect,
+                winrt::Windows::Graphics::Effects::IGraphicsEffectSource,
+                ABI::Windows::Graphics::Effects::IGraphicsEffectD2D1Interop>
+            {
+                winrt::Windows::Graphics::Effects::IGraphicsEffectSource Source{ nullptr };
+                winrt::hstring m_name{ L"Saturation" };
+                winrt::hstring Name() const { return m_name; }
+                void Name(winrt::hstring const& name) { m_name = name; }
+                HRESULT STDMETHODCALLTYPE GetEffectId(GUID* id) noexcept final
+                { if (!id) return E_POINTER; *id = CLSID_D2D1Saturation; return S_OK; }
+                HRESULT STDMETHODCALLTYPE GetNamedPropertyMapping(LPCWSTR, UINT*,
+                    ABI::Windows::Graphics::Effects::GRAPHICS_EFFECT_PROPERTY_MAPPING*) noexcept final
+                { return E_INVALIDARG; }
+                HRESULT STDMETHODCALLTYPE GetPropertyCount(UINT* count) noexcept final
+                { if (!count) return E_POINTER; *count = 1; return S_OK; }
+                HRESULT STDMETHODCALLTYPE GetProperty(UINT index,
+                    ABI::Windows::Foundation::IPropertyValue** value) noexcept final
+                {
+                    if (!value) return E_POINTER;
+                    if (index != 0) return E_BOUNDS;
+                    try {
+                        *value = winrt::Windows::Foundation::PropertyValue::CreateSingle(0.0f)
+                            .as<ABI::Windows::Foundation::IPropertyValue>().detach();
+                        return S_OK;
+                    } catch (...) { return winrt::to_hresult(); }
+                }
+                HRESULT STDMETHODCALLTYPE GetSource(UINT index,
+                    ABI::Windows::Graphics::Effects::IGraphicsEffectSource** source) noexcept final
+                {
+                    if (!source) return E_POINTER;
+                    if (index != 0 || !Source) return E_BOUNDS;
+                    try {
+                        *source = Source.as<ABI::Windows::Graphics::Effects::IGraphicsEffectSource>().detach();
+                        return S_OK;
+                    } catch (...) { return winrt::to_hresult(); }
+                }
+                HRESULT STDMETHODCALLTYPE GetSourceCount(UINT* count) noexcept final
+                { if (!count) return E_POINTER; *count = 1; return S_OK; }
+            };
+            auto sat = winrt::make_self<DiagnosticSaturationEffect>();
+            sat->Source = wuc::CompositionEffectSourceParameter{ L"backdrop" };
+            auto satFactory = compositor.CreateEffectFactory(
+                sat.as<winrt::Windows::Graphics::Effects::IGraphicsEffect>());
+            auto satBrush = satFactory.CreateBrush();
+            satBrush.SetSourceParameter(L"backdrop", compositor.CreateHostBackdropBrush());
+            target.SystemBackdrop(satBrush);
+            OutputDebugStringW(L"GaussianBlurBackdrop: DIAGNOSTIC saturation brush connected\n");
 #else
             target.SystemBackdrop(brush);
             OutputDebugStringW(L"GaussianBlurBackdrop: effect brush connected\n");
