@@ -39,19 +39,36 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $true
-          # Tag "vX.Y.Z" -> manifest Version "X.Y.Z.0". Strip any -rcN / -beta
-          # suffix because appxmanifest only accepts a four-part numeric.
+          # The appxmanifest Version is a fixed 4-part numeric
+          # (Major.Minor.Build.Revision, each 0-65535), so the -rcN
+          # suffix can't ride along as text. Encode the channel in
+          # Revision instead, keeping upgrade order rc1 < rc2 < ... <
+          # production within one X.Y.Z:
+          #
+          #   v0.7.0-rc1 -> 0.7.0.1
+          #   v0.7.0-rc2 -> 0.7.0.2
+          #   v0.7.0     -> 0.7.0.65535   (max Revision = "final")
+          #
+          # This lets an rc install upgrade in place to the next rc
+          # and to production, instead of colliding on an identical
+          # version number. Sideload-only: the Store would require
+          # Revision 0, which we don't target.
           $tag = "${{ github.ref_name }}"
-          $version = ($tag.TrimStart('v') -split '-')[0]
-          # Fail-fast on malformed tags. The MSIX manifest only accepts a
-          # 4-part numeric Version, so anything that doesn't reduce to
-          # exactly 3 numeric segments here would fail later in obscure
-          # ways. Reject up front with a clear message instead.
-          if ($version -notmatch '^\d+\.\d+\.\d+$') {
-            Write-Error "Tag '$tag' produced version '$version', which is not 3 numeric parts. Expected v<major>.<minor>.<patch> (optional -rcN / -beta suffix)."
+          if ($tag -match '^v(\d+\.\d+\.\d+)$') {
+            $version = $Matches[1]
+            $revision = 65535
+          } elseif ($tag -match '^v(\d+\.\d+\.\d+)-rc(\d+)$') {
+            $version = $Matches[1]
+            $revision = [int]$Matches[2]
+            if ($revision -lt 1 -or $revision -ge 65535) {
+              Write-Error "Tag '$tag' has rc number $revision, outside the encodable range 1-65534."
+              exit 1
+            }
+          } else {
+            Write-Error "Tag '$tag' is not v<major>.<minor>.<patch> or v<major>.<minor>.<patch>-rc<N>."
             exit 1
           }
-          $fullVersion = "$version.0"
+          $fullVersion = "$version.$revision"
           "msix_version=$fullVersion" >> $env:GITHUB_OUTPUT
           "release_version=$version" >> $env:GITHUB_OUTPUT
           Write-Host "Tag $tag -> MSIX version $fullVersion (release version $version)"
