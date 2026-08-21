@@ -100,8 +100,21 @@ namespace winrt::GhosttyWin32::implementation
             // other apps), as opposed to CreateBackdropBrush's
             // behind-the-visual-within-this-window.
             brush.SetSourceParameter(L"backdrop", compositor.CreateHostBackdropBrush());
+#if 1
+            // DIAGNOSTIC step 2 (pre-merge): the effect brush connects
+            // but the picture doesn't change with sigma. Substitute an
+            // unconditional red brush: red on screen = the SystemBackdrop
+            // brush is what's visible (effect binding is the bug); the
+            // same fixed blur = DWM's host-backdrop layer is what's
+            // visible and our brush contributes nothing (wiring is the
+            // bug).
+            target.SystemBackdrop(compositor.CreateColorBrush(
+                winrt::Windows::UI::Color{ 128, 255, 0, 0 }));
+            OutputDebugStringW(L"GaussianBlurBackdrop: DIAGNOSTIC red brush connected\n");
+#else
             target.SystemBackdrop(brush);
             OutputDebugStringW(L"GaussianBlurBackdrop: effect brush connected\n");
+#endif
         } catch (winrt::hresult_error const& e) {
             // DIAGNOSTIC (pre-merge): an unmissable red backdrop +
             // debug output instead of a silent fallback, so a failed
