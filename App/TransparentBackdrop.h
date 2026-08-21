@@ -29,33 +29,30 @@ namespace winrt::GhosttyWin32::factory_implementation
     };
 }
 
-#include "ClearAcrylicBackdrop.g.h"
+#include "FrostedBackdrop.g.h"
 
 namespace winrt::GhosttyWin32::implementation
 {
-    // See ClearAcrylicBackdrop in the IDL: DesktopAcrylicController
-    // with TintOpacity / LuminosityOpacity forced to 0 — pure blur,
-    // no color wash, so the terminal's own alpha stays visible
-    // through it.
-    struct ClearAcrylicBackdrop : ClearAcrylicBackdropT<ClearAcrylicBackdrop>
+    // See FrostedBackdrop in the IDL: the raw host backdrop brush,
+    // no material layered on top. Requires the window to opt in to
+    // host-backdrop sampling (DWMWA_USE_HOSTBACKDROPBRUSH — set in
+    // MainWindow::ApplyBackgroundOpacityAppearance, which owns the
+    // HWND); without it the brush renders empty.
+    struct FrostedBackdrop : FrostedBackdropT<FrostedBackdrop>
     {
-        ClearAcrylicBackdrop() = default;
+        FrostedBackdrop() = default;
 
         void OnTargetConnected(
             winrt::Microsoft::UI::Composition::ICompositionSupportsSystemBackdrop const& target,
             winrt::Microsoft::UI::Xaml::XamlRoot const& xamlRoot);
         void OnTargetDisconnected(
             winrt::Microsoft::UI::Composition::ICompositionSupportsSystemBackdrop const& target);
-
-    private:
-        winrt::Microsoft::UI::Composition::SystemBackdrops::DesktopAcrylicController m_controller{ nullptr };
-        winrt::Microsoft::UI::Composition::SystemBackdrops::SystemBackdropConfiguration m_configuration{ nullptr };
     };
 }
 
 namespace winrt::GhosttyWin32::factory_implementation
 {
-    struct ClearAcrylicBackdrop : ClearAcrylicBackdropT<ClearAcrylicBackdrop, implementation::ClearAcrylicBackdrop>
+    struct FrostedBackdrop : FrostedBackdropT<FrostedBackdrop, implementation::FrostedBackdrop>
     {
     };
 }

@@ -1656,8 +1656,9 @@ namespace winrt::GhosttyWin32::implementation
         }
         // Backdrop selection mirrors Windows Terminal's two
         // transparency modes and maps 1:1 onto ghostty config:
-        //   translucent + background-blur  -> DesktopAcrylic (blur
-        //     whatever is behind the window)
+        //   translucent + background-blur  -> FrostedBackdrop (the
+        //     raw host backdrop: DWM's fixed-strength blur of what
+        //     is behind the window, no acrylic material on top)
         //   translucent, no blur           -> TransparentBackdrop
         //     (crisp see-through — WT's "vintage opacity" look)
         //   opaque                         -> Mica, as before
@@ -1672,12 +1673,7 @@ namespace winrt::GhosttyWin32::implementation
         try {
             if (translucent) {
                 if (blur) {
-                    // Not the stock DesktopAcrylicBackdrop: its
-                    // material tint swallows the terminal's own
-                    // translucency. ClearAcrylic is pure blur, so
-                    // background-opacity and background-blur compose
-                    // (frosted glass).
-                    SystemBackdrop(winrt::GhosttyWin32::ClearAcrylicBackdrop());
+                    SystemBackdrop(winrt::GhosttyWin32::FrostedBackdrop());
                 } else {
                     SystemBackdrop(winrt::GhosttyWin32::TransparentBackdrop());
                 }
@@ -1696,6 +1692,14 @@ namespace winrt::GhosttyWin32::implementation
         // crisp mode — Acrylic/Mica are DWM materials that composite
         // on their own.
         if (m_hwnd) {
+            // A raw host backdrop brush renders empty unless the
+            // window opts in to host-backdrop sampling. The
+            // Acrylic/Mica controllers flip this internally; the
+            // hand-assigned FrostedBackdrop brush has to do it here,
+            // where the HWND lives.
+            const BOOL useHostBackdrop = (translucent && blur) ? TRUE : FALSE;
+            DwmSetWindowAttribute(m_hwnd, DWMWA_USE_HOSTBACKDROPBRUSH,
+                                  &useHostBackdrop, sizeof(useHostBackdrop));
             const bool wantAlpha = translucent && !blur;
             DWM_BLURBEHIND bb{};
             bb.dwFlags = DWM_BB_ENABLE;

@@ -6,13 +6,12 @@
 // compositor's family — Windows.UI.Composition — so the brush has to
 // be created by a Windows::UI::Composition::Compositor.
 #include <winrt/Microsoft.UI.Composition.h>
-#include <winrt/Microsoft.UI.Composition.SystemBackdrops.h>
 #include <winrt/Windows.UI.Composition.h>
 #if __has_include("TransparentBackdrop.g.cpp")
 #include "TransparentBackdrop.g.cpp"
 #endif
-#if __has_include("ClearAcrylicBackdrop.g.cpp")
-#include "ClearAcrylicBackdrop.g.cpp"
+#if __has_include("FrostedBackdrop.g.cpp")
+#include "FrostedBackdrop.g.cpp"
 #endif
 
 namespace winrt::GhosttyWin32::implementation
@@ -40,30 +39,27 @@ namespace winrt::GhosttyWin32::implementation
         target.SystemBackdrop(nullptr);
     }
 
-    void ClearAcrylicBackdrop::OnTargetConnected(
+    void FrostedBackdrop::OnTargetConnected(
         winrt::Microsoft::UI::Composition::ICompositionSupportsSystemBackdrop const& target,
         winrt::Microsoft::UI::Xaml::XamlRoot const& /*xamlRoot*/)
     {
-        namespace sb = winrt::Microsoft::UI::Composition::SystemBackdrops;
-        if (!m_controller) {
-            m_controller = sb::DesktopAcrylicController();
-            // Zero out the material: no tint, no luminosity wash.
-            // What remains is the blur of whatever is behind the
-            // window, and the terminal's own background-opacity
-            // provides the color on top of it.
-            m_controller.TintOpacity(0.0f);
-            m_controller.LuminosityOpacity(0.0f);
-        }
-        if (!m_configuration) {
-            m_configuration = sb::SystemBackdropConfiguration();
-            m_controller.SetSystemBackdropConfiguration(m_configuration);
-        }
-        m_controller.AddSystemBackdropTarget(target);
+        // No base call, same reasoning as TransparentBackdrop: a
+        // constant brush has no theme/activation policy to react to.
+        //
+        // The host backdrop brush is the behind-window imagery DWM
+        // provides — pre-blurred at a fixed strength by design
+        // (apps must not be able to read other windows' pixels; see
+        // the #165 investigation). That fixed frost is exactly what
+        // background-blur wants, without the noise texture and
+        // milky wash the acrylic MATERIAL adds on top of the same
+        // source.
+        winrt::Windows::UI::Composition::Compositor compositor;
+        target.SystemBackdrop(compositor.CreateHostBackdropBrush());
     }
 
-    void ClearAcrylicBackdrop::OnTargetDisconnected(
+    void FrostedBackdrop::OnTargetDisconnected(
         winrt::Microsoft::UI::Composition::ICompositionSupportsSystemBackdrop const& target)
     {
-        if (m_controller) m_controller.RemoveSystemBackdropTarget(target);
+        target.SystemBackdrop(nullptr);
     }
 }

@@ -16,14 +16,17 @@ namespace GhosttyWin32
         TransparentBackdrop();
     }
 
-    // Acrylic blur with the tint dialed to zero: full blur of what's
-    // behind the window with no color wash, so background-opacity's
-    // translucency and background-blur compose ("frosted glass")
-    // instead of the stock DesktopAcrylicBackdrop's heavy material
-    // tint swallowing the transparency.
+    // Frosted glass for background-blur: the raw host backdrop
+    // brush, i.e. the pre-blurred behind-window imagery DWM hands
+    // to apps. Preferred over DesktopAcrylicController with its
+    // tint dialed to zero because the acrylic MATERIAL still adds
+    // its noise texture and a milky gray wash even at zero
+    // opacities — the raw brush is the same blur without the
+    // material on top (side-by-side comparison during the #165
+    // blur-radius investigation).
     [default_interface]
-    runtimeclass ClearAcrylicBackdrop : Microsoft.UI.Xaml.Media.SystemBackdrop
+    runtimeclass FrostedBackdrop : Microsoft.UI.Xaml.Media.SystemBackdrop
     {
-        ClearAcrylicBackdrop();
+        FrostedBackdrop();
     }
 }
