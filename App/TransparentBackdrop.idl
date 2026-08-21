@@ -26,4 +26,15 @@ namespace GhosttyWin32
     {
         ClearAcrylicBackdrop();
     }
+
+    // Variable-radius Gaussian blur of whatever is behind the
+    // window: a host backdrop brush run through a D2D Gaussian blur
+    // effect. Unlike ClearAcrylicBackdrop (the system material's
+    // fixed blur), this honours the radius the user wrote in
+    // `background-blur = <radius>`.
+    [default_interface]
+    runtimeclass GaussianBlurBackdrop : Microsoft.UI.Xaml.Media.SystemBackdrop
+    {
+        GaussianBlurBackdrop(Single radius);
+    }
 }

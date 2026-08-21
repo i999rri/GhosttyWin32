@@ -59,3 +59,33 @@ namespace winrt::GhosttyWin32::factory_implementation
     {
     };
 }
+
+#include "GaussianBlurBackdrop.g.h"
+
+namespace winrt::GhosttyWin32::implementation
+{
+    // See GaussianBlurBackdrop in the IDL. Same system-compositor
+    // technique as TransparentBackdrop, but the brush handed to the
+    // target is CreateHostBackdropBrush() run through a D2D Gaussian
+    // blur (GaussianBlurEffect.h) with the configured radius.
+    struct GaussianBlurBackdrop : GaussianBlurBackdropT<GaussianBlurBackdrop>
+    {
+        explicit GaussianBlurBackdrop(float radius) : m_radius(radius) {}
+
+        void OnTargetConnected(
+            winrt::Microsoft::UI::Composition::ICompositionSupportsSystemBackdrop const& target,
+            winrt::Microsoft::UI::Xaml::XamlRoot const& xamlRoot);
+        void OnTargetDisconnected(
+            winrt::Microsoft::UI::Composition::ICompositionSupportsSystemBackdrop const& target);
+
+    private:
+        float m_radius = 0.0f;
+    };
+}
+
+namespace winrt::GhosttyWin32::factory_implementation
+{
+    struct GaussianBlurBackdrop : GaussianBlurBackdropT<GaussianBlurBackdrop, implementation::GaussianBlurBackdrop>
+    {
+    };
+}

@@ -1654,24 +1654,31 @@ namespace winrt::GhosttyWin32::implementation
             ghostty::Config cfg(m_ghosttyApp->ConfigHandle());
             translucent = cfg.BackgroundOpacity() < 1.0 && !m_bgOpaque;
         }
-        // Backdrop selection mirrors Windows Terminal's two
-        // transparency modes and maps 1:1 onto ghostty config:
-        //   translucent + background-blur  -> DesktopAcrylic (blur
-        //     whatever is behind the window)
+        // Backdrop selection maps 1:1 onto ghostty config:
+        //   translucent + blur radius > 0  -> GaussianBlurBackdrop
+        //     (host backdrop through a D2D Gaussian at the radius
+        //     the user wrote in `background-blur = <radius>`)
+        //   translucent + blur radius < 0  -> ClearAcrylic (macOS
+        //     glass sentinels don't name a radius, so use the
+        //     system material's fixed blur)
         //   translucent, no blur           -> TransparentBackdrop
         //     (crisp see-through — WT's "vintage opacity" look)
         //   opaque                         -> Mica, as before
         // Mica alone was tried first and reads as "slightly gray",
         // not transparent — it only tints toward the wallpaper
         // (observed during #69 verification).
-        bool blur = false;
+        short blurRadius = 0;
         if (translucent && m_ghosttyApp) {
-            blur = ghostty::Config(m_ghosttyApp->ConfigHandle())
-                       .BackgroundBlurEnabled();
+            blurRadius = ghostty::Config(m_ghosttyApp->ConfigHandle())
+                             .BackgroundBlurRadius();
         }
+        const bool blur = blurRadius != 0;
         try {
             if (translucent) {
-                if (blur) {
+                if (blurRadius > 0) {
+                    SystemBackdrop(winrt::GhosttyWin32::GaussianBlurBackdrop(
+                        static_cast<float>(blurRadius)));
+                } else if (blurRadius < 0) {
                     // Not the stock DesktopAcrylicBackdrop: its
                     // material tint swallows the terminal's own
                     // translucency. ClearAcrylic is pure blur, so
@@ -1696,6 +1703,14 @@ namespace winrt::GhosttyWin32::implementation
         // crisp mode — Acrylic/Mica are DWM materials that composite
         // on their own.
         if (m_hwnd) {
+            // A raw CreateHostBackdropBrush() renders empty unless
+            // the window opts in to host-backdrop sampling. The
+            // Acrylic/Mica controllers flip this internally; the
+            // hand-built Gaussian backdrop has to do it itself.
+            const BOOL useHostBackdrop =
+                (translucent && blurRadius > 0) ? TRUE : FALSE;
+            DwmSetWindowAttribute(m_hwnd, DWMWA_USE_HOSTBACKDROPBRUSH,
+                                  &useHostBackdrop, sizeof(useHostBackdrop));
             const bool wantAlpha = translucent && !blur;
             DWM_BLURBEHIND bb{};
             bb.dwFlags = DWM_BB_ENABLE;

@@ -76,12 +76,14 @@ public:
 
     // `background-blur` crosses the C API via cval() as an i16:
     // 0 = off, 20 = a bare `true`, positive = the radius, negative
-    // = macOS glass sentinels ("imply some blur" per upstream, so
-    // any non-zero value counts as enabled here).
-    bool BackgroundBlurEnabled() const noexcept {
+    // = macOS glass sentinels ("imply some blur" per upstream). The
+    // raw value is exposed so the host can honour the radius
+    // (Gaussian backdrop) and route the sentinel forms to a system
+    // material instead.
+    short BackgroundBlurRadius() const noexcept {
         short v = 0;
-        if (!GetRaw("background-blur", &v)) return false;
-        return v != 0;
+        GetRaw("background-blur", &v);
+        return v;
     }
 
     // ----- notify-on-command-finish (v1.3.0+, default: never) -----

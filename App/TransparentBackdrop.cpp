@@ -1,5 +1,11 @@
 #include "pch.h"
+// initguid.h makes the DEFINE_GUID in d2d1effects.h (reached via
+// GaussianBlurEffect.h) emit the actual CLSID_D2D1GaussianBlur
+// definition in this TU, so no extra GUID lib needs linking. It has
+// to come before the include chain that pulls in d2d1effects.h.
+#include <initguid.h>
 #include "TransparentBackdrop.h"
+#include "GaussianBlurEffect.h"
 // Neither is in pch. Note the namespace split: the target interface
 // lives in Microsoft.UI.Composition, but its SystemBackdrop property
 // (WinAppSDK 1.8 projection) takes a brush from the SYSTEM
@@ -13,6 +19,9 @@
 #endif
 #if __has_include("ClearAcrylicBackdrop.g.cpp")
 #include "ClearAcrylicBackdrop.g.cpp"
+#endif
+#if __has_include("GaussianBlurBackdrop.g.cpp")
+#include "GaussianBlurBackdrop.g.cpp"
 #endif
 
 namespace winrt::GhosttyWin32::implementation
@@ -65,5 +74,37 @@ namespace winrt::GhosttyWin32::implementation
         winrt::Microsoft::UI::Composition::ICompositionSupportsSystemBackdrop const& target)
     {
         if (m_controller) m_controller.RemoveSystemBackdropTarget(target);
+    }
+
+    void GaussianBlurBackdrop::OnTargetConnected(
+        winrt::Microsoft::UI::Composition::ICompositionSupportsSystemBackdrop const& target,
+        winrt::Microsoft::UI::Xaml::XamlRoot const& /*xamlRoot*/)
+    {
+        // No base call, same reasoning as TransparentBackdrop: a
+        // constant blur has no theme/activation policy to react to.
+        namespace wuc = winrt::Windows::UI::Composition;
+        wuc::Compositor compositor;
+
+        auto effect = winrt::make_self<GaussianBlurEffect>();
+        // ghostty's radius follows the macOS CGS blur-radius
+        // convention (pixels); D2D takes a standard deviation with
+        // the documented relation radius = 3 * sigma.
+        effect->StandardDeviation = m_radius / 3.0f;
+        effect->Source = wuc::CompositionEffectSourceParameter{ L"backdrop" };
+
+        auto factory = compositor.CreateEffectFactory(
+            effect.as<winrt::Windows::Graphics::Effects::IGraphicsEffect>());
+        auto brush = factory.CreateBrush();
+        // Host backdrop = what is behind the WINDOW (desktop,
+        // other apps), as opposed to CreateBackdropBrush's
+        // behind-the-visual-within-this-window.
+        brush.SetSourceParameter(L"backdrop", compositor.CreateHostBackdropBrush());
+        target.SystemBackdrop(brush);
+    }
+
+    void GaussianBlurBackdrop::OnTargetDisconnected(
+        winrt::Microsoft::UI::Composition::ICompositionSupportsSystemBackdrop const& target)
+    {
+        target.SystemBackdrop(nullptr);
     }
 }
