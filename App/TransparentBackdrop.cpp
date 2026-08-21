@@ -149,14 +149,11 @@ namespace winrt::GhosttyWin32::implementation
                 HRESULT STDMETHODCALLTYPE GetSourceCount(UINT* count) noexcept final
                 { if (!count) return E_POINTER; *count = 1; return S_OK; }
             };
-            auto sat = winrt::make_self<DiagnosticSaturationEffect>();
-            sat->Source = wuc::CompositionEffectSourceParameter{ L"backdrop" };
-            auto satFactory = compositor.CreateEffectFactory(
-                sat.as<winrt::Windows::Graphics::Effects::IGraphicsEffect>());
-            auto satBrush = satFactory.CreateBrush();
-            satBrush.SetSourceParameter(L"backdrop", compositor.CreateHostBackdropBrush());
-            target.SystemBackdrop(satBrush);
-            OutputDebugStringW(L"GaussianBlurBackdrop: DIAGNOSTIC saturation brush connected\n");
+            // DIAGNOSTIC step 4: the raw host backdrop with NO effect
+            // in the chain at all. Frosted glass here = the blur is
+            // baked into the material DWM hands us, closing the case.
+            target.SystemBackdrop(compositor.CreateHostBackdropBrush());
+            OutputDebugStringW(L"GaussianBlurBackdrop: DIAGNOSTIC raw host backdrop connected\n");
 #else
             target.SystemBackdrop(brush);
             OutputDebugStringW(L"GaussianBlurBackdrop: effect brush connected\n");
