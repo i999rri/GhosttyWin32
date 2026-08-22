@@ -714,6 +714,14 @@ namespace winrt::GhosttyWin32::implementation
         // ghostty_app_free's join land in the FindForSurface / Any
         // paths and must not find a half-torn-down window.
         if (App::g_app) App::g_app->Windows().Unregister(this);
+        // Parked tabs die alongside the live ones. Stop the expiry
+        // timers first so no Tick lands mid-teardown; the vector
+        // clear then runs each ~Tab (DetachAll catch-all), same as
+        // m_tabs.Clear below.
+        for (auto& parked : m_parkedTabs) {
+            if (parked.timer) parked.timer.Stop();
+        }
+        m_parkedTabs.clear();
         m_tabs.Clear();   // Tab destructors handle cleanup
         // ghostty::App ownership lives on App scope now (#55 prep).
         // App's destructor frees ghostty AFTER its `window` member
@@ -1318,6 +1326,19 @@ namespace winrt::GhosttyWin32::implementation
     {
         auto* t = m_tabs.FindByItem(item);
         if (!t) return;
+        // Undo support (#151): instead of tearing the tab down, park
+        // it alive for undo-timeout. Only when another tab remains —
+        // closing the last tab closes the window, and window-close
+        // undo is out of scope for stage 1. undo-timeout = 0 opts
+        // out entirely and takes the immediate-teardown path below.
+        if (m_ghosttyApp && TabView().TabItems().Size() > 1) {
+            uint64_t timeoutMs =
+                ghostty::Config(m_ghosttyApp->ConfigHandle()).UndoTimeoutMs();
+            if (timeoutMs > 0) {
+                ParkTab(item, timeoutMs, /*fromRedo=*/false);
+                return;
+            }
+        }
         // A stale press record must not keep the closed item alive.
         App::g_app->PressedTab().Forget(item);
         // The focused-surface cache must not outlive the surfaces this
@@ -1360,6 +1381,127 @@ namespace winrt::GhosttyWin32::implementation
             // the panel leaks as an orphan child.
             RemoveTabPanelFromAppContent(*t);
             m_tabs.Remove(item);
+        }
+    }
+
+    void MainWindow::ParkTab(muxc::TabViewItem const& item,
+                             uint64_t timeoutMs, bool fromRedo)
+    {
+        auto* t = m_tabs.FindByItem(item);
+        if (!t) return;
+        // Same bookkeeping as the immediate-teardown path: no stale
+        // press record, and the focused-surface cache must not point
+        // at a surface that is no longer reachable via the UI.
+        App::g_app->PressedTab().Forget(item);
+        if (m_activeSurface) {
+            if (auto* panelImpl =
+                    winrt::get_self<implementation::SplitPanel>(t->Panel())) {
+                if (panelImpl->Tree().FindPaneBy([this](Pane const& p) {
+                        auto const* tc = Tab::PaneToTerminalControl(p);
+                        return tc && tc->Surface().Owns(m_activeSurface);
+                    })) {
+                    m_activeSurface = nullptr;
+                }
+            }
+        }
+        auto tv = TabView();
+        uint32_t idx = 0;
+        if (tv.TabItems().IndexOf(item, idx)) {
+            tv.TabItems().RemoveAt(idx);
+        }
+        // The panel stays parented under AppContent — no Detach, no
+        // unparent, so the swap chains and surfaces stay live and
+        // the +0x1F8 ordering contract never comes into play. It
+        // just goes Collapsed, exactly like an unselected tab; with
+        // its item gone from the strip, UpdateActivePanelVisibility
+        // will never pick it again until Undo re-lists it.
+        t->Panel().Visibility(Visibility::Collapsed);
+        auto tab = m_tabs.Extract(item);
+        if (!tab) return;
+        // A fresh user-initiated close invalidates redo history
+        // (standard undo semantics); a redo-initiated park is the
+        // redo history being consumed, not new history.
+        if (!fromRedo) m_redoCloseItems.clear();
+
+        ParkedTab entry;
+        entry.tab = std::move(tab);
+        entry.index = idx;
+        Tab* key = entry.tab.get();
+        auto timer = DispatcherQueue().CreateTimer();
+        timer.Interval(std::chrono::milliseconds{ timeoutMs });
+        timer.IsRepeating(false);
+        auto weak = get_weak();
+        timer.Tick([weak, key](auto const&, auto const&) {
+            // key is only ever used as a lookup token — if Undo
+            // already reclaimed the tab, the lookup misses and this
+            // tick is a no-op.
+            if (auto self = weak.get()) self->ExpireParkedTab(key);
+        });
+        entry.timer = timer;
+        m_parkedTabs.push_back(std::move(entry));
+        timer.Start();
+    }
+
+    void MainWindow::ExpireParkedTab(Tab* tab)
+    {
+        auto it = std::find_if(
+            m_parkedTabs.begin(), m_parkedTabs.end(),
+            [tab](ParkedTab const& e) { return e.tab.get() == tab; });
+        if (it == m_parkedTabs.end()) return;
+        if (it->timer) it->timer.Stop();
+        // Now the real teardown, with the same ordering contract as
+        // the immediate path: DetachAll while the (collapsed) panel
+        // is still in the live visual tree, then unparent, then
+        // destroy.
+        it->tab->DetachAll();
+        RemoveTabPanelFromAppContent(*it->tab);
+        m_parkedTabs.erase(it);
+    }
+
+    void MainWindow::Undo()
+    {
+        if (m_parkedTabs.empty()) return;
+        ParkedTab entry = std::move(m_parkedTabs.back());
+        m_parkedTabs.pop_back();
+        if (entry.timer) entry.timer.Stop();
+        auto tv = TabView();
+        auto item = entry.tab->Item();
+        uint32_t idx = std::min(entry.index, tv.TabItems().Size());
+        m_tabs.Add(std::move(entry.tab));
+        tv.TabItems().InsertAt(idx, item);
+        m_redoCloseItems.push_back(winrt::make_weak(item));
+        // Selecting the restored tab drives the rest through the
+        // canonical paths: SelectionChanged flips its panel back to
+        // Visible (UpdateActivePanelVisibility) and refocuses.
+        tv.SelectedIndex(static_cast<int32_t>(idx));
+        // Parked panes sat out any appearance changes (background-
+        // opacity toggle, recolour) — restate the window state over
+        // the whole tab set, same as AdoptTornOutTab does.
+        ApplyBackgroundOpacityAppearance();
+    }
+
+    void MainWindow::Redo()
+    {
+        uint64_t timeoutMs = 0;
+        if (m_ghosttyApp) {
+            timeoutMs =
+                ghostty::Config(m_ghosttyApp->ConfigHandle()).UndoTimeoutMs();
+        }
+        if (timeoutMs == 0) return;
+        while (!m_redoCloseItems.empty()) {
+            auto weakItem = m_redoCloseItems.back();
+            m_redoCloseItems.pop_back();
+            auto item = weakItem.get();
+            // The tab may have been closed for real (or its window
+            // died) since the undo — skip to the next candidate.
+            if (!item || !m_tabs.FindByItem(item)) continue;
+            // Last-tab guard, same as CloseTabByItem's park branch.
+            if (TabView().TabItems().Size() <= 1) return;
+            // No close gate here: redo re-applies a close that
+            // already passed the gate once, and parking doesn't
+            // kill anything the gate protects.
+            ParkTab(item, timeoutMs, /*fromRedo=*/true);
+            return;
         }
     }
 
@@ -2629,6 +2771,36 @@ namespace winrt::GhosttyWin32::implementation
         if (!lookup.tab || !lookup.pane) return;
         auto* tab = lookup.tab;
         auto* pane = lookup.pane;
+
+        // Undo support (#151): when this pane is the tab's only one,
+        // the close is a whole-tab close (close_surface via
+        // Ctrl+Shift+W on an unsplit tab — the most common
+        // accidental close) and can be parked exactly like
+        // CloseTabByItem's park branch. Decided BEFORE the Detach
+        // below, which frees the surface and would leave nothing to
+        // restore. Two exclusions: the shell exiting on its own also
+        // lands here (close_surface_cb after child exit) and a dead
+        // process can't be brought back, and pane closes inside a
+        // split stay immediate for stage 1 (subtree extraction is
+        // its own project).
+        if (m_ghosttyApp && TabView().TabItems().Size() > 1) {
+            auto* panelForPark =
+                winrt::get_self<implementation::SplitPanel>(tab->Panel());
+            Branch* wrappingForPark =
+                panelForPark ? BranchOfPane(panelForPark, pane) : nullptr;
+            bool onlyPane = wrappingForPark && !wrappingForPark->parent;
+            auto* tcForPark = Tab::PaneToTerminalControl(*pane);
+            bool processAlive =
+                tcForPark && !tcForPark->Surface().ProcessExited();
+            if (onlyPane && processAlive) {
+                uint64_t timeoutMs =
+                    ghostty::Config(m_ghosttyApp->ConfigHandle()).UndoTimeoutMs();
+                if (timeoutMs > 0) {
+                    ParkTab(tab->Item(), timeoutMs, /*fromRedo=*/false);
+                    return;
+                }
+            }
+        }
 
         // Detach first so the surface / DComp handle are released
         // synchronously, before the Branch holding the TerminalControl

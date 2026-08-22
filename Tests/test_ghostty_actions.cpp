@@ -532,6 +532,15 @@ TEST(GhosttyActionsTest, OnToggleBackgroundOpacityAsksTheView) {
     EXPECT_EQ(view.toggleBackgroundOpacityCalls, 1);
 }
 
+TEST(GhosttyActionsTest, OnUndoRedoAskTheView) {
+    MockMainWindowView view;
+    Actions actions(view);
+    EXPECT_TRUE(actions.OnUndo());
+    EXPECT_EQ(view.undoCalls, 1);
+    EXPECT_TRUE(actions.OnRedo());
+    EXPECT_EQ(view.redoCalls, 1);
+}
+
 TEST(GhosttyActionsTest, OnReloadConfigPassesSoftFlagThrough) {
     MockMainWindowView view;
     Actions actions(view);

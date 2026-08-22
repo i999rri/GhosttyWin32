@@ -152,6 +152,15 @@ struct IWindow {
     // configured) and while fullscreen.
     virtual void ToggleBackgroundOpacity() = 0;
 
+    // Undo the most recent undoable close, or redo the close that
+    // was most recently undone. The whole mechanism is view-owned:
+    // libghostty only delivers the UNDO / REDO keybind actions and
+    // upstream leaves the stack to the apprt (macOS parks the live
+    // surface in an expiring NSUndoManager; this port parks closed
+    // Tabs for `undo-timeout` before really tearing them down).
+    virtual void Undo() = 0;
+    virtual void Redo() = 0;
+
     // Bring the window to the foreground (restoring it from a
     // minimized state first) and give it focus. Used by
     // PRESENT_TERMINAL — typically triggered by an external

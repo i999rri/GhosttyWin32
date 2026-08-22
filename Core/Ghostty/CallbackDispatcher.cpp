@@ -177,6 +177,12 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
             return m_actions.OnFloatWindow(action.action.float_window);
         case GHOSTTY_ACTION_TOGGLE_BACKGROUND_OPACITY:
             return m_actions.OnToggleBackgroundOpacity();
+        // Undo/redo of parked closes (#151). App-scoped: the undo
+        // stack is per-window view state, not per-surface.
+        case GHOSTTY_ACTION_UNDO:
+            return m_actions.OnUndo();
+        case GHOSTTY_ACTION_REDO:
+            return m_actions.OnRedo();
 
         // ----- split-pane (surface-targeted) -----
         case GHOSTTY_ACTION_NEW_SPLIT:
@@ -210,9 +216,7 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
         //
         // Feature surfaces intentionally not on this port's plate
         // (search bar, ImGui inspector, tab overview, quick
-        // terminal, command palette, terminal-level undo/redo):
-        case GHOSTTY_ACTION_UNDO:
-        case GHOSTTY_ACTION_REDO:
+        // terminal, command palette):
         case GHOSTTY_ACTION_START_SEARCH:
         case GHOSTTY_ACTION_END_SEARCH:
         case GHOSTTY_ACTION_SEARCH_TOTAL:

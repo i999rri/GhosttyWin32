@@ -484,6 +484,22 @@ bool Actions::OnToggleBackgroundOpacity() {
     return true;
 }
 
+bool Actions::OnUndo() {
+    // Empty-stack handling lives in the view (the stack is view
+    // state); the action is acked as delivered either way.
+    DispatchToView([this]() {
+        m_view.Undo();
+    });
+    return true;
+}
+
+bool Actions::OnRedo() {
+    DispatchToView([this]() {
+        m_view.Redo();
+    });
+    return true;
+}
+
 bool Actions::OnReloadConfig(bool soft) {
     // The view-side implementation handles thread placement
     // (soft re-uses UI thread, hard spins a 4MB-stack worker
