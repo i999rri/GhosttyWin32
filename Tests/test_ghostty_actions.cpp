@@ -541,6 +541,24 @@ TEST(GhosttyActionsTest, OnUndoRedoAskTheView) {
     EXPECT_EQ(view.redoCalls, 1);
 }
 
+TEST(GhosttyActionsTest, OnCellSizePassesSurfaceAndMetrics) {
+    MockMainWindowView view;
+    Actions actions(view);
+    auto surface = reinterpret_cast<ghostty_surface_t>(0xBEEF);
+    EXPECT_TRUE(actions.OnCellSize(surface, { 9, 21 }));
+    EXPECT_EQ(view.applyCellSizeCalls, 1);
+    EXPECT_EQ(view.lastCellSizeSurface, surface);
+    EXPECT_EQ(view.lastCellSize.width, 9u);
+    EXPECT_EQ(view.lastCellSize.height, 21u);
+}
+
+TEST(GhosttyActionsTest, OnCellSizeNullSurfaceIsAckedNotDelivered) {
+    MockMainWindowView view;
+    Actions actions(view);
+    EXPECT_TRUE(actions.OnCellSize(nullptr, { 9, 21 }));
+    EXPECT_EQ(view.applyCellSizeCalls, 0);
+}
+
 TEST(GhosttyActionsTest, OnReloadConfigPassesSoftFlagThrough) {
     MockMainWindowView view;
     Actions actions(view);

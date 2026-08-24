@@ -156,6 +156,8 @@ public:
     bool OnToggleBackgroundOpacity();
     bool OnUndo();
     bool OnRedo();
+    bool OnCellSize(ghostty_surface_t surface,
+                    ghostty_action_cell_size_s cell);
     bool OnReloadConfig(bool soft);
     bool OnConfigChange(ghostty_config_t newCfg);
     bool OnDesktopNotification(ghostty_surface_t surface,

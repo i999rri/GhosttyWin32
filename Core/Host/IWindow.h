@@ -161,6 +161,13 @@ struct IWindow {
     virtual void Undo() = 0;
     virtual void Redo() = 0;
 
+    // Latest cell pixel dimensions for a surface this window owns
+    // (CELL_SIZE action). Feeds snap-to-cell window resizing: the
+    // window that owns the surface updates its WM_SIZING snapping
+    // step; windows that don't own it ignore the call (#155).
+    virtual void ApplyCellSizeForSurface(ghostty_surface_t surface,
+                                         ghostty_action_cell_size_s cell) = 0;
+
     // Bring the window to the foreground (restoring it from a
     // minimized state first) and give it focus. Used by
     // PRESENT_TERMINAL — typically triggered by an external

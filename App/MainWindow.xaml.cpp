@@ -1647,6 +1647,17 @@ namespace winrt::GhosttyWin32::implementation
         m_sizeLimit.Apply(m_hwnd, limit);
     }
 
+    void MainWindow::ApplyCellSizeForSurface(ghostty_surface_t surface,
+                                             ghostty_action_cell_size_s cell)
+    {
+        // Multi-window routing: every window sees the dispatched
+        // call; only the owner of the surface updates its snap
+        // step. Panes within one window share the font config, so
+        // whichever pane reported last is the right step anyway.
+        if (!m_tabs.FindBySurface(surface)) return;
+        m_cellSize.Apply(m_hwnd, cell);
+    }
+
     void MainWindow::ToggleFullscreen()
     {
         m_fullscreen.Toggle(m_hwnd);
