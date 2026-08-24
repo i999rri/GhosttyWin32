@@ -38,6 +38,21 @@ using namespace winrt;
 using namespace Microsoft::UI::Xaml;
 namespace muxc = Microsoft::UI::Xaml::Controls;
 
+// Undo-park lifecycle tracing (#151). Debug / ASan builds only —
+// Release compiles the calls (and the format strings) out entirely.
+// Every call site passes at least the tick argument, so the plain
+// __VA_ARGS__ form works under the conformant preprocessor too.
+#if defined(_DEBUG)
+#define UNDO_PARK_TRACE(fmt, ...)                                     \
+    do {                                                              \
+        wchar_t undoParkTraceBuf_[224];                               \
+        swprintf_s(undoParkTraceBuf_, fmt, __VA_ARGS__);              \
+        OutputDebugStringW(undoParkTraceBuf_);                        \
+    } while (0)
+#else
+#define UNDO_PARK_TRACE(fmt, ...) do { } while (0)
+#endif
+
 namespace winrt::GhosttyWin32::implementation
 {
     MainWindow::MainWindow()
@@ -1443,6 +1458,10 @@ namespace winrt::GhosttyWin32::implementation
                 parked.timer.Start();
             }
         }
+        if (!m_parkedTabs.empty()) {
+            UNDO_PARK_TRACE(L"UndoPark[%llu]: re-armed %zu parked timer(s)\n",
+                            GetTickCount64() % 100'000, m_parkedTabs.size());
+        }
 #endif
 
         ParkedTab entry;
@@ -1462,6 +1481,10 @@ namespace winrt::GhosttyWin32::implementation
         entry.timer = timer;
         m_parkedTabs.push_back(std::move(entry));
         timer.Start();
+        UNDO_PARK_TRACE(L"UndoPark[%llu]: parked tab=%p idx=%u timeout=%llums "
+                        L"(parked total: %zu)\n",
+                        GetTickCount64() % 100'000, static_cast<void*>(key),
+                        idx, timeoutMs, m_parkedTabs.size());
     }
 
     void MainWindow::ExpireParkedTab(Tab* tab)
@@ -1478,11 +1501,22 @@ namespace winrt::GhosttyWin32::implementation
         it->tab->DetachAll();
         RemoveTabPanelFromAppContent(*it->tab);
         m_parkedTabs.erase(it);
+        UNDO_PARK_TRACE(L"UndoPark[%llu]: expired tab=%p (parked left: %zu)\n",
+                        GetTickCount64() % 100'000, static_cast<void*>(tab),
+                        m_parkedTabs.size());
     }
 
     void MainWindow::Undo()
     {
-        if (m_parkedTabs.empty()) return;
+        if (m_parkedTabs.empty()) {
+            UNDO_PARK_TRACE(L"UndoPark[%llu]: undo requested, stack empty\n",
+                            GetTickCount64() % 100'000);
+            return;
+        }
+        UNDO_PARK_TRACE(L"UndoPark[%llu]: undo tab=%p (parked left: %zu)\n",
+                        GetTickCount64() % 100'000,
+                        static_cast<void*>(m_parkedTabs.back().tab.get()),
+                        m_parkedTabs.size() - 1);
         ParkedTab entry = std::move(m_parkedTabs.back());
         m_parkedTabs.pop_back();
         if (entry.timer) entry.timer.Stop();
@@ -2805,7 +2839,7 @@ namespace winrt::GhosttyWin32::implementation
         // process can't be brought back, and pane closes inside a
         // split stay immediate for stage 1 (subtree extraction is
         // its own project).
-        if (m_ghosttyApp && TabView().TabItems().Size() > 1) {
+        {
             auto* panelForPark =
                 winrt::get_self<implementation::SplitPanel>(tab->Panel());
             Branch* wrappingForPark =
@@ -2814,7 +2848,18 @@ namespace winrt::GhosttyWin32::implementation
             auto* tcForPark = Tab::PaneToTerminalControl(*pane);
             bool processAlive =
                 tcForPark && !tcForPark->Surface().ProcessExited();
-            if (onlyPane && processAlive) {
+            UNDO_PARK_TRACE(L"UndoPark[%llu]: close-eval pane=%p wrapping=%p "
+                            L"parent=%p onlyPane=%d alive=%d tabs=%u\n",
+                            GetTickCount64() % 100'000,
+                            static_cast<void*>(pane),
+                            static_cast<void*>(wrappingForPark),
+                            static_cast<void*>(
+                                wrappingForPark ? wrappingForPark->parent
+                                                : nullptr),
+                            onlyPane ? 1 : 0, processAlive ? 1 : 0,
+                            TabView().TabItems().Size());
+            if (m_ghosttyApp && TabView().TabItems().Size() > 1 &&
+                onlyPane && processAlive) {
                 uint64_t timeoutMs =
                     ghostty::Config(m_ghosttyApp->ConfigHandle()).UndoTimeoutMs();
                 if (timeoutMs > 0) {
