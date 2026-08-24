@@ -1423,6 +1423,28 @@ namespace winrt::GhosttyWin32::implementation
         // redo history being consumed, not new history.
         if (!fromRedo) m_redoCloseItems.clear();
 
+        // Sliding window — a deliberate refinement over upstream's
+        // per-entry expiry: every new close re-arms the existing
+        // parked entries' timers, so a closing streak keeps the
+        // whole history restorable and the clock only starts once
+        // the user stops closing. Bounded in practice because each
+        // extension costs a deliberate user action; stop closing
+        // and everything expires timeout later.
+        //
+        // Set to 0 to restore upstream semantics (macOS
+        // ExpiringUndoManager: each entry expires on its own clock,
+        // counted from its own close) — upstream behavior is simply
+        // this block's absence.
+#if 1  // 1 = sliding window, 0 = upstream per-entry expiry
+        for (auto& parked : m_parkedTabs) {
+            if (parked.timer) {
+                parked.timer.Stop();
+                parked.timer.Interval(std::chrono::milliseconds{ timeoutMs });
+                parked.timer.Start();
+            }
+        }
+#endif
+
         ParkedTab entry;
         entry.tab = std::move(tab);
         entry.index = idx;
