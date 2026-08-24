@@ -1,4 +1,5 @@
 #include "CellSize.h"
+#include <cmath>
 #include <commctrl.h>
 
 #pragma comment(lib, "comctl32.lib")
@@ -11,14 +12,18 @@ namespace {
 // `step`, rounding to the nearest multiple. `direction` is +1 when
 // the moving edge grows away from the anchor toward positive
 // coordinates (right/bottom edges), -1 otherwise (left/top).
+//
+// `span` is the DRAG DELTA, not a size: it is legitimately
+// negative when the user is shrinking the window, so it must not
+// be clamped (clamping made resize grow-only) and the rounding
+// must be symmetric around zero — integer division truncates
+// toward zero and would bias the negative side, hence lround.
 LONG SnapEdge(LONG anchor, LONG moving, LONG step, int direction) noexcept
 {
     if (step <= 0) return moving;
     LONG span = (moving - anchor) * direction;
-    // Round half up to the nearest step; span is a window size so
-    // it is non-negative in practice, but guard anyway.
-    if (span < 0) span = 0;
-    LONG snapped = ((span + step / 2) / step) * step;
+    LONG snapped = static_cast<LONG>(
+        std::lround(static_cast<double>(span) / step) * step);
     return anchor + snapped * direction;
 }
 
