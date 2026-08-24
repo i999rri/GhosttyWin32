@@ -134,6 +134,12 @@ struct MockMainWindowView : core::host::IWindow {
     int toggleBackgroundOpacityCalls = 0;
     void ToggleBackgroundOpacity() override { ++toggleBackgroundOpacityCalls; }
 
+    int undoCalls = 0;
+    void Undo() override { ++undoCalls; }
+
+    int redoCalls = 0;
+    void Redo() override { ++redoCalls; }
+
     int setFloatOnTopCalls = 0;
     ghostty_action_float_window_e lastFloatOnTopMode{};
     void SetFloatOnTop(ghostty_action_float_window_e mode) override {

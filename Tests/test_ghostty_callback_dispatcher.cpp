@@ -56,8 +56,6 @@ TEST(GhosttyCallbackDispatcherTest, FeatureSurfaceAcksReturnTrue) {
     MockMainWindowView view;
     auto d = CallbackDispatcher::Create(view);
 
-    EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_UNDO));
-    EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_REDO));
     EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_START_SEARCH));
     EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_END_SEARCH));
     EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_SEARCH_TOTAL));
@@ -79,6 +77,19 @@ TEST(GhosttyCallbackDispatcherTest, NoConsumerAcksReturnTrue) {
     EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_QUIT_TIMER));
     // CELL_SIZE: cached but no host-side consumer yet.
     EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_CELL_SIZE));
+}
+
+TEST(GhosttyCallbackDispatcherTest, UndoRedoRouteToTheView) {
+    // Formerly feature-surface acks; #151 wires them to the view's
+    // parked-close stack. Empty-stack handling is view state, so
+    // the dispatcher's contract is just delivery.
+    MockMainWindowView view;
+    auto d = CallbackDispatcher::Create(view);
+    EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_UNDO));
+    EXPECT_EQ(view.undoCalls, 1);
+    EXPECT_EQ(view.redoCalls, 0);
+    EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_REDO));
+    EXPECT_EQ(view.redoCalls, 1);
 }
 
 TEST(GhosttyCallbackDispatcherTest, ToggleBackgroundOpacityRoutesToTheView) {

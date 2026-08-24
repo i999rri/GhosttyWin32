@@ -143,6 +143,14 @@ public:
         return m_handle && ghostty_surface_needs_confirm_quit(m_handle);
     }
 
+    // Whether the surface's child process has already exited. Close
+    // paths use this to tell "user closed a live terminal" (park it
+    // for undo) from "the shell exited on its own" (nothing left to
+    // restore — tear down for real).
+    bool ProcessExited() const noexcept {
+        return m_handle && ghostty_surface_process_exited(m_handle);
+    }
+
     // ---- selection ----
     bool HasSelection() const noexcept {
         return m_handle && ghostty_surface_has_selection(m_handle);

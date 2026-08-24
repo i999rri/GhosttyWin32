@@ -170,6 +170,7 @@
     </ClInclude>
     <ClInclude Include="MainWindows.h" />
     <ClInclude Include="SplitPanel.h" />
+    <ClInclude Include="Tabs\ParkedTabs.h" />
     <ClInclude Include="TransparentBackdrop.h" />
     <ClInclude Include="WindowCloseGate.h" />
     <ClInclude Include="Tabs\Panes\Branch.h" />

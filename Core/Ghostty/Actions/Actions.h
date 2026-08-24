@@ -154,6 +154,8 @@ public:
     bool OnKeyTable(ghostty_surface_t surface,
                     ghostty_action_key_table_s table);
     bool OnToggleBackgroundOpacity();
+    bool OnUndo();
+    bool OnRedo();
     bool OnReloadConfig(bool soft);
     bool OnConfigChange(ghostty_config_t newCfg);
     bool OnDesktopNotification(ghostty_surface_t surface,

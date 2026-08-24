@@ -11,6 +11,7 @@
 #include "Interop/Encoding.h"
 #include "Win32/Clipboard.h"
 #include "Tabs/Panes/PaneId.h"
+#include "Tabs/ParkedTabs.h"
 #include "Tabs/Tab.h"
 #include "Tabs/TabFactory.h"
 #include "Tabs/Tabs.h"
@@ -134,6 +135,13 @@ namespace winrt::GhosttyWin32::implementation
         void ApplyWindowDecorationsAppearance();
         void PresentTerminal() override;
         void ShowOnScreenKeyboard() override;
+
+        // Undo/redo of parked tab closes (#151). CloseTabByItem
+        // parks instead of destroying when undo-timeout > 0; these
+        // restore the newest parked tab / re-close the tab that was
+        // most recently restored.
+        void Undo() override;
+        void Redo() override;
 
         // Terminal-driven appearance / lifecycle overrides. Bodies
         // are in MainWindow.xaml.cpp; the logic moved verbatim
@@ -360,6 +368,17 @@ namespace winrt::GhosttyWin32::implementation
         ghostty::actions::tags::Fullscreen         m_fullscreen;
         ghostty::actions::tags::WindowDecorations  m_windowDecorations;
         Tabs m_tabs;
+        // Undo support for tab closes (#151): parked-tab stack,
+        // expiry timers, redo bookkeeping — see Tabs/ParkedTabs.h.
+        // This window keeps only the XAML effects (tab-strip
+        // add/remove, panel visibility, appearance restate, and the
+        // expiry teardown callback).
+        ParkedTabs m_parkedTabs;
+        // Detach the item from the tab strip and move its Tab into
+        // m_parkedTabs. fromRedo keeps the redo history intact (a
+        // user-initiated close invalidates it).
+        void ParkTab(Microsoft::UI::Xaml::Controls::TabViewItem const& item,
+                     uint64_t timeoutMs, bool fromRedo);
         // Guards every close intent (window / tab / surface) so
         // needs_confirm_quit prompts land once, not one dialog per
         // path. Constructed inline so it's usable from the ctor.
