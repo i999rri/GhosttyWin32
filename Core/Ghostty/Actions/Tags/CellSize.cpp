@@ -43,6 +43,20 @@ LRESULT CALLBACK CellSize::SubclassProc(
     HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
     UINT_PTR /*id*/, DWORD_PTR ref) noexcept
 {
+#if defined(_DEBUG)
+    // Diagnostic (pre-merge): one line per interactive sizing loop
+    // showing what the subclass sees, to pin down why snapping can
+    // go quiet after a new tab even though the gate reads enabled.
+    if (msg == WM_ENTERSIZEMOVE) {
+        auto* self = reinterpret_cast<CellSize*>(ref);
+        wchar_t buf[128];
+        swprintf_s(buf, L"CellSnap: sizing loop enter, enabled=%d cell=%ux%u\n",
+                   self && self->m_enabled ? 1 : 0,
+                   self ? self->m_value.width : 0,
+                   self ? self->m_value.height : 0);
+        OutputDebugStringW(buf);
+    }
+#endif
     if (msg == WM_SIZING) {
         auto* self = reinterpret_cast<CellSize*>(ref);
         auto* drag = reinterpret_cast<RECT*>(lp);
