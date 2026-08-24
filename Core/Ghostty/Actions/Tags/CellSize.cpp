@@ -1,5 +1,6 @@
 #include "CellSize.h"
 #include <cmath>
+#include <cwchar>
 #include <commctrl.h>
 
 #pragma comment(lib, "comctl32.lib")
