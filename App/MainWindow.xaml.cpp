@@ -1654,11 +1654,21 @@ namespace winrt::GhosttyWin32::implementation
         // call; only the owner of the surface updates its snap
         // step. Panes within one window share the font config, so
         // whichever pane reported last is the right step anyway.
-        if (!m_tabs.FindBySurface(surface)) return;
+        if (!m_tabs.FindBySurface(surface)) {
+            UNDO_PARK_TRACE(L"CellSnap[%llu]: CELL_SIZE %ux%u for surface=%p "
+                            L"not in this window, skipped\n",
+                            GetTickCount64() % 100'000, cell.width,
+                            cell.height, static_cast<void*>(surface));
+            return;
+        }
         m_cellSize.Apply(m_hwnd, cell);
         if (m_ghosttyApp) {
-            m_cellSize.SetEnabled(ghostty::Config(m_ghosttyApp->ConfigHandle())
-                                      .WindowStepResize());
+            const bool enabled =
+                ghostty::Config(m_ghosttyApp->ConfigHandle()).WindowStepResize();
+            m_cellSize.SetEnabled(enabled);
+            UNDO_PARK_TRACE(L"CellSnap[%llu]: applied %ux%u enabled=%d\n",
+                            GetTickCount64() % 100'000, cell.width,
+                            cell.height, enabled ? 1 : 0);
         }
     }
 
@@ -2108,8 +2118,11 @@ namespace winrt::GhosttyWin32::implementation
         // window-step-resize can be toggled by itself; CELL_SIZE
         // only re-fires on metric changes, so re-read the gate here
         // so a reload flips snapping immediately (#155).
-        m_cellSize.SetEnabled(ghostty::Config(m_ghosttyApp->ConfigHandle())
-                                  .WindowStepResize());
+        const bool enabled =
+            ghostty::Config(m_ghosttyApp->ConfigHandle()).WindowStepResize();
+        m_cellSize.SetEnabled(enabled);
+        UNDO_PARK_TRACE(L"CellSnap[%llu]: config replaced, enabled=%d\n",
+                        GetTickCount64() % 100'000, enabled ? 1 : 0);
     }
 
     void MainWindow::ReloadConfig(bool soft)
