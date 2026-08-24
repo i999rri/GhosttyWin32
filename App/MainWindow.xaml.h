@@ -149,6 +149,11 @@ namespace winrt::GhosttyWin32::implementation
         // belongs to this window.
         void ApplyCellSizeForSurface(ghostty_surface_t surface,
                                      ghostty_action_cell_size_s cell) override;
+        // Shared tail of the surface report and the adopt-time
+        // re-arm: update the WM_SIZING snapping tag with the metrics
+        // and re-read the window-step-resize gate. No-op on {0,0}
+        // (nothing reported yet).
+        void ArmCellSnap(ghostty_action_cell_size_s cell);
 
         // Terminal-driven appearance / lifecycle overrides. Bodies
         // are in MainWindow.xaml.cpp; the logic moved verbatim

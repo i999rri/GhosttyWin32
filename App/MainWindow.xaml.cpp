@@ -94,6 +94,11 @@ namespace winrt::GhosttyWin32::implementation
             if (App::g_app) App::g_app->Windows().Register(this);
             auto windowNative = this->try_as<::IWindowNative>();
             if (windowNative) windowNative->get_WindowHandle(&m_hwnd);
+            // A drop-outside tear-out host adopts its tab (which
+            // arms the cell-snap metrics) BEFORE this first
+            // activation assigns the HWND — complete the deferred
+            // subclass install now (#155).
+            m_cellSize.Attach(m_hwnd);
             // The pre-first-frame hide avoids flashing an empty window
             // before ghostty presents. A drop host receives a tab that
             // is already presenting, so it has frames to show from the
@@ -1650,10 +1655,12 @@ namespace winrt::GhosttyWin32::implementation
     void MainWindow::ApplyCellSizeForSurface(ghostty_surface_t surface,
                                              ghostty_action_cell_size_s cell)
     {
-        // Multi-window routing: every window sees the dispatched
-        // call; only the owner of the surface updates its snap
-        // step. Panes within one window share the font config, so
-        // whichever pane reported last is the right step anyway.
+        // MainWindowRuntime routes surface-targeted actions to the
+        // owning window, so this call already lands on the right
+        // MainWindow; the FindBySurface guard only screens the brief
+        // creation window before the tab is registered. Panes within
+        // one window share the font config, so whichever pane
+        // reported last is the right step anyway.
         if (!m_tabs.FindBySurface(surface)) {
             UNDO_PARK_TRACE(L"CellSnap[%llu]: CELL_SIZE %ux%u for surface=%p "
                             L"not in this window, skipped\n",
@@ -1661,6 +1668,12 @@ namespace winrt::GhosttyWin32::implementation
                             cell.height, static_cast<void*>(surface));
             return;
         }
+        ArmCellSnap(cell);
+    }
+
+    void MainWindow::ArmCellSnap(ghostty_action_cell_size_s cell)
+    {
+        if (cell.width == 0 || cell.height == 0) return;
         m_cellSize.Apply(m_hwnd, cell);
         if (m_ghosttyApp) {
             const bool enabled =
@@ -2718,6 +2731,14 @@ namespace winrt::GhosttyWin32::implementation
         tab->Panel().Visibility(winrt::Microsoft::UI::Xaml::Visibility::Collapsed);
         AppContent().Children().Append(tab->Panel());
         auto selected = tab->Item();
+        // Query before the move below: the adopted surfaces are the
+        // source of truth for their own cell metrics
+        // (ghostty_surface_size), no carried state needed.
+        ghostty_action_cell_size_s adoptedCell{};
+        if (auto* tc = tab->ActiveControl()) {
+            auto size = tc->Surface().Size();
+            adoptedCell = { size.cell_width_px, size.cell_height_px };
+        }
         m_tabs.Add(std::move(tab));
         tv.SelectedItem(selected);
         UpdateActivePanelVisibility();
@@ -2731,6 +2752,11 @@ namespace winrt::GhosttyWin32::implementation
         // opacity mode (#69 — window-scoped state); restate this
         // window's mode over the whole tab set.
         ApplyBackgroundOpacityAppearance();
+        // Arm resize snapping from the queried metrics: the adopted
+        // surfaces already reported CELL_SIZE in their previous
+        // window and ghostty won't re-report on a move, so a fresh
+        // tear-out window would otherwise never snap (#155).
+        ArmCellSnap(adoptedCell);
     }
 
     void MainWindow::CloseIfTornOutEmpty()

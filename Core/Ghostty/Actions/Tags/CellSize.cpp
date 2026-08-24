@@ -33,7 +33,13 @@ LONG SnapEdge(LONG anchor, LONG moving, LONG step, int direction) noexcept
 void CellSize::Apply(HWND hwnd, ghostty_action_cell_size_s cell) noexcept
 {
     m_value = cell;
+    Attach(hwnd);
+}
+
+void CellSize::Attach(HWND hwnd) noexcept
+{
     if (m_subclassed || !hwnd) return;
+    if (m_value.width == 0 || m_value.height == 0) return;
     if (SetWindowSubclass(hwnd, &SubclassProc, 1,
                           reinterpret_cast<DWORD_PTR>(this))) {
         m_subclassed = true;

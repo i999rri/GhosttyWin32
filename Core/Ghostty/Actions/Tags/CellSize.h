@@ -34,7 +34,17 @@ public:
     // Update the active cell metrics and install the subclass on
     // first use. Zero in either dimension disables snapping on
     // that axis (defensive — the renderer always reports both).
+    // A null hwnd still records the metrics; call Attach once the
+    // HWND exists to complete the install.
     void Apply(HWND hwnd, ghostty_action_cell_size_s cell) noexcept;
+
+    // Late subclass install for the adopt-before-activation order:
+    // a fresh tear-out host adopts its tab (and arms the metrics)
+    // BEFORE first activation assigns the HWND, so the owner calls
+    // this when the HWND finally exists. No-op when already
+    // installed or when no metrics have been recorded yet (windows
+    // that never saw a CELL_SIZE keep paying no subclass cost).
+    void Attach(HWND hwnd) noexcept;
 
     // Gate from `window-step-resize` (upstream default: false).
     // The metrics keep flowing regardless so a config toggle takes
