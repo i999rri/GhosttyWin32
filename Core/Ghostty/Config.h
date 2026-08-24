@@ -98,6 +98,16 @@ public:
         return static_cast<uint64_t>(ms);
     }
 
+    // `window-step-resize` — snap interactive window resizing to
+    // the cell grid (#155). Upstream default is false (smooth
+    // pixel resizing) with snapping as an opt-in, and this port
+    // matches that.
+    bool WindowStepResize() const noexcept {
+        bool v = false;
+        GetRaw("window-step-resize", &v);
+        return v;
+    }
+
     // ----- notify-on-command-finish (v1.3.0+, default: never) -----
     // The whole feature is opt-in; every getter falls back to the
     // documented default when the key is unreadable.

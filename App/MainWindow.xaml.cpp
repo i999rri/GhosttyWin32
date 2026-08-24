@@ -1656,6 +1656,10 @@ namespace winrt::GhosttyWin32::implementation
         // whichever pane reported last is the right step anyway.
         if (!m_tabs.FindBySurface(surface)) return;
         m_cellSize.Apply(m_hwnd, cell);
+        if (m_ghosttyApp) {
+            m_cellSize.SetEnabled(ghostty::Config(m_ghosttyApp->ConfigHandle())
+                                      .WindowStepResize());
+        }
     }
 
     void MainWindow::ToggleFullscreen()
@@ -2101,6 +2105,11 @@ namespace winrt::GhosttyWin32::implementation
     void MainWindow::ReplaceConfig(ghostty_config_t cloned)
     {
         m_ghosttyApp->ReplaceConfig(cloned);
+        // window-step-resize can be toggled by itself; CELL_SIZE
+        // only re-fires on metric changes, so re-read the gate here
+        // so a reload flips snapping immediately (#155).
+        m_cellSize.SetEnabled(ghostty::Config(m_ghosttyApp->ConfigHandle())
+                                  .WindowStepResize());
     }
 
     void MainWindow::ReloadConfig(bool soft)

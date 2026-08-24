@@ -47,7 +47,7 @@ LRESULT CALLBACK CellSize::SubclassProc(
         auto* self = reinterpret_cast<CellSize*>(ref);
         auto* drag = reinterpret_cast<RECT*>(lp);
         RECT cur{};
-        if (self && drag && GetWindowRect(hwnd, &cur)) {
+        if (self && self->m_enabled && drag && GetWindowRect(hwnd, &cur)) {
             const LONG cw = static_cast<LONG>(self->m_value.width);
             const LONG ch = static_cast<LONG>(self->m_value.height);
             // Snap the delta from the current rect on whichever

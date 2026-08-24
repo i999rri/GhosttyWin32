@@ -36,12 +36,18 @@ public:
     // that axis (defensive — the renderer always reports both).
     void Apply(HWND hwnd, ghostty_action_cell_size_s cell) noexcept;
 
+    // Gate from `window-step-resize` (upstream default: false).
+    // The metrics keep flowing regardless so a config toggle takes
+    // effect instantly without waiting for the next CELL_SIZE.
+    void SetEnabled(bool enabled) noexcept { m_enabled = enabled; }
+
 private:
     static LRESULT CALLBACK SubclassProc(
         HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
         UINT_PTR id, DWORD_PTR ref) noexcept;
 
     ghostty_action_cell_size_s m_value{};
+    bool m_enabled = false;
     bool m_subclassed = false;
 };
 
