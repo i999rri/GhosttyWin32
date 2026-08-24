@@ -37,21 +37,7 @@
 using namespace winrt;
 using namespace Microsoft::UI::Xaml;
 namespace muxc = Microsoft::UI::Xaml::Controls;
-
-// Undo-park lifecycle tracing (#151). Debug / ASan builds only —
-// Release compiles the calls (and the format strings) out entirely.
-// Every call site passes at least the tick argument, so the plain
-// __VA_ARGS__ form works under the conformant preprocessor too.
-#if defined(_DEBUG)
-#define UNDO_PARK_TRACE(fmt, ...)                                     \
-    do {                                                              \
-        wchar_t undoParkTraceBuf_[224];                               \
-        swprintf_s(undoParkTraceBuf_, fmt, __VA_ARGS__);              \
-        OutputDebugStringW(undoParkTraceBuf_);                        \
-    } while (0)
-#else
-#define UNDO_PARK_TRACE(fmt, ...) do { } while (0)
-#endif
+// UNDO_PARK_TRACE comes from Tabs/ParkedTabs.h (via MainWindow.xaml.h).
 
 namespace winrt::GhosttyWin32::implementation
 {
@@ -729,14 +715,10 @@ namespace winrt::GhosttyWin32::implementation
         // ghostty_app_free's join land in the FindForSurface / Any
         // paths and must not find a half-torn-down window.
         if (App::g_app) App::g_app->Windows().Unregister(this);
-        // Parked tabs die alongside the live ones. Stop the expiry
-        // timers first so no Tick lands mid-teardown; the vector
-        // clear then runs each ~Tab (DetachAll catch-all), same as
-        // m_tabs.Clear below.
-        for (auto& parked : m_parkedTabs) {
-            if (parked.timer) parked.timer.Stop();
-        }
-        m_parkedTabs.clear();
+        // Parked tabs die alongside the live ones: Shutdown stops
+        // the expiry timers, then each ~Tab runs its DetachAll
+        // catch-all — same contract as m_tabs.Clear below.
+        m_parkedTabs.Shutdown();
         m_tabs.Clear();   // Tab destructors handle cleanup
         // ghostty::App ownership lives on App scope now (#55 prep).
         // App's destructor frees ghostty AFTER its `window` member
@@ -1436,96 +1418,35 @@ namespace winrt::GhosttyWin32::implementation
         // A fresh user-initiated close invalidates redo history
         // (standard undo semantics); a redo-initiated park is the
         // redo history being consumed, not new history.
-        if (!fromRedo) m_redoCloseItems.clear();
-
-        // Sliding window — a deliberate refinement over upstream's
-        // per-entry expiry: every new close re-arms the existing
-        // parked entries' timers, so a closing streak keeps the
-        // whole history restorable and the clock only starts once
-        // the user stops closing. Bounded in practice because each
-        // extension costs a deliberate user action; stop closing
-        // and everything expires timeout later.
-        //
-        // Set to 0 to restore upstream semantics (macOS
-        // ExpiringUndoManager: each entry expires on its own clock,
-        // counted from its own close) — upstream behavior is simply
-        // this block's absence.
-#if 1  // 1 = sliding window, 0 = upstream per-entry expiry
-        for (auto& parked : m_parkedTabs) {
-            if (parked.timer) {
-                parked.timer.Stop();
-                parked.timer.Interval(std::chrono::milliseconds{ timeoutMs });
-                parked.timer.Start();
-            }
-        }
-        if (!m_parkedTabs.empty()) {
-            UNDO_PARK_TRACE(L"UndoPark[%llu]: re-armed %zu parked timer(s)\n",
-                            GetTickCount64() % 100'000, m_parkedTabs.size());
-        }
-#endif
-
-        ParkedTab entry;
-        entry.tab = std::move(tab);
-        entry.index = idx;
-        Tab* key = entry.tab.get();
-        auto timer = DispatcherQueue().CreateTimer();
-        timer.Interval(std::chrono::milliseconds{ timeoutMs });
-        timer.IsRepeating(false);
+        if (!fromRedo) m_parkedTabs.ClearRedoCandidates();
+        // On expiry: the real teardown, with the same ordering
+        // contract as the immediate close path — DetachAll while
+        // the (collapsed) panel is still in the live visual tree,
+        // then unparent, then destroy. If the window died first,
+        // ~Tab's DetachAll catch-all still runs.
         auto weak = get_weak();
-        timer.Tick([weak, key](auto const&, auto const&) {
-            // key is only ever used as a lookup token — if Undo
-            // already reclaimed the tab, the lookup misses and this
-            // tick is a no-op.
-            if (auto self = weak.get()) self->ExpireParkedTab(key);
-        });
-        entry.timer = timer;
-        m_parkedTabs.push_back(std::move(entry));
-        timer.Start();
-        UNDO_PARK_TRACE(L"UndoPark[%llu]: parked tab=%p idx=%u timeout=%llums "
-                        L"(parked total: %zu)\n",
-                        GetTickCount64() % 100'000, static_cast<void*>(key),
-                        idx, timeoutMs, m_parkedTabs.size());
-    }
-
-    void MainWindow::ExpireParkedTab(Tab* tab)
-    {
-        auto it = std::find_if(
-            m_parkedTabs.begin(), m_parkedTabs.end(),
-            [tab](ParkedTab const& e) { return e.tab.get() == tab; });
-        if (it == m_parkedTabs.end()) return;
-        if (it->timer) it->timer.Stop();
-        // Now the real teardown, with the same ordering contract as
-        // the immediate path: DetachAll while the (collapsed) panel
-        // is still in the live visual tree, then unparent, then
-        // destroy.
-        it->tab->DetachAll();
-        RemoveTabPanelFromAppContent(*it->tab);
-        m_parkedTabs.erase(it);
-        UNDO_PARK_TRACE(L"UndoPark[%llu]: expired tab=%p (parked left: %zu)\n",
-                        GetTickCount64() % 100'000, static_cast<void*>(tab),
-                        m_parkedTabs.size());
+        m_parkedTabs.Park(
+            std::move(tab), idx, timeoutMs, DispatcherQueue(),
+            [weak](std::unique_ptr<Tab> expired) {
+                if (auto self = weak.get()) {
+                    expired->DetachAll();
+                    self->RemoveTabPanelFromAppContent(*expired);
+                }
+            });
     }
 
     void MainWindow::Undo()
     {
-        if (m_parkedTabs.empty()) {
-            UNDO_PARK_TRACE(L"UndoPark[%llu]: undo requested, stack empty\n",
-                            GetTickCount64() % 100'000);
-            return;
-        }
-        UNDO_PARK_TRACE(L"UndoPark[%llu]: undo tab=%p (parked left: %zu)\n",
-                        GetTickCount64() % 100'000,
-                        static_cast<void*>(m_parkedTabs.back().tab.get()),
-                        m_parkedTabs.size() - 1);
-        ParkedTab entry = std::move(m_parkedTabs.back());
-        m_parkedTabs.pop_back();
-        if (entry.timer) entry.timer.Stop();
+        auto restored = m_parkedTabs.PopNewest();
+        if (!restored) return;
         auto tv = TabView();
-        auto item = entry.tab->Item();
-        uint32_t idx = std::min(entry.index, tv.TabItems().Size());
-        m_tabs.Add(std::move(entry.tab));
+        auto item = restored->tab->Item();
+        // Tab-strip position at close time, clamped in case other
+        // tabs closed meanwhile.
+        uint32_t idx = std::min(restored->index, tv.TabItems().Size());
+        m_tabs.Add(std::move(restored->tab));
         tv.TabItems().InsertAt(idx, item);
-        m_redoCloseItems.push_back(winrt::make_weak(item));
+        m_parkedTabs.RememberRedoCandidate(item);
         // Selecting the restored tab drives the rest through the
         // canonical paths: SelectionChanged flips its panel back to
         // Visible (UpdateActivePanelVisibility) and refocuses.
@@ -1544,19 +1465,16 @@ namespace winrt::GhosttyWin32::implementation
                 ghostty::Config(m_ghosttyApp->ConfigHandle()).UndoTimeoutMs();
         }
         if (timeoutMs == 0) return;
-        while (!m_redoCloseItems.empty()) {
-            auto weakItem = m_redoCloseItems.back();
-            m_redoCloseItems.pop_back();
-            auto item = weakItem.get();
+        while (auto item = m_parkedTabs.PopRedoCandidate()) {
             // The tab may have been closed for real (or its window
             // died) since the undo — skip to the next candidate.
-            if (!item || !m_tabs.FindByItem(item)) continue;
+            if (!m_tabs.FindByItem(*item)) continue;
             // Last-tab guard, same as CloseTabByItem's park branch.
             if (TabView().TabItems().Size() <= 1) return;
             // No close gate here: redo re-applies a close that
             // already passed the gate once, and parking doesn't
             // kill anything the gate protects.
-            ParkTab(item, timeoutMs, /*fromRedo=*/true);
+            ParkTab(*item, timeoutMs, /*fromRedo=*/true);
             return;
         }
     }

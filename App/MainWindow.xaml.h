@@ -11,6 +11,7 @@
 #include "Interop/Encoding.h"
 #include "Win32/Clipboard.h"
 #include "Tabs/Panes/PaneId.h"
+#include "Tabs/ParkedTabs.h"
 #include "Tabs/Tab.h"
 #include "Tabs/TabFactory.h"
 #include "Tabs/Tabs.h"
@@ -367,33 +368,17 @@ namespace winrt::GhosttyWin32::implementation
         ghostty::actions::tags::Fullscreen         m_fullscreen;
         ghostty::actions::tags::WindowDecorations  m_windowDecorations;
         Tabs m_tabs;
-        // Undo support for tab closes (#151). A "closed" tab is
-        // parked here alive — surfaces, pty processes, swap chains
-        // all intact, its panel Collapsed but still parented — for
-        // `undo-timeout`, because a torn-down shell process cannot
-        // be resurrected from any snapshot. Memory stays bounded by
-        // the timeout: each entry self-destructs via its timer.
-        struct ParkedTab {
-            std::unique_ptr<Tab> tab;
-            // Tab-strip position at close time; Undo reinserts here
-            // (clamped, in case other tabs closed meanwhile).
-            uint32_t index{ 0 };
-            Microsoft::UI::Dispatching::DispatcherQueueTimer timer{ nullptr };
-        };
-        std::vector<ParkedTab> m_parkedTabs;
-        // Redo = "close that tab again": remembers the items most
-        // recently restored by Undo. Weak because the user can close
-        // the tab through any normal path meanwhile.
-        std::vector<winrt::weak_ref<Microsoft::UI::Xaml::Controls::TabViewItem>> m_redoCloseItems;
+        // Undo support for tab closes (#151): parked-tab stack,
+        // expiry timers, redo bookkeeping — see Tabs/ParkedTabs.h.
+        // This window keeps only the XAML effects (tab-strip
+        // add/remove, panel visibility, appearance restate, and the
+        // expiry teardown callback).
+        ParkedTabs m_parkedTabs;
         // Detach the item from the tab strip and move its Tab into
-        // m_parkedTabs with an expiry timer. fromRedo keeps the redo
-        // stack intact (a user-initiated close invalidates it).
+        // m_parkedTabs. fromRedo keeps the redo history intact (a
+        // user-initiated close invalidates it).
         void ParkTab(Microsoft::UI::Xaml::Controls::TabViewItem const& item,
                      uint64_t timeoutMs, bool fromRedo);
-        // Timer/teardown terminus: run the real close on a parked
-        // tab (DetachAll while the collapsed panel is still in the
-        // live tree, then unparent and destroy).
-        void ExpireParkedTab(Tab* tab);
         // Guards every close intent (window / tab / surface) so
         // needs_confirm_quit prompts land once, not one dialog per
         // path. Constructed inline so it's usable from the ctor.
