@@ -72,3 +72,27 @@ Seen while wiring actions on the development machine (one data point each — li
 3. **メモ帳には届くのに ghostty に届かない**なら横取りは WinUI 層 — `TerminalKeyDown::toRawKeyPress` に `OutputDebugStringA` を仕込んで計測し、特定できたら上のリストに追記する。
 
 </details>
+
+## Not an interception: ghostty's own defaults (found during #151)
+
+Two behaviors that look like dead or wrong keybinds are ghostty's default bindings, not Windows eating anything:
+
+**`ctrl+shift+w` closes the whole tab, not the focused pane.** The non-macOS default table registers `ctrl+shift+w` twice — first as `close_surface`, then as `close_tab` — and the last write wins. So `close_surface` (close just the focused pane) is unreachable out of the box: it only ever fires when the shell exits, or through a custom binding such as `keybind = ctrl+shift+x=close_surface`. macOS splits the pair across `super+w` / `super+shift+w` and doesn't have this shadowing. Upstream-report candidate.
+
+**`undo` / `redo` have no bindings outside macOS.** The default `super+z` / `super+shift+z` block is macOS-only, so the tab-close undo added in #151 needs explicit bindings, e.g.:
+
+```
+keybind = ctrl+shift+z=undo
+keybind = ctrl+shift+y=redo
+```
+
+<details>
+<summary>日本語</summary>
+
+keybind が死んでいる・違う動きをするように見えて、実は Windows の横取りではなく ghostty のデフォルト定義が原因のケースが 2 つある。
+
+**`ctrl+shift+w` は pane ではなくタブ全体を閉じる。** 非 macOS のデフォルト表は `ctrl+shift+w` を 2 回登録している — 先に `close_surface`、後に `close_tab` — そして後勝ちになる。つまり `close_surface` (フォーカス中の pane だけ閉じる) は素の状態では発火手段がない。シェルの終了時を除けば、`keybind = ctrl+shift+x=close_surface` のような自前の割り当てだけが入口になる。macOS は `super+w` / `super+shift+w` に分かれていてこの影は存在しない。本家への報告候補。
+
+**`undo` / `redo` は macOS 以外に割り当てがない。** デフォルトの `super+z` / `super+shift+z` ブロックは macOS 専用なので、#151 のタブ close undo を使うには上記のような明示の bind が必要。
+
+</details>
