@@ -311,6 +311,9 @@ namespace winrt::GhosttyWin32::implementation
         // hidden cursor. See SetMouseVisibility().
         bool m_cursorHidden = false;
         winrt::Microsoft::UI::Input::InputCursor m_visibleCursor{ nullptr };
+        // Single writer for ProtectedCursor: composes the scrollbar
+        // hover (Arrow), hidden state (blank), and ghostty's shape.
+        void ApplyCursor();
 
         // SECURE_INPUT indicator state; owned here so TOGGLE can
         // flip without the dispatcher tracking anything.

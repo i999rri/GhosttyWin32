@@ -309,9 +309,44 @@ namespace winrt::GhosttyWin32::implementation
         // moves over cells) must not resurrect the cursor — the
         // cached value is applied when visibility comes back.
         m_visibleCursor = winrt::Microsoft::UI::Input::InputSystemCursor::Create(mapped);
-        if (!m_cursorHidden) {
-            ProtectedCursor(m_visibleCursor);
+        ApplyCursor();
+    }
+
+    void TerminalControl::ApplyCursor()
+    {
+        // Single writer for ProtectedCursor so the three inputs
+        // compose in one place: the scrollbar's own hover wins with
+        // an Arrow (a text I-beam over a draggable thumb reads wrong
+        // — #170 review), hidden state wins next, else the shape
+        // ghostty last asked for.
+        if (m_scrollbarHovered) {
+            static const auto arrow =
+                winrt::Microsoft::UI::Input::InputSystemCursor::Create(
+                    winrt::Microsoft::UI::Input::InputSystemCursorShape::Arrow);
+            ProtectedCursor(arrow);
+            return;
         }
+        if (m_cursorHidden) {
+            // WinUI 3 has no "hide" on ProtectedCursor: null means
+            // "inherit the parent's cursor" and renders as Arrow
+            // (verified during #60). Hiding is therefore expressed as
+            // showing a fully-transparent cursor embedded as a Win32
+            // resource in the EXE. Created once; UI thread only, so
+            // the local static needs no synchronization.
+            static const auto blank = []() -> winrt::Microsoft::UI::Input::InputCursor {
+                try {
+                    return winrt::Microsoft::UI::Input::InputDesktopResourceCursor::CreateFromModule(
+                        L"GhosttyWin32.exe", IDC_GHOSTTY_BLANK_CURSOR);
+                } catch (winrt::hresult_error const&) {
+                    // Resource lookup failed — degrade to the inherited
+                    // Arrow rather than crashing over a cosmetic feature.
+                    return nullptr;
+                }
+            }();
+            ProtectedCursor(blank);
+            return;
+        }
+        ProtectedCursor(m_visibleCursor);
     }
 
     void TerminalControl::AppendKeySequence(winrt::hstring const& label)
@@ -406,23 +441,7 @@ namespace winrt::GhosttyWin32::implementation
     {
         if (m_cursorHidden == !visible) return;
         m_cursorHidden = !visible;
-        // WinUI 3 has no "hide" on ProtectedCursor: null means
-        // "inherit the parent's cursor" and renders as Arrow
-        // (verified during #60). Hiding is therefore expressed as
-        // showing a fully-transparent cursor embedded as a Win32
-        // resource in the EXE. Created once; UI thread only, so the
-        // local static needs no synchronization.
-        static const auto blank = []() -> winrt::Microsoft::UI::Input::InputCursor {
-            try {
-                return winrt::Microsoft::UI::Input::InputDesktopResourceCursor::CreateFromModule(
-                    L"GhosttyWin32.exe", IDC_GHOSTTY_BLANK_CURSOR);
-            } catch (winrt::hresult_error const&) {
-                // Resource lookup failed — degrade to the inherited
-                // Arrow rather than crashing over a cosmetic feature.
-                return nullptr;
-            }
-        }();
-        ProtectedCursor(visible ? m_visibleCursor : blank);
+        ApplyCursor();
     }
 
     void TerminalControl::SetUnfocusedAppearance(double overlayOpacity,
@@ -481,12 +500,14 @@ namespace winrt::GhosttyWin32::implementation
             if (auto self = weakSelf.get()) {
                 self->m_scrollbarHovered = true;
                 self->RevealScrollbar();
+                self->ApplyCursor();
             }
         });
         bar.PointerExited([weakSelf](auto&&, auto&&) {
             if (auto self = weakSelf.get()) {
                 self->m_scrollbarHovered = false;
                 self->FadeScrollbarIfIdle();
+                self->ApplyCursor();
             }
         });
 
