@@ -2034,6 +2034,17 @@ namespace winrt::GhosttyWin32::implementation
         });
     }
 
+    void MainWindow::SetScrollbarForSurface(ghostty_surface_t surface,
+                                            ghostty_action_scrollbar_s bar)
+    {
+        // Owning-leaf routing: the viewport belongs to one pane.
+        auto lookup = m_tabs.FindPaneBySurface(surface);
+        if (!lookup.pane) return;
+        if (auto* tc = Tab::PaneToTerminalControl(*lookup.pane)) {
+            tc->SetScrollbar(bar);
+        }
+    }
+
     void MainWindow::SetReadonlyForSurface(ghostty_surface_t surface, bool readonly)
     {
         // Owning-leaf routing: the read-only state belongs to the

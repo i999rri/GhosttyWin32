@@ -236,6 +236,13 @@ struct IWindow {
     virtual void SetReadonlyForSurface(ghostty_surface_t surface,
                                        bool readonly) = 0;
 
+    // Viewport position within the scrollback for a surface this
+    // window owns (SCROLLBAR action: total rows, viewport offset,
+    // viewport length). Feeds the owning pane's overlay scrollbar
+    // (#154). Fires on every scroll and on screen changes.
+    virtual void SetScrollbarForSurface(ghostty_surface_t surface,
+                                        ghostty_action_scrollbar_s bar) = 0;
+
     // COMMAND_FINISHED: a shell-integration-tracked command ended.
     // The view owns the whole policy: it reads the notify-on-
     // command-finish config trio (mode / threshold / actions),

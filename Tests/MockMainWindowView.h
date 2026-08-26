@@ -140,6 +140,16 @@ struct MockMainWindowView : core::host::IWindow {
     int redoCalls = 0;
     void Redo() override { ++redoCalls; }
 
+    int setScrollbarCalls = 0;
+    ghostty_surface_t lastScrollbarSurface = nullptr;
+    ghostty_action_scrollbar_s lastScrollbar{};
+    void SetScrollbarForSurface(ghostty_surface_t surface,
+                                ghostty_action_scrollbar_s bar) override {
+        ++setScrollbarCalls;
+        lastScrollbarSurface = surface;
+        lastScrollbar = bar;
+    }
+
     int applyCellSizeCalls = 0;
     ghostty_surface_t lastCellSizeSurface = nullptr;
     ghostty_action_cell_size_s lastCellSize{};

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ghostty.h"
+#include <cstdio>
 
 #include <cstdint>
 #include <utility>
@@ -159,6 +160,22 @@ public:
     ghostty_surface_size_s Size() const noexcept {
         return m_handle ? ghostty_surface_size(m_handle)
                         : ghostty_surface_size_s{};
+    }
+
+    // Scroll the viewport to an absolute screen row (0 = the top
+    // of scrollback). Goes through the keybind-action parser
+    // (`scroll_to_row:N`) because that is the only absolute-
+    // position scroll entry point in the C API — the same route
+    // the GTK apprt's scrollbar takes (#154). Returns false if the
+    // action string was rejected.
+    bool ScrollToRow(uint64_t row) noexcept {
+        if (!m_handle) return false;
+        char buf[48];
+        const int n = std::snprintf(buf, sizeof(buf), "scroll_to_row:%llu",
+                                    static_cast<unsigned long long>(row));
+        if (n <= 0) return false;
+        return ghostty_surface_binding_action(
+            m_handle, buf, static_cast<uintptr_t>(n));
     }
 
     // ---- selection ----
