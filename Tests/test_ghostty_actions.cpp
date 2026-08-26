@@ -552,6 +552,25 @@ TEST(GhosttyActionsTest, OnCellSizePassesSurfaceAndMetrics) {
     EXPECT_EQ(view.lastCellSize.height, 21u);
 }
 
+TEST(GhosttyActionsTest, OnScrollbarPassesSurfaceAndMetrics) {
+    MockMainWindowView view;
+    Actions actions(view);
+    auto surface = reinterpret_cast<ghostty_surface_t>(0xBEEF);
+    EXPECT_TRUE(actions.OnScrollbar(surface, { 1000, 940, 60 }));
+    EXPECT_EQ(view.setScrollbarCalls, 1);
+    EXPECT_EQ(view.lastScrollbarSurface, surface);
+    EXPECT_EQ(view.lastScrollbar.total, 1000u);
+    EXPECT_EQ(view.lastScrollbar.offset, 940u);
+    EXPECT_EQ(view.lastScrollbar.len, 60u);
+}
+
+TEST(GhosttyActionsTest, OnScrollbarNullSurfaceIsAckedNotDelivered) {
+    MockMainWindowView view;
+    Actions actions(view);
+    EXPECT_TRUE(actions.OnScrollbar(nullptr, { 1000, 940, 60 }));
+    EXPECT_EQ(view.setScrollbarCalls, 0);
+}
+
 TEST(GhosttyActionsTest, OnCellSizeNullSurfaceIsAckedNotDelivered) {
     MockMainWindowView view;
     Actions actions(view);

@@ -214,6 +214,15 @@ namespace winrt::GhosttyWin32::implementation
         // for why this is an in-tree overlay and not a popup (#61).
         void SetHoveredLink(winrt::hstring const& url);
 
+        // Reflect the SCROLLBAR report on the overlay scrollbar
+        // (#154): total scrollback rows, viewport offset, viewport
+        // length. Collapses the bar when nothing is scrollable,
+        // otherwise reveals it and (re)starts the idle fade. UI
+        // thread only. Core-driven updates are guarded so the bar's
+        // ValueChanged does not echo back into a scroll_to_row
+        // (the GTK apprt blocks its adjustment signals the same way).
+        void SetScrollbar(ghostty_action_scrollbar_s bar);
+
         // Set the callback that fires when this control receives
         // keyboard focus. Passed the underlying ghostty surface so
         // the host can update its "currently focused surface"
@@ -313,6 +322,18 @@ namespace winrt::GhosttyWin32::implementation
         void UpdateKeyStateBadge();
         std::vector<winrt::hstring> m_keyTables;
         std::vector<winrt::hstring> m_keySequence;
+
+        // Scrollbar state (#154). m_scrollbarSyncing is set while
+        // SetScrollbar writes the bar's properties so the resulting
+        // ValueChanged is recognised as an echo and not sent back to
+        // ghostty. m_scrollbarHovered keeps the bar visible while the
+        // pointer is over it; the idle timer fades it otherwise.
+        void SetupScrollbar();
+        void RevealScrollbar();
+        void FadeScrollbarIfIdle();
+        bool m_scrollbarSyncing = false;
+        bool m_scrollbarHovered = false;
+        winrt::Microsoft::UI::Dispatching::DispatcherQueueTimer m_scrollbarFadeTimer{ nullptr };
     };
 }
 

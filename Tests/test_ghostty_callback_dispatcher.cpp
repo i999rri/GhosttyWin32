@@ -71,10 +71,33 @@ TEST(GhosttyCallbackDispatcherTest, NoConsumerAcksReturnTrue) {
     MockMainWindowView view;
     auto d = CallbackDispatcher::Create(view);
 
-    // SCROLLBAR: no scrollbar UI to feed.
-    EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_SCROLLBAR));
     // QUIT_TIMER: macOS-only quit countdown.
     EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_QUIT_TIMER));
+}
+
+TEST(GhosttyCallbackDispatcherTest, ScrollbarRoutesToTheView) {
+    // Formerly a no-consumer ack; #154 feeds the pane's overlay
+    // scrollbar. Surface-targeted delivery routes; the app-target
+    // form has no owning pane and stays an ack.
+    MockMainWindowView view;
+    auto d = CallbackDispatcher::Create(view);
+
+    ghostty_target_s target{};
+    target.tag = GHOSTTY_TARGET_SURFACE;
+    target.target.surface = reinterpret_cast<ghostty_surface_t>(0xBEEF);
+    ghostty_action_s action{};
+    action.tag = GHOSTTY_ACTION_SCROLLBAR;
+    action.action.scrollbar = { 1000, 940, 60 };
+
+    EXPECT_TRUE(d->DispatchAction(target, action));
+    EXPECT_EQ(view.setScrollbarCalls, 1);
+    EXPECT_EQ(view.lastScrollbarSurface, target.target.surface);
+    EXPECT_EQ(view.lastScrollbar.total, 1000u);
+    EXPECT_EQ(view.lastScrollbar.offset, 940u);
+    EXPECT_EQ(view.lastScrollbar.len, 60u);
+
+    EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_SCROLLBAR));
+    EXPECT_EQ(view.setScrollbarCalls, 1);
 }
 
 TEST(GhosttyCallbackDispatcherTest, CellSizeRoutesToTheView) {

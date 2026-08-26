@@ -122,5 +122,26 @@
                        TextTrimming="CharacterEllipsis"
                        Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
         </Border>
+        <!--
+          Scrollback scrollbar (SCROLLBAR action, #154). The GTK
+          apprt's overlay scrollbar is the upstream precedent. Unlike
+          every other overlay here this one is hit-test VISIBLE — it
+          is the first in-tree overlay that takes input (thumb drag,
+          track click). Still in-tree, never a popup (#61): an
+          in-tree sibling only intercepts pointer input inside its own
+          narrow bounds, so the SwapChainPanel keeps everything else.
+          Opacity is driven by code: shown on scroll activity and
+          while hovered, faded when idle, and collapsed entirely when
+          there is no scrollback (viewport == total).
+        -->
+        <ScrollBar x:Name="ScrollbackBar"
+                   Orientation="Vertical"
+                   IndicatorMode="MouseIndicator"
+                   HorizontalAlignment="Right"
+                   VerticalAlignment="Stretch"
+                   Visibility="Collapsed"
+                   Opacity="0"
+                   Minimum="0"
+                   SmallChange="1" />
     </Grid>
 </UserControl>

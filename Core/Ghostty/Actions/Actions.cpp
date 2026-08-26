@@ -509,6 +509,15 @@ bool Actions::OnCellSize(ghostty_surface_t surface,
     return true;
 }
 
+bool Actions::OnScrollbar(ghostty_surface_t surface,
+                          ghostty_action_scrollbar_s bar) {
+    if (!surface) return true;
+    DispatchToView([this, surface, bar]() {
+        m_view.SetScrollbarForSurface(surface, bar);
+    });
+    return true;
+}
+
 bool Actions::OnReloadConfig(bool soft) {
     // The view-side implementation handles thread placement
     // (soft re-uses UI thread, hard spins a 4MB-stack worker

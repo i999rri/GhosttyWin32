@@ -229,11 +229,17 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
         case GHOSTTY_ACTION_TOGGLE_TAB_OVERVIEW:
         case GHOSTTY_ACTION_TOGGLE_QUICK_TERMINAL:
         case GHOSTTY_ACTION_TOGGLE_COMMAND_PALETTE:
-        // Scroll-position updates — no scrollbar UI to feed:
-        case GHOSTTY_ACTION_SCROLLBAR:
         // macOS-only quit countdown — Windows already quits on
         // last-HWND-gone via CLOSE_WINDOW:
         case GHOSTTY_ACTION_QUIT_TIMER:
+            return true;
+
+        // Scroll-position updates: feeds the pane's overlay
+        // scrollbar (#154). Surface-targeted by construction.
+        case GHOSTTY_ACTION_SCROLLBAR:
+            if (target.tag == GHOSTTY_TARGET_SURFACE)
+                return m_actions.OnScrollbar(target.target.surface,
+                                             action.action.scrollbar);
             return true;
 
         // Cell metrics: feeds snap-to-cell window resizing (#155).

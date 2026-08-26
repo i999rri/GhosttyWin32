@@ -8,6 +8,9 @@
 #include "Input/TerminalKeyUp.h"
 #include "Display/PhysicalPixels.h"
 #include "Win32/Clipboard.h"
+#include <algorithm>
+#include <chrono>
+#include <cmath>
 #include <dxgi1_3.h>
 #if __has_include("TerminalControl.g.cpp")
 #include "TerminalControl.g.cpp"
@@ -189,6 +192,8 @@ namespace winrt::GhosttyWin32::implementation
             self->m_surface.MouseScroll(0, scrollY, smods);
             args.Handled(true);
         });
+
+        SetupScrollbar();
 
         // KeyDown / KeyUp on the control itself: the events fire only
         // while focus is inside us, so the handlers feed directly into
@@ -452,6 +457,103 @@ namespace winrt::GhosttyWin32::implementation
         banner.Visibility(winrt::Microsoft::UI::Xaml::Visibility::Visible);
     }
 
+    // ----- scrollback scrollbar (#154) -----
+
+    void TerminalControl::SetupScrollbar()
+    {
+        auto bar = ScrollbackBar();
+        if (!bar) return;
+        auto weakSelf = get_weak();
+
+        // Thumb drag / track click → absolute scroll. Echoes from
+        // SetScrollbar are filtered by m_scrollbarSyncing.
+        bar.ValueChanged([weakSelf](auto&&,
+                Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const& args) {
+            auto self = weakSelf.get();
+            if (!self || self->m_scrollbarSyncing || !self->m_surface) return;
+            self->m_surface.ScrollToRow(
+                static_cast<uint64_t>(std::llround(args.NewValue())));
+            self->RevealScrollbar();
+        });
+
+        // Hover keeps the bar visible; leaving restarts the idle fade.
+        bar.PointerEntered([weakSelf](auto&&, auto&&) {
+            if (auto self = weakSelf.get()) {
+                self->m_scrollbarHovered = true;
+                self->RevealScrollbar();
+            }
+        });
+        bar.PointerExited([weakSelf](auto&&, auto&&) {
+            if (auto self = weakSelf.get()) {
+                self->m_scrollbarHovered = false;
+                self->FadeScrollbarIfIdle();
+            }
+        });
+
+        // Wheel over the bar itself: forward to the terminal instead
+        // of letting the ScrollBar consume it (its default wheel
+        // handling would scroll by SmallChange and echo through
+        // ValueChanged — correct but jerky).
+        bar.PointerWheelChanged([weakSelf](auto&&,
+                winrt::Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args) {
+            auto self = weakSelf.get();
+            if (!self || !self->m_surface) return;
+            auto point = args.GetCurrentPoint(self->Panel());
+            int delta = point.Properties().MouseWheelDelta();
+            ghostty_input_scroll_mods_t smods = {};
+            self->m_surface.MouseScroll(0, static_cast<double>(delta) / 120.0, smods);
+            args.Handled(true);
+        });
+
+        m_scrollbarFadeTimer = DispatcherQueue().CreateTimer();
+        m_scrollbarFadeTimer.Interval(std::chrono::milliseconds{ 1200 });
+        m_scrollbarFadeTimer.IsRepeating(false);
+        m_scrollbarFadeTimer.Tick([weakSelf](auto&&, auto&&) {
+            if (auto self = weakSelf.get()) self->FadeScrollbarIfIdle();
+        });
+    }
+
+    void TerminalControl::SetScrollbar(ghostty_action_scrollbar_s bar)
+    {
+        auto sb = ScrollbackBar();
+        if (!sb) return;
+        // Nothing to scroll: the whole screen fits the viewport.
+        if (bar.total <= bar.len) {
+            sb.Visibility(winrt::Microsoft::UI::Xaml::Visibility::Collapsed);
+            return;
+        }
+        // Range mapping: Value = first visible row, Maximum = the
+        // last first-visible-row (total - len), ViewportSize = len
+        // so the thumb length reflects the visible fraction.
+        const double maximum = static_cast<double>(bar.total - bar.len);
+        const double value = std::min(static_cast<double>(bar.offset), maximum);
+        m_scrollbarSyncing = true;
+        sb.Maximum(maximum);
+        sb.ViewportSize(static_cast<double>(bar.len));
+        sb.LargeChange(static_cast<double>(bar.len));
+        sb.Value(value);
+        m_scrollbarSyncing = false;
+        sb.Visibility(winrt::Microsoft::UI::Xaml::Visibility::Visible);
+        RevealScrollbar();
+    }
+
+    void TerminalControl::RevealScrollbar()
+    {
+        auto sb = ScrollbackBar();
+        if (!sb) return;
+        sb.Opacity(1.0);
+        if (m_scrollbarFadeTimer) {
+            m_scrollbarFadeTimer.Stop();
+            m_scrollbarFadeTimer.Start();
+        }
+    }
+
+    void TerminalControl::FadeScrollbarIfIdle()
+    {
+        if (m_scrollbarHovered) return;
+        if (auto sb = ScrollbackBar()) sb.Opacity(0.0);
+    }
+
     void TerminalControl::ApplyFocusVisual(bool focused)
     {
         auto dim = UnfocusedDim();
@@ -568,6 +670,10 @@ namespace winrt::GhosttyWin32::implementation
 
     void TerminalControl::Detach()
     {
+        // The scrollbar fade timer holds only a weak ref, but stop
+        // it anyway so no tick lands while the control tears down.
+        if (m_scrollbarFadeTimer) m_scrollbarFadeTimer.Stop();
+
         // Cancel the pending SetSwapChainHandle dispatch before we tear
         // down the swap chain — otherwise the queued call could attach
         // a freed handle to the panel after we've destroyed everything.
