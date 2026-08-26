@@ -206,6 +206,12 @@ namespace winrt::GhosttyWin32::implementation
         KeyDown([weakSelf](auto&&, muxi::KeyRoutedEventArgs const& args) {
             auto self = weakSelf.get();
             if (!self || !self->m_surface) return;
+            // The search bar's TextBox is a child of this control, so
+            // its keystrokes bubble up here as well. While the bar is
+            // open the box owns the keyboard — never forward to the
+            // pty (typing "abc" in the box also typed "abc" into the
+            // shell before this guard, #171 review).
+            if (self->m_searchOpen) return;
 
             input::TerminalKeyDown key(args, self->m_ime.composing());
 
@@ -261,6 +267,7 @@ namespace winrt::GhosttyWin32::implementation
         KeyUp([weakSelf](auto&&, muxi::KeyRoutedEventArgs const& args) {
             auto self = weakSelf.get();
             if (!self || !self->m_surface) return;
+            if (self->m_searchOpen) return;  // see KeyDown
             input::TerminalKeyUp key(args);
             auto raw = key.toRawKeyRelease();
             auto keyEvent = core::input::Translate(raw);
@@ -628,6 +635,15 @@ namespace winrt::GhosttyWin32::implementation
                 self->CloseSearchFromUi();
                 args.Handled(true);
             }
+            // Everything else is the TextBox's own editing; the
+            // control-level KeyDown also gates on m_searchOpen, so
+            // nothing reaches the pty either way.
+        });
+        // Belt and braces for KeyUp: the release of a key typed in
+        // the box must not bubble into the terminal's KeyUp.
+        input.KeyUp([weakSelf](auto&&, muxi::KeyRoutedEventArgs const& args) {
+            if (auto self = weakSelf.get(); self && self->m_searchOpen)
+                args.Handled(true);
         });
 
         SearchNext().Click([weakSelf](auto&&, auto&&) {
