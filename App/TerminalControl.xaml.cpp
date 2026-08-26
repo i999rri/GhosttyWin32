@@ -88,7 +88,14 @@ namespace winrt::GhosttyWin32::implementation
         GotFocus([weakSelf](auto&&, auto&&) {
             auto self = weakSelf.get();
             if (!self) return;
-            if (self->m_editContext) self->m_editContext.NotifyFocusEnter();
+            // GotFocus bubbles: the search box taking focus fires this
+            // on its parent too. Engaging the CoreTextEditContext then
+            // would route the box's text through the terminal's IME
+            // path and into the pty — leave it disengaged while the
+            // bar is open (#171 review: box input reached the shell).
+            if (self->m_editContext && !self->m_searchOpen) {
+                self->m_editContext.NotifyFocusEnter();
+            }
             // The UnfocusedDim overlay is driven by Tab.SetActivePane,
             // not by XAML focus events. Reason: the dim represents
             // "this leaf is the active split in its tab", which has
@@ -212,6 +219,15 @@ namespace winrt::GhosttyWin32::implementation
             // pty (typing "abc" in the box also typed "abc" into the
             // shell before this guard, #171 review).
             if (self->m_searchOpen) return;
+#if defined(_DEBUG)
+            {
+                wchar_t buf[96];
+                swprintf_s(buf, L"SearchLeak: control KeyDown vk=%u searchOpen=%d\n",
+                           static_cast<unsigned>(args.Key()),
+                           self->m_searchOpen ? 1 : 0);
+                OutputDebugStringW(buf);
+            }
+#endif
 
             input::TerminalKeyDown key(args, self->m_ime.composing());
 
@@ -1009,7 +1025,18 @@ namespace winrt::GhosttyWin32::implementation
             if (self->m_surface) {
                 self->m_surface.Preedit(nullptr, 0);
                 auto utf8 = interop::Encoding::toUtf8(self->m_ime.text());
-                if (!utf8.empty()) {
+#if defined(_DEBUG)
+                {
+                    wchar_t buf[96];
+                    swprintf_s(buf, L"SearchLeak: EditContext commit len=%zu searchOpen=%d\n",
+                               utf8.size(), self->m_searchOpen ? 1 : 0);
+                    OutputDebugStringW(buf);
+                }
+#endif
+                // The search box owns text input while it is open —
+                // a composition committed there must not land in
+                // the pty (see the GotFocus guard).
+                if (!utf8.empty() && !self->m_searchOpen) {
                     self->m_surface.Text(utf8.c_str(), utf8.size());
                 }
                 if (self->m_app) ghostty_app_tick(self->m_app);
@@ -1047,7 +1074,9 @@ namespace winrt::GhosttyWin32::implementation
 
     void TerminalControl::NotifyImeFocusEnter()
     {
-        if (m_editContext) m_editContext.NotifyFocusEnter();
+        // Same guard as GotFocus: the search box owns text input
+        // while the bar is open.
+        if (m_editContext && !m_searchOpen) m_editContext.NotifyFocusEnter();
     }
 
     void TerminalControl::NotifyImeFocusLeave()
