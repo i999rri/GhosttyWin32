@@ -234,8 +234,13 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
         // macOS-only quit countdown — Windows already quits on
         // last-HWND-gone via CLOSE_WINDOW:
         case GHOSTTY_ACTION_QUIT_TIMER:
-        // Cell metrics — no host-side consumer today:
+            return true;
+
+        // Cell metrics: feeds snap-to-cell window resizing (#155).
         case GHOSTTY_ACTION_CELL_SIZE:
+            if (target.tag == GHOSTTY_TARGET_SURFACE)
+                return m_actions.OnCellSize(target.target.surface,
+                                            action.action.cell_size);
             return true;
 
         default:

@@ -75,8 +75,30 @@ TEST(GhosttyCallbackDispatcherTest, NoConsumerAcksReturnTrue) {
     EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_SCROLLBAR));
     // QUIT_TIMER: macOS-only quit countdown.
     EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_QUIT_TIMER));
-    // CELL_SIZE: cached but no host-side consumer yet.
+}
+
+TEST(GhosttyCallbackDispatcherTest, CellSizeRoutesToTheView) {
+    // Formerly a no-consumer ack; #155 wires it to the snap-to-cell
+    // resize step. Surface-targeted delivery routes; the app-target
+    // form has no owning window and stays an ack.
+    MockMainWindowView view;
+    auto d = CallbackDispatcher::Create(view);
+
+    ghostty_target_s target{};
+    target.tag = GHOSTTY_TARGET_SURFACE;
+    target.target.surface = reinterpret_cast<ghostty_surface_t>(0xBEEF);
+    ghostty_action_s action{};
+    action.tag = GHOSTTY_ACTION_CELL_SIZE;
+    action.action.cell_size = { 9, 21 };
+
+    EXPECT_TRUE(d->DispatchAction(target, action));
+    EXPECT_EQ(view.applyCellSizeCalls, 1);
+    EXPECT_EQ(view.lastCellSizeSurface, target.target.surface);
+    EXPECT_EQ(view.lastCellSize.width, 9u);
+    EXPECT_EQ(view.lastCellSize.height, 21u);
+
     EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_CELL_SIZE));
+    EXPECT_EQ(view.applyCellSizeCalls, 1);
 }
 
 TEST(GhosttyCallbackDispatcherTest, UndoRedoRouteToTheView) {

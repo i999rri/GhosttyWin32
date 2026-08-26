@@ -500,6 +500,15 @@ bool Actions::OnRedo() {
     return true;
 }
 
+bool Actions::OnCellSize(ghostty_surface_t surface,
+                         ghostty_action_cell_size_s cell) {
+    if (!surface) return true;
+    DispatchToView([this, surface, cell]() {
+        m_view.ApplyCellSizeForSurface(surface, cell);
+    });
+    return true;
+}
+
 bool Actions::OnReloadConfig(bool soft) {
     // The view-side implementation handles thread placement
     // (soft re-uses UI thread, hard spins a 4MB-stack worker

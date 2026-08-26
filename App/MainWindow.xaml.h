@@ -2,6 +2,7 @@
 
 #include "MainWindow.g.h"
 #include "ghostty.h"
+#include "Ghostty/Actions/Tags/CellSize.h"
 #include "Ghostty/Actions/Tags/Fullscreen.h"
 #include "Ghostty/Actions/Tags/SizeLimit.h"
 #include "Ghostty/Actions/Tags/WindowDecorations.h"
@@ -142,6 +143,17 @@ namespace winrt::GhosttyWin32::implementation
         // most recently restored.
         void Undo() override;
         void Redo() override;
+
+        // Snap-to-cell window resizing (#155): route the CELL_SIZE
+        // report to the WM_SIZING snapping tag when the surface
+        // belongs to this window.
+        void ApplyCellSizeForSurface(ghostty_surface_t surface,
+                                     ghostty_action_cell_size_s cell) override;
+        // Shared tail of the surface report and the adopt-time
+        // re-arm: update the WM_SIZING snapping tag with the metrics
+        // and re-read the window-step-resize gate. No-op on {0,0}
+        // (nothing reported yet).
+        void ArmCellSnap(ghostty_action_cell_size_s cell);
 
         // Terminal-driven appearance / lifecycle overrides. Bodies
         // are in MainWindow.xaml.cpp; the logic moved verbatim
@@ -365,6 +377,7 @@ namespace winrt::GhosttyWin32::implementation
         // by SizeLimit are auto-removed by Win32 when m_hwnd is
         // destroyed, so no explicit teardown ordering is needed.
         ghostty::actions::tags::SizeLimit          m_sizeLimit;
+        ghostty::actions::tags::CellSize           m_cellSize;
         ghostty::actions::tags::Fullscreen         m_fullscreen;
         ghostty::actions::tags::WindowDecorations  m_windowDecorations;
         Tabs m_tabs;

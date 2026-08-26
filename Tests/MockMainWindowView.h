@@ -140,6 +140,16 @@ struct MockMainWindowView : core::host::IWindow {
     int redoCalls = 0;
     void Redo() override { ++redoCalls; }
 
+    int applyCellSizeCalls = 0;
+    ghostty_surface_t lastCellSizeSurface = nullptr;
+    ghostty_action_cell_size_s lastCellSize{};
+    void ApplyCellSizeForSurface(ghostty_surface_t surface,
+                                 ghostty_action_cell_size_s cell) override {
+        ++applyCellSizeCalls;
+        lastCellSizeSurface = surface;
+        lastCellSize = cell;
+    }
+
     int setFloatOnTopCalls = 0;
     ghostty_action_float_window_e lastFloatOnTopMode{};
     void SetFloatOnTop(ghostty_action_float_window_e mode) override {

@@ -151,6 +151,16 @@ public:
         return m_handle && ghostty_surface_process_exited(m_handle);
     }
 
+    // Current grid/pixel dimensions, including the cell's pixel
+    // size. The PULL counterpart of the CELL_SIZE action: hosts
+    // that gain an already-running surface (tear-out adoption)
+    // query here instead of waiting for a report that will never
+    // re-fire (#155).
+    ghostty_surface_size_s Size() const noexcept {
+        return m_handle ? ghostty_surface_size(m_handle)
+                        : ghostty_surface_size_s{};
+    }
+
     // ---- selection ----
     bool HasSelection() const noexcept {
         return m_handle && ghostty_surface_has_selection(m_handle);
