@@ -699,6 +699,15 @@ namespace winrt::GhosttyWin32::implementation
         }
     }
 
+    bool TerminalControl::FocusSearchIfOpen()
+    {
+        if (!m_searchOpen) return false;
+        auto input = SearchInput();
+        if (!input) return false;
+        input.Focus(winrt::Microsoft::UI::Xaml::FocusState::Programmatic);
+        return true;
+    }
+
     void TerminalControl::CloseSearchFromUi()
     {
         // The UI closes by asking ghostty to end the search; the

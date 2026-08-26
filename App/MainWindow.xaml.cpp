@@ -284,6 +284,15 @@ namespace winrt::GhosttyWin32::implementation
                                         if (popups && popups.Size() > 0) return;
                                     }
                                 }
+                                // An open search bar owns the keyboard
+                                // the same way a dialog does: restore
+                                // focus to its input box, not to the
+                                // terminal behind it (#171 review —
+                                // alt-tab away and back mid-search
+                                // dropped focus on the pty).
+                                if (auto* tc = self->ActiveControl()) {
+                                    if (tc->FocusSearchIfOpen()) return;
+                                }
                                 if (auto* tab = self->ActiveTab()) {
                                     tab->Focus();
                                 }

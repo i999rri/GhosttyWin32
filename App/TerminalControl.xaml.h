@@ -233,6 +233,12 @@ namespace winrt::GhosttyWin32::implementation
         void EndSearch();
         void SetSearchTotal(ptrdiff_t total);
         void SetSearchSelected(ptrdiff_t selected);
+        // If the bar is open, put keyboard focus on its input box and
+        // return true; otherwise do nothing and return false. Lets
+        // the window's activation focus-restore keep the bar in
+        // charge instead of dropping focus back on the terminal
+        // behind it (alt-tab away and back while searching).
+        bool FocusSearchIfOpen();
 
         // Set the callback that fires when this control receives
         // keyboard focus. Passed the underlying ghostty surface so
