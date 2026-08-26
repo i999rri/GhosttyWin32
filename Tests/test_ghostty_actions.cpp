@@ -564,6 +564,36 @@ TEST(GhosttyActionsTest, OnScrollbarPassesSurfaceAndMetrics) {
     EXPECT_EQ(view.lastScrollbar.len, 60u);
 }
 
+TEST(GhosttyActionsTest, OnStartSearchConvertsNeedleAndEmptyIsEmpty) {
+    MockMainWindowView view;
+    Actions actions(view);
+    auto surface = reinterpret_cast<ghostty_surface_t>(0xBEEF);
+    // UTF-8 needle crosses to UTF-16 (a search_selection pre-fill
+    // can carry any text the terminal showed).
+    EXPECT_TRUE(actions.OnStartSearch(surface, { "\xE3\x81\x82" }));  // あ
+    EXPECT_EQ(view.startSearchCalls, 1);
+    EXPECT_EQ(view.lastStartSearchNeedle, L"あ");
+    // Bare start_search: ghostty passes "" — the bar opens empty.
+    EXPECT_TRUE(actions.OnStartSearch(surface, { "" }));
+    EXPECT_EQ(view.startSearchCalls, 2);
+    EXPECT_TRUE(view.lastStartSearchNeedle.empty());
+    // Defensive: a null needle pointer also opens empty.
+    EXPECT_TRUE(actions.OnStartSearch(surface, { nullptr }));
+    EXPECT_EQ(view.startSearchCalls, 3);
+    EXPECT_TRUE(view.lastStartSearchNeedle.empty());
+}
+
+TEST(GhosttyActionsTest, SearchActionsNullSurfaceAreAckedNotDelivered) {
+    MockMainWindowView view;
+    Actions actions(view);
+    EXPECT_TRUE(actions.OnStartSearch(nullptr, { "x" }));
+    EXPECT_TRUE(actions.OnEndSearch(nullptr));
+    EXPECT_TRUE(actions.OnSearchTotal(nullptr, { 1 }));
+    EXPECT_TRUE(actions.OnSearchSelected(nullptr, { 1 }));
+    EXPECT_EQ(view.startSearchCalls + view.endSearchCalls +
+              view.setSearchTotalCalls + view.setSearchSelectedCalls, 0);
+}
+
 TEST(GhosttyActionsTest, OnScrollbarNullSurfaceIsAckedNotDelivered) {
     MockMainWindowView view;
     Actions actions(view);

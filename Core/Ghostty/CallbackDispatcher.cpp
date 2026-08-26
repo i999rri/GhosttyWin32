@@ -217,10 +217,6 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
         // Feature surfaces intentionally not on this port's plate
         // (search bar, ImGui inspector, tab overview, quick
         // terminal, command palette):
-        case GHOSTTY_ACTION_START_SEARCH:
-        case GHOSTTY_ACTION_END_SEARCH:
-        case GHOSTTY_ACTION_SEARCH_TOTAL:
-        case GHOSTTY_ACTION_SEARCH_SELECTED:
         case GHOSTTY_ACTION_INSPECTOR:
         case GHOSTTY_ACTION_RENDER_INSPECTOR:
         // GTK-only, will never fire on Windows. Acked so it doesn't
@@ -240,6 +236,31 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
             if (target.tag == GHOSTTY_TARGET_SURFACE)
                 return m_actions.OnScrollbar(target.target.surface,
                                              action.action.scrollbar);
+            return true;
+
+        // ----- search bar (surface-targeted) -----
+        // ghostty opens/closes the UI and reports match counts; the
+        // host owns the input box and sends needle / navigation back
+        // through binding actions (search:, navigate_search:,
+        // end_search) — the same route the macOS SurfaceView takes.
+        case GHOSTTY_ACTION_START_SEARCH:
+            if (target.tag == GHOSTTY_TARGET_SURFACE)
+                return m_actions.OnStartSearch(target.target.surface,
+                                               action.action.start_search);
+            return true;
+        case GHOSTTY_ACTION_END_SEARCH:
+            if (target.tag == GHOSTTY_TARGET_SURFACE)
+                return m_actions.OnEndSearch(target.target.surface);
+            return true;
+        case GHOSTTY_ACTION_SEARCH_TOTAL:
+            if (target.tag == GHOSTTY_TARGET_SURFACE)
+                return m_actions.OnSearchTotal(target.target.surface,
+                                               action.action.search_total);
+            return true;
+        case GHOSTTY_ACTION_SEARCH_SELECTED:
+            if (target.tag == GHOSTTY_TARGET_SURFACE)
+                return m_actions.OnSearchSelected(target.target.surface,
+                                                  action.action.search_selected);
             return true;
 
         // Cell metrics: feeds snap-to-cell window resizing (#155).

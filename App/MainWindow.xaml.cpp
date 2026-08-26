@@ -2034,6 +2034,47 @@ namespace winrt::GhosttyWin32::implementation
         });
     }
 
+    // ----- search bar: owning-leaf routing for all four actions -----
+
+    void MainWindow::StartSearchForSurface(ghostty_surface_t surface,
+                                           std::wstring needle)
+    {
+        auto lookup = m_tabs.FindPaneBySurface(surface);
+        if (!lookup.pane) return;
+        if (auto* tc = Tab::PaneToTerminalControl(*lookup.pane)) {
+            tc->StartSearch(needle);
+        }
+    }
+
+    void MainWindow::EndSearchForSurface(ghostty_surface_t surface)
+    {
+        auto lookup = m_tabs.FindPaneBySurface(surface);
+        if (!lookup.pane) return;
+        if (auto* tc = Tab::PaneToTerminalControl(*lookup.pane)) {
+            tc->EndSearch();
+        }
+    }
+
+    void MainWindow::SetSearchTotalForSurface(ghostty_surface_t surface,
+                                              ptrdiff_t total)
+    {
+        auto lookup = m_tabs.FindPaneBySurface(surface);
+        if (!lookup.pane) return;
+        if (auto* tc = Tab::PaneToTerminalControl(*lookup.pane)) {
+            tc->SetSearchTotal(total);
+        }
+    }
+
+    void MainWindow::SetSearchSelectedForSurface(ghostty_surface_t surface,
+                                                 ptrdiff_t selected)
+    {
+        auto lookup = m_tabs.FindPaneBySurface(surface);
+        if (!lookup.pane) return;
+        if (auto* tc = Tab::PaneToTerminalControl(*lookup.pane)) {
+            tc->SetSearchSelected(selected);
+        }
+    }
+
     void MainWindow::SetScrollbarForSurface(ghostty_surface_t surface,
                                             ghostty_action_scrollbar_s bar)
     {

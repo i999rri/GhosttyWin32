@@ -8,6 +8,7 @@
 #include "Input/TerminalKeyUp.h"
 #include "Display/PhysicalPixels.h"
 #include "Win32/Clipboard.h"
+#include <winrt/Windows.System.h>
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -194,6 +195,7 @@ namespace winrt::GhosttyWin32::implementation
         });
 
         SetupScrollbar();
+        SetupSearchBar();
 
         // KeyDown / KeyUp on the control itself: the events fire only
         // while focus is inside us, so the handlers feed directly into
@@ -575,6 +577,159 @@ namespace winrt::GhosttyWin32::implementation
         if (auto sb = ScrollbackBar()) sb.Opacity(0.0);
     }
 
+    // ----- search bar -----
+
+    void TerminalControl::SetupSearchBar()
+    {
+        namespace muxi = winrt::Microsoft::UI::Xaml::Input;
+        auto input = SearchInput();
+        if (!input) return;
+        auto weakSelf = get_weak();
+
+        // Debounce timer (macOS SurfaceView rule: <3 chars wait
+        // 300ms, otherwise immediate — see the header comment).
+        m_searchDebounce = DispatcherQueue().CreateTimer();
+        m_searchDebounce.Interval(std::chrono::milliseconds{ 300 });
+        m_searchDebounce.IsRepeating(false);
+        m_searchDebounce.Tick([weakSelf](auto&&, auto&&) {
+            if (auto self = weakSelf.get()) self->SendSearchNeedle();
+        });
+
+        input.TextChanged([weakSelf](auto&&, auto&&) {
+            auto self = weakSelf.get();
+            if (!self || self->m_searchSyncing || !self->m_searchOpen) return;
+            auto text = self->SearchInput().Text();
+            const bool immediate = text.empty() || text.size() >= 3;
+            self->m_searchDebounce.Stop();
+            if (immediate) self->SendSearchNeedle();
+            else self->m_searchDebounce.Start();
+        });
+
+        // Enter = next, Shift+Enter = previous, Esc = close. Handled
+        // so the keys never bubble into the terminal's own KeyDown
+        // (which would type them into the pty).
+        input.KeyDown([weakSelf](auto&&, muxi::KeyRoutedEventArgs const& args) {
+            auto self = weakSelf.get();
+            if (!self || !self->m_surface) return;
+            using winrt::Windows::System::VirtualKey;
+            const auto key = args.Key();
+            if (key == VirtualKey::Enter) {
+                const bool shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+                // Make sure a pending debounced needle lands before
+                // navigating, else Enter on a fresh 1-2 char needle
+                // navigates the previous search.
+                if (self->m_searchDebounce.IsRunning()) {
+                    self->m_searchDebounce.Stop();
+                    self->SendSearchNeedle();
+                }
+                self->m_surface.NavigateSearch(!shift);
+                args.Handled(true);
+            } else if (key == VirtualKey::Escape) {
+                self->CloseSearchFromUi();
+                args.Handled(true);
+            }
+        });
+
+        SearchNext().Click([weakSelf](auto&&, auto&&) {
+            if (auto self = weakSelf.get(); self && self->m_surface)
+                self->m_surface.NavigateSearch(true);
+        });
+        SearchPrev().Click([weakSelf](auto&&, auto&&) {
+            if (auto self = weakSelf.get(); self && self->m_surface)
+                self->m_surface.NavigateSearch(false);
+        });
+        SearchClose().Click([weakSelf](auto&&, auto&&) {
+            if (auto self = weakSelf.get()) self->CloseSearchFromUi();
+        });
+    }
+
+    void TerminalControl::StartSearch(std::wstring const& needle)
+    {
+        auto bar = SearchBar();
+        auto input = SearchInput();
+        if (!bar || !input) return;
+        m_searchOpen = true;
+        m_searchTotal = -1;
+        m_searchSelected = -1;
+        UpdateSearchCount();
+        bar.Visibility(winrt::Microsoft::UI::Xaml::Visibility::Visible);
+        // A non-empty needle came from search_selection: ghostty has
+        // already started that search, so pre-fill without echoing
+        // it back. An empty needle (bare start_search) leaves the
+        // box as-is — re-opening keeps the last query, which matches
+        // every editor's find bar.
+        if (!needle.empty()) {
+            m_searchSyncing = true;
+            input.Text(needle);
+            m_searchSyncing = false;
+        }
+        input.Focus(winrt::Microsoft::UI::Xaml::FocusState::Programmatic);
+        input.SelectAll();
+    }
+
+    void TerminalControl::EndSearch()
+    {
+        auto bar = SearchBar();
+        if (!bar) return;
+        if (m_searchDebounce) m_searchDebounce.Stop();
+        const bool wasOpen = m_searchOpen;
+        m_searchOpen = false;
+        bar.Visibility(winrt::Microsoft::UI::Xaml::Visibility::Collapsed);
+        // Hand focus back to the terminal only if the bar had it;
+        // ghostty can END_SEARCH while focus is elsewhere (another
+        // pane), and stealing it then would be a surprise.
+        if (wasOpen) {
+            Focus(winrt::Microsoft::UI::Xaml::FocusState::Programmatic);
+        }
+    }
+
+    void TerminalControl::CloseSearchFromUi()
+    {
+        // The UI closes by asking ghostty to end the search; the
+        // resulting END_SEARCH action performs the actual hide, so
+        // core and host never disagree about whether a search is on.
+        if (m_surface) m_surface.EndSearch();
+        else EndSearch();
+    }
+
+    void TerminalControl::SendSearchNeedle()
+    {
+        if (!m_surface || !m_searchOpen) return;
+        std::wstring text{ SearchInput().Text() };
+        m_surface.Search(interop::Encoding::toUtf8(text));
+    }
+
+    void TerminalControl::SetSearchTotal(ptrdiff_t total)
+    {
+        m_searchTotal = total;
+        UpdateSearchCount();
+    }
+
+    void TerminalControl::SetSearchSelected(ptrdiff_t selected)
+    {
+        m_searchSelected = selected;
+        UpdateSearchCount();
+    }
+
+    void TerminalControl::UpdateSearchCount()
+    {
+        auto count = SearchCount();
+        if (!count) return;
+        wchar_t buf[48];
+        if (m_searchTotal < 0) {
+            buf[0] = L'\0';
+        } else if (m_searchTotal == 0) {
+            wcscpy_s(buf, L"0 / 0");
+        } else if (m_searchSelected < 1) {
+            swprintf_s(buf, L"– / %lld", static_cast<long long>(m_searchTotal));
+        } else {
+            swprintf_s(buf, L"%lld / %lld",
+                       static_cast<long long>(m_searchSelected),
+                       static_cast<long long>(m_searchTotal));
+        }
+        count.Text(buf);
+    }
+
     void TerminalControl::ApplyFocusVisual(bool focused)
     {
         auto dim = UnfocusedDim();
@@ -694,6 +849,7 @@ namespace winrt::GhosttyWin32::implementation
         // The scrollbar fade timer holds only a weak ref, but stop
         // it anyway so no tick lands while the control tears down.
         if (m_scrollbarFadeTimer) m_scrollbarFadeTimer.Stop();
+        if (m_searchDebounce) m_searchDebounce.Stop();
 
         // Cancel the pending SetSwapChainHandle dispatch before we tear
         // down the swap chain — otherwise the queued call could attach

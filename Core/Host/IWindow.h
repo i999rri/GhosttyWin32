@@ -243,6 +243,22 @@ struct IWindow {
     virtual void SetScrollbarForSurface(ghostty_surface_t surface,
                                         ghostty_action_scrollbar_s bar) = 0;
 
+    // ----- search bar (START_SEARCH / END_SEARCH / SEARCH_TOTAL /
+    // SEARCH_SELECTED, all surface-targeted) -----
+    // ghostty drives the lifecycle and the counts; the host owns
+    // the input box and talks back through binding actions
+    // (Surface::Search / NavigateSearch / EndSearch). `needle` is
+    // empty for a bare open and pre-filled by search_selection.
+    // `total` / `selected` are -1 while unknown; `selected` is
+    // 1-based.
+    virtual void StartSearchForSurface(ghostty_surface_t surface,
+                                       std::wstring needle) = 0;
+    virtual void EndSearchForSurface(ghostty_surface_t surface) = 0;
+    virtual void SetSearchTotalForSurface(ghostty_surface_t surface,
+                                          ptrdiff_t total) = 0;
+    virtual void SetSearchSelectedForSurface(ghostty_surface_t surface,
+                                             ptrdiff_t selected) = 0;
+
     // COMMAND_FINISHED: a shell-integration-tracked command ended.
     // The view owns the whole policy: it reads the notify-on-
     // command-finish config trio (mode / threshold / actions),

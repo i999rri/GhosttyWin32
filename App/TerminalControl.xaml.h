@@ -223,6 +223,17 @@ namespace winrt::GhosttyWin32::implementation
         // (the GTK apprt blocks its adjustment signals the same way).
         void SetScrollbar(ghostty_action_scrollbar_s bar);
 
+        // ----- search bar -----
+        // ghostty drives open/close and the counts; the pane owns
+        // the input box. Open focuses the box (pre-filled from
+        // search_selection when `needle` is non-empty), close hides
+        // it and returns focus to the terminal. Counts are -1 while
+        // unknown; `selected` is 1-based. UI thread only.
+        void StartSearch(std::wstring const& needle);
+        void EndSearch();
+        void SetSearchTotal(ptrdiff_t total);
+        void SetSearchSelected(ptrdiff_t selected);
+
         // Set the callback that fires when this control receives
         // keyboard focus. Passed the underlying ghostty surface so
         // the host can update its "currently focused surface"
@@ -337,6 +348,23 @@ namespace winrt::GhosttyWin32::implementation
         bool m_scrollbarSyncing = false;
         bool m_scrollbarHovered = false;
         winrt::Microsoft::UI::Dispatching::DispatcherQueueTimer m_scrollbarFadeTimer{ nullptr };
+
+        // Search bar state. m_searchSyncing guards the programmatic
+        // pre-fill in StartSearch so TextChanged doesn't fire a
+        // redundant search for text ghostty just handed us. The
+        // debounce mirrors the macOS SurfaceView: needles under 3
+        // chars wait 300ms (cheap keystrokes, expensive short-needle
+        // scans); 3+ chars and empty go immediately. m_searchTotal /
+        // m_searchSelected feed the readout.
+        void SetupSearchBar();
+        void SendSearchNeedle();
+        void UpdateSearchCount();
+        void CloseSearchFromUi();
+        bool m_searchOpen = false;
+        bool m_searchSyncing = false;
+        ptrdiff_t m_searchTotal = -1;
+        ptrdiff_t m_searchSelected = -1;
+        winrt::Microsoft::UI::Dispatching::DispatcherQueueTimer m_searchDebounce{ nullptr };
     };
 }
 

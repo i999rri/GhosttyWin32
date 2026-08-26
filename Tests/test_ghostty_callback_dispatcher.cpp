@@ -56,10 +56,6 @@ TEST(GhosttyCallbackDispatcherTest, FeatureSurfaceAcksReturnTrue) {
     MockMainWindowView view;
     auto d = CallbackDispatcher::Create(view);
 
-    EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_START_SEARCH));
-    EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_END_SEARCH));
-    EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_SEARCH_TOTAL));
-    EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_SEARCH_SELECTED));
     EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_INSPECTOR));
     EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_RENDER_INSPECTOR));
     EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_TOGGLE_TAB_OVERVIEW));
@@ -73,6 +69,47 @@ TEST(GhosttyCallbackDispatcherTest, NoConsumerAcksReturnTrue) {
 
     // QUIT_TIMER: macOS-only quit countdown.
     EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_QUIT_TIMER));
+}
+
+TEST(GhosttyCallbackDispatcherTest, SearchActionsRouteToTheView) {
+    // Formerly feature-surface acks; the search bar consumes all
+    // four. Surface-targeted delivery routes; app-target stays an
+    // ack (no owning pane to show a bar on).
+    MockMainWindowView view;
+    auto d = CallbackDispatcher::Create(view);
+    auto surface = reinterpret_cast<ghostty_surface_t>(0xBEEF);
+
+    ghostty_target_s target{};
+    target.tag = GHOSTTY_TARGET_SURFACE;
+    target.target.surface = surface;
+
+    ghostty_action_s action{};
+    action.tag = GHOSTTY_ACTION_START_SEARCH;
+    action.action.start_search = { "needle" };
+    EXPECT_TRUE(d->DispatchAction(target, action));
+    EXPECT_EQ(view.startSearchCalls, 1);
+    EXPECT_EQ(view.lastStartSearchSurface, surface);
+    EXPECT_EQ(view.lastStartSearchNeedle, L"needle");
+
+    action.tag = GHOSTTY_ACTION_SEARCH_TOTAL;
+    action.action.search_total = { 12 };
+    EXPECT_TRUE(d->DispatchAction(target, action));
+    EXPECT_EQ(view.lastSearchTotal, 12);
+
+    action.tag = GHOSTTY_ACTION_SEARCH_SELECTED;
+    action.action.search_selected = { 3 };
+    EXPECT_TRUE(d->DispatchAction(target, action));
+    EXPECT_EQ(view.lastSearchSelected, 3);
+
+    action.tag = GHOSTTY_ACTION_END_SEARCH;
+    EXPECT_TRUE(d->DispatchAction(target, action));
+    EXPECT_EQ(view.endSearchCalls, 1);
+    EXPECT_EQ(view.lastEndSearchSurface, surface);
+
+    EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_START_SEARCH));
+    EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_END_SEARCH));
+    EXPECT_EQ(view.startSearchCalls, 1);
+    EXPECT_EQ(view.endSearchCalls, 1);
 }
 
 TEST(GhosttyCallbackDispatcherTest, ScrollbarRoutesToTheView) {

@@ -2,6 +2,8 @@
 
 #include "ghostty.h"
 #include <cstdio>
+#include <cstring>
+#include <string>
 
 #include <cstdint>
 #include <utility>
@@ -176,6 +178,31 @@ public:
         if (n <= 0) return false;
         return ghostty_surface_binding_action(
             m_handle, buf, static_cast<uintptr_t>(n));
+    }
+
+    // ---- search (host-owned UI, core-owned matching) ----
+    // There is no dedicated search C API; like the macOS SurfaceView
+    // the host drives it through binding actions. `needle` is UTF-8;
+    // empty cancels the current search without closing the UI.
+    bool Search(std::string const& needleUtf8) noexcept {
+        if (!m_handle) return false;
+        std::string action = "search:" + needleUtf8;
+        return ghostty_surface_binding_action(
+            m_handle, action.c_str(), static_cast<uintptr_t>(action.size()));
+    }
+    bool NavigateSearch(bool next) noexcept {
+        if (!m_handle) return false;
+        static constexpr char kNext[] = "navigate_search:next";
+        static constexpr char kPrev[] = "navigate_search:previous";
+        const char* a = next ? kNext : kPrev;
+        return ghostty_surface_binding_action(
+            m_handle, a, static_cast<uintptr_t>(std::strlen(a)));
+    }
+    bool EndSearch() noexcept {
+        if (!m_handle) return false;
+        static constexpr char kEnd[] = "end_search";
+        return ghostty_surface_binding_action(
+            m_handle, kEnd, static_cast<uintptr_t>(std::strlen(kEnd)));
     }
 
     // ---- selection ----

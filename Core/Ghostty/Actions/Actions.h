@@ -160,6 +160,13 @@ public:
                     ghostty_action_cell_size_s cell);
     bool OnScrollbar(ghostty_surface_t surface,
                      ghostty_action_scrollbar_s bar);
+    bool OnStartSearch(ghostty_surface_t surface,
+                       ghostty_action_start_search_s search);
+    bool OnEndSearch(ghostty_surface_t surface);
+    bool OnSearchTotal(ghostty_surface_t surface,
+                       ghostty_action_search_total_s total);
+    bool OnSearchSelected(ghostty_surface_t surface,
+                          ghostty_action_search_selected_s selected);
     bool OnReloadConfig(bool soft);
     bool OnConfigChange(ghostty_config_t newCfg);
     bool OnDesktopNotification(ghostty_surface_t surface,
