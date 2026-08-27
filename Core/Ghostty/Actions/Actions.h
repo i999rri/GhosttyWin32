@@ -218,6 +218,22 @@ private:
             });
     }
 
+    // Surface-targeted variant: hop to the UI thread, resolve the
+    // surface to its pane view through the window's directory, and
+    // hand the view to `work`. The lookup and the use happen in the
+    // same dispatched lambda, which is what makes the borrowed
+    // ISurfaceView* safe (the pane cannot be torn down in between).
+    // A surface that no longer maps to a view — closed, or torn out
+    // to another window before the hop landed — is silently dropped,
+    // exactly as the old per-window relays did after their lookup
+    // missed.
+    template <class F>
+    void DispatchToSurface(ghostty_surface_t surface, F&& work) {
+        DispatchToView([this, surface, work = std::forward<F>(work)]() mutable {
+            if (auto* view = m_view.FindSurfaceView(surface)) work(*view);
+        });
+    }
+
     // Initial window size from GHOSTTY_ACTION_INITIAL_SIZE
     // (physical pixels). Zero means "not yet received" —
     // OnResetWindowSize falls back to a DPI-scaled 1280×720 in

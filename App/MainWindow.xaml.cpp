@@ -1780,7 +1780,18 @@ namespace winrt::GhosttyWin32::implementation
                       nullptr, nullptr, SW_SHOWNORMAL);
     }
 
-    // ----- IMainWindowView: terminal-driven appearance + lifecycle -----
+    // ----- IWindow: surface directory + terminal-driven appearance -----
+
+    host::ISurfaceView* MainWindow::FindSurfaceView(ghostty_surface_t surface)
+    {
+        // Owning-leaf resolution for every surface-targeted action.
+        // Null when the surface was closed or torn out to another
+        // window before the dispatched call landed — the caller
+        // drops the action, as the old per-action relays did.
+        auto lookup = m_tabs.FindPaneBySurface(surface);
+        if (!lookup.pane) return nullptr;
+        return Tab::PaneToTerminalControl(*lookup.pane);
+    }
 
     void MainWindow::ApplyBackgroundColor(uint8_t r, uint8_t g, uint8_t b)
     {
@@ -1890,35 +1901,6 @@ namespace winrt::GhosttyWin32::implementation
         const bool underlay = !translucent && m_bgOpaque;
         for (auto& tab : m_tabs) {
             if (tab) tab->ApplyBackgroundOpacity(underlay, m_bgColor);
-        }
-    }
-
-    void MainWindow::SetCursorShapeForSurface(ghostty_surface_t surface,
-                                              ghostty_action_mouse_shape_e shape)
-    {
-        // Route the shape to the leaf that actually owns `surface`, not
-        // the tab's active leaf. MOUSE_SHAPE carries the originating
-        // surface, and with split panes the pointer can be over a
-        // non-active pane — using ActiveControl() landed the shape on
-        // the wrong pane (#65). FindPaneBySurface walks the pane tree
-        // and returns the owning leaf; in the single-pane case it
-        // resolves to the same control ActiveControl() would.
-        auto lookup = m_tabs.FindPaneBySurface(surface);
-        if (!lookup.pane) return;
-        if (auto* tc = Tab::PaneToTerminalControl(*lookup.pane)) {
-            tc->SetCursorShape(shape);
-        }
-    }
-
-    void MainWindow::SetSecureInputForSurface(ghostty_surface_t surface,
-                                              ghostty_action_secure_input_e mode)
-    {
-        // Owning-leaf routing: the password prompt lives in a
-        // specific pane, and the badge belongs there.
-        auto lookup = m_tabs.FindPaneBySurface(surface);
-        if (!lookup.pane) return;
-        if (auto* tc = Tab::PaneToTerminalControl(*lookup.pane)) {
-            tc->SetSecureInput(mode);
         }
     }
 
@@ -2045,67 +2027,6 @@ namespace winrt::GhosttyWin32::implementation
 
     // ----- search bar: owning-leaf routing for all four actions -----
 
-    void MainWindow::StartSearchForSurface(ghostty_surface_t surface,
-                                           std::wstring needle)
-    {
-        auto lookup = m_tabs.FindPaneBySurface(surface);
-        if (!lookup.pane) return;
-        if (auto* tc = Tab::PaneToTerminalControl(*lookup.pane)) {
-            tc->StartSearch(needle);
-        }
-    }
-
-    void MainWindow::EndSearchForSurface(ghostty_surface_t surface)
-    {
-        auto lookup = m_tabs.FindPaneBySurface(surface);
-        if (!lookup.pane) return;
-        if (auto* tc = Tab::PaneToTerminalControl(*lookup.pane)) {
-            tc->EndSearch();
-        }
-    }
-
-    void MainWindow::SetSearchTotalForSurface(ghostty_surface_t surface,
-                                              ptrdiff_t total)
-    {
-        auto lookup = m_tabs.FindPaneBySurface(surface);
-        if (!lookup.pane) return;
-        if (auto* tc = Tab::PaneToTerminalControl(*lookup.pane)) {
-            tc->SetSearchTotal(total);
-        }
-    }
-
-    void MainWindow::SetSearchSelectedForSurface(ghostty_surface_t surface,
-                                                 ptrdiff_t selected)
-    {
-        auto lookup = m_tabs.FindPaneBySurface(surface);
-        if (!lookup.pane) return;
-        if (auto* tc = Tab::PaneToTerminalControl(*lookup.pane)) {
-            tc->SetSearchSelected(selected);
-        }
-    }
-
-    void MainWindow::SetScrollbarForSurface(ghostty_surface_t surface,
-                                            ghostty_action_scrollbar_s bar)
-    {
-        // Owning-leaf routing: the viewport belongs to one pane.
-        auto lookup = m_tabs.FindPaneBySurface(surface);
-        if (!lookup.pane) return;
-        if (auto* tc = Tab::PaneToTerminalControl(*lookup.pane)) {
-            tc->SetScrollbar(bar);
-        }
-    }
-
-    void MainWindow::SetReadonlyForSurface(ghostty_surface_t surface, bool readonly)
-    {
-        // Owning-leaf routing: the read-only state belongs to the
-        // pane whose pty stopped accepting writes.
-        auto lookup = m_tabs.FindPaneBySurface(surface);
-        if (!lookup.pane) return;
-        if (auto* tc = Tab::PaneToTerminalControl(*lookup.pane)) {
-            tc->SetReadonly(readonly);
-        }
-    }
-
     void MainWindow::SetPwdForSurface(ghostty_surface_t surface, std::wstring pwd)
     {
         // Tab-level, not pane-level: the tooltip hangs off the
@@ -2116,74 +2037,6 @@ namespace winrt::GhosttyWin32::implementation
         Microsoft::UI::Xaml::Controls::ToolTipService::SetToolTip(
             t->Item(),
             pwd.empty() ? nullptr : box_value(winrt::hstring{ pwd }));
-    }
-
-    // KEY_SEQUENCE / KEY_TABLE: owning-leaf routing like the other
-    // pane-visual actions; the four operations share the lookup and
-    // differ only in which TerminalControl mutator they call.
-    void MainWindow::AppendKeySequenceForSurface(ghostty_surface_t surface,
-                                                 std::wstring triggerLabel)
-    {
-        auto lookup = m_tabs.FindPaneBySurface(surface);
-        if (!lookup.pane) return;
-        if (auto* tc = Tab::PaneToTerminalControl(*lookup.pane)) {
-            tc->AppendKeySequence(winrt::hstring{ triggerLabel });
-        }
-    }
-
-    void MainWindow::ClearKeySequenceForSurface(ghostty_surface_t surface)
-    {
-        auto lookup = m_tabs.FindPaneBySurface(surface);
-        if (!lookup.pane) return;
-        if (auto* tc = Tab::PaneToTerminalControl(*lookup.pane)) {
-            tc->ClearKeySequence();
-        }
-    }
-
-    void MainWindow::PushKeyTableForSurface(ghostty_surface_t surface,
-                                            std::wstring name)
-    {
-        auto lookup = m_tabs.FindPaneBySurface(surface);
-        if (!lookup.pane) return;
-        if (auto* tc = Tab::PaneToTerminalControl(*lookup.pane)) {
-            tc->PushKeyTable(winrt::hstring{ name });
-        }
-    }
-
-    void MainWindow::PopKeyTableForSurface(ghostty_surface_t surface, bool all)
-    {
-        auto lookup = m_tabs.FindPaneBySurface(surface);
-        if (!lookup.pane) return;
-        if (auto* tc = Tab::PaneToTerminalControl(*lookup.pane)) {
-            tc->PopKeyTable(all);
-        }
-    }
-
-    void MainWindow::SetMouseVisibilityForSurface(ghostty_surface_t surface,
-                                                  bool visible)
-    {
-        // Owning-leaf routing, same as the other pointer-adjacent
-        // actions: the hide belongs to the pane the user is typing
-        // in, which with splits is not necessarily the active leaf
-        // of every tab.
-        auto lookup = m_tabs.FindPaneBySurface(surface);
-        if (!lookup.pane) return;
-        if (auto* tc = Tab::PaneToTerminalControl(*lookup.pane)) {
-            tc->SetMouseVisibility(visible);
-        }
-    }
-
-    void MainWindow::SetHoveredLinkForSurface(ghostty_surface_t surface,
-                                              std::wstring url)
-    {
-        // Same owning-leaf routing as SetCursorShapeForSurface: the
-        // pointer can hover a link in a non-active pane, and the
-        // banner belongs to the pane the link lives in.
-        auto lookup = m_tabs.FindPaneBySurface(surface);
-        if (!lookup.pane) return;
-        if (auto* tc = Tab::PaneToTerminalControl(*lookup.pane)) {
-            tc->SetHoveredLink(winrt::hstring{ url });
-        }
     }
 
     void MainWindow::ReplaceConfig(ghostty_config_t cloned)

@@ -149,15 +149,6 @@ namespace winrt::GhosttyWin32::implementation
         // belongs to this window.
         void ApplyCellSizeForSurface(ghostty_surface_t surface,
                                      ghostty_action_cell_size_s cell) override;
-        void SetScrollbarForSurface(ghostty_surface_t surface,
-                                    ghostty_action_scrollbar_s bar) override;
-        void StartSearchForSurface(ghostty_surface_t surface,
-                                   std::wstring needle) override;
-        void EndSearchForSurface(ghostty_surface_t surface) override;
-        void SetSearchTotalForSurface(ghostty_surface_t surface,
-                                      ptrdiff_t total) override;
-        void SetSearchSelectedForSurface(ghostty_surface_t surface,
-                                         ptrdiff_t selected) override;
         // Shared tail of the surface report and the adopt-time
         // re-arm: update the WM_SIZING snapping tag with the metrics
         // and re-read the window-step-resize gate. No-op on {0,0}
@@ -167,29 +158,17 @@ namespace winrt::GhosttyWin32::implementation
         // Terminal-driven appearance / lifecycle overrides. Bodies
         // are in MainWindow.xaml.cpp; the logic moved verbatim
         // from the old inline action_cb chunks.
+        // Surface directory (IWindow::FindSurfaceView): the one lookup
+        // through which every surface-targeted action reaches its
+        // pane. Replaces fourteen identical relay overrides.
+        host::ISurfaceView* FindSurfaceView(ghostty_surface_t surface) override;
         void ApplyBackgroundColor(uint8_t r, uint8_t g, uint8_t b) override;
-        void SetCursorShapeForSurface(ghostty_surface_t surface,
-                                      ghostty_action_mouse_shape_e shape) override;
-        void SetHoveredLinkForSurface(ghostty_surface_t surface,
-                                      std::wstring url) override;
-        void SetMouseVisibilityForSurface(ghostty_surface_t surface,
-                                          bool visible) override;
-        void SetSecureInputForSurface(ghostty_surface_t surface,
-                                      ghostty_action_secure_input_e mode) override;
         void SetPwdForSurface(ghostty_surface_t surface,
                               std::wstring pwd) override;
         void NotifyCommandFinishedForSurface(ghostty_surface_t surface,
                                              int exitCode,
                                              uint64_t durationNs) override;
-        void SetReadonlyForSurface(ghostty_surface_t surface,
-                                   bool readonly) override;
         void PromptTitleForSurface(ghostty_surface_t surface) override;
-        void AppendKeySequenceForSurface(ghostty_surface_t surface,
-                                         std::wstring triggerLabel) override;
-        void ClearKeySequenceForSurface(ghostty_surface_t surface) override;
-        void PushKeyTableForSurface(ghostty_surface_t surface,
-                                    std::wstring name) override;
-        void PopKeyTableForSurface(ghostty_surface_t surface, bool all) override;
         void ReplaceConfig(ghostty_config_t cloned) override;
         void ReloadConfig(bool soft) override;
         void ShowDesktopNotification(ghostty_surface_t surface,

@@ -2,6 +2,7 @@
 
 #include "TerminalControl.g.h"
 #include "Ghostty/Surface.h"
+#include "Host/ISurfaceView.h"
 #include "Host/ImeBuffer.h"
 #include "Interop/Encoding.h"
 #include "Win32/Clipboard.h"
@@ -80,7 +81,10 @@ namespace winrt::GhosttyWin32::implementation
     // lifetimes for one tab: TabFactory::Make() calls Attach() once
     // surface_new succeeds, and Tab's destructor calls Detach() to tear
     // everything down in the right order.
-    struct TerminalControl : TerminalControlT<TerminalControl>
+    // Implements core::host::ISurfaceView: libghostty's surface-
+    // targeted actions reach this control directly through the
+    // window's FindSurfaceView directory (no per-window relays).
+    struct TerminalControl : TerminalControlT<TerminalControl>, host::ISurfaceView
     {
         TerminalControl();
         ~TerminalControl();
@@ -173,16 +177,22 @@ namespace winrt::GhosttyWin32::implementation
         // Used both for the initial IBeam set in the ctor and for live
         // updates as the pointer moves over/off cells, links, resize
         // borders, etc.
-        void SetCursorShape(ghostty_action_mouse_shape_e shape);
+        void SetCursorShape(ghostty_action_mouse_shape_e shape) override;
 
         // ----- key-state badge (KEY_SEQUENCE / KEY_TABLE) -----
         // The pane owns the accumulated state (pending chord labels,
         // key-table name stack) because the actions only carry
         // deltas. All UI thread only.
         void AppendKeySequence(winrt::hstring const& label);
-        void ClearKeySequence();
+        void AppendKeySequence(std::wstring label) override {
+            AppendKeySequence(winrt::hstring{ label });
+        }
+        void ClearKeySequence() override;
         void PushKeyTable(winrt::hstring const& name);
-        void PopKeyTable(bool all);
+        void PushKeyTable(std::wstring name) override {
+            PushKeyTable(winrt::hstring{ name });
+        }
+        void PopKeyTable(bool all) override;
 
         // Show/hide the opaque background underlay beneath the swap
         // chain (#69 — see the XAML comment on OpaqueUnderlay for
@@ -193,26 +203,29 @@ namespace winrt::GhosttyWin32::implementation
 
         // Show/hide the read-only chip (READONLY action). The write
         // blocking is core-side; this is indicator only. UI thread.
-        void SetReadonly(bool readonly);
+        void SetReadonly(bool readonly) override;
 
         // Reflect SECURE_INPUT on this pane's badge. ON/OFF set the
         // state directly; TOGGLE flips it here because the pane owns
         // the indicator state (ghostty's toggle keybind carries no
         // absolute value). UI thread only.
-        void SetSecureInput(ghostty_action_secure_input_e mode);
+        void SetSecureInput(ghostty_action_secure_input_e mode) override;
 
         // Mirror ghostty's MOUSE_VISIBILITY on this pane: false hides
         // the pointer (mouse-hide-while-typing), true restores the
         // last MOUSE_SHAPE. UI thread only. ghostty drives both
         // directions (hide on keypress, show on pointer move), so
         // this holds no policy — just the ProtectedCursor mechanics.
-        void SetMouseVisibility(bool visible);
+        void SetMouseVisibility(bool visible) override;
 
         // Show the hovered-link banner with `url`, or hide it when
         // `url` is empty. UI thread only — the caller dispatches from
         // the renderer thread. See the LinkBanner comment in the XAML
         // for why this is an in-tree overlay and not a popup (#61).
         void SetHoveredLink(winrt::hstring const& url);
+        void SetHoveredLink(std::wstring url) override {
+            SetHoveredLink(winrt::hstring{ url });
+        }
 
         // Reflect the SCROLLBAR report on the overlay scrollbar
         // (#154): total scrollback rows, viewport offset, viewport
@@ -221,7 +234,7 @@ namespace winrt::GhosttyWin32::implementation
         // thread only. Core-driven updates are guarded so the bar's
         // ValueChanged does not echo back into a scroll_to_row
         // (the GTK apprt blocks its adjustment signals the same way).
-        void SetScrollbar(ghostty_action_scrollbar_s bar);
+        void SetScrollbar(ghostty_action_scrollbar_s bar) override;
 
         // ----- search bar -----
         // ghostty drives open/close and the counts; the pane owns
@@ -229,10 +242,10 @@ namespace winrt::GhosttyWin32::implementation
         // search_selection when `needle` is non-empty), close hides
         // it and returns focus to the terminal. Counts are -1 while
         // unknown; `selected` is 1-based. UI thread only.
-        void StartSearch(std::wstring const& needle);
-        void EndSearch();
-        void SetSearchTotal(ptrdiff_t total);
-        void SetSearchSelected(ptrdiff_t selected);
+        void StartSearch(std::wstring needle) override;
+        void EndSearch() override;
+        void SetSearchTotal(ptrdiff_t total) override;
+        void SetSearchSelected(ptrdiff_t selected) override;
         // If the bar is open, put keyboard focus on its input box and
         // return true; otherwise do nothing and return false. Lets
         // the window's activation focus-restore keep the bar in

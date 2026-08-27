@@ -96,6 +96,7 @@
     <ClInclude Include="Ghostty\IGhosttyRuntime.h" />
     <ClInclude Include="Ghostty\RuntimeConfigFactory.h" />
     <ClInclude Include="Ghostty\Surface.h" />
+    <ClInclude Include="Host\ISurfaceView.h" />
     <ClInclude Include="Host\IWindow.h" />
     <ClInclude Include="Host\ImeBuffer.h" />
     <ClInclude Include="Host\KeyModifiers.h" />

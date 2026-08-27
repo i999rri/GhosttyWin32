@@ -594,6 +594,47 @@ TEST(GhosttyActionsTest, SearchActionsNullSurfaceAreAckedNotDelivered) {
               view.setSearchTotalCalls + view.setSearchSelectedCalls, 0);
 }
 
+// ----- surface directory -----
+// Surface-targeted actions resolve their pane through
+// IWindow::FindSurfaceView inside the dispatched call. These pin
+// the two directory behaviours the old per-action relays had
+// implicitly: the lookup happens for the surface the action named,
+// and a surface the window doesn't own is dropped, not misrouted.
+
+TEST(GhosttyActionsTest, SurfaceActionsResolveThroughTheDirectory) {
+    MockMainWindowView view;
+    Actions actions(view);
+    auto surface = reinterpret_cast<ghostty_surface_t>(0xBEEF);
+    EXPECT_TRUE(actions.OnReadonly(surface, GHOSTTY_READONLY_ON));
+    EXPECT_EQ(view.findSurfaceViewCalls, 1);
+    EXPECT_EQ(view.lastFindSurfaceViewSurface, surface);
+    EXPECT_EQ(view.surfaceView.setReadonlyCalls, 1);
+    EXPECT_TRUE(view.surfaceView.lastReadonly);
+}
+
+TEST(GhosttyActionsTest, SurfaceActionsForUnknownSurfacesAreDropped) {
+    MockMainWindowView view;
+    Actions actions(view);
+    auto owned = reinterpret_cast<ghostty_surface_t>(0xBEEF);
+    auto foreign = reinterpret_cast<ghostty_surface_t>(0xCAFE);
+    // Only `owned` maps to a pane in this window.
+    view.surfaceViewFor = owned;
+
+    // Delivered and acked as handled (ghostty's contract), but the
+    // view never sees it — a torn-out or already-closed surface.
+    EXPECT_TRUE(actions.OnReadonly(foreign, GHOSTTY_READONLY_ON));
+    EXPECT_EQ(view.findSurfaceViewCalls, 1);
+    EXPECT_EQ(view.surfaceView.setReadonlyCalls, 0);
+
+    EXPECT_TRUE(actions.OnScrollbar(foreign, { 100, 90, 10 }));
+    EXPECT_EQ(view.surfaceView.setScrollbarCalls, 0);
+
+    // The owned surface still routes.
+    EXPECT_TRUE(actions.OnReadonly(owned, GHOSTTY_READONLY_OFF));
+    EXPECT_EQ(view.surfaceView.setReadonlyCalls, 1);
+    EXPECT_FALSE(view.surfaceView.lastReadonly);
+}
+
 TEST(GhosttyActionsTest, OnScrollbarNullSurfaceIsAckedNotDelivered) {
     MockMainWindowView view;
     Actions actions(view);

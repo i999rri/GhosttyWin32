@@ -697,7 +697,7 @@ namespace winrt::GhosttyWin32::implementation
         });
     }
 
-    void TerminalControl::StartSearch(std::wstring const& needle)
+    void TerminalControl::StartSearch(std::wstring needle)
     {
         auto bar = SearchBar();
         auto input = SearchInput();
