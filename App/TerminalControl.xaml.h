@@ -239,13 +239,26 @@ namespace winrt::GhosttyWin32::implementation
         // charge instead of dropping focus back on the terminal
         // behind it (alt-tab away and back while searching).
         bool FocusSearchIfOpen();
-        // Whether the search box currently holds keyboard focus. This
-        // — not "the bar is open" — is what gates terminal input: the
-        // bar can stay open while the user clicks back into the
-        // terminal to keep typing (#171 review), and only while the
-        // box actually has focus must keystrokes and IME commits stay
-        // out of the pty.
-        bool SearchBoxHasFocus();
+
+        // ----- keyboard ownership -----
+        // Exactly one thing consumes keyboard input at a time: the
+        // terminal (pty + IME edit context) or an in-tree overlay
+        // that took focus (today: the search box). The rule is
+        // "who holds focus", not "which overlay is open" — the search
+        // bar can stay visible while the user clicks back into the
+        // terminal and keeps typing (#171 review).
+        //
+        // Every input entry point — KeyDown / KeyUp, the IME edit
+        // context's engagement and its composition commit, and the
+        // window's activation focus-restore — asks TerminalOwnsInput()
+        // instead of knowing which overlay exists. SyncImeEngagement()
+        // is the single place the CoreTextEditContext is engaged or
+        // released, called from every focus transition. A future
+        // overlay that takes focus only has to be listed in
+        // FocusedOverlay(); it cannot leak into the pty by forgetting
+        // one of the guards (the search bar initially did, twice).
+        bool TerminalOwnsInput();
+        void SyncImeEngagement();
 
         // Set the callback that fires when this control receives
         // keyboard focus. Passed the underlying ghostty surface so
@@ -376,6 +389,10 @@ namespace winrt::GhosttyWin32::implementation
         void SendSearchNeedle();
         void UpdateSearchCount();
         void CloseSearchFromUi();
+        // The overlay element that currently holds keyboard focus,
+        // or null when the terminal does. The one enumeration point
+        // for focus-taking overlays — see TerminalOwnsInput().
+        winrt::Microsoft::UI::Xaml::Controls::Control FocusedOverlay();
         bool m_searchOpen = false;
         bool m_searchSyncing = false;
         ptrdiff_t m_searchTotal = -1;
