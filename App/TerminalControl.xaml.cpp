@@ -340,11 +340,12 @@ namespace winrt::GhosttyWin32::implementation
     void TerminalControl::ApplyCursor()
     {
         // Single writer for ProtectedCursor so the three inputs
-        // compose in one place: the scrollbar's own hover wins with
-        // an Arrow (a text I-beam over a draggable thumb reads wrong
-        // — #170 review), hidden state wins next, else the shape
+        // compose in one place: hovering an interactive overlay
+        // (scrollbar, search bar) wins with an Arrow (a text I-beam
+        // over a draggable thumb or a button reads wrong — #170 /
+        // #171 review), hidden state wins next, else the shape
         // ghostty last asked for.
-        if (m_scrollbarHovered) {
+        if (m_scrollbarHovered || m_overlayHovered) {
             static const auto arrow =
                 winrt::Microsoft::UI::Input::InputSystemCursor::Create(
                     winrt::Microsoft::UI::Input::InputSystemCursorShape::Arrow);
@@ -660,6 +661,23 @@ namespace winrt::GhosttyWin32::implementation
         input.KeyUp([weakSelf](auto&&, muxi::KeyRoutedEventArgs const& args) {
             if (auto self = weakSelf.get(); self && self->m_searchOpen)
                 args.Handled(true);
+        });
+
+        // The control-wide ProtectedCursor (ghostty's TEXT shape) is
+        // inherited by the bar; show an Arrow over it like over the
+        // scrollbar — same ApplyCursor composition.
+        auto bar = SearchBar();
+        bar.PointerEntered([weakSelf](auto&&, auto&&) {
+            if (auto self = weakSelf.get()) {
+                self->m_overlayHovered = true;
+                self->ApplyCursor();
+            }
+        });
+        bar.PointerExited([weakSelf](auto&&, auto&&) {
+            if (auto self = weakSelf.get()) {
+                self->m_overlayHovered = false;
+                self->ApplyCursor();
+            }
         });
 
         SearchNext().Click([weakSelf](auto&&, auto&&) {

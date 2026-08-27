@@ -353,6 +353,9 @@ namespace winrt::GhosttyWin32::implementation
         void FadeScrollbarIfIdle();
         bool m_scrollbarSyncing = false;
         bool m_scrollbarHovered = false;
+        // Pointer is over an interactive overlay other than the
+        // scrollbar (the search bar); ApplyCursor shows an Arrow.
+        bool m_overlayHovered = false;
         winrt::Microsoft::UI::Dispatching::DispatcherQueueTimer m_scrollbarFadeTimer{ nullptr };
 
         // Search bar state. m_searchSyncing guards the programmatic
