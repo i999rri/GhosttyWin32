@@ -151,6 +151,13 @@ namespace winrt::GhosttyWin32::implementation
                                      ghostty_action_cell_size_s cell) override;
         void SetScrollbarForSurface(ghostty_surface_t surface,
                                     ghostty_action_scrollbar_s bar) override;
+        void StartSearchForSurface(ghostty_surface_t surface,
+                                   std::wstring needle) override;
+        void EndSearchForSurface(ghostty_surface_t surface) override;
+        void SetSearchTotalForSurface(ghostty_surface_t surface,
+                                      ptrdiff_t total) override;
+        void SetSearchSelectedForSurface(ghostty_surface_t surface,
+                                         ptrdiff_t selected) override;
         // Shared tail of the surface report and the adopt-time
         // re-arm: update the WM_SIZING snapping tag with the metrics
         // and re-read the window-step-resize gate. No-op on {0,0}

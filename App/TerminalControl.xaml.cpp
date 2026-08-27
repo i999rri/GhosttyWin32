@@ -8,6 +8,7 @@
 #include "Input/TerminalKeyUp.h"
 #include "Display/PhysicalPixels.h"
 #include "Win32/Clipboard.h"
+#include <winrt/Windows.System.h>
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -87,7 +88,17 @@ namespace winrt::GhosttyWin32::implementation
         GotFocus([weakSelf](auto&&, auto&&) {
             auto self = weakSelf.get();
             if (!self) return;
-            if (self->m_editContext) self->m_editContext.NotifyFocusEnter();
+            // GotFocus bubbles: the search box taking focus fires this
+            // on its parent too. Engaging the CoreTextEditContext then
+            // would route the box's text through the terminal's IME
+            // path and into the pty — leave it disengaged while the
+            // box holds focus (#171 review: box input reached the
+            // shell). Clicking back into the terminal with the bar
+            // still open fires GotFocus again with the box unfocused,
+            // which re-engages the context.
+            if (self->m_editContext && !self->SearchBoxHasFocus()) {
+                self->m_editContext.NotifyFocusEnter();
+            }
             // The UnfocusedDim overlay is driven by Tab.SetActivePane,
             // not by XAML focus events. Reason: the dim represents
             // "this leaf is the active split in its tab", which has
@@ -194,6 +205,7 @@ namespace winrt::GhosttyWin32::implementation
         });
 
         SetupScrollbar();
+        SetupSearchBar();
 
         // KeyDown / KeyUp on the control itself: the events fire only
         // while focus is inside us, so the handlers feed directly into
@@ -204,6 +216,22 @@ namespace winrt::GhosttyWin32::implementation
         KeyDown([weakSelf](auto&&, muxi::KeyRoutedEventArgs const& args) {
             auto self = weakSelf.get();
             if (!self || !self->m_surface) return;
+            // The search bar's TextBox is a child of this control, so
+            // its keystrokes bubble up here as well. While the box
+            // holds focus it owns the keyboard — never forward to the
+            // pty (typing "abc" in the box also typed "abc" into the
+            // shell before this guard, #171 review). Gating on focus
+            // rather than on the bar being open lets the user click
+            // back into the terminal and keep typing with the bar up.
+            if (self->SearchBoxHasFocus()) return;
+#if defined(_DEBUG)
+            {
+                wchar_t buf[96];
+                swprintf_s(buf, L"SearchLeak: control KeyDown vk=%u boxFocused=0\n",
+                           static_cast<unsigned>(args.Key()));
+                OutputDebugStringW(buf);
+            }
+#endif
 
             input::TerminalKeyDown key(args, self->m_ime.composing());
 
@@ -259,6 +287,7 @@ namespace winrt::GhosttyWin32::implementation
         KeyUp([weakSelf](auto&&, muxi::KeyRoutedEventArgs const& args) {
             auto self = weakSelf.get();
             if (!self || !self->m_surface) return;
+            if (self->SearchBoxHasFocus()) return;  // see KeyDown
             input::TerminalKeyUp key(args);
             auto raw = key.toRawKeyRelease();
             auto keyEvent = core::input::Translate(raw);
@@ -315,11 +344,12 @@ namespace winrt::GhosttyWin32::implementation
     void TerminalControl::ApplyCursor()
     {
         // Single writer for ProtectedCursor so the three inputs
-        // compose in one place: the scrollbar's own hover wins with
-        // an Arrow (a text I-beam over a draggable thumb reads wrong
-        // — #170 review), hidden state wins next, else the shape
+        // compose in one place: hovering an interactive overlay
+        // (scrollbar, search bar) wins with an Arrow (a text I-beam
+        // over a draggable thumb or a button reads wrong — #170 /
+        // #171 review), hidden state wins next, else the shape
         // ghostty last asked for.
-        if (m_scrollbarHovered) {
+        if (m_scrollbarHovered || m_overlayHovered) {
             static const auto arrow =
                 winrt::Microsoft::UI::Input::InputSystemCursor::Create(
                     winrt::Microsoft::UI::Input::InputSystemCursorShape::Arrow);
@@ -575,6 +605,202 @@ namespace winrt::GhosttyWin32::implementation
         if (auto sb = ScrollbackBar()) sb.Opacity(0.0);
     }
 
+    // ----- search bar -----
+
+    void TerminalControl::SetupSearchBar()
+    {
+        namespace muxi = winrt::Microsoft::UI::Xaml::Input;
+        auto input = SearchInput();
+        if (!input) return;
+        auto weakSelf = get_weak();
+
+        // Debounce timer (macOS SurfaceView rule: <3 chars wait
+        // 300ms, otherwise immediate — see the header comment).
+        m_searchDebounce = DispatcherQueue().CreateTimer();
+        m_searchDebounce.Interval(std::chrono::milliseconds{ 300 });
+        m_searchDebounce.IsRepeating(false);
+        m_searchDebounce.Tick([weakSelf](auto&&, auto&&) {
+            if (auto self = weakSelf.get()) self->SendSearchNeedle();
+        });
+
+        input.TextChanged([weakSelf](auto&&, auto&&) {
+            auto self = weakSelf.get();
+            if (!self || self->m_searchSyncing || !self->m_searchOpen) return;
+            auto text = self->SearchInput().Text();
+            const bool immediate = text.empty() || text.size() >= 3;
+            self->m_searchDebounce.Stop();
+            if (immediate) self->SendSearchNeedle();
+            else self->m_searchDebounce.Start();
+        });
+
+        // Enter = next, Shift+Enter = previous, Esc = close. Handled
+        // so the keys never bubble into the terminal's own KeyDown
+        // (which would type them into the pty).
+        input.KeyDown([weakSelf](auto&&, muxi::KeyRoutedEventArgs const& args) {
+            auto self = weakSelf.get();
+            if (!self || !self->m_surface) return;
+            using winrt::Windows::System::VirtualKey;
+            const auto key = args.Key();
+            if (key == VirtualKey::Enter) {
+                const bool shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+                // Make sure a pending debounced needle lands before
+                // navigating, else Enter on a fresh 1-2 char needle
+                // navigates the previous search.
+                if (self->m_searchDebounce.IsRunning()) {
+                    self->m_searchDebounce.Stop();
+                    self->SendSearchNeedle();
+                }
+                self->m_surface.NavigateSearch(!shift);
+                args.Handled(true);
+            } else if (key == VirtualKey::Escape) {
+                self->CloseSearchFromUi();
+                args.Handled(true);
+            }
+            // Everything else is the TextBox's own editing; the
+            // control-level KeyDown also gates on m_searchOpen, so
+            // nothing reaches the pty either way.
+        });
+        // Belt and braces for KeyUp: the release of a key typed in
+        // the box must not bubble into the terminal's KeyUp.
+        input.KeyUp([weakSelf](auto&&, muxi::KeyRoutedEventArgs const& args) {
+            if (auto self = weakSelf.get(); self && self->SearchBoxHasFocus())
+                args.Handled(true);
+        });
+
+        // The control-wide ProtectedCursor (ghostty's TEXT shape) is
+        // inherited by the bar; show an Arrow over it like over the
+        // scrollbar — same ApplyCursor composition.
+        auto bar = SearchBar();
+        bar.PointerEntered([weakSelf](auto&&, auto&&) {
+            if (auto self = weakSelf.get()) {
+                self->m_overlayHovered = true;
+                self->ApplyCursor();
+            }
+        });
+        bar.PointerExited([weakSelf](auto&&, auto&&) {
+            if (auto self = weakSelf.get()) {
+                self->m_overlayHovered = false;
+                self->ApplyCursor();
+            }
+        });
+
+        SearchNext().Click([weakSelf](auto&&, auto&&) {
+            if (auto self = weakSelf.get(); self && self->m_surface)
+                self->m_surface.NavigateSearch(true);
+        });
+        SearchPrev().Click([weakSelf](auto&&, auto&&) {
+            if (auto self = weakSelf.get(); self && self->m_surface)
+                self->m_surface.NavigateSearch(false);
+        });
+        SearchClose().Click([weakSelf](auto&&, auto&&) {
+            if (auto self = weakSelf.get()) self->CloseSearchFromUi();
+        });
+    }
+
+    void TerminalControl::StartSearch(std::wstring const& needle)
+    {
+        auto bar = SearchBar();
+        auto input = SearchInput();
+        if (!bar || !input) return;
+        m_searchOpen = true;
+        m_searchTotal = -1;
+        m_searchSelected = -1;
+        UpdateSearchCount();
+        bar.Visibility(winrt::Microsoft::UI::Xaml::Visibility::Visible);
+        // A non-empty needle came from search_selection: ghostty has
+        // already started that search, so pre-fill without echoing
+        // it back. An empty needle (bare start_search) leaves the
+        // box as-is — re-opening keeps the last query, which matches
+        // every editor's find bar.
+        if (!needle.empty()) {
+            m_searchSyncing = true;
+            input.Text(needle);
+            m_searchSyncing = false;
+        }
+        input.Focus(winrt::Microsoft::UI::Xaml::FocusState::Programmatic);
+        input.SelectAll();
+    }
+
+    void TerminalControl::EndSearch()
+    {
+        auto bar = SearchBar();
+        if (!bar) return;
+        if (m_searchDebounce) m_searchDebounce.Stop();
+        const bool wasOpen = m_searchOpen;
+        m_searchOpen = false;
+        bar.Visibility(winrt::Microsoft::UI::Xaml::Visibility::Collapsed);
+        // Hand focus back to the terminal only if the bar had it;
+        // ghostty can END_SEARCH while focus is elsewhere (another
+        // pane), and stealing it then would be a surprise.
+        if (wasOpen) {
+            Focus(winrt::Microsoft::UI::Xaml::FocusState::Programmatic);
+        }
+    }
+
+    bool TerminalControl::SearchBoxHasFocus()
+    {
+        if (!m_searchOpen) return false;
+        auto input = SearchInput();
+        if (!input) return false;
+        return input.FocusState() != winrt::Microsoft::UI::Xaml::FocusState::Unfocused;
+    }
+
+    bool TerminalControl::FocusSearchIfOpen()
+    {
+        if (!m_searchOpen) return false;
+        auto input = SearchInput();
+        if (!input) return false;
+        input.Focus(winrt::Microsoft::UI::Xaml::FocusState::Programmatic);
+        return true;
+    }
+
+    void TerminalControl::CloseSearchFromUi()
+    {
+        // The UI closes by asking ghostty to end the search; the
+        // resulting END_SEARCH action performs the actual hide, so
+        // core and host never disagree about whether a search is on.
+        if (m_surface) m_surface.EndSearch();
+        else EndSearch();
+    }
+
+    void TerminalControl::SendSearchNeedle()
+    {
+        if (!m_surface || !m_searchOpen) return;
+        std::wstring text{ SearchInput().Text() };
+        m_surface.Search(interop::Encoding::toUtf8(text));
+    }
+
+    void TerminalControl::SetSearchTotal(ptrdiff_t total)
+    {
+        m_searchTotal = total;
+        UpdateSearchCount();
+    }
+
+    void TerminalControl::SetSearchSelected(ptrdiff_t selected)
+    {
+        m_searchSelected = selected;
+        UpdateSearchCount();
+    }
+
+    void TerminalControl::UpdateSearchCount()
+    {
+        auto count = SearchCount();
+        if (!count) return;
+        wchar_t buf[48];
+        if (m_searchTotal < 0) {
+            buf[0] = L'\0';
+        } else if (m_searchTotal == 0) {
+            wcscpy_s(buf, L"0 / 0");
+        } else if (m_searchSelected < 1) {
+            swprintf_s(buf, L"– / %lld", static_cast<long long>(m_searchTotal));
+        } else {
+            swprintf_s(buf, L"%lld / %lld",
+                       static_cast<long long>(m_searchSelected),
+                       static_cast<long long>(m_searchTotal));
+        }
+        count.Text(buf);
+    }
+
     void TerminalControl::ApplyFocusVisual(bool focused)
     {
         auto dim = UnfocusedDim();
@@ -694,6 +920,7 @@ namespace winrt::GhosttyWin32::implementation
         // The scrollbar fade timer holds only a weak ref, but stop
         // it anyway so no tick lands while the control tears down.
         if (m_scrollbarFadeTimer) m_scrollbarFadeTimer.Stop();
+        if (m_searchDebounce) m_searchDebounce.Stop();
 
         // Cancel the pending SetSwapChainHandle dispatch before we tear
         // down the swap chain — otherwise the queued call could attach
@@ -828,7 +1055,18 @@ namespace winrt::GhosttyWin32::implementation
             if (self->m_surface) {
                 self->m_surface.Preedit(nullptr, 0);
                 auto utf8 = interop::Encoding::toUtf8(self->m_ime.text());
-                if (!utf8.empty()) {
+#if defined(_DEBUG)
+                {
+                    wchar_t buf[96];
+                    swprintf_s(buf, L"SearchLeak: EditContext commit len=%zu boxFocused=%d\n",
+                               utf8.size(), self->SearchBoxHasFocus() ? 1 : 0);
+                    OutputDebugStringW(buf);
+                }
+#endif
+                // The search box owns text input while it holds
+                // focus — a composition committed there must not
+                // land in the pty (see the GotFocus guard).
+                if (!utf8.empty() && !self->SearchBoxHasFocus()) {
                     self->m_surface.Text(utf8.c_str(), utf8.size());
                 }
                 if (self->m_app) ghostty_app_tick(self->m_app);
@@ -866,7 +1104,9 @@ namespace winrt::GhosttyWin32::implementation
 
     void TerminalControl::NotifyImeFocusEnter()
     {
-        if (m_editContext) m_editContext.NotifyFocusEnter();
+        // Same guard as GotFocus: the search box owns text input
+        // while it holds focus.
+        if (m_editContext && !SearchBoxHasFocus()) m_editContext.NotifyFocusEnter();
     }
 
     void TerminalControl::NotifyImeFocusLeave()
