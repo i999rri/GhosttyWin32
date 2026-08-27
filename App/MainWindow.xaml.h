@@ -2,6 +2,7 @@
 
 #include "MainWindow.g.h"
 #include "ghostty.h"
+#include "Ghostty/Actions/Tags/CellSize.h"
 #include "Ghostty/Actions/Tags/Fullscreen.h"
 #include "Ghostty/Actions/Tags/SizeLimit.h"
 #include "Ghostty/Actions/Tags/WindowDecorations.h"
@@ -11,6 +12,7 @@
 #include "Interop/Encoding.h"
 #include "Win32/Clipboard.h"
 #include "Tabs/Panes/PaneId.h"
+#include "Tabs/ParkedTabs.h"
 #include "Tabs/Tab.h"
 #include "Tabs/TabFactory.h"
 #include "Tabs/Tabs.h"
@@ -134,6 +136,33 @@ namespace winrt::GhosttyWin32::implementation
         void ApplyWindowDecorationsAppearance();
         void PresentTerminal() override;
         void ShowOnScreenKeyboard() override;
+
+        // Undo/redo of parked tab closes (#151). CloseTabByItem
+        // parks instead of destroying when undo-timeout > 0; these
+        // restore the newest parked tab / re-close the tab that was
+        // most recently restored.
+        void Undo() override;
+        void Redo() override;
+
+        // Snap-to-cell window resizing (#155): route the CELL_SIZE
+        // report to the WM_SIZING snapping tag when the surface
+        // belongs to this window.
+        void ApplyCellSizeForSurface(ghostty_surface_t surface,
+                                     ghostty_action_cell_size_s cell) override;
+        void SetScrollbarForSurface(ghostty_surface_t surface,
+                                    ghostty_action_scrollbar_s bar) override;
+        void StartSearchForSurface(ghostty_surface_t surface,
+                                   std::wstring needle) override;
+        void EndSearchForSurface(ghostty_surface_t surface) override;
+        void SetSearchTotalForSurface(ghostty_surface_t surface,
+                                      ptrdiff_t total) override;
+        void SetSearchSelectedForSurface(ghostty_surface_t surface,
+                                         ptrdiff_t selected) override;
+        // Shared tail of the surface report and the adopt-time
+        // re-arm: update the WM_SIZING snapping tag with the metrics
+        // and re-read the window-step-resize gate. No-op on {0,0}
+        // (nothing reported yet).
+        void ArmCellSnap(ghostty_action_cell_size_s cell);
 
         // Terminal-driven appearance / lifecycle overrides. Bodies
         // are in MainWindow.xaml.cpp; the logic moved verbatim
@@ -357,9 +386,21 @@ namespace winrt::GhosttyWin32::implementation
         // by SizeLimit are auto-removed by Win32 when m_hwnd is
         // destroyed, so no explicit teardown ordering is needed.
         ghostty::actions::tags::SizeLimit          m_sizeLimit;
+        ghostty::actions::tags::CellSize           m_cellSize;
         ghostty::actions::tags::Fullscreen         m_fullscreen;
         ghostty::actions::tags::WindowDecorations  m_windowDecorations;
         Tabs m_tabs;
+        // Undo support for tab closes (#151): parked-tab stack,
+        // expiry timers, redo bookkeeping — see Tabs/ParkedTabs.h.
+        // This window keeps only the XAML effects (tab-strip
+        // add/remove, panel visibility, appearance restate, and the
+        // expiry teardown callback).
+        ParkedTabs m_parkedTabs;
+        // Detach the item from the tab strip and move its Tab into
+        // m_parkedTabs. fromRedo keeps the redo history intact (a
+        // user-initiated close invalidates it).
+        void ParkTab(Microsoft::UI::Xaml::Controls::TabViewItem const& item,
+                     uint64_t timeoutMs, bool fromRedo);
         // Guards every close intent (window / tab / surface) so
         // needs_confirm_quit prompts land once, not one dialog per
         // path. Constructed inline so it's usable from the ctor.

@@ -84,6 +84,30 @@ public:
         return v != 0;
     }
 
+    // How long a closed tab stays parked (live, hidden) before the
+    // real teardown runs — the window in which UNDO can bring it
+    // back. ghostty's Duration crosses the C API via cval() as
+    // MILLISECONDS (same convention as notify-on-command-finish-
+    // after above). 0 disables parking entirely: closes tear down
+    // immediately and UNDO has nothing to restore.
+    uint64_t UndoTimeoutMs() const noexcept {
+        size_t ms = 0;
+        if (!GetRaw("undo-timeout", &ms)) {
+            return 5'000;  // documented default: 5s
+        }
+        return static_cast<uint64_t>(ms);
+    }
+
+    // `window-step-resize` — snap interactive window resizing to
+    // the cell grid (#155). Upstream default is false (smooth
+    // pixel resizing) with snapping as an opt-in, and this port
+    // matches that.
+    bool WindowStepResize() const noexcept {
+        bool v = false;
+        GetRaw("window-step-resize", &v);
+        return v;
+    }
+
     // ----- notify-on-command-finish (v1.3.0+, default: never) -----
     // The whole feature is opt-in; every getter falls back to the
     // documented default when the key is unreadable.

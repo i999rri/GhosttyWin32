@@ -122,5 +122,68 @@
                        TextTrimming="CharacterEllipsis"
                        Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
         </Border>
+        <!--
+          Scrollback scrollbar (SCROLLBAR action, #154). The GTK
+          apprt's overlay scrollbar is the upstream precedent. Unlike
+          every other overlay here this one is hit-test VISIBLE — it
+          is the first in-tree overlay that takes input (thumb drag,
+          track click). Still in-tree, never a popup (#61): an
+          in-tree sibling only intercepts pointer input inside its own
+          narrow bounds, so the SwapChainPanel keeps everything else.
+          Opacity is driven by code: shown on scroll activity and
+          while hovered, faded when idle, and collapsed entirely when
+          there is no scrollback (viewport == total).
+        -->
+        <!--
+          Search bar (START_SEARCH / END_SEARCH / SEARCH_TOTAL /
+          SEARCH_SELECTED). ghostty owns the matching and the
+          lifecycle; this is the input box and the "3 / 12" readout,
+          talking back through binding actions (search:, navigate_
+          search:, end_search) like the macOS SurfaceView. First
+          overlay that takes KEYBOARD focus — while it is open,
+          keystrokes go to the TextBox, and closing it hands focus
+          back to the terminal. Top-right so it never collides with
+          the status badges below it or the link banner.
+        -->
+        <Border x:Name="SearchBar"
+                Visibility="Collapsed"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Top"
+                Margin="0,0,16,0"
+                CornerRadius="0,0,6,6"
+                Padding="8,6,8,6"
+                Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+                <TextBox x:Name="SearchInput"
+                         MinWidth="200"
+                         PlaceholderText="Search"
+                         IsSpellCheckEnabled="False"
+                         IsTextPredictionEnabled="False" />
+                <TextBlock x:Name="SearchCount"
+                           VerticalAlignment="Center"
+                           MinWidth="48"
+                           TextAlignment="Center"
+                           FontSize="12"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                <Button x:Name="SearchPrev" Padding="6,2,6,2" ToolTipService.ToolTip="Previous (Shift+Enter)">
+                    <FontIcon Glyph="&#xE70E;" FontSize="12" />
+                </Button>
+                <Button x:Name="SearchNext" Padding="6,2,6,2" ToolTipService.ToolTip="Next (Enter)">
+                    <FontIcon Glyph="&#xE70D;" FontSize="12" />
+                </Button>
+                <Button x:Name="SearchClose" Padding="6,2,6,2" ToolTipService.ToolTip="Close (Esc)">
+                    <FontIcon Glyph="&#xE711;" FontSize="12" />
+                </Button>
+            </StackPanel>
+        </Border>
+        <ScrollBar x:Name="ScrollbackBar"
+                   Orientation="Vertical"
+                   IndicatorMode="MouseIndicator"
+                   HorizontalAlignment="Right"
+                   VerticalAlignment="Stretch"
+                   Visibility="Collapsed"
+                   Opacity="0"
+                   Minimum="0"
+                   SmallChange="1" />
     </Grid>
 </UserControl>

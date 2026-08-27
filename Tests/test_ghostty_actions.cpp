@@ -532,6 +532,82 @@ TEST(GhosttyActionsTest, OnToggleBackgroundOpacityAsksTheView) {
     EXPECT_EQ(view.toggleBackgroundOpacityCalls, 1);
 }
 
+TEST(GhosttyActionsTest, OnUndoRedoAskTheView) {
+    MockMainWindowView view;
+    Actions actions(view);
+    EXPECT_TRUE(actions.OnUndo());
+    EXPECT_EQ(view.undoCalls, 1);
+    EXPECT_TRUE(actions.OnRedo());
+    EXPECT_EQ(view.redoCalls, 1);
+}
+
+TEST(GhosttyActionsTest, OnCellSizePassesSurfaceAndMetrics) {
+    MockMainWindowView view;
+    Actions actions(view);
+    auto surface = reinterpret_cast<ghostty_surface_t>(0xBEEF);
+    EXPECT_TRUE(actions.OnCellSize(surface, { 9, 21 }));
+    EXPECT_EQ(view.applyCellSizeCalls, 1);
+    EXPECT_EQ(view.lastCellSizeSurface, surface);
+    EXPECT_EQ(view.lastCellSize.width, 9u);
+    EXPECT_EQ(view.lastCellSize.height, 21u);
+}
+
+TEST(GhosttyActionsTest, OnScrollbarPassesSurfaceAndMetrics) {
+    MockMainWindowView view;
+    Actions actions(view);
+    auto surface = reinterpret_cast<ghostty_surface_t>(0xBEEF);
+    EXPECT_TRUE(actions.OnScrollbar(surface, { 1000, 940, 60 }));
+    EXPECT_EQ(view.setScrollbarCalls, 1);
+    EXPECT_EQ(view.lastScrollbarSurface, surface);
+    EXPECT_EQ(view.lastScrollbar.total, 1000u);
+    EXPECT_EQ(view.lastScrollbar.offset, 940u);
+    EXPECT_EQ(view.lastScrollbar.len, 60u);
+}
+
+TEST(GhosttyActionsTest, OnStartSearchConvertsNeedleAndEmptyIsEmpty) {
+    MockMainWindowView view;
+    Actions actions(view);
+    auto surface = reinterpret_cast<ghostty_surface_t>(0xBEEF);
+    // UTF-8 needle crosses to UTF-16 (a search_selection pre-fill
+    // can carry any text the terminal showed).
+    EXPECT_TRUE(actions.OnStartSearch(surface, { "\xE3\x81\x82" }));  // あ
+    EXPECT_EQ(view.startSearchCalls, 1);
+    EXPECT_EQ(view.lastStartSearchNeedle, L"あ");
+    // Bare start_search: ghostty passes "" — the bar opens empty.
+    EXPECT_TRUE(actions.OnStartSearch(surface, { "" }));
+    EXPECT_EQ(view.startSearchCalls, 2);
+    EXPECT_TRUE(view.lastStartSearchNeedle.empty());
+    // Defensive: a null needle pointer also opens empty.
+    EXPECT_TRUE(actions.OnStartSearch(surface, { nullptr }));
+    EXPECT_EQ(view.startSearchCalls, 3);
+    EXPECT_TRUE(view.lastStartSearchNeedle.empty());
+}
+
+TEST(GhosttyActionsTest, SearchActionsNullSurfaceAreAckedNotDelivered) {
+    MockMainWindowView view;
+    Actions actions(view);
+    EXPECT_TRUE(actions.OnStartSearch(nullptr, { "x" }));
+    EXPECT_TRUE(actions.OnEndSearch(nullptr));
+    EXPECT_TRUE(actions.OnSearchTotal(nullptr, { 1 }));
+    EXPECT_TRUE(actions.OnSearchSelected(nullptr, { 1 }));
+    EXPECT_EQ(view.startSearchCalls + view.endSearchCalls +
+              view.setSearchTotalCalls + view.setSearchSelectedCalls, 0);
+}
+
+TEST(GhosttyActionsTest, OnScrollbarNullSurfaceIsAckedNotDelivered) {
+    MockMainWindowView view;
+    Actions actions(view);
+    EXPECT_TRUE(actions.OnScrollbar(nullptr, { 1000, 940, 60 }));
+    EXPECT_EQ(view.setScrollbarCalls, 0);
+}
+
+TEST(GhosttyActionsTest, OnCellSizeNullSurfaceIsAckedNotDelivered) {
+    MockMainWindowView view;
+    Actions actions(view);
+    EXPECT_TRUE(actions.OnCellSize(nullptr, { 9, 21 }));
+    EXPECT_EQ(view.applyCellSizeCalls, 0);
+}
+
 TEST(GhosttyActionsTest, OnReloadConfigPassesSoftFlagThrough) {
     MockMainWindowView view;
     Actions actions(view);

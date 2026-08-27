@@ -484,6 +484,82 @@ bool Actions::OnToggleBackgroundOpacity() {
     return true;
 }
 
+bool Actions::OnUndo() {
+    // Empty-stack handling lives in the view (the stack is view
+    // state); the action is acked as delivered either way.
+    DispatchToView([this]() {
+        m_view.Undo();
+    });
+    return true;
+}
+
+bool Actions::OnRedo() {
+    DispatchToView([this]() {
+        m_view.Redo();
+    });
+    return true;
+}
+
+bool Actions::OnCellSize(ghostty_surface_t surface,
+                         ghostty_action_cell_size_s cell) {
+    if (!surface) return true;
+    DispatchToView([this, surface, cell]() {
+        m_view.ApplyCellSizeForSurface(surface, cell);
+    });
+    return true;
+}
+
+bool Actions::OnScrollbar(ghostty_surface_t surface,
+                          ghostty_action_scrollbar_s bar) {
+    if (!surface) return true;
+    DispatchToView([this, surface, bar]() {
+        m_view.SetScrollbarForSurface(surface, bar);
+    });
+    return true;
+}
+
+bool Actions::OnStartSearch(ghostty_surface_t surface,
+                            ghostty_action_start_search_s search) {
+    if (!surface) return true;
+    // The needle is NUL-terminated (StartSearch.C uses [*:0]) and
+    // empty for the bare start_search keybind; search_selection
+    // pre-fills it with the selected text. Convert before crossing
+    // threads — ghostty owns the pointer only for this call.
+    std::wstring needle;
+    if (search.needle && *search.needle)
+        needle = interop::Encoding::toUtf16(search.needle);
+    DispatchToView([this, surface, needle = std::move(needle)]() mutable {
+        m_view.StartSearchForSurface(surface, std::move(needle));
+    });
+    return true;
+}
+
+bool Actions::OnEndSearch(ghostty_surface_t surface) {
+    if (!surface) return true;
+    DispatchToView([this, surface]() {
+        m_view.EndSearchForSurface(surface);
+    });
+    return true;
+}
+
+bool Actions::OnSearchTotal(ghostty_surface_t surface,
+                            ghostty_action_search_total_s total) {
+    if (!surface) return true;
+    DispatchToView([this, surface, total]() {
+        m_view.SetSearchTotalForSurface(surface, total.total);
+    });
+    return true;
+}
+
+bool Actions::OnSearchSelected(ghostty_surface_t surface,
+                               ghostty_action_search_selected_s selected) {
+    if (!surface) return true;
+    DispatchToView([this, surface, selected]() {
+        m_view.SetSearchSelectedForSurface(surface, selected.selected);
+    });
+    return true;
+}
+
 bool Actions::OnReloadConfig(bool soft) {
     // The view-side implementation handles thread placement
     // (soft re-uses UI thread, hard spins a 4MB-stack worker

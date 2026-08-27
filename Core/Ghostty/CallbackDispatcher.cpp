@@ -177,6 +177,12 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
             return m_actions.OnFloatWindow(action.action.float_window);
         case GHOSTTY_ACTION_TOGGLE_BACKGROUND_OPACITY:
             return m_actions.OnToggleBackgroundOpacity();
+        // Undo/redo of parked closes (#151). App-scoped: the undo
+        // stack is per-window view state, not per-surface.
+        case GHOSTTY_ACTION_UNDO:
+            return m_actions.OnUndo();
+        case GHOSTTY_ACTION_REDO:
+            return m_actions.OnRedo();
 
         // ----- split-pane (surface-targeted) -----
         case GHOSTTY_ACTION_NEW_SPLIT:
@@ -210,13 +216,7 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
         //
         // Feature surfaces intentionally not on this port's plate
         // (search bar, ImGui inspector, tab overview, quick
-        // terminal, command palette, terminal-level undo/redo):
-        case GHOSTTY_ACTION_UNDO:
-        case GHOSTTY_ACTION_REDO:
-        case GHOSTTY_ACTION_START_SEARCH:
-        case GHOSTTY_ACTION_END_SEARCH:
-        case GHOSTTY_ACTION_SEARCH_TOTAL:
-        case GHOSTTY_ACTION_SEARCH_SELECTED:
+        // terminal, command palette):
         case GHOSTTY_ACTION_INSPECTOR:
         case GHOSTTY_ACTION_RENDER_INSPECTOR:
         // GTK-only, will never fire on Windows. Acked so it doesn't
@@ -225,13 +225,49 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
         case GHOSTTY_ACTION_TOGGLE_TAB_OVERVIEW:
         case GHOSTTY_ACTION_TOGGLE_QUICK_TERMINAL:
         case GHOSTTY_ACTION_TOGGLE_COMMAND_PALETTE:
-        // Scroll-position updates — no scrollbar UI to feed:
-        case GHOSTTY_ACTION_SCROLLBAR:
         // macOS-only quit countdown — Windows already quits on
         // last-HWND-gone via CLOSE_WINDOW:
         case GHOSTTY_ACTION_QUIT_TIMER:
-        // Cell metrics — no host-side consumer today:
+            return true;
+
+        // Scroll-position updates: feeds the pane's overlay
+        // scrollbar (#154). Surface-targeted by construction.
+        case GHOSTTY_ACTION_SCROLLBAR:
+            if (target.tag == GHOSTTY_TARGET_SURFACE)
+                return m_actions.OnScrollbar(target.target.surface,
+                                             action.action.scrollbar);
+            return true;
+
+        // ----- search bar (surface-targeted) -----
+        // ghostty opens/closes the UI and reports match counts; the
+        // host owns the input box and sends needle / navigation back
+        // through binding actions (search:, navigate_search:,
+        // end_search) — the same route the macOS SurfaceView takes.
+        case GHOSTTY_ACTION_START_SEARCH:
+            if (target.tag == GHOSTTY_TARGET_SURFACE)
+                return m_actions.OnStartSearch(target.target.surface,
+                                               action.action.start_search);
+            return true;
+        case GHOSTTY_ACTION_END_SEARCH:
+            if (target.tag == GHOSTTY_TARGET_SURFACE)
+                return m_actions.OnEndSearch(target.target.surface);
+            return true;
+        case GHOSTTY_ACTION_SEARCH_TOTAL:
+            if (target.tag == GHOSTTY_TARGET_SURFACE)
+                return m_actions.OnSearchTotal(target.target.surface,
+                                               action.action.search_total);
+            return true;
+        case GHOSTTY_ACTION_SEARCH_SELECTED:
+            if (target.tag == GHOSTTY_TARGET_SURFACE)
+                return m_actions.OnSearchSelected(target.target.surface,
+                                                  action.action.search_selected);
+            return true;
+
+        // Cell metrics: feeds snap-to-cell window resizing (#155).
         case GHOSTTY_ACTION_CELL_SIZE:
+            if (target.tag == GHOSTTY_TARGET_SURFACE)
+                return m_actions.OnCellSize(target.target.surface,
+                                            action.action.cell_size);
             return true;
 
         default:

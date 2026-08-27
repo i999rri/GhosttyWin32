@@ -86,6 +86,7 @@
   <ItemGroup>
     <ClInclude Include="Ghostty\Actions\Actions.h" />
     <ClInclude Include="Ghostty\Actions\Tags\Fullscreen.h" />
+    <ClInclude Include="Ghostty\Actions\Tags\CellSize.h" />
     <ClInclude Include="Ghostty\Actions\Tags\SizeLimit.h" />
     <ClInclude Include="Ghostty\Actions\Tags\TriggerLabel.h" />
     <ClInclude Include="Ghostty\Actions\Tags\WindowDecorations.h" />
@@ -106,6 +107,7 @@
   <ItemGroup>
     <ClCompile Include="Ghostty\Actions\Actions.cpp" />
     <ClCompile Include="Ghostty\Actions\Tags\Fullscreen.cpp" />
+    <ClCompile Include="Ghostty\Actions\Tags\CellSize.cpp" />
     <ClCompile Include="Ghostty\Actions\Tags\SizeLimit.cpp" />
     <ClCompile Include="Ghostty\Actions\Tags\TriggerLabel.cpp" />
     <ClCompile Include="Ghostty\CallbackDispatcher.cpp" />

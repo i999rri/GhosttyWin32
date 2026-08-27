@@ -1,6 +1,9 @@
 #pragma once
 
 #include "ghostty.h"
+#include <cstdio>
+#include <cstring>
+#include <string>
 
 #include <cstdint>
 #include <utility>
@@ -141,6 +144,65 @@ public:
     // reports true.
     bool NeedsConfirmQuit() const noexcept {
         return m_handle && ghostty_surface_needs_confirm_quit(m_handle);
+    }
+
+    // Whether the surface's child process has already exited. Close
+    // paths use this to tell "user closed a live terminal" (park it
+    // for undo) from "the shell exited on its own" (nothing left to
+    // restore — tear down for real).
+    bool ProcessExited() const noexcept {
+        return m_handle && ghostty_surface_process_exited(m_handle);
+    }
+
+    // Current grid/pixel dimensions, including the cell's pixel
+    // size. The PULL counterpart of the CELL_SIZE action: hosts
+    // that gain an already-running surface (tear-out adoption)
+    // query here instead of waiting for a report that will never
+    // re-fire (#155).
+    ghostty_surface_size_s Size() const noexcept {
+        return m_handle ? ghostty_surface_size(m_handle)
+                        : ghostty_surface_size_s{};
+    }
+
+    // Scroll the viewport to an absolute screen row (0 = the top
+    // of scrollback). Goes through the keybind-action parser
+    // (`scroll_to_row:N`) because that is the only absolute-
+    // position scroll entry point in the C API — the same route
+    // the GTK apprt's scrollbar takes (#154). Returns false if the
+    // action string was rejected.
+    bool ScrollToRow(uint64_t row) noexcept {
+        if (!m_handle) return false;
+        char buf[48];
+        const int n = std::snprintf(buf, sizeof(buf), "scroll_to_row:%llu",
+                                    static_cast<unsigned long long>(row));
+        if (n <= 0) return false;
+        return ghostty_surface_binding_action(
+            m_handle, buf, static_cast<uintptr_t>(n));
+    }
+
+    // ---- search (host-owned UI, core-owned matching) ----
+    // There is no dedicated search C API; like the macOS SurfaceView
+    // the host drives it through binding actions. `needle` is UTF-8;
+    // empty cancels the current search without closing the UI.
+    bool Search(std::string const& needleUtf8) noexcept {
+        if (!m_handle) return false;
+        std::string action = "search:" + needleUtf8;
+        return ghostty_surface_binding_action(
+            m_handle, action.c_str(), static_cast<uintptr_t>(action.size()));
+    }
+    bool NavigateSearch(bool next) noexcept {
+        if (!m_handle) return false;
+        static constexpr char kNext[] = "navigate_search:next";
+        static constexpr char kPrev[] = "navigate_search:previous";
+        const char* a = next ? kNext : kPrev;
+        return ghostty_surface_binding_action(
+            m_handle, a, static_cast<uintptr_t>(std::strlen(a)));
+    }
+    bool EndSearch() noexcept {
+        if (!m_handle) return false;
+        static constexpr char kEnd[] = "end_search";
+        return ghostty_surface_binding_action(
+            m_handle, kEnd, static_cast<uintptr_t>(std::strlen(kEnd)));
     }
 
     // ---- selection ----

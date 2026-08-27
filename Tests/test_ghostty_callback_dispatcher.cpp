@@ -56,12 +56,6 @@ TEST(GhosttyCallbackDispatcherTest, FeatureSurfaceAcksReturnTrue) {
     MockMainWindowView view;
     auto d = CallbackDispatcher::Create(view);
 
-    EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_UNDO));
-    EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_REDO));
-    EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_START_SEARCH));
-    EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_END_SEARCH));
-    EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_SEARCH_TOTAL));
-    EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_SEARCH_SELECTED));
     EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_INSPECTOR));
     EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_RENDER_INSPECTOR));
     EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_TOGGLE_TAB_OVERVIEW));
@@ -73,12 +67,111 @@ TEST(GhosttyCallbackDispatcherTest, NoConsumerAcksReturnTrue) {
     MockMainWindowView view;
     auto d = CallbackDispatcher::Create(view);
 
-    // SCROLLBAR: no scrollbar UI to feed.
-    EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_SCROLLBAR));
     // QUIT_TIMER: macOS-only quit countdown.
     EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_QUIT_TIMER));
-    // CELL_SIZE: cached but no host-side consumer yet.
+}
+
+TEST(GhosttyCallbackDispatcherTest, SearchActionsRouteToTheView) {
+    // Formerly feature-surface acks; the search bar consumes all
+    // four. Surface-targeted delivery routes; app-target stays an
+    // ack (no owning pane to show a bar on).
+    MockMainWindowView view;
+    auto d = CallbackDispatcher::Create(view);
+    auto surface = reinterpret_cast<ghostty_surface_t>(0xBEEF);
+
+    ghostty_target_s target{};
+    target.tag = GHOSTTY_TARGET_SURFACE;
+    target.target.surface = surface;
+
+    ghostty_action_s action{};
+    action.tag = GHOSTTY_ACTION_START_SEARCH;
+    action.action.start_search = { "needle" };
+    EXPECT_TRUE(d->DispatchAction(target, action));
+    EXPECT_EQ(view.startSearchCalls, 1);
+    EXPECT_EQ(view.lastStartSearchSurface, surface);
+    EXPECT_EQ(view.lastStartSearchNeedle, L"needle");
+
+    action.tag = GHOSTTY_ACTION_SEARCH_TOTAL;
+    action.action.search_total = { 12 };
+    EXPECT_TRUE(d->DispatchAction(target, action));
+    EXPECT_EQ(view.lastSearchTotal, 12);
+
+    action.tag = GHOSTTY_ACTION_SEARCH_SELECTED;
+    action.action.search_selected = { 3 };
+    EXPECT_TRUE(d->DispatchAction(target, action));
+    EXPECT_EQ(view.lastSearchSelected, 3);
+
+    action.tag = GHOSTTY_ACTION_END_SEARCH;
+    EXPECT_TRUE(d->DispatchAction(target, action));
+    EXPECT_EQ(view.endSearchCalls, 1);
+    EXPECT_EQ(view.lastEndSearchSurface, surface);
+
+    EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_START_SEARCH));
+    EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_END_SEARCH));
+    EXPECT_EQ(view.startSearchCalls, 1);
+    EXPECT_EQ(view.endSearchCalls, 1);
+}
+
+TEST(GhosttyCallbackDispatcherTest, ScrollbarRoutesToTheView) {
+    // Formerly a no-consumer ack; #154 feeds the pane's overlay
+    // scrollbar. Surface-targeted delivery routes; the app-target
+    // form has no owning pane and stays an ack.
+    MockMainWindowView view;
+    auto d = CallbackDispatcher::Create(view);
+
+    ghostty_target_s target{};
+    target.tag = GHOSTTY_TARGET_SURFACE;
+    target.target.surface = reinterpret_cast<ghostty_surface_t>(0xBEEF);
+    ghostty_action_s action{};
+    action.tag = GHOSTTY_ACTION_SCROLLBAR;
+    action.action.scrollbar = { 1000, 940, 60 };
+
+    EXPECT_TRUE(d->DispatchAction(target, action));
+    EXPECT_EQ(view.setScrollbarCalls, 1);
+    EXPECT_EQ(view.lastScrollbarSurface, target.target.surface);
+    EXPECT_EQ(view.lastScrollbar.total, 1000u);
+    EXPECT_EQ(view.lastScrollbar.offset, 940u);
+    EXPECT_EQ(view.lastScrollbar.len, 60u);
+
+    EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_SCROLLBAR));
+    EXPECT_EQ(view.setScrollbarCalls, 1);
+}
+
+TEST(GhosttyCallbackDispatcherTest, CellSizeRoutesToTheView) {
+    // Formerly a no-consumer ack; #155 wires it to the snap-to-cell
+    // resize step. Surface-targeted delivery routes; the app-target
+    // form has no owning window and stays an ack.
+    MockMainWindowView view;
+    auto d = CallbackDispatcher::Create(view);
+
+    ghostty_target_s target{};
+    target.tag = GHOSTTY_TARGET_SURFACE;
+    target.target.surface = reinterpret_cast<ghostty_surface_t>(0xBEEF);
+    ghostty_action_s action{};
+    action.tag = GHOSTTY_ACTION_CELL_SIZE;
+    action.action.cell_size = { 9, 21 };
+
+    EXPECT_TRUE(d->DispatchAction(target, action));
+    EXPECT_EQ(view.applyCellSizeCalls, 1);
+    EXPECT_EQ(view.lastCellSizeSurface, target.target.surface);
+    EXPECT_EQ(view.lastCellSize.width, 9u);
+    EXPECT_EQ(view.lastCellSize.height, 21u);
+
     EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_CELL_SIZE));
+    EXPECT_EQ(view.applyCellSizeCalls, 1);
+}
+
+TEST(GhosttyCallbackDispatcherTest, UndoRedoRouteToTheView) {
+    // Formerly feature-surface acks; #151 wires them to the view's
+    // parked-close stack. Empty-stack handling is view state, so
+    // the dispatcher's contract is just delivery.
+    MockMainWindowView view;
+    auto d = CallbackDispatcher::Create(view);
+    EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_UNDO));
+    EXPECT_EQ(view.undoCalls, 1);
+    EXPECT_EQ(view.redoCalls, 0);
+    EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_REDO));
+    EXPECT_EQ(view.redoCalls, 1);
 }
 
 TEST(GhosttyCallbackDispatcherTest, ToggleBackgroundOpacityRoutesToTheView) {

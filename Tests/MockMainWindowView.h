@@ -134,6 +134,60 @@ struct MockMainWindowView : core::host::IWindow {
     int toggleBackgroundOpacityCalls = 0;
     void ToggleBackgroundOpacity() override { ++toggleBackgroundOpacityCalls; }
 
+    int undoCalls = 0;
+    void Undo() override { ++undoCalls; }
+
+    int redoCalls = 0;
+    void Redo() override { ++redoCalls; }
+
+    int startSearchCalls = 0;
+    ghostty_surface_t lastStartSearchSurface = nullptr;
+    std::wstring lastStartSearchNeedle;
+    void StartSearchForSurface(ghostty_surface_t surface,
+                               std::wstring needle) override {
+        ++startSearchCalls;
+        lastStartSearchSurface = surface;
+        lastStartSearchNeedle = std::move(needle);
+    }
+    int endSearchCalls = 0;
+    ghostty_surface_t lastEndSearchSurface = nullptr;
+    void EndSearchForSurface(ghostty_surface_t surface) override {
+        ++endSearchCalls;
+        lastEndSearchSurface = surface;
+    }
+    int setSearchTotalCalls = 0;
+    ptrdiff_t lastSearchTotal = -99;
+    void SetSearchTotalForSurface(ghostty_surface_t, ptrdiff_t total) override {
+        ++setSearchTotalCalls;
+        lastSearchTotal = total;
+    }
+    int setSearchSelectedCalls = 0;
+    ptrdiff_t lastSearchSelected = -99;
+    void SetSearchSelectedForSurface(ghostty_surface_t, ptrdiff_t selected) override {
+        ++setSearchSelectedCalls;
+        lastSearchSelected = selected;
+    }
+
+    int setScrollbarCalls = 0;
+    ghostty_surface_t lastScrollbarSurface = nullptr;
+    ghostty_action_scrollbar_s lastScrollbar{};
+    void SetScrollbarForSurface(ghostty_surface_t surface,
+                                ghostty_action_scrollbar_s bar) override {
+        ++setScrollbarCalls;
+        lastScrollbarSurface = surface;
+        lastScrollbar = bar;
+    }
+
+    int applyCellSizeCalls = 0;
+    ghostty_surface_t lastCellSizeSurface = nullptr;
+    ghostty_action_cell_size_s lastCellSize{};
+    void ApplyCellSizeForSurface(ghostty_surface_t surface,
+                                 ghostty_action_cell_size_s cell) override {
+        ++applyCellSizeCalls;
+        lastCellSizeSurface = surface;
+        lastCellSize = cell;
+    }
+
     int setFloatOnTopCalls = 0;
     ghostty_action_float_window_e lastFloatOnTopMode{};
     void SetFloatOnTop(ghostty_action_float_window_e mode) override {

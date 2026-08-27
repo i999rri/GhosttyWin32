@@ -152,6 +152,22 @@ struct IWindow {
     // configured) and while fullscreen.
     virtual void ToggleBackgroundOpacity() = 0;
 
+    // Undo the most recent undoable close, or redo the close that
+    // was most recently undone. The whole mechanism is view-owned:
+    // libghostty only delivers the UNDO / REDO keybind actions and
+    // upstream leaves the stack to the apprt (macOS parks the live
+    // surface in an expiring NSUndoManager; this port parks closed
+    // Tabs for `undo-timeout` before really tearing them down).
+    virtual void Undo() = 0;
+    virtual void Redo() = 0;
+
+    // Latest cell pixel dimensions for a surface this window owns
+    // (CELL_SIZE action). Feeds snap-to-cell window resizing: the
+    // window that owns the surface updates its WM_SIZING snapping
+    // step; windows that don't own it ignore the call (#155).
+    virtual void ApplyCellSizeForSurface(ghostty_surface_t surface,
+                                         ghostty_action_cell_size_s cell) = 0;
+
     // Bring the window to the foreground (restoring it from a
     // minimized state first) and give it focus. Used by
     // PRESENT_TERMINAL — typically triggered by an external
@@ -219,6 +235,29 @@ struct IWindow {
     // reaching the shell.
     virtual void SetReadonlyForSurface(ghostty_surface_t surface,
                                        bool readonly) = 0;
+
+    // Viewport position within the scrollback for a surface this
+    // window owns (SCROLLBAR action: total rows, viewport offset,
+    // viewport length). Feeds the owning pane's overlay scrollbar
+    // (#154). Fires on every scroll and on screen changes.
+    virtual void SetScrollbarForSurface(ghostty_surface_t surface,
+                                        ghostty_action_scrollbar_s bar) = 0;
+
+    // ----- search bar (START_SEARCH / END_SEARCH / SEARCH_TOTAL /
+    // SEARCH_SELECTED, all surface-targeted) -----
+    // ghostty drives the lifecycle and the counts; the host owns
+    // the input box and talks back through binding actions
+    // (Surface::Search / NavigateSearch / EndSearch). `needle` is
+    // empty for a bare open and pre-filled by search_selection.
+    // `total` / `selected` are -1 while unknown; `selected` is
+    // 1-based.
+    virtual void StartSearchForSurface(ghostty_surface_t surface,
+                                       std::wstring needle) = 0;
+    virtual void EndSearchForSurface(ghostty_surface_t surface) = 0;
+    virtual void SetSearchTotalForSurface(ghostty_surface_t surface,
+                                          ptrdiff_t total) = 0;
+    virtual void SetSearchSelectedForSurface(ghostty_surface_t surface,
+                                             ptrdiff_t selected) = 0;
 
     // COMMAND_FINISHED: a shell-integration-tracked command ended.
     // The view owns the whole policy: it reads the notify-on-
