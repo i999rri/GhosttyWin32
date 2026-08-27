@@ -239,6 +239,13 @@ namespace winrt::GhosttyWin32::implementation
         // charge instead of dropping focus back on the terminal
         // behind it (alt-tab away and back while searching).
         bool FocusSearchIfOpen();
+        // Whether the search box currently holds keyboard focus. This
+        // — not "the bar is open" — is what gates terminal input: the
+        // bar can stay open while the user clicks back into the
+        // terminal to keep typing (#171 review), and only while the
+        // box actually has focus must keystrokes and IME commits stay
+        // out of the pty.
+        bool SearchBoxHasFocus();
 
         // Set the callback that fires when this control receives
         // keyboard focus. Passed the underlying ghostty surface so

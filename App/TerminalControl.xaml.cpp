@@ -92,8 +92,11 @@ namespace winrt::GhosttyWin32::implementation
             // on its parent too. Engaging the CoreTextEditContext then
             // would route the box's text through the terminal's IME
             // path and into the pty — leave it disengaged while the
-            // bar is open (#171 review: box input reached the shell).
-            if (self->m_editContext && !self->m_searchOpen) {
+            // box holds focus (#171 review: box input reached the
+            // shell). Clicking back into the terminal with the bar
+            // still open fires GotFocus again with the box unfocused,
+            // which re-engages the context.
+            if (self->m_editContext && !self->SearchBoxHasFocus()) {
                 self->m_editContext.NotifyFocusEnter();
             }
             // The UnfocusedDim overlay is driven by Tab.SetActivePane,
@@ -214,17 +217,18 @@ namespace winrt::GhosttyWin32::implementation
             auto self = weakSelf.get();
             if (!self || !self->m_surface) return;
             // The search bar's TextBox is a child of this control, so
-            // its keystrokes bubble up here as well. While the bar is
-            // open the box owns the keyboard — never forward to the
+            // its keystrokes bubble up here as well. While the box
+            // holds focus it owns the keyboard — never forward to the
             // pty (typing "abc" in the box also typed "abc" into the
-            // shell before this guard, #171 review).
-            if (self->m_searchOpen) return;
+            // shell before this guard, #171 review). Gating on focus
+            // rather than on the bar being open lets the user click
+            // back into the terminal and keep typing with the bar up.
+            if (self->SearchBoxHasFocus()) return;
 #if defined(_DEBUG)
             {
                 wchar_t buf[96];
-                swprintf_s(buf, L"SearchLeak: control KeyDown vk=%u searchOpen=%d\n",
-                           static_cast<unsigned>(args.Key()),
-                           self->m_searchOpen ? 1 : 0);
+                swprintf_s(buf, L"SearchLeak: control KeyDown vk=%u boxFocused=0\n",
+                           static_cast<unsigned>(args.Key()));
                 OutputDebugStringW(buf);
             }
 #endif
@@ -283,7 +287,7 @@ namespace winrt::GhosttyWin32::implementation
         KeyUp([weakSelf](auto&&, muxi::KeyRoutedEventArgs const& args) {
             auto self = weakSelf.get();
             if (!self || !self->m_surface) return;
-            if (self->m_searchOpen) return;  // see KeyDown
+            if (self->SearchBoxHasFocus()) return;  // see KeyDown
             input::TerminalKeyUp key(args);
             auto raw = key.toRawKeyRelease();
             auto keyEvent = core::input::Translate(raw);
@@ -659,7 +663,7 @@ namespace winrt::GhosttyWin32::implementation
         // Belt and braces for KeyUp: the release of a key typed in
         // the box must not bubble into the terminal's KeyUp.
         input.KeyUp([weakSelf](auto&&, muxi::KeyRoutedEventArgs const& args) {
-            if (auto self = weakSelf.get(); self && self->m_searchOpen)
+            if (auto self = weakSelf.get(); self && self->SearchBoxHasFocus())
                 args.Handled(true);
         });
 
@@ -731,6 +735,14 @@ namespace winrt::GhosttyWin32::implementation
         if (wasOpen) {
             Focus(winrt::Microsoft::UI::Xaml::FocusState::Programmatic);
         }
+    }
+
+    bool TerminalControl::SearchBoxHasFocus()
+    {
+        if (!m_searchOpen) return false;
+        auto input = SearchInput();
+        if (!input) return false;
+        return input.FocusState() != winrt::Microsoft::UI::Xaml::FocusState::Unfocused;
     }
 
     bool TerminalControl::FocusSearchIfOpen()
@@ -1046,15 +1058,15 @@ namespace winrt::GhosttyWin32::implementation
 #if defined(_DEBUG)
                 {
                     wchar_t buf[96];
-                    swprintf_s(buf, L"SearchLeak: EditContext commit len=%zu searchOpen=%d\n",
-                               utf8.size(), self->m_searchOpen ? 1 : 0);
+                    swprintf_s(buf, L"SearchLeak: EditContext commit len=%zu boxFocused=%d\n",
+                               utf8.size(), self->SearchBoxHasFocus() ? 1 : 0);
                     OutputDebugStringW(buf);
                 }
 #endif
-                // The search box owns text input while it is open —
-                // a composition committed there must not land in
-                // the pty (see the GotFocus guard).
-                if (!utf8.empty() && !self->m_searchOpen) {
+                // The search box owns text input while it holds
+                // focus — a composition committed there must not
+                // land in the pty (see the GotFocus guard).
+                if (!utf8.empty() && !self->SearchBoxHasFocus()) {
                     self->m_surface.Text(utf8.c_str(), utf8.size());
                 }
                 if (self->m_app) ghostty_app_tick(self->m_app);
@@ -1093,8 +1105,8 @@ namespace winrt::GhosttyWin32::implementation
     void TerminalControl::NotifyImeFocusEnter()
     {
         // Same guard as GotFocus: the search box owns text input
-        // while the bar is open.
-        if (m_editContext && !m_searchOpen) m_editContext.NotifyFocusEnter();
+        // while it holds focus.
+        if (m_editContext && !SearchBoxHasFocus()) m_editContext.NotifyFocusEnter();
     }
 
     void TerminalControl::NotifyImeFocusLeave()
