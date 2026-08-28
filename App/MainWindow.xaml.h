@@ -45,20 +45,22 @@ namespace winrt::GhosttyWin32::implementation
                           winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
 
         // Called by every TerminalControl when it receives keyboard
-        // focus (wired by TabFactory). Updates m_activeSurface so any
-        // future caller — APP-target action handlers, multi-window
-        // focus delivery, IPC / scripting bridges — can ask "which
-        // surface is the user looking at right now" without a
-        // separate tree walk. Public because TerminalControl needs to
-        // reach in via the host-supplied callback. UI thread only.
+        // focus (wired by TabFactory). Routes the event to the owning
+        // Tab so its active-pane state — and with it the per-tab
+        // dim overlay — follows keyboard focus. The window keeps no
+        // focused-surface cache of its own: "which surface is the
+        // user looking at" is answered by ActiveControl(), which reads
+        // the Tab state this call keeps current. Public because
+        // TerminalControl needs to reach in via the host-supplied
+        // callback. UI thread only.
         void NotifySurfaceFocused(ghostty_surface_t surface) noexcept;
 
-        // Last surface to receive keyboard focus inside this window.
-        // Null until the first focus delivery (typically the very
-        // first tab's TerminalControl GotFocus right after launch).
-        // Stays valid across alt-tab — we only clear it when the
-        // surface itself is torn down.
-        ghostty_surface_t GetActiveSurface() const noexcept { return m_activeSurface; }
+        // Whether `surface` is the one the user is looking at: the
+        // active pane of the active tab. Derived, never cached — a
+        // cache had to be invalidated on every close / tear-out /
+        // pane-close path, and each of those was a chance to let it
+        // outlive the surface (the old m_activeSurface contract).
+        bool IsActiveSurface(ghostty_surface_t surface) noexcept;
 
         // True when any leaf in this window's tab tree owns `surface`.
         // App::FindWindowForSurface iterates its window list and asks
@@ -389,10 +391,6 @@ namespace winrt::GhosttyWin32::implementation
         // to let the resulting WM_CLOSE (if any) through without
         // re-prompting. One-shot — the window is about to die.
         bool m_bypassCloseGate = false;
-        // Focus-tracked active surface. Set by NotifySurfaceFocused
-        // when a TerminalControl gains focus, cleared when the
-        // matching surface is torn down through CloseSurfaceByPaneId.
-        ghostty_surface_t m_activeSurface = nullptr;
         // Re-entrancy guard for the rename-title prompt: WinUI allows
         // one ContentDialog per XamlRoot, and a second ShowAsync while
         // one is up throws. Set when the dialog opens, cleared in its
