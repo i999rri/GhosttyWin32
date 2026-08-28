@@ -2175,16 +2175,6 @@ namespace winrt::GhosttyWin32::implementation
     }
 
     namespace {
-        Pane* FindPaneForSurface(implementation::SplitPanel* panelImpl,
-                                 ghostty_surface_t surface)
-        {
-            if (!panelImpl) return nullptr;
-            return panelImpl->Tree().FindPaneBy([surface](Pane const& p) {
-                auto const* tc = p.Impl();
-                return tc && tc->Surface().Owns(surface);
-            });
-        }
-
         void CollectPanes(Branch& branch, std::vector<Pane*>& out) {
             branch.ForEachPane([&out](Pane& p) { out.push_back(&p); });
         }
@@ -2291,13 +2281,12 @@ namespace winrt::GhosttyWin32::implementation
                                      ghostty_action_split_direction_e direction)
     {
         if (!m_tabFactory || !surface) return;
-        auto* sourceTab = m_tabs.FindBySurface(surface);
-        if (!sourceTab) return;
+        auto lookup = m_tabs.FindPaneBySurface(surface);
+        if (!lookup.pane) return;
+        auto* sourceTab = lookup.tab;
+        Pane* sourcePane = lookup.pane;
         auto* panelImpl = winrt::get_self<implementation::SplitPanel>(sourceTab->Panel());
         if (!panelImpl) return;
-
-        Pane* sourcePane = FindPaneForSurface(panelImpl, surface);
-        if (!sourcePane) return;
 
         // Copy out before ReplacePane destroys the original Branch —
         // the wrapper below needs its own reference to the underlying
@@ -2411,8 +2400,10 @@ namespace winrt::GhosttyWin32::implementation
     void MainWindow::ToggleSplitZoomForSurface(ghostty_surface_t surface)
     {
         if (!surface) return;
-        auto* tab = m_tabs.FindBySurface(surface);
-        if (!tab) return;
+        auto lookup = m_tabs.FindPaneBySurface(surface);
+        if (!lookup.pane) return;
+        auto* tab = lookup.tab;
+        Pane* pane = lookup.pane;
         auto* panelImpl = winrt::get_self<implementation::SplitPanel>(tab->Panel());
         if (!panelImpl) return;
 
@@ -2423,9 +2414,6 @@ namespace winrt::GhosttyWin32::implementation
             panelImpl->SetZoomed(nullptr);
             return;
         }
-
-        Pane* pane = FindPaneForSurface(panelImpl, surface);
-        if (!pane) return;
         // Single-pane tab has nothing to expand against; visual state
         // would be identical to the normal layout.
         auto* root = panelImpl->Tree().Root();
@@ -2444,13 +2432,12 @@ namespace winrt::GhosttyWin32::implementation
                                          ghostty_action_goto_split_e direction)
     {
         if (!surface) return;
-        auto* tab = m_tabs.FindBySurface(surface);
-        if (!tab) return;
+        auto lookup = m_tabs.FindPaneBySurface(surface);
+        if (!lookup.pane) return;
+        auto* tab = lookup.tab;
+        Pane* active = lookup.pane;
         auto* panelImpl = winrt::get_self<implementation::SplitPanel>(tab->Panel());
         if (!panelImpl) return;
-
-        Pane* active = FindPaneForSurface(panelImpl, surface);
-        if (!active) return;
 
         std::vector<Pane*> panes;
         if (auto* root = panelImpl->Tree().Root()) CollectPanes(*root, panes);
@@ -2486,13 +2473,12 @@ namespace winrt::GhosttyWin32::implementation
                                            ghostty_action_resize_split_s resize)
     {
         if (!surface) return;
-        auto* tab = m_tabs.FindBySurface(surface);
-        if (!tab) return;
+        auto lookup = m_tabs.FindPaneBySurface(surface);
+        if (!lookup.pane) return;
+        auto* tab = lookup.tab;
+        Pane* pane = lookup.pane;
         auto* panelImpl = winrt::get_self<implementation::SplitPanel>(tab->Panel());
         if (!panelImpl) return;
-
-        Pane* pane = FindPaneForSurface(panelImpl, surface);
-        if (!pane) return;
 
         // The split axis we're resizing matches the direction axis:
         // LEFT/RIGHT → Horizontal split, UP/DOWN → Vertical split.
