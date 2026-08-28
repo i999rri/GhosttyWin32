@@ -976,9 +976,20 @@ namespace winrt::GhosttyWin32::implementation
         return static_cast<bool>(id) && m_tabs.FindByPaneId(id).tab != nullptr;
     }
 
+    bool MainWindow::IsActiveSurface(ghostty_surface_t surface) noexcept
+    {
+        if (!surface) return false;
+        try {
+            auto* tc = ActiveControl();
+            return tc && tc->Surface().Owns(surface);
+        } catch (winrt::hresult_error const&) {
+            // TabView() throws RO_E_CLOSED on a disposed window.
+            return false;
+        }
+    }
+
     void MainWindow::NotifySurfaceFocused(ghostty_surface_t surface) noexcept
     {
-        m_activeSurface = surface;
         // Route the focus event back into the owning Tab so it can
         // update its per-tab dim invariant. SetActivePane is idempotent
         // when `leaf` is already the tab's active leaf, so the deferred
@@ -1352,23 +1363,6 @@ namespace winrt::GhosttyWin32::implementation
         }
         // A stale press record must not keep the closed item alive.
         App::g_app->PressedTab().Forget(item);
-        // The focused-surface cache must not outlive the surfaces this
-        // close is about to free — same invariant CloseSurfaceByPaneId
-        // and ReleaseTornOutTab already hold. m_activeSurface can point
-        // at any pane in the tab, so walk them all rather than checking
-        // only the active control. The next GotFocus on the newly
-        // selected tab refills the slot.
-        if (m_activeSurface) {
-            if (auto* panelImpl =
-                    winrt::get_self<implementation::SplitPanel>(t->Panel())) {
-                if (panelImpl->Tree().FindPaneBy([this](Pane const& p) {
-                        auto const* tc = Tab::PaneToTerminalControl(p);
-                        return tc && tc->Surface().Owns(m_activeSurface);
-                    })) {
-                    m_activeSurface = nullptr;
-                }
-            }
-        }
         // Detach every pane before RemoveAt: SetSwapChainHandle(nullptr)
         // AVs at +0x1F8 inside microsoft.ui.xaml.dll if the panel has
         // already been unparented. Multi-pane tabs have multiple swap
@@ -1400,21 +1394,9 @@ namespace winrt::GhosttyWin32::implementation
     {
         auto* t = m_tabs.FindByItem(item);
         if (!t) return;
-        // Same bookkeeping as the immediate-teardown path: no stale
-        // press record, and the focused-surface cache must not point
-        // at a surface that is no longer reachable via the UI.
+        // Same bookkeeping as the immediate-teardown path: a stale
+        // press record must not keep the item alive.
         App::g_app->PressedTab().Forget(item);
-        if (m_activeSurface) {
-            if (auto* panelImpl =
-                    winrt::get_self<implementation::SplitPanel>(t->Panel())) {
-                if (panelImpl->Tree().FindPaneBy([this](Pane const& p) {
-                        auto const* tc = Tab::PaneToTerminalControl(p);
-                        return tc && tc->Surface().Owns(m_activeSurface);
-                    })) {
-                    m_activeSurface = nullptr;
-                }
-            }
-        }
         auto tv = TabView();
         uint32_t idx = 0;
         if (tv.TabItems().IndexOf(item, idx)) {
@@ -1941,7 +1923,7 @@ namespace winrt::GhosttyWin32::implementation
             // surface AND the window is in the foreground — a
             // command finishing in a visible, focused pane needs no
             // announcement.
-            const bool focused = surface == m_activeSurface &&
+            const bool focused = IsActiveSurface(surface) &&
                                  GetForegroundWindow() == m_hwnd;
             if (focused) return;
         }
@@ -2571,22 +2553,6 @@ namespace winrt::GhosttyWin32::implementation
         auto* t = m_tabs.FindByItem(item);
         if (!t) return nullptr;
 
-        // The focused-surface cache must not follow the tab out: the
-        // surfaces stay alive, but they stop being *this* window's
-        // surfaces. Walk the departing tab's leaves rather than just
-        // its active control — m_activeSurface can point at any pane.
-        if (m_activeSurface) {
-            if (auto* panelImpl =
-                    winrt::get_self<implementation::SplitPanel>(t->Panel())) {
-                if (panelImpl->Tree().FindPaneBy([this](Pane const& p) {
-                        auto const* tc = Tab::PaneToTerminalControl(p);
-                        return tc && tc->Surface().Owns(m_activeSurface);
-                    })) {
-                    m_activeSurface = nullptr;
-                }
-            }
-        }
-
         // Unparent the visual pieces but detach nothing: the swap
         // chains keep presenting while the tab is in flight.
         RemoveTabPanelFromAppContent(*t);
@@ -2764,12 +2730,6 @@ namespace winrt::GhosttyWin32::implementation
         // synchronously, before the Branch holding the TerminalControl
         // is destroyed.
         if (auto* tc = Tab::PaneToTerminalControl(*pane)) {
-            // Clear m_activeSurface if it pointed at the surface we're
-            // about to free — the focused-surface cache must never
-            // outlive the underlying ghostty_surface_t. The next
-            // TerminalControl::GotFocus on the retargeted sibling (or
-            // a new tab) will refill the slot.
-            if (tc->Surface().Owns(m_activeSurface)) m_activeSurface = nullptr;
             tc->Detach();
         }
 
