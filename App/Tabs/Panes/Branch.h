@@ -133,9 +133,9 @@ inline Branch const* Branch::FindBranchOfPane(Pane const& target) const {
 }
 
 inline std::unique_ptr<Branch> MakePaneBranch(
-    winrt::Microsoft::UI::Xaml::UIElement content, PaneId id = {})
+    winrt::GhosttyWin32::TerminalControl control, PaneId id = {})
 {
-    return std::make_unique<Branch>(Pane{ std::move(content), id });
+    return std::make_unique<Branch>(Pane{ std::move(control), id });
 }
 
 inline std::unique_ptr<Branch> MakeSplitBranch(
