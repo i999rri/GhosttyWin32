@@ -2,17 +2,10 @@
 #include "TerminalControl.xaml.h"
 #include "resource.h"
 #include "Interop/Encoding.h"
-#include "Host/KeyModifiers.h"
-#include "Input/KeyEventTranslator.h"
-#include "Input/TerminalKeyDown.h"
-#include "Input/TerminalKeyUp.h"
-#include "Display/PhysicalPixels.h"
-#include "Win32/Clipboard.h"
 #include <winrt/Windows.System.h>
 #include <algorithm>
 #include <chrono>
 #include <cmath>
-#include <dxgi1_3.h>
 #if __has_include("TerminalControl.g.cpp")
 #include "TerminalControl.g.cpp"
 #endif
@@ -23,26 +16,28 @@ namespace winrt::GhosttyWin32::implementation
     TerminalControl::TerminalControl()
     {
         InitializeComponent();
+        m_host = std::make_shared<SurfaceHost>(Panel());
 
-        // Pointer routing: the handlers early-return if no surface is
-        // attached yet, so it's safe to register them in the
-        // constructor before TabFactory calls Attach(). Coordinates are
-        // taken relative to the inner panel (== this UserControl's
-        // dimensions today, but Panel() is the explicit truth) so they
-        // match what ghostty's renderer expects.
-        //
-        // The lambdas capture a weak_ref instead of `this`. XAML can
-        // route a final pointer event during window/control teardown
-        // after the impl has started destructing — a raw `this` capture
-        // would dereference a dangling pointer (the AV symptom we hit:
-        // microsoft.ui.xaml.dll reading near-null at the m_surface
-        // offset). The weak_ref short-circuits cleanly when the impl is
-        // gone; weakSelf.get() returns a strong impl com_ptr that
-        // exposes private members directly via operator->.
+        // Every handler below captures a weak_ref instead of `this`.
+        // XAML can route a final pointer event during window/control
+        // teardown after the impl has started destructing — a raw
+        // `this` capture would dereference a dangling pointer (the AV
+        // symptom we hit: microsoft.ui.xaml.dll reading near-null at a
+        // member offset). The weak_ref short-circuits cleanly when the
+        // impl is gone; weakSelf.get() returns a strong impl com_ptr,
+        // and the host it owns is alive for as long as that lock is.
         namespace muxi = winrt::Microsoft::UI::Xaml::Input;
-        namespace muix = winrt::Microsoft::UI::Input;
-
         auto weakSelf = get_weak();
+
+        // The host asks this before letting keystrokes, IME engagement
+        // or IME commits through to the pty. The search box is a
+        // child of this control, so its input bubbles up here too;
+        // while it holds focus it owns the keyboard (#171 review:
+        // typing in the box also typed into the shell).
+        m_host->SetInputGate([weakSelf]() {
+            auto self = weakSelf.get();
+            return self && !self->SearchBoxHasFocus();
+        });
 
         // Set up IME + self-focus on Loaded. Three reasons this all
         // happens here rather than in Attach or the ctor:
@@ -69,229 +64,66 @@ namespace winrt::GhosttyWin32::implementation
         Loaded([weakSelf](auto&&, auto&&) {
             auto self = weakSelf.get();
             if (!self) return;
-            if (!self->m_editContext) {
-                self->SetupImeContext();
-            }
+            self->m_host->EnsureImeContext();
             self->Focus(Microsoft::UI::Xaml::FocusState::Programmatic);
         });
 
-        // Mirror keyboard-focus state into the EditContext. Tab
-        // switches inside the same window trip these (the losing tab's
-        // TerminalControl LostFocus, the gaining tab's GotFocus) so
-        // IME composition is naturally scoped to the focused tab. A
-        // composition in flight on tab A pauses at LostFocus and the
-        // OS does not deliver further updates until tab A's
-        // EditContext is reactivated. Window-level activation crosses
-        // the boundary without firing these events; MainWindow's
-        // Activated handler routes through NotifyImeFocusEnter/Leave
-        // for that case.
+        // Mirror keyboard-focus state into the host (EditContext
+        // engagement, the window's focused-surface notification, and
+        // ghostty's own surface focus). Tab switches inside the same
+        // window trip these; window-level activation crosses the
+        // boundary without firing them, which MainWindow's Activated
+        // handler covers through NotifyImeFocusEnter/Leave.
+        //
+        // The UnfocusedDim overlay is deliberately NOT driven from
+        // here. The dim represents "this leaf is the active split in
+        // its tab", which has nothing to do with XAML keyboard focus;
+        // hooking it on GotFocus / LostFocus produced a dim flash
+        // whenever focus migrated briefly (tab switch, new-tab
+        // creation, alt-tab away). Tab.SetActivePane owns it, and a
+        // real focus shift still reaches it through the host's
+        // onFocused → NotifySurfaceFocused → SetActivePane chain.
         GotFocus([weakSelf](auto&&, auto&&) {
-            auto self = weakSelf.get();
-            if (!self) return;
-            // GotFocus bubbles: the search box taking focus fires this
-            // on its parent too. Engaging the CoreTextEditContext then
-            // would route the box's text through the terminal's IME
-            // path and into the pty — leave it disengaged while the
-            // box holds focus (#171 review: box input reached the
-            // shell). Clicking back into the terminal with the bar
-            // still open fires GotFocus again with the box unfocused,
-            // which re-engages the context.
-            if (self->m_editContext && !self->SearchBoxHasFocus()) {
-                self->m_editContext.NotifyFocusEnter();
-            }
-            // The UnfocusedDim overlay is driven by Tab.SetActivePane,
-            // not by XAML focus events. Reason: the dim represents
-            // "this leaf is the active split in its tab", which has
-            // nothing to do with XAML keyboard focus. Hooking it on
-            // GotFocus / LostFocus produces a dim flash whenever
-            // focus migrates briefly (tab switch, new-tab creation,
-            // alt-tab away), even though the active leaf hasn't
-            // changed. The surface-focused notification still fires
-            // here — the host's NotifySurfaceFocused routes through
-            // Tab.SetActivePane, so a real focus shift (pointer
-            // click on a non-active pane) still updates the dim by
-            // going through the tab.
-            //
-            // Surface-level focus event for the host. Mirrors the
-            // upstream getActiveSurface pattern (#62): the host uses
-            // this to track "currently focused surface" without us
-            // reaching into MainWindow globals from inside the
-            // control.
-            if (self->m_onFocused && self->m_surface) {
-                self->m_onFocused(self->m_surface.Handle());
-            }
-            // Tell the renderer thread this surface is the focused
-            // one. ghostty defaults every surface to focused, so
-            // without this the losing pane's renderer keeps the fast
-            // poll cadence and keeps blink-presenting alongside the
-            // gaining one.
-            self->m_surface.SetFocus(true);
+            if (auto self = weakSelf.get()) self->m_host->OnFocusGained();
         });
-
         LostFocus([weakSelf](auto&&, auto&&) {
-            auto self = weakSelf.get();
-            if (!self) return;
-            if (self->m_editContext) self->m_editContext.NotifyFocusLeave();
-            // No dim change here — see the GotFocus comment above.
-            self->m_surface.SetFocus(false);
+            if (auto self = weakSelf.get()) self->m_host->OnFocusLost();
         });
 
+        // Pointer routing straight to the host; it early-returns until
+        // a surface is attached, so registering here (before
+        // TabFactory calls Attach) is safe.
         PointerMoved([weakSelf](auto&&, muxi::PointerRoutedEventArgs const& args) {
-            auto self = weakSelf.get();
-            if (!self || !self->m_surface) return;
-            muix::PointerPoint point = args.GetCurrentPoint(self->Panel());
-            auto pos = point.Position();
-            self->m_surface.MousePos(pos.X, pos.Y, host::currentMods());
+            if (auto self = weakSelf.get()) self->m_host->OnPointerMoved(args);
         });
-
         PointerPressed([weakSelf](auto&&, muxi::PointerRoutedEventArgs const& args) {
             auto self = weakSelf.get();
-            if (!self || !self->m_surface) return;
-            // Mark Handled up front so the event doesn't bubble into
-            // ancestor focus-management code (TabViewItem / TabView /
-            // root content presenter, depending on layout). Without
-            // this, after our explicit Focus(Pointer) call XAML's
-            // default routed-event handling on the bubble path moves
-            // logical focus off the TerminalControl, LostFocus fires,
-            // and KeyDown stops being delivered until focus is restored
-            // some other way (alt-tab, Tab key, new tab). Calling Focus
-            // here covers initial focus claim; Handled(true) keeps it.
+            if (!self) return;
+            // Claim focus here; the host marks the event Handled so
+            // the bubble path can't move it off us again.
             self->Focus(Microsoft::UI::Xaml::FocusState::Pointer);
-            args.Handled(true);
-            muix::PointerPoint point = args.GetCurrentPoint(self->Panel());
-            muix::PointerPointProperties props = point.Properties();
-            ghostty_input_mouse_button_e btn;
-            if (props.IsLeftButtonPressed()) {
-                btn = GHOSTTY_MOUSE_LEFT;
-            } else if (props.IsRightButtonPressed()) {
-                // Right-click: copy selection if there is one,
-                // otherwise treat as a normal right button press.
-                if (self->m_surface.HasSelection()) {
-                    ghostty_text_s text = {};
-                    if (self->m_surface.ReadSelection(&text) && text.text && text.text_len > 0) {
-                        win32::Clipboard::write(self->m_hostHwnd, interop::Encoding::toUtf16(text.text, static_cast<int>(text.text_len)));
-                        self->m_surface.FreeText(&text);
-                    }
-                    // Click-then-release without modifiers clears the
-                    // selection in ghostty, matching the macOS gesture.
-                    self->m_surface.MouseButton(GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, (ghostty_input_mods_e)0);
-                    self->m_surface.MouseButton(GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, (ghostty_input_mods_e)0);
-                    return;
-                }
-                btn = GHOSTTY_MOUSE_RIGHT;
-            } else {
-                return;
-            }
-            self->m_surface.MouseButton(GHOSTTY_MOUSE_PRESS, btn, host::currentMods());
+            self->m_host->OnPointerPressed(args);
         });
-
         PointerReleased([weakSelf](auto&&, muxi::PointerRoutedEventArgs const& args) {
-            auto self = weakSelf.get();
-            if (!self || !self->m_surface) return;
-            self->m_surface.MouseButton(GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, host::currentMods());
-            args.Handled(true);
+            if (auto self = weakSelf.get()) self->m_host->OnPointerReleased(args);
         });
-
         PointerWheelChanged([weakSelf](auto&&, muxi::PointerRoutedEventArgs const& args) {
-            auto self = weakSelf.get();
-            if (!self || !self->m_surface) return;
-            muix::PointerPoint point = args.GetCurrentPoint(self->Panel());
-            muix::PointerPointProperties props = point.Properties();
-            int delta = props.MouseWheelDelta();
-            double scrollY = (double)delta / 120.0;
-            ghostty_input_scroll_mods_t smods = {};
-            self->m_surface.MouseScroll(0, scrollY, smods);
-            args.Handled(true);
+            if (auto self = weakSelf.get()) self->m_host->OnPointerWheelChanged(args);
         });
 
         SetupScrollbar();
         SetupSearchBar();
 
         // KeyDown / KeyUp on the control itself: the events fire only
-        // while focus is inside us, so the handlers feed directly into
-        // m_surface without an ActiveControl() lookup. Args.Handled(true)
-        // suppresses bubbling, which in particular prevents the
-        // TabView's built-in keybindings from also acting on the
-        // already-routed key.
+        // while focus is inside us, so they feed the host directly
+        // without an ActiveControl() lookup. The host marks handled
+        // keys, which in particular prevents the TabView's built-in
+        // keybindings from also acting on the already-routed key.
         KeyDown([weakSelf](auto&&, muxi::KeyRoutedEventArgs const& args) {
-            auto self = weakSelf.get();
-            if (!self || !self->m_surface) return;
-            // The search bar's TextBox is a child of this control, so
-            // its keystrokes bubble up here as well. While the box
-            // holds focus it owns the keyboard — never forward to the
-            // pty (typing "abc" in the box also typed "abc" into the
-            // shell before this guard, #171 review). Gating on focus
-            // rather than on the bar being open lets the user click
-            // back into the terminal and keep typing with the bar up.
-            if (self->SearchBoxHasFocus()) return;
-#if defined(_DEBUG)
-            {
-                wchar_t buf[96];
-                swprintf_s(buf, L"SearchLeak: control KeyDown vk=%u boxFocused=0\n",
-                           static_cast<unsigned>(args.Key()));
-                OutputDebugStringW(buf);
-            }
-#endif
-
-            input::TerminalKeyDown key(args, self->m_ime.composing());
-
-            // IME owns the composition lifecycle; don't double-encode
-            // into the pty.
-            if (key.isImeKeystroke()) return;
-
-            // Copy shortcut with a live selection: write to the OS
-            // clipboard and clear the selection. Ctrl+C with no
-            // selection falls through to ghostty so the SIGINT path
-            // runs.
-            if (key.isCopyShortcut()
-                && self->m_surface.HasSelection())
-            {
-                ghostty_text_s text = {};
-                if (self->m_surface.ReadSelection(&text) && text.text && text.text_len > 0) {
-                    win32::Clipboard::write(self->m_hostHwnd, interop::Encoding::toUtf16(text.text, static_cast<int>(text.text_len)));
-                    self->m_surface.FreeText(&text);
-                }
-                self->m_surface.MouseButton(GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, (ghostty_input_mods_e)0);
-                self->m_surface.MouseButton(GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, (ghostty_input_mods_e)0);
-                args.Handled(true);
-                return;
-            }
-
-            // Paste shortcut: read the OS clipboard and feed it as
-            // text. The paste API (ghostty_surface_text) is the
-            // bracketed-paste path on ghostty's side.
-            if (key.isPasteShortcut()) {
-                auto utf8 = interop::Encoding::toUtf8(win32::Clipboard::read(self->m_hostHwnd));
-                if (!utf8.empty()) {
-                    self->m_surface.Text(utf8.c_str(), utf8.size());
-                }
-                if (self->m_app) ghostty_app_tick(self->m_app);
-                self->m_surface.Refresh();
-                args.Handled(true);
-                return;
-            }
-
-            // Forward as ordinary terminal input. textBuf owns the
-            // OS-translated UTF-8 the RawKeyPress.text pointer
-            // references, so it has to outlive `raw`.
-            char textBuf[16] = {};
-            auto raw = key.toRawKeyPress(textBuf, sizeof(textBuf));
-            auto keyEvent = core::input::Translate(raw);
-            self->m_surface.Key(keyEvent);
-
-            if (self->m_app) ghostty_app_tick(self->m_app);
-            self->m_surface.Refresh();
-            args.Handled(true);
+            if (auto self = weakSelf.get()) self->m_host->OnKeyDown(args);
         });
-
         KeyUp([weakSelf](auto&&, muxi::KeyRoutedEventArgs const& args) {
-            auto self = weakSelf.get();
-            if (!self || !self->m_surface) return;
-            if (self->SearchBoxHasFocus()) return;  // see KeyDown
-            input::TerminalKeyUp key(args);
-            auto raw = key.toRawKeyRelease();
-            auto keyEvent = core::input::Translate(raw);
-            self->m_surface.Key(keyEvent);
+            if (auto self = weakSelf.get()) self->m_host->OnKeyUp(args);
         });
 
         // Terminals default to a text-input cursor; ghostty issues a
@@ -519,8 +351,8 @@ namespace winrt::GhosttyWin32::implementation
         bar.ValueChanged([weakSelf](auto&&,
                 Microsoft::UI::Xaml::Controls::Primitives::RangeBaseValueChangedEventArgs const& args) {
             auto self = weakSelf.get();
-            if (!self || self->m_scrollbarSyncing || !self->m_surface) return;
-            self->m_surface.ScrollToRow(
+            if (!self || self->m_scrollbarSyncing || !self->Surface()) return;
+            self->Surface().ScrollToRow(
                 static_cast<uint64_t>(std::llround(args.NewValue())));
             self->RevealScrollbar();
         });
@@ -548,11 +380,9 @@ namespace winrt::GhosttyWin32::implementation
         bar.PointerWheelChanged([weakSelf](auto&&,
                 winrt::Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args) {
             auto self = weakSelf.get();
-            if (!self || !self->m_surface) return;
-            auto point = args.GetCurrentPoint(self->Panel());
-            int delta = point.Properties().MouseWheelDelta();
-            ghostty_input_scroll_mods_t smods = {};
-            self->m_surface.MouseScroll(0, static_cast<double>(delta) / 120.0, smods);
+            if (!self) return;
+            self->m_host->ScrollByWheel(
+                args.GetCurrentPoint(self->Panel()).Properties().MouseWheelDelta());
             args.Handled(true);
         });
 
@@ -638,7 +468,7 @@ namespace winrt::GhosttyWin32::implementation
         // (which would type them into the pty).
         input.KeyDown([weakSelf](auto&&, muxi::KeyRoutedEventArgs const& args) {
             auto self = weakSelf.get();
-            if (!self || !self->m_surface) return;
+            if (!self) return;
             using winrt::Windows::System::VirtualKey;
             const auto key = args.Key();
             if (key == VirtualKey::Enter) {
@@ -650,15 +480,14 @@ namespace winrt::GhosttyWin32::implementation
                     self->m_searchDebounce.Stop();
                     self->SendSearchNeedle();
                 }
-                self->m_surface.NavigateSearch(!shift);
+                self->Surface().NavigateSearch(!shift);
                 args.Handled(true);
             } else if (key == VirtualKey::Escape) {
                 self->CloseSearchFromUi();
                 args.Handled(true);
             }
             // Everything else is the TextBox's own editing; the
-            // control-level KeyDown also gates on m_searchOpen, so
-            // nothing reaches the pty either way.
+            // host's input gate keeps it out of the pty either way.
         });
         // Belt and braces for KeyUp: the release of a key typed in
         // the box must not bubble into the terminal's KeyUp.
@@ -685,12 +514,10 @@ namespace winrt::GhosttyWin32::implementation
         });
 
         SearchNext().Click([weakSelf](auto&&, auto&&) {
-            if (auto self = weakSelf.get(); self && self->m_surface)
-                self->m_surface.NavigateSearch(true);
+            if (auto self = weakSelf.get()) self->Surface().NavigateSearch(true);
         });
         SearchPrev().Click([weakSelf](auto&&, auto&&) {
-            if (auto self = weakSelf.get(); self && self->m_surface)
-                self->m_surface.NavigateSearch(false);
+            if (auto self = weakSelf.get()) self->Surface().NavigateSearch(false);
         });
         SearchClose().Click([weakSelf](auto&&, auto&&) {
             if (auto self = weakSelf.get()) self->CloseSearchFromUi();
@@ -759,15 +586,15 @@ namespace winrt::GhosttyWin32::implementation
         // The UI closes by asking ghostty to end the search; the
         // resulting END_SEARCH action performs the actual hide, so
         // core and host never disagree about whether a search is on.
-        if (m_surface) m_surface.EndSearch();
+        if (Surface()) Surface().EndSearch();
         else EndSearch();
     }
 
     void TerminalControl::SendSearchNeedle()
     {
-        if (!m_surface || !m_searchOpen) return;
+        if (!Surface() || !m_searchOpen) return;
         std::wstring text{ SearchInput().Text() };
-        m_surface.Search(interop::Encoding::toUtf8(text));
+        Surface().Search(interop::Encoding::toUtf8(text));
     }
 
     void TerminalControl::SetSearchTotal(ptrdiff_t total)
@@ -830,336 +657,14 @@ namespace winrt::GhosttyWin32::implementation
         Detach();
     }
 
-    void TerminalControl::Attach(ghostty_app_t app,
-                                 ghostty_surface_t surface,
-                                 HANDLE compositionHandle,
-                                 HWND hostHwnd,
-                                 std::shared_ptr<SwapChainAttachRequest> attachRequest,
-                                 std::shared_ptr<SwapChainChangedContext> swapChainChangedContext)
-    {
-        m_app = app;
-        m_surface = core::ghostty::Surface(surface);
-        m_compositionHandle = compositionHandle;
-        m_hostHwnd = hostHwnd;
-        m_attachRequest = std::move(attachRequest);
-        m_swapChainChangedContext = std::move(swapChainChangedContext);
-        // IME setup is deferred to Loaded — see the Loaded handler
-        // comment in the ctor. CreateEditContext only registers
-        // properly when the owning element is in the live visual
-        // tree, which doesn't happen until TabView.SelectedItem
-        // realises us.
-
-        // Capture a weak_ref to self instead of `this` or the raw
-        // surface pointer. Detach unhooks SizeChanged before
-        // ghostty_surface_free, so in steady state the handler never
-        // fires on a dead surface — but XAML can deliver a queued
-        // SizeChanged after Detach during teardown, so we recheck
-        // m_surface inside the handler under a strong lock.
-        auto weakSelf = get_weak();
-        m_sizeChangedToken = Panel().SizeChanged(
-            [weakSelf](Windows::Foundation::IInspectable const& sender,
-                       Microsoft::UI::Xaml::SizeChangedEventArgs const& args) {
-                auto self = weakSelf.get();
-                if (!self || !self->m_surface) return;
-                // SizeChangedEventArgs.NewSize is in DIPs; ghostty's
-                // surface_set_size needs the swap-chain buffer
-                // resolution in physical pixels. display::ToPhysicalPixels
-                // does the multiplication and the CompositionScale=0
-                // fallback.
-                auto sz = args.NewSize();
-                auto panel = sender.as<Microsoft::UI::Xaml::Controls::SwapChainPanel>();
-                auto px = display::ToPhysicalPixels(panel, sz.Width, sz.Height);
-                if (px.width > 0 && px.height > 0) {
-                    self->m_surface.SetSize(px.width, px.height);
-                }
-            });
-
-        // Follow the panel's actual composition scale. On RDP and on
-        // first-launch this lags behind the window DPI — the panel
-        // initially reports 1.0 even when GetDpiForWindow says 192
-        // — and only settles to the real value after the composition
-        // pipeline has picked it up. Without this hook, the swap chain
-        // created by ghostty at the higher scale_factor would be
-        // composited at the panel's lower scale, causing the rendered
-        // content (in particular text) to appear at roughly double
-        // size. Same weak_ref + surface recheck guard as SizeChanged.
-        m_compositionScaleChangedToken = Panel().CompositionScaleChanged(
-            [weakSelf](Microsoft::UI::Xaml::Controls::SwapChainPanel const& panel, auto&&) {
-                auto self = weakSelf.get();
-                if (!self || !self->m_surface) return;
-                double sx = panel.CompositionScaleX();
-                double sy = panel.CompositionScaleY();
-                if (sx <= 0.0 || sy <= 0.0) return;
-                // Publish the new scale to the renderer-thread callback so
-                // the next swap_chain_changed_cb fire installs an
-                // up-to-date inverse-scale matrix. Atomic store; the
-                // callback reads it next time libghostty triggers it
-                // (e.g. via the set_content_scale below flowing into
-                // setFontGrid -> applyFontDpiToTransforms).
-                if (self->m_swapChainChangedContext) {
-                    self->m_swapChainChangedContext->compositionScale.store(
-                        sx, std::memory_order_release);
-                }
-                self->m_surface.SetContentScale(sx, sy);
-                // When the composition scale changes, the panel's DIP
-                // size hasn't necessarily changed (so XAML may not fire
-                // SizeChanged) but the physical-pixel footprint has.
-                // Re-push the size so the swap-chain resolution matches
-                // the new scale; otherwise glyphs end up at the new
-                // font size on the old (lower-resolution) swap chain
-                // and read as oversized.
-                auto px = display::MeasuredPhysical(panel);
-                if (px.width > 0 && px.height > 0) {
-                    self->m_surface.SetSize(px.width, px.height);
-                }
-            });
-    }
-
     void TerminalControl::Detach()
     {
-        // The scrollbar fade timer holds only a weak ref, but stop
-        // it anyway so no tick lands while the control tears down.
+        // The overlay timers hold only weak refs, but stop them anyway
+        // so no tick lands while the control tears down.
         if (m_scrollbarFadeTimer) m_scrollbarFadeTimer.Stop();
         if (m_searchDebounce) m_searchDebounce.Stop();
-
-        // Cancel the pending SetSwapChainHandle dispatch before we tear
-        // down the swap chain — otherwise the queued call could attach
-        // a freed handle to the panel after we've destroyed everything.
-        if (m_attachRequest) {
-            m_attachRequest->cancelled.store(true);
-            m_attachRequest.reset();
-        }
-
-        // Stop the swap-chain-changed callback from touching the swap
-        // chain before libghostty drops it (ghostty_surface_free below
-        // joins the renderer thread, so any fire that races us no-ops).
-        // We deliberately hold the shared_ptr until *after* surface_free
-        // so the renderer thread can dereference the userdata safely
-        // through the in-flight call — the shared_ptr is released
-        // automatically when this TerminalControl is destroyed.
-        if (m_swapChainChangedContext) {
-            m_swapChainChangedContext->cancelled.store(true);
-        }
-
-        if (m_editContext) {
-            // Best-effort: tell the OS the EditContext is leaving focus
-            // before we drop our reference. Skipping this leaves the
-            // text-services manager holding a stale focus pointer until
-            // GC catches up.
-            m_editContext.NotifyFocusLeave();
-            m_editContext = nullptr;
-        }
-
-        if (auto panel = Panel()) {
-            if (m_sizeChangedToken.value != 0) {
-                panel.SizeChanged(m_sizeChangedToken);
-                m_sizeChangedToken = {};
-            }
-            if (m_compositionScaleChangedToken.value != 0) {
-                panel.CompositionScaleChanged(m_compositionScaleChangedToken);
-                m_compositionScaleChangedToken = {};
-            }
-            // We deliberately skip the symmetric
-            // ISwapChainPanelNative2::SetSwapChainHandle(nullptr) that
-            // mirrors the attach in OnSwapChainReady. Calling it
-            // during rapid Ctrl+Shift+W tab teardown reads a null
-            // compositor visual at +0x1F8 inside microsoft.ui.xaml.dll
-            // and AVs. The panel keeps a reference to the (about-to-
-            // be-closed) composition handle until the impl is
-            // released; XAML's own panel-cleanup path runs at that
-            // point with the kernel handle already invalid, which it
-            // tolerates without faulting.
-        }
-        // Wrapper dtor would free anyway, but the renderer-thread join
-        // happens inside ghostty_surface_free and must run BEFORE
-        // m_swapChainChangedContext goes out of scope below — so we
-        // drive the free explicitly here at the right point in the
-        // Detach sequence rather than waiting for the dtor.
-        m_surface.Reset();
-        if (m_compositionHandle) {
-            CloseHandle(m_compositionHandle);
-            m_compositionHandle = nullptr;
-        }
-        m_app = nullptr;
-    }
-
-    void TerminalControl::SetupImeContext()
-    {
-        namespace txtCore = winrt::Windows::UI::Text::Core;
-        // CoreTextServicesManager.GetForCurrentView lives at the view
-        // (~window) level, but CreateEditContext spins up an
-        // independent context — multiple controls in the same window
-        // each get their own. The OS arbitrates which one receives
-        // input via NotifyFocusEnter/Leave; we drive those on tab
-        // switch (GotFocus/LostFocus) and on window activation
-        // (forwarded from MainWindow via NotifyImeFocusEnter/Leave).
-        auto manager = txtCore::CoreTextServicesManager::GetForCurrentView();
-        m_editContext = manager.CreateEditContext();
-        m_editContext.InputPaneDisplayPolicy(txtCore::CoreTextInputPaneDisplayPolicy::Manual);
-        m_editContext.InputScope(txtCore::CoreTextInputScope::Default);
-
-        auto weakSelf = get_weak();
-
-        m_editContext.TextRequested([weakSelf](
-            txtCore::CoreTextEditContext const&,
-            txtCore::CoreTextTextRequestedEventArgs const& args) {
-            auto self = weakSelf.get();
-            if (!self) return;
-            args.Request().Text(winrt::hstring(self->m_ime.paddedText()));
-        });
-
-        m_editContext.SelectionRequested([weakSelf](
-            txtCore::CoreTextEditContext const&,
-            txtCore::CoreTextSelectionRequestedEventArgs const& args) {
-            auto self = weakSelf.get();
-            if (!self) return;
-            int32_t pos = self->m_ime.selectionPosition();
-            args.Request().Selection({ pos, pos });
-        });
-
-        m_editContext.TextUpdating([weakSelf](
-            txtCore::CoreTextEditContext const&,
-            txtCore::CoreTextTextUpdatingEventArgs const& args) {
-            auto self = weakSelf.get();
-            if (!self || !self->m_surface) return;
-            auto range = args.Range();
-            auto newText = args.Text();
-            self->m_ime.applyTextUpdate(range.StartCaretPosition, range.EndCaretPosition,
-                                        newText.c_str(), newText.size());
-            if (self->m_ime.composing()) {
-                if (self->m_ime.text().empty()) {
-                    self->m_surface.Preedit(nullptr, 0);
-                } else {
-                    auto utf8 = interop::Encoding::toUtf8(self->m_ime.text());
-                    if (!utf8.empty())
-                        self->m_surface.Preedit(utf8.c_str(), utf8.size());
-                }
-            }
-            if (self->m_app) ghostty_app_tick(self->m_app);
-            self->m_surface.Refresh();
-        });
-
-        m_editContext.CompositionStarted([weakSelf](
-            txtCore::CoreTextEditContext const&,
-            txtCore::CoreTextCompositionStartedEventArgs const&) {
-            auto self = weakSelf.get();
-            if (!self) return;
-            self->m_ime.compositionStarted();
-        });
-
-        m_editContext.CompositionCompleted([weakSelf](
-            txtCore::CoreTextEditContext const&,
-            txtCore::CoreTextCompositionCompletedEventArgs const&) {
-            auto self = weakSelf.get();
-            if (!self) return;
-            if (self->m_surface) {
-                self->m_surface.Preedit(nullptr, 0);
-                auto utf8 = interop::Encoding::toUtf8(self->m_ime.text());
-#if defined(_DEBUG)
-                {
-                    wchar_t buf[96];
-                    swprintf_s(buf, L"SearchLeak: EditContext commit len=%zu boxFocused=%d\n",
-                               utf8.size(), self->SearchBoxHasFocus() ? 1 : 0);
-                    OutputDebugStringW(buf);
-                }
-#endif
-                // The search box owns text input while it holds
-                // focus — a composition committed there must not
-                // land in the pty (see the GotFocus guard).
-                if (!utf8.empty() && !self->SearchBoxHasFocus()) {
-                    self->m_surface.Text(utf8.c_str(), utf8.size());
-                }
-                if (self->m_app) ghostty_app_tick(self->m_app);
-                self->m_surface.Refresh();
-            }
-            self->m_ime.compositionCompleted();
-        });
-
-        m_editContext.LayoutRequested([weakSelf](
-            txtCore::CoreTextEditContext const&,
-            txtCore::CoreTextLayoutRequestedEventArgs const& args) {
-            auto self = weakSelf.get();
-            if (!self || !self->m_surface || !self->m_hostHwnd) return;
-            double x = 0, y = 0, w = 0, h = 0;
-            self->m_surface.ImePoint(&x, &y, &w, &h);
-            POINT screenPt = { (LONG)x, (LONG)y };
-            ClientToScreen(self->m_hostHwnd, &screenPt);
-            winrt::Windows::Foundation::Rect bounds{
-                (float)screenPt.x, (float)screenPt.y, (float)w, (float)h };
-            args.Request().LayoutBounds().ControlBounds(bounds);
-            args.Request().LayoutBounds().TextBounds(bounds);
-        });
-
-        m_editContext.FocusRemoved([weakSelf](
-            txtCore::CoreTextEditContext const&, auto&&) {
-            auto self = weakSelf.get();
-            if (!self) return;
-            if (self->m_ime.composing()) {
-                self->m_ime.reset();
-                if (self->m_surface)
-                    self->m_surface.Preedit(nullptr, 0);
-            }
-        });
-    }
-
-    void TerminalControl::NotifyImeFocusEnter()
-    {
-        // Same guard as GotFocus: the search box owns text input
-        // while it holds focus.
-        if (m_editContext && !SearchBoxHasFocus()) m_editContext.NotifyFocusEnter();
-    }
-
-    void TerminalControl::NotifyImeFocusLeave()
-    {
-        if (m_editContext) m_editContext.NotifyFocusLeave();
-    }
-
-    void TerminalControl::OnSwapChainReady(void* userdata) noexcept
-    {
-        auto* raw = reinterpret_cast<std::shared_ptr<SwapChainAttachRequest>*>(userdata);
-        std::shared_ptr<SwapChainAttachRequest> req = *raw;
-        delete raw;
-        if (!req || !req->dispatcher) return;
-        try {
-            req->dispatcher.TryEnqueue([req]() {
-                if (req->cancelled.load()) return;
-                // Bind the swap chain (which now has at least one
-                // presented frame) to the panel, then run the host's
-                // activation work. Order: handle attach → onActivated.
-                // Host's onActivated typically calls SelectedItem to
-                // make the panel visible — by then the panel already
-                // has displayable content, closing the flicker window
-                // of issue #22.
-                if (auto native2 = req->panel.try_as<ISwapChainPanelNative2>()) {
-                    native2->SetSwapChainHandle(req->handle);
-                }
-                if (req->onActivated) req->onActivated();
-            });
-        } catch (...) {
-            // Window torn down — request is implicitly cancelled.
-        }
-    }
-
-    void TerminalControl::OnSwapChainChanged(void* swap_chain, void* userdata) noexcept
-    {
-        // Renderer thread. Fired by libghostty on every (re-)bind /
-        // ResizeBuffers / DPI change. We undo XAML SwapChainPanel's
-        // implicit upscale of the attached swap chain by installing
-        // an inverse-scale matrix on the chain — the host owns this
-        // policy, libghostty itself is unaware of WinUI 3.
-        if (!swap_chain || !userdata) return;
-        auto* ctx = static_cast<SwapChainChangedContext*>(userdata);
-        if (ctx->cancelled.load(std::memory_order_acquire)) return;
-        double scale = ctx->compositionScale.load(std::memory_order_acquire);
-        if (scale <= 0.0) return;
-
-        auto* sc1 = static_cast<IDXGISwapChain1*>(swap_chain);
-        winrt::com_ptr<IDXGISwapChain2> sc2;
-        if (FAILED(sc1->QueryInterface(IID_PPV_ARGS(sc2.put())))) return;
-
-        DXGI_MATRIX_3X2_F matrix{};
-        matrix._11 = static_cast<float>(1.0 / scale);
-        matrix._22 = static_cast<float>(1.0 / scale);
-        (void)sc2->SetMatrixTransform(&matrix);
+        // Null only if InitializeComponent threw before the host was
+        // created; the destructor still runs Detach in that case.
+        if (m_host) m_host->Detach();
     }
 }

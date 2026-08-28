@@ -170,6 +170,7 @@
     </ClInclude>
     <ClInclude Include="MainWindows.h" />
     <ClInclude Include="SplitPanel.h" />
+    <ClInclude Include="SurfaceHost.h" />
     <ClInclude Include="Tabs\ParkedTabs.h" />
     <ClInclude Include="TransparentBackdrop.h" />
     <ClInclude Include="WindowCloseGate.h" />
@@ -211,6 +212,7 @@
     <ClCompile Include="MainWindows.cpp" />
     <ClCompile Include="Ghostty\MainWindowRuntime.cpp" />
     <ClCompile Include="SplitPanel.cpp" />
+    <ClCompile Include="SurfaceHost.cpp" />
     <ClCompile Include="TransparentBackdrop.cpp" />
     <ClCompile Include="WindowCloseGate.cpp" />
     <ClCompile Include="TerminalControl.xaml.cpp">
