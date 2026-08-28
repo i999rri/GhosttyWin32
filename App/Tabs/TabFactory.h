@@ -297,7 +297,7 @@ private:
     // without depending on Tab.
     static void DetachSubtree(Branch& branch) {
         branch.ForEachPane([](Pane& p) {
-            if (auto* tc = Tab::PaneToTerminalControl(p)) {
+            if (auto* tc = p.Impl()) {
                 tc->Detach();
             }
         });

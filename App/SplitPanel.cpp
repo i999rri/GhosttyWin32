@@ -53,7 +53,7 @@ void SplitPanel::UpdateChildVisibility() {
         return;
     }
     // Zoom active — only the zoomed pane's content stays visible.
-    auto zoomElement = zoomed->content;
+    UIElement zoomElement = zoomed->control;
     for (auto&& child : Children()) {
         if (auto el = child.try_as<UIElement>()) {
             el.Visibility(el == zoomElement ? Visibility::Visible : Visibility::Collapsed);
@@ -101,7 +101,7 @@ void SplitPanel::SyncChildrenFromTree() {
 
 void SplitPanel::AppendBranchToChildren(Branch& branch) {
     if (auto* pane = branch.TryGet<Pane>()) {
-        if (auto element = pane->content) {
+        if (auto element = pane->control) {
             Children().Append(element);
         }
         return;
@@ -170,7 +170,7 @@ Windows::Foundation::Size SplitPanel::MeasureOverride(Windows::Foundation::Size 
     // Zoom path: only the zoomed pane participates in layout. Others
     // are Visibility=Collapsed so Panel's base class skips them.
     if (auto const* zoomed = m_tree.Zoomed()) {
-        if (auto element = zoomed->content) {
+        if (auto element = zoomed->control) {
             element.Measure(availableSize);
             return element.DesiredSize();
         }
@@ -190,7 +190,7 @@ Windows::Foundation::Size SplitPanel::MeasureOverride(Windows::Foundation::Size 
 
 Windows::Foundation::Size SplitPanel::MeasureBranch(Branch& branch, Windows::Foundation::Size available) {
     if (auto* pane = branch.TryGet<Pane>()) {
-        if (auto element = pane->content) {
+        if (auto element = pane->control) {
             element.Measure(available);
             return element.DesiredSize();
         }
@@ -238,7 +238,7 @@ Windows::Foundation::Size SplitPanel::ArrangeOverride(Windows::Foundation::Size 
         if (auto* zoomedBranch = root->FindBranchOfPane(*zoomed)) {
             zoomedBranch->arrangedRect = fullRect;
         }
-        if (auto element = zoomed->content) {
+        if (auto element = zoomed->control) {
             element.Arrange(fullRect);
         }
         return finalSize;
@@ -251,7 +251,7 @@ void SplitPanel::ArrangeBranch(Branch& branch, Windows::Foundation::Rect rect) {
     branch.arrangedRect = rect;
 
     if (auto* pane = branch.TryGet<Pane>()) {
-        if (auto element = pane->content) {
+        if (auto element = pane->control) {
             element.Arrange(rect);
         }
         return;
