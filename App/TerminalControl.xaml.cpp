@@ -125,12 +125,6 @@ namespace winrt::GhosttyWin32::implementation
         // wants X"; mapping X onto a binding action is the
         // composite's job, and the Surface wrapper is a no-op while
         // empty so the callbacks need no attach state of their own.
-        auto onHover = [weakSelf](bool hovered) {
-            if (auto self = weakSelf.get()) {
-                self->m_overlayHovered = hovered;
-                self->ApplyCursor();
-            }
-        };
         if (auto* sb = ScrollbackImpl()) {
             sb->SetOnScrollToRow([weakSelf](uint64_t row) {
                 if (auto self = weakSelf.get()) self->Surface().ScrollToRow(row);
@@ -138,7 +132,6 @@ namespace winrt::GhosttyWin32::implementation
             sb->SetOnWheel([weakSelf](int delta) {
                 if (auto self = weakSelf.get()) self->m_host->ScrollByWheel(delta);
             });
-            sb->SetOnHoverChanged(onHover);
         }
         if (auto* se = SearchImpl()) {
             se->SetOnNeedle([weakSelf](winrt::hstring const& needle) {
@@ -159,7 +152,6 @@ namespace winrt::GhosttyWin32::implementation
                 if (self->Surface()) self->Surface().EndSearch();
                 else self->EndSearch();
             });
-            se->SetOnHoverChanged(onHover);
         }
 
         // Terminals default to a text-input cursor; ghostty issues a
@@ -257,19 +249,10 @@ namespace winrt::GhosttyWin32::implementation
 
     void TerminalControl::ApplyCursor()
     {
-        // Single writer for ProtectedCursor so the three inputs
-        // compose in one place: hovering an interactive overlay
-        // (scrollbar, search bar) wins with an Arrow (a text I-beam
-        // over a draggable thumb or a button reads wrong — #170 /
-        // #171 review), hidden state wins next, else the shape
-        // ghostty last asked for.
-        if (m_overlayHovered) {
-            static const auto arrow =
-                winrt::Microsoft::UI::Input::InputSystemCursor::Create(
-                    winrt::Microsoft::UI::Input::InputSystemCursorShape::Arrow);
-            ProtectedCursor(arrow);
-            return;
-        }
+        // Single writer for ProtectedCursor: hidden state wins, else
+        // the shape ghostty last asked for. Overlays that take input
+        // (scrollbar, search bar) set their own Arrow on themselves,
+        // so hover never has to be tracked here.
         if (m_cursorHidden) {
             // WinUI 3 has no "hide" on ProtectedCursor: null means
             // "inherit the parent's cursor" and renders as Arrow

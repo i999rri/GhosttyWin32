@@ -31,8 +31,9 @@ namespace winrt::GhosttyWin32::implementation
     //     forwarded to the host, and the "does the terminal own text
     //     input" gate the host consults — the search box is a sibling
     //     the host cannot see.
-    //   * ProtectedCursor — one writer composing ghostty's shape, the
-    //     hidden state, and overlay hover.
+    //   * ProtectedCursor — one writer composing ghostty's shape and
+    //     the hidden state. (Overlays that take input declare their
+    //     own Arrow; the composite does not track hover.)
     //   * core::host::ISurfaceView — libghostty's surface-targeted
     //     actions reach this control through the window's
     //     FindSurfaceView directory and are routed to the child that
@@ -189,12 +190,9 @@ namespace winrt::GhosttyWin32::implementation
         // Cursor state. m_visibleCursor caches the cursor built by the
         // last SetCursorShape call so a show can restore it;
         // m_cursorHidden gates shape updates from resurrecting a
-        // hidden cursor; m_overlayHovered is set while the pointer is
-        // over an interactive overlay (scrollbar, search bar) so an
-        // Arrow shows instead of the terminal's I-beam.
+        // hidden cursor.
         void ApplyCursor();
         bool m_cursorHidden = false;
-        bool m_overlayHovered = false;
         winrt::Microsoft::UI::Input::InputCursor m_visibleCursor{ nullptr };
     };
 }

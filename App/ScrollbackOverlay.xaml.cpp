@@ -14,6 +14,14 @@ namespace winrt::GhosttyWin32::implementation
     ScrollbackOverlay::ScrollbackOverlay()
     {
         InitializeComponent();
+        // The bar takes pointer input, so it declares its own cursor:
+        // an Arrow, not the terminal's I-beam the composite sets on
+        // itself (a text cursor over a draggable thumb reads wrong —
+        // #170 review). ProtectedCursor resolves from the element
+        // under the pointer upwards, so setting it here overrides the
+        // parent's for this subtree and nothing else.
+        ProtectedCursor(winrt::Microsoft::UI::Input::InputSystemCursor::Create(
+            winrt::Microsoft::UI::Input::InputSystemCursorShape::Arrow));
         auto bar = Bar();
         if (!bar) return;
         auto weakSelf = get_weak();
@@ -35,14 +43,12 @@ namespace winrt::GhosttyWin32::implementation
             if (auto self = weakSelf.get()) {
                 self->m_hovered = true;
                 self->Reveal();
-                if (self->m_onHoverChanged) self->m_onHoverChanged(true);
             }
         });
         bar.PointerExited([weakSelf](auto&&, auto&&) {
             if (auto self = weakSelf.get()) {
                 self->m_hovered = false;
                 self->FadeIfIdle();
-                if (self->m_onHoverChanged) self->m_onHoverChanged(false);
             }
         });
 

@@ -14,6 +14,13 @@ namespace winrt::GhosttyWin32::implementation
     SearchOverlay::SearchOverlay()
     {
         InitializeComponent();
+        // The bar takes pointer input, so it declares its own cursor:
+        // an Arrow over the buttons instead of the terminal's I-beam
+        // the composite sets on itself (#171 review). ProtectedCursor
+        // resolves from the element under the pointer upwards, so
+        // this overrides the parent's for this subtree only.
+        ProtectedCursor(winrt::Microsoft::UI::Input::InputSystemCursor::Create(
+            winrt::Microsoft::UI::Input::InputSystemCursorShape::Arrow));
         auto input = Input();
         if (!input) return;
         auto weakSelf = get_weak();
@@ -65,16 +72,6 @@ namespace winrt::GhosttyWin32::implementation
         input.KeyUp([weakSelf](auto&&, muxi::KeyRoutedEventArgs const& args) {
             if (auto self = weakSelf.get(); self && self->BoxHasFocus())
                 args.Handled(true);
-        });
-
-        auto bar = Bar();
-        bar.PointerEntered([weakSelf](auto&&, auto&&) {
-            if (auto self = weakSelf.get(); self && self->m_onHoverChanged)
-                self->m_onHoverChanged(true);
-        });
-        bar.PointerExited([weakSelf](auto&&, auto&&) {
-            if (auto self = weakSelf.get(); self && self->m_onHoverChanged)
-                self->m_onHoverChanged(false);
         });
 
         NextButton().Click([weakSelf](auto&&, auto&&) {

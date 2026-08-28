@@ -34,10 +34,6 @@ namespace winrt::GhosttyWin32::implementation
 
         void SetOnScrollToRow(std::function<void(uint64_t)> cb) noexcept { m_onScrollToRow = std::move(cb); }
         void SetOnWheel(std::function<void(int)> cb) noexcept { m_onWheel = std::move(cb); }
-        // Pointer entered / left the bar. The composite uses it to
-        // show an Arrow instead of the terminal's I-beam over the
-        // draggable thumb (#170 review).
-        void SetOnHoverChanged(std::function<void(bool)> cb) noexcept { m_onHoverChanged = std::move(cb); }
 
     private:
         void Reveal();
@@ -53,7 +49,6 @@ namespace winrt::GhosttyWin32::implementation
 
         std::function<void(uint64_t)> m_onScrollToRow;
         std::function<void(int)> m_onWheel;
-        std::function<void(bool)> m_onHoverChanged;
     };
 }
 

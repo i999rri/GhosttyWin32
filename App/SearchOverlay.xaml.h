@@ -62,9 +62,6 @@ namespace winrt::GhosttyWin32::implementation
         // so core and host never disagree about whether a search is
         // on.
         void SetOnCloseRequested(std::function<void()> cb) noexcept { m_onCloseRequested = std::move(cb); }
-        // Pointer entered / left the bar (Arrow cursor over the
-        // buttons instead of the terminal's I-beam, #171 review).
-        void SetOnHoverChanged(std::function<void(bool)> cb) noexcept { m_onHoverChanged = std::move(cb); }
 
     private:
         void SendNeedle();
@@ -82,7 +79,6 @@ namespace winrt::GhosttyWin32::implementation
         std::function<void(winrt::hstring const&)> m_onNeedle;
         std::function<void(bool)> m_onNavigate;
         std::function<void()> m_onCloseRequested;
-        std::function<void(bool)> m_onHoverChanged;
     };
 }
 
