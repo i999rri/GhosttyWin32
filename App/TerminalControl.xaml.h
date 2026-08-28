@@ -2,42 +2,53 @@
 
 #include "TerminalControl.g.h"
 #include "SurfaceHost.h"
+#include "PaneStatusOverlay.xaml.h"
+#include "ScrollbackOverlay.xaml.h"
+#include "SearchOverlay.xaml.h"
 #include "Ghostty/Surface.h"
 #include "Host/ISurfaceView.h"
-#include "Interop/Encoding.h"
 #include "ghostty.h"
 #include <functional>
 #include <memory>
-#include <vector>
 
 namespace winrt::GhosttyWin32::implementation
 {
     // The pane's composite: one UserControl whose Grid stacks the
-    // SwapChainPanel a SurfaceHost renders into with the in-tree
-    // overlays layered on top (unfocused dim, opaque underlay, link
-    // banner, status badges, scrollbar, search bar).
+    // SwapChainPanel a SurfaceHost renders into with the overlays
+    // layered on top. Two kinds of children, deliberately unaware of
+    // each other:
+    //
+    //   * SurfaceHost (plain class, owned here) — the ghostty surface
+    //     and everything that feeds it: lifetime, swap chain, pointer
+    //     / keyboard translation, IME, clipboard.
+    //   * PaneStatusOverlay / ScrollbackOverlay / SearchOverlay (XAML
+    //     children) — what the pane shows around the terminal. They
+    //     never touch ghostty; user intent leaves them through
+    //     callbacks this composite wires to the surface.
+    //
+    // What stays on the composite is exactly what needs both sides:
+    //   * XAML focus. Focus() on pointer press, GotFocus / LostFocus
+    //     forwarded to the host, and the "does the terminal own text
+    //     input" gate the host consults — the search box is a sibling
+    //     the host cannot see.
+    //   * ProtectedCursor — one writer composing ghostty's shape, the
+    //     hidden state, and overlay hover.
+    //   * core::host::ISurfaceView — libghostty's surface-targeted
+    //     actions reach this control through the window's
+    //     FindSurfaceView directory and are routed to the child that
+    //     renders them.
+    //   * The two rectangles that are the pane's own skin (opaque
+    //     underlay, unfocused dim).
     //
     // SwapChainPanel inherits from Grid (not Control) and is not a
-    // default tab stop, so SwapChainPanel.Focus() returns false in many
-    // normal contexts. Wrapping it in a UserControl with IsTabStop=true
-    // gives Tab::Focus() a target that programmatic focus moves
-    // actually stick to — same pattern Windows Terminal uses around
-    // its TermControl.
+    // default tab stop, so SwapChainPanel.Focus() returns false in
+    // many normal contexts. Wrapping it in a UserControl with
+    // IsTabStop=true gives Tab::Focus() a target that programmatic
+    // focus moves actually stick to — same pattern Windows Terminal
+    // uses around its TermControl.
     //
-    // Responsibilities kept here, because they need the composite:
-    //   * XAML focus (Focus() on pointer press, GotFocus / LostFocus →
-    //     SurfaceHost) and the "who owns text input" gate the host
-    //     consults (the search box is a sibling the host cannot see).
-    //   * ProtectedCursor — one writer composing ghostty's shape,
-    //     the hidden state, and overlay hover.
-    //   * core::host::ISurfaceView: libghostty's surface-targeted
-    //     actions reach this control directly through the window's
-    //     FindSurfaceView directory and are routed to the host or the
-    //     overlay that renders them.
-    // Surface ownership and lifetime, swap chain binding, input
-    // translation and IME live on SurfaceHost; the public Attach /
-    // Detach / Rehost / Surface() here forward to it so Tab,
-    // TabFactory and MainWindow keep one handle per pane.
+    // The public Attach / Detach / Rehost / Surface() forward to the
+    // host so Tab, TabFactory and MainWindow keep one handle per pane.
     struct TerminalControl : TerminalControlT<TerminalControl>, host::ISurfaceView
     {
         TerminalControl();
@@ -92,68 +103,28 @@ namespace winrt::GhosttyWin32::implementation
         HANDLE CompositionHandle() const noexcept { return m_host->CompositionHandle(); }
 
         // ----- ISurfaceView -----
+        // Cursor is composite state (see ApplyCursor); everything
+        // else is routed to the overlay that renders it.
 
-        // Apply a ghostty-requested mouse cursor shape. UI thread
-        // only. Unrecognised shapes fall back to Arrow. Used both for
-        // the initial IBeam set in the ctor and for live updates as
-        // the pointer moves over/off cells, links, resize borders.
+        // Apply a ghostty-requested mouse cursor shape. Unrecognised
+        // shapes fall back to Arrow. Used both for the initial IBeam
+        // set in the ctor and for live updates as the pointer moves
+        // over/off cells, links, resize borders.
         void SetCursorShape(ghostty_action_mouse_shape_e shape) override;
-
-        // Mirror ghostty's MOUSE_VISIBILITY on this pane: false hides
-        // the pointer (mouse-hide-while-typing), true restores the
-        // last MOUSE_SHAPE. ghostty drives both directions (hide on
-        // keypress, show on pointer move), so this holds no policy —
-        // just the ProtectedCursor mechanics.
+        // Mirror ghostty's MOUSE_VISIBILITY: false hides the pointer
+        // (mouse-hide-while-typing), true restores the last
+        // MOUSE_SHAPE. ghostty drives both directions, so this holds
+        // no policy — just the ProtectedCursor mechanics.
         void SetMouseVisibility(bool visible) override;
 
-        // ----- key-state badge (KEY_SEQUENCE / KEY_TABLE) -----
-        // The pane owns the accumulated state (pending chord labels,
-        // key-table name stack) because the actions only carry
-        // deltas. All UI thread only.
-        void AppendKeySequence(winrt::hstring const& label);
-        void AppendKeySequence(std::wstring label) override {
-            AppendKeySequence(winrt::hstring{ label });
-        }
-        void ClearKeySequence() override;
-        void PushKeyTable(winrt::hstring const& name);
-        void PushKeyTable(std::wstring name) override {
-            PushKeyTable(winrt::hstring{ name });
-        }
-        void PopKeyTable(bool all) override;
-
-        // Show/hide the read-only chip (READONLY action). The write
-        // blocking is core-side; this is indicator only.
+        void SetHoveredLink(std::wstring url) override;
         void SetReadonly(bool readonly) override;
-
-        // Reflect SECURE_INPUT on this pane's badge. ON/OFF set the
-        // state directly; TOGGLE flips it here because the pane owns
-        // the indicator state (ghostty's toggle keybind carries no
-        // absolute value).
         void SetSecureInput(ghostty_action_secure_input_e mode) override;
-
-        // Show the hovered-link banner with `url`, or hide it when
-        // `url` is empty. See the LinkBanner comment in the XAML for
-        // why this is an in-tree overlay and not a popup (#61).
-        void SetHoveredLink(winrt::hstring const& url);
-        void SetHoveredLink(std::wstring url) override {
-            SetHoveredLink(winrt::hstring{ url });
-        }
-
-        // Reflect the SCROLLBAR report on the overlay scrollbar
-        // (#154): total scrollback rows, viewport offset, viewport
-        // length. Collapses the bar when nothing is scrollable,
-        // otherwise reveals it and (re)starts the idle fade.
-        // Core-driven updates are guarded so the bar's ValueChanged
-        // does not echo back into a scroll_to_row (the GTK apprt
-        // blocks its adjustment signals the same way).
+        void AppendKeySequence(std::wstring label) override;
+        void ClearKeySequence() override;
+        void PushKeyTable(std::wstring name) override;
+        void PopKeyTable(bool all) override;
         void SetScrollbar(ghostty_action_scrollbar_s bar) override;
-
-        // ----- search bar -----
-        // ghostty drives open/close and the counts; the pane owns
-        // the input box. Open focuses the box (pre-filled from
-        // search_selection when `needle` is non-empty), close hides
-        // it and returns focus to the terminal. Counts are -1 while
-        // unknown; `selected` is 1-based.
         void StartSearch(std::wstring needle) override;
         void EndSearch() override;
         void SetSearchTotal(ptrdiff_t total) override;
@@ -168,11 +139,8 @@ namespace winrt::GhosttyWin32::implementation
         // behind it (alt-tab away and back while searching).
         bool FocusSearchIfOpen();
         // Whether the search box currently holds keyboard focus. This
-        // — not "the bar is open" — is what gates terminal input: the
-        // bar can stay open while the user clicks back into the
-        // terminal to keep typing (#171 review), and only while the
-        // box actually has focus must keystrokes and IME commits stay
-        // out of the pty. SurfaceHost consults it through its input
+        // — not "the bar is open" — is what gates terminal input
+        // (#171 review); SurfaceHost consults it through its input
         // gate.
         bool SearchBoxHasFocus();
 
@@ -201,6 +169,12 @@ namespace winrt::GhosttyWin32::implementation
         void ApplyFocusVisual(bool focused);
 
     private:
+        // Implementation objects behind the x:Name'd overlay children.
+        // Null only if InitializeComponent failed part-way.
+        PaneStatusOverlay* StatusImpl();
+        ScrollbackOverlay* ScrollbackImpl();
+        SearchOverlay* SearchImpl();
+
         // Owns the surface; see SurfaceHost.h. Created in the ctor
         // against the inner panel, never null afterwards.
         std::shared_ptr<SurfaceHost> m_host;
@@ -212,58 +186,16 @@ namespace winrt::GhosttyWin32::implementation
         double m_unfocusedOpacity = 0.3;
         winrt::Microsoft::UI::Xaml::Media::SolidColorBrush m_unfocusedFillBrush{ nullptr };
 
-        // MOUSE_VISIBILITY state. m_visibleCursor caches the cursor
-        // built by the last SetCursorShape call so a show can restore
-        // it; m_cursorHidden gates shape updates from resurrecting a
-        // hidden cursor. See SetMouseVisibility().
-        bool m_cursorHidden = false;
-        winrt::Microsoft::UI::Input::InputCursor m_visibleCursor{ nullptr };
-        // Single writer for ProtectedCursor: composes the overlay
-        // hover (Arrow), hidden state (blank), and ghostty's shape.
+        // Cursor state. m_visibleCursor caches the cursor built by the
+        // last SetCursorShape call so a show can restore it;
+        // m_cursorHidden gates shape updates from resurrecting a
+        // hidden cursor; m_overlayHovered is set while the pointer is
+        // over an interactive overlay (scrollbar, search bar) so an
+        // Arrow shows instead of the terminal's I-beam.
         void ApplyCursor();
-
-        // SECURE_INPUT indicator state; owned here so TOGGLE can
-        // flip without the dispatcher tracking anything.
-        bool m_secureInput = false;
-
-        // Key-state badge state. Rebuilds the badge text from both
-        // lists on every change — the lists are tiny (a table stack
-        // is 1-2 deep, a chord is 2-3 keys).
-        void UpdateKeyStateBadge();
-        std::vector<winrt::hstring> m_keyTables;
-        std::vector<winrt::hstring> m_keySequence;
-
-        // Scrollbar state (#154). m_scrollbarSyncing is set while
-        // SetScrollbar writes the bar's properties so the resulting
-        // ValueChanged is recognised as an echo and not sent back to
-        // ghostty. m_scrollbarHovered keeps the bar visible while the
-        // pointer is over it; the idle timer fades it otherwise.
-        void SetupScrollbar();
-        void RevealScrollbar();
-        void FadeScrollbarIfIdle();
-        bool m_scrollbarSyncing = false;
-        bool m_scrollbarHovered = false;
-        // Pointer is over an interactive overlay other than the
-        // scrollbar (the search bar); ApplyCursor shows an Arrow.
+        bool m_cursorHidden = false;
         bool m_overlayHovered = false;
-        winrt::Microsoft::UI::Dispatching::DispatcherQueueTimer m_scrollbarFadeTimer{ nullptr };
-
-        // Search bar state. m_searchSyncing guards the programmatic
-        // pre-fill in StartSearch so TextChanged doesn't fire a
-        // redundant search for text ghostty just handed us. The
-        // debounce mirrors the macOS SurfaceView: needles under 3
-        // chars wait 300ms (cheap keystrokes, expensive short-needle
-        // scans); 3+ chars and empty go immediately. m_searchTotal /
-        // m_searchSelected feed the readout.
-        void SetupSearchBar();
-        void SendSearchNeedle();
-        void UpdateSearchCount();
-        void CloseSearchFromUi();
-        bool m_searchOpen = false;
-        bool m_searchSyncing = false;
-        ptrdiff_t m_searchTotal = -1;
-        ptrdiff_t m_searchSelected = -1;
-        winrt::Microsoft::UI::Dispatching::DispatcherQueueTimer m_searchDebounce{ nullptr };
+        winrt::Microsoft::UI::Input::InputCursor m_visibleCursor{ nullptr };
     };
 }
 

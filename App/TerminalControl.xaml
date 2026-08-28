@@ -3,6 +3,7 @@
     x:Class="GhosttyWin32.TerminalControl"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:GhosttyWin32"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
@@ -10,16 +11,14 @@
     AllowFocusOnInteraction="True"
     IsHitTestVisible="True">
     <!--
-      UnfocusedDim is an overlay sibling, hit-test transparent so
-      pointer events still reach the SwapChainPanel underneath. When
-      the control loses focus we show the rectangle filled with the
-      `unfocused-split-fill` color (defaulting to the terminal
-      background) at (1 - `unfocused-split-opacity`) alpha; the
-      underlying surface stays at full brightness, the unfocused
-      pane gets dimmed by the overlay. This mirrors how upstream
-      ghostty (macOS SurfaceView, GTK unfocused-split style) marks
-      the active leaf — the bright pane reads as "active" without
-      the user having to find an explicit border.
+      One pane. The Grid stacks, bottom to top: the opaque underlay,
+      the SwapChainPanel the SurfaceHost renders into, the unfocused
+      dim, then the overlays — each its own UserControl so this file
+      only decides z-order and the composite only decides routing.
+      Every overlay is an in-tree sibling, never a popup (#61): a
+      hit-test-transparent sibling cannot interfere with pointer
+      routing to the panel, and the two that take input (scrollbar,
+      search bar) only intercept inside their own narrow bounds.
     -->
     <Grid>
         <!--
@@ -38,152 +37,24 @@
         <SwapChainPanel x:Name="Panel"
                         IsTabStop="False"
                         AllowFocusOnInteraction="False" />
+        <!--
+          UnfocusedDim is hit-test transparent so pointer events
+          still reach the SwapChainPanel underneath. When the pane is
+          not its tab's active split we show the rectangle filled
+          with the `unfocused-split-fill` color (defaulting to the
+          terminal background) at (1 - `unfocused-split-opacity`)
+          alpha; the underlying surface stays at full brightness, the
+          unfocused pane gets dimmed by the overlay. This mirrors how
+          upstream ghostty (macOS SurfaceView, GTK unfocused-split
+          style) marks the active leaf — the bright pane reads as
+          "active" without the user having to find an explicit
+          border.
+        -->
         <Rectangle x:Name="UnfocusedDim"
                    IsHitTestVisible="False"
                    Visibility="Collapsed" />
-        <!--
-          Hovered-link banner (issue #61). Mirrors upstream's bottom-
-          corner URL display (macOS URLHoverBanner / GTK mouse-hover-url
-          label) instead of a popup: the original Win32 TOPMOST tooltip
-          over the DComp surface crashed the process on URL click, while
-          an in-tree, hit-test-transparent sibling cannot interfere with
-          input routing by construction.
-        -->
-        <!--
-          Secure-input badge (SECURE_INPUT, surface-targeted).
-          ghostty's shell integration turns it on while a password
-          prompt is active; the badge tells the user why their
-          keystrokes deserve extra care. Top-right so it never
-          collides with the LinkBanner in the bottom-left; same
-          in-tree hit-test-transparent overlay pattern.
-        -->
-        <StackPanel Orientation="Horizontal"
-                    Spacing="4"
-                    IsHitTestVisible="False"
-                    HorizontalAlignment="Right"
-                    VerticalAlignment="Top">
-            <!--
-              read-only chip (READONLY, from the toggle_readonly
-              keybind). The write blocking itself happens inside
-              libghostty; without the chip the keyboard just "goes
-              silent" with no explanation — same problem class the
-              key-state badge solves.
-            -->
-            <Border x:Name="ReadonlyBadge"
-                    Visibility="Collapsed"
-                    CornerRadius="0,0,6,6"
-                    Padding="8,4,8,4"
-                    Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}">
-                <TextBlock FontSize="12"
-                           Text="read-only"
-                           Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
-            </Border>
-            <Border x:Name="SecureInputBadge"
-                    Visibility="Collapsed"
-                    CornerRadius="0,0,0,6"
-                    Padding="8,4,8,4"
-                    Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}">
-                <TextBlock FontSize="12"
-                           Text="&#x1F512;"
-                           Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
-            </Border>
-        </StackPanel>
-        <!--
-          Key-state badge (KEY_SEQUENCE / KEY_TABLE). Shows the
-          active key-table stack and/or the pending multi-chord
-          triggers so a user mid-sequence can see why their keys
-          aren't typing. Bottom-right, so all three overlays keep
-          distinct corners (link banner bottom-left, secure input
-          top-right). Same in-tree hit-test-transparent pattern.
-        -->
-        <Border x:Name="KeyStateBadge"
-                IsHitTestVisible="False"
-                Visibility="Collapsed"
-                HorizontalAlignment="Right"
-                VerticalAlignment="Bottom"
-                CornerRadius="6,0,0,0"
-                Padding="8,4,8,4"
-                Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}">
-            <TextBlock x:Name="KeyStateBadgeText"
-                       FontSize="12"
-                       TextTrimming="CharacterEllipsis"
-                       Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
-        </Border>
-        <Border x:Name="LinkBanner"
-                IsHitTestVisible="False"
-                Visibility="Collapsed"
-                HorizontalAlignment="Left"
-                VerticalAlignment="Bottom"
-                CornerRadius="0,6,0,0"
-                Padding="8,4,8,4"
-                Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}">
-            <TextBlock x:Name="LinkBannerText"
-                       FontSize="12"
-                       TextTrimming="CharacterEllipsis"
-                       Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
-        </Border>
-        <!--
-          Scrollback scrollbar (SCROLLBAR action, #154). The GTK
-          apprt's overlay scrollbar is the upstream precedent. Unlike
-          every other overlay here this one is hit-test VISIBLE — it
-          is the first in-tree overlay that takes input (thumb drag,
-          track click). Still in-tree, never a popup (#61): an
-          in-tree sibling only intercepts pointer input inside its own
-          narrow bounds, so the SwapChainPanel keeps everything else.
-          Opacity is driven by code: shown on scroll activity and
-          while hovered, faded when idle, and collapsed entirely when
-          there is no scrollback (viewport == total).
-        -->
-        <!--
-          Search bar (START_SEARCH / END_SEARCH / SEARCH_TOTAL /
-          SEARCH_SELECTED). ghostty owns the matching and the
-          lifecycle; this is the input box and the "3 / 12" readout,
-          talking back through binding actions (search:, navigate_
-          search:, end_search) like the macOS SurfaceView. First
-          overlay that takes KEYBOARD focus — while it is open,
-          keystrokes go to the TextBox, and closing it hands focus
-          back to the terminal. Top-right so it never collides with
-          the status badges below it or the link banner.
-        -->
-        <Border x:Name="SearchBar"
-                Visibility="Collapsed"
-                HorizontalAlignment="Right"
-                VerticalAlignment="Top"
-                Margin="0,0,16,0"
-                CornerRadius="0,0,6,6"
-                Padding="8,6,8,6"
-                Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}">
-            <StackPanel Orientation="Horizontal" Spacing="6">
-                <TextBox x:Name="SearchInput"
-                         MinWidth="200"
-                         PlaceholderText="Search"
-                         IsSpellCheckEnabled="False"
-                         IsTextPredictionEnabled="False" />
-                <TextBlock x:Name="SearchCount"
-                           VerticalAlignment="Center"
-                           MinWidth="48"
-                           TextAlignment="Center"
-                           FontSize="12"
-                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                <Button x:Name="SearchPrev" Padding="6,2,6,2" ToolTipService.ToolTip="Previous (Shift+Enter)">
-                    <FontIcon Glyph="&#xE70E;" FontSize="12" />
-                </Button>
-                <Button x:Name="SearchNext" Padding="6,2,6,2" ToolTipService.ToolTip="Next (Enter)">
-                    <FontIcon Glyph="&#xE70D;" FontSize="12" />
-                </Button>
-                <Button x:Name="SearchClose" Padding="6,2,6,2" ToolTipService.ToolTip="Close (Esc)">
-                    <FontIcon Glyph="&#xE711;" FontSize="12" />
-                </Button>
-            </StackPanel>
-        </Border>
-        <ScrollBar x:Name="ScrollbackBar"
-                   Orientation="Vertical"
-                   IndicatorMode="MouseIndicator"
-                   HorizontalAlignment="Right"
-                   VerticalAlignment="Stretch"
-                   Visibility="Collapsed"
-                   Opacity="0"
-                   Minimum="0"
-                   SmallChange="1" />
+        <local:PaneStatusOverlay x:Name="Status" />
+        <local:SearchOverlay x:Name="Search" />
+        <local:ScrollbackOverlay x:Name="Scrollback" />
     </Grid>
 </UserControl>

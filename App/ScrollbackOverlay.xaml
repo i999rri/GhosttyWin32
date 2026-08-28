@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="GhosttyWin32.ScrollbackOverlay"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    IsTabStop="False"
+    HorizontalAlignment="Right"
+    VerticalAlignment="Stretch">
+    <!--
+      Scrollback scrollbar (SCROLLBAR action, #154). The GTK apprt's
+      overlay scrollbar is the upstream precedent. Unlike the passive
+      status overlays this one is hit-test VISIBLE — it takes input
+      (thumb drag, track click). Still in-tree, never a popup (#61):
+      the control is right-aligned and only as wide as the bar, so
+      it intercepts pointer input inside its own narrow bounds and
+      the SwapChainPanel keeps everything else. Opacity is driven by
+      code: shown on scroll activity and while hovered, faded when
+      idle, and collapsed entirely when there is no scrollback
+      (viewport == total).
+    -->
+    <ScrollBar x:Name="Bar"
+               Orientation="Vertical"
+               IndicatorMode="MouseIndicator"
+               Visibility="Collapsed"
+               Opacity="0"
+               Minimum="0"
+               SmallChange="1" />
+</UserControl>

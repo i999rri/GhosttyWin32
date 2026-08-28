@@ -192,11 +192,23 @@
     <ClInclude Include="TerminalControl.xaml.h">
       <DependentUpon>TerminalControl.xaml</DependentUpon>
     </ClInclude>
+    <ClInclude Include="PaneStatusOverlay.xaml.h">
+      <DependentUpon>PaneStatusOverlay.xaml</DependentUpon>
+    </ClInclude>
+    <ClInclude Include="ScrollbackOverlay.xaml.h">
+      <DependentUpon>ScrollbackOverlay.xaml</DependentUpon>
+    </ClInclude>
+    <ClInclude Include="SearchOverlay.xaml.h">
+      <DependentUpon>SearchOverlay.xaml</DependentUpon>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ApplicationDefinition Include="App.xaml" />
     <Page Include="MainWindow.xaml" />
     <Page Include="TerminalControl.xaml" />
+    <Page Include="PaneStatusOverlay.xaml" />
+    <Page Include="ScrollbackOverlay.xaml" />
+    <Page Include="SearchOverlay.xaml" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">
@@ -218,6 +230,15 @@
     <ClCompile Include="TerminalControl.xaml.cpp">
       <DependentUpon>TerminalControl.xaml</DependentUpon>
     </ClCompile>
+    <ClCompile Include="PaneStatusOverlay.xaml.cpp">
+      <DependentUpon>PaneStatusOverlay.xaml</DependentUpon>
+    </ClCompile>
+    <ClCompile Include="ScrollbackOverlay.xaml.cpp">
+      <DependentUpon>ScrollbackOverlay.xaml</DependentUpon>
+    </ClCompile>
+    <ClCompile Include="SearchOverlay.xaml.cpp">
+      <DependentUpon>SearchOverlay.xaml</DependentUpon>
+    </ClCompile>
     <ClCompile Include="$(GeneratedFilesDir)module.g.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -234,6 +255,18 @@
     <Midl Include="TerminalControl.idl">
       <SubType>Code</SubType>
       <DependentUpon>TerminalControl.xaml</DependentUpon>
+    </Midl>
+    <Midl Include="PaneStatusOverlay.idl">
+      <SubType>Code</SubType>
+      <DependentUpon>PaneStatusOverlay.xaml</DependentUpon>
+    </Midl>
+    <Midl Include="ScrollbackOverlay.idl">
+      <SubType>Code</SubType>
+      <DependentUpon>ScrollbackOverlay.xaml</DependentUpon>
+    </Midl>
+    <Midl Include="SearchOverlay.idl">
+      <SubType>Code</SubType>
+      <DependentUpon>SearchOverlay.xaml</DependentUpon>
     </Midl>
   </ItemGroup>
   <ItemGroup>
