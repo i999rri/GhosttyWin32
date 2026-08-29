@@ -1,10 +1,6 @@
 #pragma once
 
-#if __has_include("Terminal/Overlays/PaneStatusOverlay.g.h")
-#include "Terminal/Overlays/PaneStatusOverlay.g.h"
-#else
 #include "PaneStatusOverlay.g.h"
-#endif
 #include "ghostty.h"
 #include <vector>
 

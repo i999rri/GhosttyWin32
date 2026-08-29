@@ -2,9 +2,7 @@
 #include "Terminal/TerminalControl.xaml.h"
 #include "resource.h"
 #include "Interop/Encoding.h"
-#if __has_include("Terminal/TerminalControl.g.cpp")
-#include "Terminal/TerminalControl.g.cpp"
-#elif __has_include("TerminalControl.g.cpp")
+#if __has_include("TerminalControl.g.cpp")
 #include "TerminalControl.g.cpp"
 #endif
 

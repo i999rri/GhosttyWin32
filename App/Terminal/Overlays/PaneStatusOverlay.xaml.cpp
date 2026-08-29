@@ -1,9 +1,7 @@
 #include "pch.h"
 #include "Terminal/Overlays/PaneStatusOverlay.xaml.h"
 #include <string>
-#if __has_include("Terminal/Overlays/PaneStatusOverlay.g.cpp")
-#include "Terminal/Overlays/PaneStatusOverlay.g.cpp"
-#elif __has_include("PaneStatusOverlay.g.cpp")
+#if __has_include("PaneStatusOverlay.g.cpp")
 #include "PaneStatusOverlay.g.cpp"
 #endif
 

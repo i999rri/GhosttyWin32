@@ -115,7 +115,7 @@
       <WarningLevel>Level4</WarningLevel>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <AdditionalOptions>%(AdditionalOptions) /bigobj /utf-8</AdditionalOptions>
-      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)..\Core;$(ProjectDir)..\external\ghostty\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(GeneratedFilesDir)Terminal;$(GeneratedFilesDir)Terminal\Overlays;$(ProjectDir)..\Core;$(ProjectDir)..\external\ghostty\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <AdditionalLibraryDirectories>$(ProjectDir)..\external\ghostty\zig-out\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
