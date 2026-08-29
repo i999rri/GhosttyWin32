@@ -387,6 +387,14 @@ namespace winrt::GhosttyWin32::implementation
         // RemoveAt → unparent the panel → destroy the Tab, or
         // RequestClose when it was the last tab.
         void TearDownTab(Tab& tab);
+        // Debug-only structural check, run after every operation
+        // that parents or unparents a tab's SplitPanel: the panels
+        // under AppContent must equal the tabs this window owns —
+        // listed in m_tabs plus parked for undo. A miss is an
+        // orphan (the pre-#184 shell-exit leak) or a double
+        // unparent; breaks into the debugger with the offending
+        // path on the stack. No-op in release builds.
+        void AssertPanelInvariant() noexcept;
         // Detach the item from the tab strip and move its Tab into
         // m_parkedTabs. fromRedo keeps the redo history intact (a
         // user-initiated close invalidates it).
