@@ -16,7 +16,7 @@
 #include "Tabs/Tab.h"
 #include "Tabs/TabFactory.h"
 #include "Tabs/Tabs.h"
-#include "WindowCloseGate.h"
+#include "Windows/WindowCloseGate.h"
 
 namespace winrt::GhosttyWin32::implementation
 {

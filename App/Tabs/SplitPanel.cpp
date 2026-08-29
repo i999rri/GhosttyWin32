@@ -1,5 +1,5 @@
 #include "pch.h"
-#include "SplitPanel.h"
+#include "Tabs/SplitPanel.h"
 #if __has_include("SplitPanel.g.cpp")
 #include "SplitPanel.g.cpp"
 #endif

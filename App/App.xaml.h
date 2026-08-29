@@ -2,7 +2,7 @@
 
 #include "App.xaml.g.h"
 #include "Ghostty/App.h"
-#include "MainWindows.h"
+#include "Windows/MainWindows.h"
 #include "Tabs/Panes/PaneIdAllocator.h"
 #include "Tabs/PressedTab.h"
 #include "Tabs/TabDrag.h"
