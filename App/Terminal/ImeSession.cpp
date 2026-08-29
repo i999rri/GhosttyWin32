@@ -35,20 +35,22 @@ namespace winrt::GhosttyWin32::implementation
 
     void ImeSession::EnsureContext()
     {
-        if (m_context) return;
+        if (!m_context) m_context = CreateContext(weak_from_this());
+    }
+
+    txtCore::CoreTextEditContext ImeSession::CreateContext(std::weak_ptr<ImeSession> weak)
+    {
         // CoreTextServicesManager.GetForCurrentView lives at the view
         // (~window) level, but CreateEditContext spins up an
         // independent context — multiple surfaces in the same window
         // each get their own. The OS arbitrates which one receives
         // input via NotifyFocusEnter/Leave, driven by SetEngaged.
         auto manager = txtCore::CoreTextServicesManager::GetForCurrentView();
-        m_context = manager.CreateEditContext();
-        m_context.InputPaneDisplayPolicy(txtCore::CoreTextInputPaneDisplayPolicy::Manual);
-        m_context.InputScope(txtCore::CoreTextInputScope::Default);
+        auto context = manager.CreateEditContext();
+        context.InputPaneDisplayPolicy(txtCore::CoreTextInputPaneDisplayPolicy::Manual);
+        context.InputScope(txtCore::CoreTextInputScope::Default);
 
-        std::weak_ptr<ImeSession> weak = weak_from_this();
-
-        m_context.TextRequested([weak](
+        context.TextRequested([weak](
             txtCore::CoreTextEditContext const&,
             txtCore::CoreTextTextRequestedEventArgs const& args) {
             auto self = weak.lock();
@@ -56,7 +58,7 @@ namespace winrt::GhosttyWin32::implementation
             args.Request().Text(winrt::hstring(self->m_buffer.paddedText()));
         });
 
-        m_context.SelectionRequested([weak](
+        context.SelectionRequested([weak](
             txtCore::CoreTextEditContext const&,
             txtCore::CoreTextSelectionRequestedEventArgs const& args) {
             auto self = weak.lock();
@@ -65,7 +67,7 @@ namespace winrt::GhosttyWin32::implementation
             args.Request().Selection({ pos, pos });
         });
 
-        m_context.TextUpdating([weak](
+        context.TextUpdating([weak](
             txtCore::CoreTextEditContext const&,
             txtCore::CoreTextTextUpdatingEventArgs const& args) {
             auto self = weak.lock();
@@ -79,7 +81,7 @@ namespace winrt::GhosttyWin32::implementation
             }
         });
 
-        m_context.CompositionStarted([weak](
+        context.CompositionStarted([weak](
             txtCore::CoreTextEditContext const&,
             txtCore::CoreTextCompositionStartedEventArgs const&) {
             auto self = weak.lock();
@@ -87,7 +89,7 @@ namespace winrt::GhosttyWin32::implementation
             self->m_buffer.compositionStarted();
         });
 
-        m_context.CompositionCompleted([weak](
+        context.CompositionCompleted([weak](
             txtCore::CoreTextEditContext const&,
             txtCore::CoreTextCompositionCompletedEventArgs const&) {
             auto self = weak.lock();
@@ -98,7 +100,7 @@ namespace winrt::GhosttyWin32::implementation
             self->m_buffer.compositionCompleted();
         });
 
-        m_context.LayoutRequested([weak](
+        context.LayoutRequested([weak](
             txtCore::CoreTextEditContext const&,
             txtCore::CoreTextLayoutRequestedEventArgs const& args) {
             auto self = weak.lock();
@@ -109,7 +111,7 @@ namespace winrt::GhosttyWin32::implementation
             args.Request().LayoutBounds().TextBounds(*bounds);
         });
 
-        m_context.FocusRemoved([weak](
+        context.FocusRemoved([weak](
             txtCore::CoreTextEditContext const&, auto&&) {
             auto self = weak.lock();
             if (!self) return;
@@ -121,6 +123,7 @@ namespace winrt::GhosttyWin32::implementation
                 if (self->m_onPreedit) self->m_onPreedit(std::string{});
             }
         });
+        return context;
     }
 
     void ImeSession::SetEngaged(bool engaged)

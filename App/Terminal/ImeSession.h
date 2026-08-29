@@ -74,6 +74,11 @@ namespace winrt::GhosttyWin32::implementation
     private:
         explicit ImeSession(Microsoft::UI::Xaml::FrameworkElement element) noexcept
             : m_element(std::move(element)) {}
+        // Builds a context with all seven handlers bound to `weak`.
+        // A function of its input: it touches no member, so
+        // EnsureContext is just "if none, take one".
+        static winrt::Windows::UI::Text::Core::CoreTextEditContext
+        CreateContext(std::weak_ptr<ImeSession> weak);
         void EnsureContext();
         void ApplyEngagement();
 
