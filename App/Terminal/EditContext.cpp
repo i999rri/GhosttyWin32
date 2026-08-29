@@ -25,12 +25,6 @@ namespace winrt::GhosttyWin32::implementation
         ApplyEngagement();
     }
 
-    void EditContext::SetHandlers(Handlers handlers)
-    {
-        m_handlers = std::move(handlers);
-        if (HasContext()) BindHandlers();
-    }
-
     void EditContext::Release()
     {
         if (!HasContext()) return;
@@ -79,10 +73,11 @@ namespace winrt::GhosttyWin32::implementation
 
     void EditContext::BindHandlers()
     {
-        // auto_revoke: each revoker drops its subscription when
-        // reassigned (a second SetHandlers) or on Release, so a
-        // handler can capture `this` — nothing fires after this
-        // object lets go of the context.
+        // auto_revoke: each revoker drops its subscription on Release,
+        // so a handler can capture `this` — nothing fires after this
+        // object lets go of the context. The subscriptions read the
+        // current SetOn… handler at fire time, so setting one later
+        // needs no rebind.
         m_textRequested = m_context.TextRequested(winrt::auto_revoke, [this](
             txtCore::CoreTextEditContext const&,
             txtCore::CoreTextTextRequestedEventArgs const& args) {

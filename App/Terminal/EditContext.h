@@ -19,41 +19,32 @@ namespace winrt::GhosttyWin32::implementation
     //   what it does      registers this element as a text field with
     //                     the text-services manager
     //   what you can do   SetEngaged — make it (or stop it being) the
-    //                     context the OS routes input to; SetHandlers
-    //                     — say what happens on each of the seven
+    //                     context the OS routes input to; SetOn… —
+    //                     say what happens on each of the seven
     //                     events; Release — drop it
-    //   what can happen   the seven events in Handlers, on the UI
-    //                     thread, only while a context exists
+    //   what can happen   the seven SetOn… events, on the UI thread,
+    //                     only while a context exists
     //
     // Timing is owned here too: a context can only register once its
     // element is in the live visual tree (one made earlier silently
     // fails — the "first tab can't toggle 半角/全角" bug), so the
     // wrapper waits for Loaded and creates it then. Anything asked
-    // before that (SetEngaged, SetHandlers) is remembered and applied
-    // on creation. A reparent's second Loaded is a no-op.
+    // before that (SetEngaged, SetOn…) is remembered and applied on
+    // creation. A reparent's second Loaded is a no-op.
     //
     // UI thread only. Event handlers are revoked on Release and in the
     // destructor, so they never fire into a dead owner.
     class EditContext
     {
     public:
-        struct Handlers
-        {
-            // The OS wants the field's full text (padded composition
-            // buffer).
-            std::function<winrt::hstring()> textRequested;
-            // The OS wants the caret position within that text.
-            std::function<int32_t()> selectionRequested;
-            // The OS replaced [start, end) with `text`.
-            std::function<void(int32_t start, int32_t end, winrt::hstring const& text)> textUpdating;
-            std::function<void()> compositionStarted;
-            std::function<void()> compositionCompleted;
-            // Where to anchor the candidate window, in screen
-            // coordinates; nullopt = unknown, leave it where it is.
-            std::function<std::optional<winrt::Windows::Foundation::Rect>()> layoutRequested;
-            // The OS moved input elsewhere mid-composition.
-            std::function<void()> focusRemoved;
-        };
+        using TextRequestedHandler = std::function<winrt::hstring()>;
+        using SelectionRequestedHandler = std::function<int32_t()>;
+        using TextUpdatingHandler =
+            std::function<void(int32_t start, int32_t end, winrt::hstring const& text)>;
+        using CompositionHandler = std::function<void()>;
+        using LayoutRequestedHandler =
+            std::function<std::optional<winrt::Windows::Foundation::Rect>()>;
+        using FocusRemovedHandler = std::function<void()>;
 
         explicit EditContext(Microsoft::UI::Xaml::FrameworkElement element);
         ~EditContext();
@@ -71,9 +62,26 @@ namespace winrt::GhosttyWin32::implementation
         // What the OS has actually been told.
         bool IsEngaged() const noexcept { return m_engaged; }
 
-        // Bound to the context now if it exists, otherwise when it is
-        // created. Replaces any earlier set.
-        void SetHandlers(Handlers handlers);
+        // What can happen. Each takes effect at once — the subscription
+        // on the WinRT context is made when the context is created and
+        // reads the current handler at fire time; an empty function
+        // means "not interested". ClearHandlers drops all seven.
+        //
+        // The OS wants the field's full text (padded composition
+        // buffer).
+        void SetOnTextRequested(TextRequestedHandler h) noexcept { m_handlers.textRequested = std::move(h); }
+        // The OS wants the caret position within that text.
+        void SetOnSelectionRequested(SelectionRequestedHandler h) noexcept { m_handlers.selectionRequested = std::move(h); }
+        // The OS replaced [start, end) with `text`.
+        void SetOnTextUpdating(TextUpdatingHandler h) noexcept { m_handlers.textUpdating = std::move(h); }
+        void SetOnCompositionStarted(CompositionHandler h) noexcept { m_handlers.compositionStarted = std::move(h); }
+        void SetOnCompositionCompleted(CompositionHandler h) noexcept { m_handlers.compositionCompleted = std::move(h); }
+        // Where to anchor the candidate window, in screen coordinates;
+        // nullopt = unknown, leave it where it is.
+        void SetOnLayoutRequested(LayoutRequestedHandler h) noexcept { m_handlers.layoutRequested = std::move(h); }
+        // The OS moved input elsewhere mid-composition.
+        void SetOnFocusRemoved(FocusRemovedHandler h) noexcept { m_handlers.focusRemoved = std::move(h); }
+        void ClearHandlers() noexcept { m_handlers = {}; }
 
         // Drop the context, releasing OS focus if this one holds it.
         // Handlers and the engagement wish are kept; a later Loaded
@@ -82,6 +90,17 @@ namespace winrt::GhosttyWin32::implementation
 
     private:
         using Context = winrt::Windows::UI::Text::Core::CoreTextEditContext;
+
+        struct Handlers
+        {
+            TextRequestedHandler textRequested;
+            SelectionRequestedHandler selectionRequested;
+            TextUpdatingHandler textUpdating;
+            CompositionHandler compositionStarted;
+            CompositionHandler compositionCompleted;
+            LayoutRequestedHandler layoutRequested;
+            FocusRemovedHandler focusRemoved;
+        };
 
         void OnLoaded();
         void BindHandlers();
