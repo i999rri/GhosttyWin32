@@ -1399,6 +1399,21 @@ namespace winrt::GhosttyWin32::implementation
             // the panel leaks as an orphan child.
             RemoveTabPanelFromAppContent(tab);
             m_tabs.Remove(item);
+#if defined(_DEBUG)
+            // Leak check for the orphan-panel bug this path used to
+            // have: after a teardown the live SplitPanels under
+            // AppContent must equal the tabs still in m_tabs.
+            {
+                unsigned panels = 0;
+                for (auto const& child : AppContent().Children()) {
+                    if (child.try_as<winrt::GhosttyWin32::SplitPanel>()) ++panels;
+                }
+                wchar_t buf[96];
+                swprintf_s(buf, L"TearDownTab: tabs=%u panels=%u\n",
+                           static_cast<unsigned>(m_tabs.Size()), panels);
+                OutputDebugStringW(buf);
+            }
+#endif
         }
     }
 
