@@ -1,8 +1,10 @@
 #include "pch.h"
-#include "SearchOverlay.xaml.h"
+#include "Terminal/Overlays/SearchOverlay.xaml.h"
 #include <winrt/Windows.System.h>
 #include <chrono>
-#if __has_include("SearchOverlay.g.cpp")
+#if __has_include("Terminal/Overlays/SearchOverlay.g.cpp")
+#include "Terminal/Overlays/SearchOverlay.g.cpp"
+#elif __has_include("SearchOverlay.g.cpp")
 #include "SearchOverlay.g.cpp"
 #endif
 

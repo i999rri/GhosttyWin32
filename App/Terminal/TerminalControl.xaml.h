@@ -1,10 +1,14 @@
 #pragma once
 
+#if __has_include("Terminal/TerminalControl.g.h")
+#include "Terminal/TerminalControl.g.h"
+#else
 #include "TerminalControl.g.h"
-#include "SurfaceHost.h"
-#include "PaneStatusOverlay.xaml.h"
-#include "ScrollbackOverlay.xaml.h"
-#include "SearchOverlay.xaml.h"
+#endif
+#include "Terminal/SurfaceHost.h"
+#include "Terminal/Overlays/PaneStatusOverlay.xaml.h"
+#include "Terminal/Overlays/ScrollbackOverlay.xaml.h"
+#include "Terminal/Overlays/SearchOverlay.xaml.h"
 #include "Ghostty/Surface.h"
 #include "Host/ISurfaceView.h"
 #include "ghostty.h"

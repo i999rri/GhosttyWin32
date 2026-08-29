@@ -1,6 +1,10 @@
 #pragma once
 
+#if __has_include("Terminal/Overlays/ScrollbackOverlay.g.h")
+#include "Terminal/Overlays/ScrollbackOverlay.g.h"
+#else
 #include "ScrollbackOverlay.g.h"
+#endif
 #include "ghostty.h"
 #include <cstdint>
 #include <functional>

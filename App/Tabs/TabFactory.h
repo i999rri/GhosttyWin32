@@ -7,7 +7,7 @@
 #include "Tabs/Panes/PaneIdAllocator.h"
 #include "SplitPanel.h"
 #include "Tabs/Tab.h"
-#include "TerminalControl.xaml.h"
+#include "Terminal/TerminalControl.xaml.h"
 #include "ghostty.h"
 #include <microsoft.ui.xaml.media.dxinterop.h>
 #include <dcomp.h>

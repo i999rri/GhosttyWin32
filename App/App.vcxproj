@@ -170,7 +170,7 @@
     </ClInclude>
     <ClInclude Include="MainWindows.h" />
     <ClInclude Include="SplitPanel.h" />
-    <ClInclude Include="SurfaceHost.h" />
+    <ClInclude Include="Terminal\SurfaceHost.h" />
     <ClInclude Include="Tabs\ParkedTabs.h" />
     <ClInclude Include="TransparentBackdrop.h" />
     <ClInclude Include="WindowCloseGate.h" />
@@ -189,26 +189,26 @@
     <ClInclude Include="Ghostty\MainWindowRuntime.h" />
     <ClInclude Include="Input\TerminalKeyDown.h" />
     <ClInclude Include="Input\TerminalKeyUp.h" />
-    <ClInclude Include="TerminalControl.xaml.h">
+    <ClInclude Include="Terminal\TerminalControl.xaml.h">
       <DependentUpon>TerminalControl.xaml</DependentUpon>
     </ClInclude>
-    <ClInclude Include="PaneStatusOverlay.xaml.h">
+    <ClInclude Include="Terminal\Overlays\PaneStatusOverlay.xaml.h">
       <DependentUpon>PaneStatusOverlay.xaml</DependentUpon>
     </ClInclude>
-    <ClInclude Include="ScrollbackOverlay.xaml.h">
+    <ClInclude Include="Terminal\Overlays\ScrollbackOverlay.xaml.h">
       <DependentUpon>ScrollbackOverlay.xaml</DependentUpon>
     </ClInclude>
-    <ClInclude Include="SearchOverlay.xaml.h">
+    <ClInclude Include="Terminal\Overlays\SearchOverlay.xaml.h">
       <DependentUpon>SearchOverlay.xaml</DependentUpon>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ApplicationDefinition Include="App.xaml" />
     <Page Include="MainWindow.xaml" />
-    <Page Include="TerminalControl.xaml" />
-    <Page Include="PaneStatusOverlay.xaml" />
-    <Page Include="ScrollbackOverlay.xaml" />
-    <Page Include="SearchOverlay.xaml" />
+    <Page Include="Terminal\TerminalControl.xaml" />
+    <Page Include="Terminal\Overlays\PaneStatusOverlay.xaml" />
+    <Page Include="Terminal\Overlays\ScrollbackOverlay.xaml" />
+    <Page Include="Terminal\Overlays\SearchOverlay.xaml" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">
@@ -224,19 +224,19 @@
     <ClCompile Include="MainWindows.cpp" />
     <ClCompile Include="Ghostty\MainWindowRuntime.cpp" />
     <ClCompile Include="SplitPanel.cpp" />
-    <ClCompile Include="SurfaceHost.cpp" />
+    <ClCompile Include="Terminal\SurfaceHost.cpp" />
     <ClCompile Include="TransparentBackdrop.cpp" />
     <ClCompile Include="WindowCloseGate.cpp" />
-    <ClCompile Include="TerminalControl.xaml.cpp">
+    <ClCompile Include="Terminal\TerminalControl.xaml.cpp">
       <DependentUpon>TerminalControl.xaml</DependentUpon>
     </ClCompile>
-    <ClCompile Include="PaneStatusOverlay.xaml.cpp">
+    <ClCompile Include="Terminal\Overlays\PaneStatusOverlay.xaml.cpp">
       <DependentUpon>PaneStatusOverlay.xaml</DependentUpon>
     </ClCompile>
-    <ClCompile Include="ScrollbackOverlay.xaml.cpp">
+    <ClCompile Include="Terminal\Overlays\ScrollbackOverlay.xaml.cpp">
       <DependentUpon>ScrollbackOverlay.xaml</DependentUpon>
     </ClCompile>
-    <ClCompile Include="SearchOverlay.xaml.cpp">
+    <ClCompile Include="Terminal\Overlays\SearchOverlay.xaml.cpp">
       <DependentUpon>SearchOverlay.xaml</DependentUpon>
     </ClCompile>
     <ClCompile Include="$(GeneratedFilesDir)module.g.cpp" />
@@ -252,19 +252,19 @@
     <Midl Include="TransparentBackdrop.idl">
       <SubType>Code</SubType>
     </Midl>
-    <Midl Include="TerminalControl.idl">
+    <Midl Include="Terminal\TerminalControl.idl">
       <SubType>Code</SubType>
       <DependentUpon>TerminalControl.xaml</DependentUpon>
     </Midl>
-    <Midl Include="PaneStatusOverlay.idl">
+    <Midl Include="Terminal\Overlays\PaneStatusOverlay.idl">
       <SubType>Code</SubType>
       <DependentUpon>PaneStatusOverlay.xaml</DependentUpon>
     </Midl>
-    <Midl Include="ScrollbackOverlay.idl">
+    <Midl Include="Terminal\Overlays\ScrollbackOverlay.idl">
       <SubType>Code</SubType>
       <DependentUpon>ScrollbackOverlay.xaml</DependentUpon>
     </Midl>
-    <Midl Include="SearchOverlay.idl">
+    <Midl Include="Terminal\Overlays\SearchOverlay.idl">
       <SubType>Code</SubType>
       <DependentUpon>SearchOverlay.xaml</DependentUpon>
     </Midl>

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Tabs/Panes/PaneId.h"
-#include "TerminalControl.xaml.h"
+#include "Terminal/TerminalControl.xaml.h"
 #include <winrt/Microsoft.UI.Xaml.h>
 
 namespace winrt::GhosttyWin32::implementation {

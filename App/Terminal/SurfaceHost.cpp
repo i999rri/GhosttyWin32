@@ -1,5 +1,5 @@
 #include "pch.h"
-#include "SurfaceHost.h"
+#include "Terminal/SurfaceHost.h"
 #include "Interop/Encoding.h"
 #include "Host/KeyModifiers.h"
 #include "Input/KeyEventTranslator.h"

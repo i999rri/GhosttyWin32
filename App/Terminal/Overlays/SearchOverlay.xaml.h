@@ -1,6 +1,10 @@
 #pragma once
 
+#if __has_include("Terminal/Overlays/SearchOverlay.g.h")
+#include "Terminal/Overlays/SearchOverlay.g.h"
+#else
 #include "SearchOverlay.g.h"
+#endif
 #include <cstddef>
 #include <functional>
 

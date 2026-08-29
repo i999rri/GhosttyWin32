@@ -1,9 +1,11 @@
 #include "pch.h"
-#include "ScrollbackOverlay.xaml.h"
+#include "Terminal/Overlays/ScrollbackOverlay.xaml.h"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
-#if __has_include("ScrollbackOverlay.g.cpp")
+#if __has_include("Terminal/Overlays/ScrollbackOverlay.g.cpp")
+#include "Terminal/Overlays/ScrollbackOverlay.g.cpp"
+#elif __has_include("ScrollbackOverlay.g.cpp")
 #include "ScrollbackOverlay.g.cpp"
 #endif
 
