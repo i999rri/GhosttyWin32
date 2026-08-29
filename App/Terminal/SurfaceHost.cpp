@@ -163,15 +163,15 @@ namespace winrt::GhosttyWin32::implementation
 
     // ----- focus / IME -----
 
-    void SurfaceHost::SyncImeEngagement(bool focused)
-    {
-        if (TerminalReceivesText(focused)) m_editContext.Engage();
-        else                               m_editContext.Disengage();
-    }
-
     void SurfaceHost::OnFocusGained()
     {
-        SyncImeEngagement(true);
+        // Focus is somewhere in this pane. If the terminal is what
+        // receives text, this context becomes the field the OS types
+        // into; if an overlay (the search box) holds the keyboard, it
+        // must not — its text would be routed through the terminal's
+        // IME path into the pty (#171).
+        if (TerminalOwnsInput()) m_editContext.Engage();
+        else                     m_editContext.Disengage();
         // Surface-level focus event for the window. Mirrors the
         // upstream getActiveSurface pattern (#62): the window uses
         // this to retarget the tab's active pane without the host
@@ -188,18 +188,24 @@ namespace winrt::GhosttyWin32::implementation
 
     void SurfaceHost::OnFocusLost()
     {
-        SyncImeEngagement(false);
+        // Focus left this pane entirely.
+        m_editContext.Disengage();
         m_surface.SetFocus(false);
     }
 
     void SurfaceHost::NotifyImeFocusEnter()
     {
-        SyncImeEngagement(true);
+        // The window came to the front with this pane active. Same
+        // rule as OnFocusGained: only if the terminal, not an
+        // overlay, is what receives text.
+        if (TerminalOwnsInput()) m_editContext.Engage();
+        else                     m_editContext.Disengage();
     }
 
     void SurfaceHost::NotifyImeFocusLeave()
     {
-        SyncImeEngagement(false);
+        // The window went behind another.
+        m_editContext.Disengage();
     }
 
     void SurfaceHost::WireIme()
@@ -222,7 +228,7 @@ namespace winrt::GhosttyWin32::implementation
             self->m_surface.Preedit(nullptr, 0);
             // A composition committed while a sibling overlay owns
             // text input must not land in the pty (see
-            // SyncImeEngagement).
+            // OnFocusGained).
             if (!utf8.empty() && self->TerminalOwnsInput()) {
                 self->m_surface.Text(utf8.c_str(), utf8.size());
             }

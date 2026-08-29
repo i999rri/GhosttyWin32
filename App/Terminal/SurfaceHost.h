@@ -157,16 +157,21 @@ namespace winrt::GhosttyWin32::implementation
             m_terminalOwnsInput = std::move(terminalOwnsInput);
         }
 
-        // XAML GotFocus / LostFocus on the composite. GotFocus syncs
-        // the EditContext, notifies the window, and tells ghostty this
-        // surface is focused so the losing pane's renderer drops to
-        // the slow cadence.
+        // XAML GotFocus / LostFocus on the composite. GotFocus also
+        // fires when an overlay inside the composite (the search box)
+        // takes focus, because the event bubbles — so "gained" means
+        // "focus is somewhere in this pane", and whether the terminal
+        // itself receives text is decided by TerminalOwnsInput.
+        // Gained additionally notifies the window and tells ghostty
+        // this surface is focused so the losing pane's renderer drops
+        // to the slow cadence.
         void OnFocusGained();
         void OnFocusLost();
 
         // Window-activation boundary: XAML's focus events do not fire
-        // on alt-tab, so the window pings the active control. Both
-        // only sync the EditContext.
+        // on alt-tab (logical focus stays on the element), so the
+        // window tells its active pane when it comes to the front or
+        // goes behind. Engagement only.
         void NotifyImeFocusEnter();
         void NotifyImeFocusLeave();
 
@@ -209,20 +214,6 @@ namespace winrt::GhosttyWin32::implementation
         bool TerminalOwnsInput() const {
             return !m_terminalOwnsInput || m_terminalOwnsInput();
         }
-        // The state that decides IME engagement: typed text reaches
-        // the terminal only while the composite has keyboard focus
-        // (`focused`, reported by the caller — XAML focus or window
-        // activation) and no sibling overlay holds the keyboard
-        // (TerminalOwnsInput). A search box with focus must not have
-        // its text routed through the terminal's IME path (#171).
-        bool TerminalReceivesText(bool focused) const {
-            return focused && TerminalOwnsInput();
-        }
-        // The one place the edit context is engaged or disengaged,
-        // from TerminalReceivesText. Every focus transition funnels
-        // here (GotFocus / LostFocus, window activate / deactivate),
-        // so a new overlay never needs its own IME guard.
-        void SyncImeEngagement(bool focused);
         void CopySelectionToClipboard();
         void Tick();
 
