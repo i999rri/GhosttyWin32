@@ -9,36 +9,38 @@ namespace winrt::GhosttyWin32::implementation
     ImeSession::ImeSession(EditContext& context)
         : m_context(context)
     {
-        m_context.SetOnTextRequested([this]() {
-            return winrt::hstring(m_buffer.paddedText());
-        });
-        m_context.SetOnSelectionRequested([this]() {
-            return m_buffer.selectionPosition();
-        });
-        m_context.SetOnTextUpdating([this](int32_t start, int32_t end, winrt::hstring const& text) {
-            m_buffer.applyTextUpdate(start, end, text.c_str(), text.size());
-            if (m_buffer.composing() && m_onPreedit) {
-                m_onPreedit(interop::Encoding::toUtf8(m_buffer.text()));
-            }
-        });
-        m_context.SetOnCompositionStarted([this]() {
-            m_buffer.compositionStarted();
-        });
-        m_context.SetOnCompositionCompleted([this]() {
-            if (m_onCommit) m_onCommit(interop::Encoding::toUtf8(m_buffer.text()));
-            m_buffer.compositionCompleted();
-        });
-        m_context.SetOnLayoutRequested([this]() -> std::optional<winrt::Windows::Foundation::Rect> {
-            return m_caretRect ? m_caretRect() : std::nullopt;
-        });
-        m_context.SetOnFocusRemoved([this]() {
-            // The OS took input away mid-composition: drop the
-            // half-typed text rather than leave a stale preedit on
-            // screen.
-            if (m_buffer.composing()) {
-                m_buffer.reset();
-                if (m_onPreedit) m_onPreedit(std::string{});
-            }
+        m_context.SetHandlers({
+            .textRequested = [this]() {
+                return winrt::hstring(m_buffer.paddedText());
+            },
+            .selectionRequested = [this]() {
+                return m_buffer.selectionPosition();
+            },
+            .textUpdating = [this](int32_t start, int32_t end, winrt::hstring const& text) {
+                m_buffer.applyTextUpdate(start, end, text.c_str(), text.size());
+                if (m_buffer.composing() && m_onPreedit) {
+                    m_onPreedit(interop::Encoding::toUtf8(m_buffer.text()));
+                }
+            },
+            .compositionStarted = [this]() {
+                m_buffer.compositionStarted();
+            },
+            .compositionCompleted = [this]() {
+                if (m_onCommit) m_onCommit(interop::Encoding::toUtf8(m_buffer.text()));
+                m_buffer.compositionCompleted();
+            },
+            .layoutRequested = [this]() -> std::optional<winrt::Windows::Foundation::Rect> {
+                return m_caretRect ? m_caretRect() : std::nullopt;
+            },
+            .focusRemoved = [this]() {
+                // The OS took input away mid-composition: drop the
+                // half-typed text rather than leave a stale preedit on
+                // screen.
+                if (m_buffer.composing()) {
+                    m_buffer.reset();
+                    if (m_onPreedit) m_onPreedit(std::string{});
+                }
+            },
         });
     }
 
@@ -46,6 +48,6 @@ namespace winrt::GhosttyWin32::implementation
     {
         // Handlers capture `this`; take them off before this object
         // is gone (the EditContext may outlive us by a moment).
-        m_context.ClearHandlers();
+        m_context.SetHandlers({});
     }
 }
