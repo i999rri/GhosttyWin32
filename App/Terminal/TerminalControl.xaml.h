@@ -5,11 +5,13 @@
 #include "Terminal/Overlays/PaneStatusOverlay.xaml.h"
 #include "Terminal/Overlays/ScrollbackOverlay.xaml.h"
 #include "Terminal/Overlays/SearchOverlay.xaml.h"
+#include "Terminal/Overlays/IKeyboardOverlay.h"
 #include "Ghostty/Surface.h"
 #include "Host/ISurfaceView.h"
 #include "ghostty.h"
 #include <functional>
 #include <memory>
+#include <vector>
 
 namespace winrt::GhosttyWin32::implementation
 {
@@ -28,11 +30,11 @@ namespace winrt::GhosttyWin32::implementation
     //
     // What stays on the composite is exactly what needs both sides:
     //   * XAML focus. Focus() on pointer press, GotFocus / LostFocus
-    //     forwarded to the host, and keyboard ownership: which child
-    //     has the keyboard right now. FocusedOverlay() is the single
-    //     enumeration of overlays that can take focus, and the host's
-    //     input gate is answered from it — the host itself cannot see
-    //     its siblings.
+    //     forwarded to the host, and keyboard ownership: the list of
+    //     overlays that can take the keyboard (m_keyboardOverlays)
+    //     and the predicate over it (TerminalOwnsInput) that answers
+    //     the host's input gate — the host itself cannot see its
+    //     siblings.
     //   * ProtectedCursor — one writer composing ghostty's shape and
     //     the hidden state. (Overlays that take input declare their
     //     own Arrow; the composite does not track hover.)
@@ -173,16 +175,15 @@ namespace winrt::GhosttyWin32::implementation
         ScrollbackOverlay* ScrollbackImpl();
         SearchOverlay* SearchImpl();
 
-        // Keyboard ownership. FocusedOverlay() returns the overlay
-        // that currently holds keyboard focus, or null when the
-        // terminal does — the one place focus-taking overlays are
-        // enumerated. Gating on focus rather than on "the bar is
-        // open" lets the user click back into the terminal and keep
-        // typing with the search bar up (#171 review). A future
-        // overlay that takes focus joins this function and inherits
-        // every guard the host derives from it.
-        Microsoft::UI::Xaml::UIElement FocusedOverlay();
-        bool TerminalOwnsInput() { return FocusedOverlay() == nullptr; }
+        // Keyboard ownership, split into the data and the judgement.
+        // m_keyboardOverlays is the one list of overlays that can
+        // take the keyboard (filled once in the ctor; a new overlay
+        // is one more entry). TerminalOwnsInput() is the predicate
+        // over it — true while none of them holds focus — and is
+        // what the host's input gate asks. Borrowed pointers into
+        // children this control owns, so they live as long as it.
+        std::vector<IKeyboardOverlay*> m_keyboardOverlays;
+        bool TerminalOwnsInput() const;
 
         // Owns the surface; see SurfaceHost.h. Created in the ctor
         // against the inner panel, never null afterwards.

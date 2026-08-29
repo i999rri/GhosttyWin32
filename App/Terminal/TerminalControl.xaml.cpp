@@ -2,6 +2,7 @@
 #include "Terminal/TerminalControl.xaml.h"
 #include "resource.h"
 #include "Interop/Encoding.h"
+#include <algorithm>
 #if __has_include("TerminalControl.g.cpp")
 #include "TerminalControl.g.cpp"
 #endif
@@ -14,6 +15,9 @@ namespace winrt::GhosttyWin32::implementation
     {
         InitializeComponent();
         m_host = std::make_shared<SurfaceHost>(Panel());
+        // The overlays that can take the keyboard. Only ever appended
+        // to; the host's gate below is the only reader.
+        if (auto* se = SearchImpl()) m_keyboardOverlays.push_back(se);
 
         // Every handler below captures a weak_ref instead of `this`.
         // XAML can route a final pointer event during window/control
@@ -345,10 +349,10 @@ namespace winrt::GhosttyWin32::implementation
         if (auto* se = SearchImpl()) se->SetSelected(selected);
     }
 
-    Microsoft::UI::Xaml::UIElement TerminalControl::FocusedOverlay()
+    bool TerminalControl::TerminalOwnsInput() const
     {
-        if (auto* se = SearchImpl(); se && se->BoxHasFocus()) return Search();
-        return nullptr;
+        return std::none_of(m_keyboardOverlays.begin(), m_keyboardOverlays.end(),
+                            [](IKeyboardOverlay* o) { return o->HoldsKeyboardFocus(); });
     }
 
     bool TerminalControl::FocusSearchIfOpen()
