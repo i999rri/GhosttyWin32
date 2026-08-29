@@ -57,6 +57,9 @@
     <ClInclude Include="Host\IWindow.h">
       <Filter>Host</Filter>
     </ClInclude>
+    <ClInclude Include="Host\EngagementState.h">
+      <Filter>Host</Filter>
+    </ClInclude>
     <ClInclude Include="Host\ImeBuffer.h">
       <Filter>Host</Filter>
     </ClInclude>

@@ -4,6 +4,7 @@
 namespace winrt::GhosttyWin32::implementation
 {
     namespace txtCore = winrt::Windows::UI::Text::Core;
+    using Action = core::host::EngagementState::Action;
 
     EditContext::EditContext(Microsoft::UI::Xaml::FrameworkElement element)
         : m_element(std::move(element))
@@ -19,12 +20,6 @@ namespace winrt::GhosttyWin32::implementation
         }
     }
 
-    void EditContext::SetEngaged(bool engaged)
-    {
-        m_wantEngaged = engaged;
-        ApplyEngagement();
-    }
-
     void EditContext::Release()
     {
         if (!HasContext()) return;
@@ -32,10 +27,7 @@ namespace winrt::GhosttyWin32::implementation
         // routes input to, say so before dropping it, or the
         // text-services manager keeps a stale focus pointer until GC
         // catches up.
-        if (m_engaged) {
-            m_context.NotifyFocusLeave();
-            m_engaged = false;
-        }
+        Perform(m_engagement.ContextReleased());
         m_textRequested.revoke();
         m_selectionRequested.revoke();
         m_textUpdating.revoke();
@@ -59,16 +51,16 @@ namespace winrt::GhosttyWin32::implementation
         m_context.InputPaneDisplayPolicy(txtCore::CoreTextInputPaneDisplayPolicy::Manual);
         m_context.InputScope(txtCore::CoreTextInputScope::Default);
         BindHandlers();
-        ApplyEngagement();
+        Perform(m_engagement.ContextCreated());
     }
 
-    void EditContext::ApplyEngagement()
+    void EditContext::Perform(Action action)
     {
-        if (!HasContext()) return;  // remembered; applied on creation
-        if (m_wantEngaged == m_engaged) return;
-        if (m_wantEngaged) m_context.NotifyFocusEnter();
-        else               m_context.NotifyFocusLeave();
-        m_engaged = m_wantEngaged;
+        switch (action) {
+            case Action::Enter: m_context.NotifyFocusEnter(); break;
+            case Action::Leave: m_context.NotifyFocusLeave(); break;
+            case Action::None:  break;
+        }
     }
 
     void EditContext::BindHandlers()

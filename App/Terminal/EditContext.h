@@ -1,12 +1,9 @@
 #pragma once
 
+#include "Host/EngagementState.h"
+#include "Terminal/EditContextHandlers.h"
 #include <winrt/Microsoft.UI.Xaml.h>
-#include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.UI.Text.Core.h>
-#include <cstdint>
-#include <functional>
-#include <optional>
-#include <string>
 
 namespace winrt::GhosttyWin32::implementation
 {
@@ -23,8 +20,8 @@ namespace winrt::GhosttyWin32::implementation
     //                     SetHandlers — say what happens on each of
     //                     the seven events, as one unit; Release —
     //                     drop it
-    //   what can happen   the seven events in Handlers, on the UI
-    //                     thread, only while a context exists
+    //   what can happen   the seven events in EditContextHandlers, on
+    //                     the UI thread, only while a context exists
     //
     // Timing is owned here too: a context can only register once its
     // element is in the live visual tree (one made earlier silently
@@ -33,45 +30,18 @@ namespace winrt::GhosttyWin32::implementation
     // before that (Engage / Disengage, SetHandlers) is remembered and
     // applied on creation. A reparent's second Loaded is a no-op.
     //
+    // The engagement rules live in core::host::EngagementState (pure,
+    // unit-tested); this class only carries out the action it returns.
+    //
     // UI thread only. Event handlers are revoked on Release and in the
     // destructor, so they never fire into a dead owner.
-    class EditContext
+    class EditContext : public IEditContextHandlerSink
     {
     public:
-        using TextRequestedHandler = std::function<winrt::hstring()>;
-        using SelectionRequestedHandler = std::function<int32_t()>;
-        using TextUpdatingHandler =
-            std::function<void(int32_t start, int32_t end, winrt::hstring const& text)>;
-        using CompositionHandler = std::function<void()>;
-        using LayoutRequestedHandler =
-            std::function<std::optional<winrt::Windows::Foundation::Rect>()>;
-        using FocusRemovedHandler = std::function<void()>;
-
-        // Everything that can happen, as one unit: the seven only make
-        // sense together, so they are installed together (SetHandlers)
-        // and a missing one is a visibly empty field at the call site,
-        // not a forgotten call. An empty function means "not
-        // interested".
-        struct Handlers
-        {
-            // The OS wants the field's full text (padded composition
-            // buffer).
-            TextRequestedHandler textRequested;
-            // The OS wants the caret position within that text.
-            SelectionRequestedHandler selectionRequested;
-            // The OS replaced [start, end) with `text`.
-            TextUpdatingHandler textUpdating;
-            CompositionHandler compositionStarted;
-            CompositionHandler compositionCompleted;
-            // Where to anchor the candidate window, in screen
-            // coordinates; nullopt = unknown, leave it where it is.
-            LayoutRequestedHandler layoutRequested;
-            // The OS moved input elsewhere mid-composition.
-            FocusRemovedHandler focusRemoved;
-        };
+        using Handlers = EditContextHandlers;
 
         explicit EditContext(Microsoft::UI::Xaml::FrameworkElement element);
-        ~EditContext();
+        ~EditContext() override;
 
         EditContext(EditContext const&) = delete;
         EditContext& operator=(EditContext const&) = delete;
@@ -85,19 +55,19 @@ namespace winrt::GhosttyWin32::implementation
         // context's handlers. Only one context per view is engaged at
         // a time — the last Engage wins. Remembered if no context
         // exists yet.
-        void Engage() { SetEngaged(true); }
+        void Engage() { Perform(m_engagement.Want(true)); }
         // Stop being that field. The OS routes text to whichever
         // context engages next, or nowhere.
-        void Disengage() { SetEngaged(false); }
+        void Disengage() { Perform(m_engagement.Want(false)); }
         // What the OS has actually been told (Engage before Loaded is
         // remembered, not yet applied).
-        bool IsEngaged() const noexcept { return m_engaged; }
+        bool IsEngaged() const noexcept { return m_engagement.IsEngaged(); }
 
         // Install the handlers. Takes effect at once — the subscription
         // on the WinRT context is made when the context is created and
         // reads the current handlers at fire time. Replaces any earlier
         // set; `{}` clears all seven.
-        void SetHandlers(Handlers handlers) noexcept { m_handlers = std::move(handlers); }
+        void SetHandlers(Handlers handlers) override { m_handlers = std::move(handlers); }
 
         // Drop the context, releasing OS focus if this one holds it.
         // Handlers and the engagement wish are kept; a later Loaded
@@ -109,16 +79,14 @@ namespace winrt::GhosttyWin32::implementation
 
         void OnLoaded();
         void BindHandlers();
-        void SetEngaged(bool engaged);
-        void ApplyEngagement();
+        void Perform(core::host::EngagementState::Action action);
 
         Microsoft::UI::Xaml::FrameworkElement m_element{ nullptr };
         winrt::event_token m_loadedToken{};
 
         Context m_context{ nullptr };
         Handlers m_handlers;
-        bool m_wantEngaged = false;
-        bool m_engaged = false;
+        core::host::EngagementState m_engagement;
 
         Context::TextRequested_revoker m_textRequested;
         Context::SelectionRequested_revoker m_selectionRequested;
