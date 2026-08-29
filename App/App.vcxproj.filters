@@ -32,6 +32,12 @@
     <Filter Include="Input">
       <UniqueIdentifier>{A6D4F1B8-3C5E-4978-8B2A-1F7C6E9D5B3A}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Terminal">
+      <UniqueIdentifier>{ebe130d7-defa-44f7-a704-52ddccc53b60}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Terminal\Overlays">
+      <UniqueIdentifier>{d92e6ba2-ac19-42f4-b02f-35b55c3b32bc}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Ghostty">
       <UniqueIdentifier>{C7F2A1D5-4B6E-49A3-B8C2-3D5E7A8F1C9B}</UniqueIdentifier>
     </Filter>
@@ -76,11 +82,69 @@
     <ClInclude Include="Ghostty\MainWindowRuntime.h">
       <Filter>Ghostty</Filter>
     </ClInclude>
+    <ClInclude Include="Terminal\TerminalControl.xaml.h">
+      <Filter>Terminal</Filter>
+    </ClInclude>
+    <ClInclude Include="Terminal\SurfaceHost.h">
+      <Filter>Terminal</Filter>
+    </ClInclude>
+    <ClInclude Include="Terminal\Overlays\PaneStatusOverlay.xaml.h">
+      <Filter>Terminal\Overlays</Filter>
+    </ClInclude>
+    <ClInclude Include="Terminal\Overlays\ScrollbackOverlay.xaml.h">
+      <Filter>Terminal\Overlays</Filter>
+    </ClInclude>
+    <ClInclude Include="Terminal\Overlays\SearchOverlay.xaml.h">
+      <Filter>Terminal\Overlays</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Ghostty\MainWindowRuntime.cpp">
       <Filter>Ghostty</Filter>
     </ClCompile>
+    <ClCompile Include="Terminal\TerminalControl.xaml.cpp">
+      <Filter>Terminal</Filter>
+    </ClCompile>
+    <ClCompile Include="Terminal\SurfaceHost.cpp">
+      <Filter>Terminal</Filter>
+    </ClCompile>
+    <ClCompile Include="Terminal\Overlays\PaneStatusOverlay.xaml.cpp">
+      <Filter>Terminal\Overlays</Filter>
+    </ClCompile>
+    <ClCompile Include="Terminal\Overlays\ScrollbackOverlay.xaml.cpp">
+      <Filter>Terminal\Overlays</Filter>
+    </ClCompile>
+    <ClCompile Include="Terminal\Overlays\SearchOverlay.xaml.cpp">
+      <Filter>Terminal\Overlays</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Page Include="Terminal\TerminalControl.xaml">
+      <Filter>Terminal</Filter>
+    </Page>
+    <Page Include="Terminal\Overlays\PaneStatusOverlay.xaml">
+      <Filter>Terminal\Overlays</Filter>
+    </Page>
+    <Page Include="Terminal\Overlays\ScrollbackOverlay.xaml">
+      <Filter>Terminal\Overlays</Filter>
+    </Page>
+    <Page Include="Terminal\Overlays\SearchOverlay.xaml">
+      <Filter>Terminal\Overlays</Filter>
+    </Page>
+  </ItemGroup>
+  <ItemGroup>
+    <Midl Include="Terminal\TerminalControl.idl">
+      <Filter>Terminal</Filter>
+    </Midl>
+    <Midl Include="Terminal\Overlays\PaneStatusOverlay.idl">
+      <Filter>Terminal\Overlays</Filter>
+    </Midl>
+    <Midl Include="Terminal\Overlays\ScrollbackOverlay.idl">
+      <Filter>Terminal\Overlays</Filter>
+    </Midl>
+    <Midl Include="Terminal\Overlays\SearchOverlay.idl">
+      <Filter>Terminal\Overlays</Filter>
+    </Midl>
   </ItemGroup>
   <ItemGroup>
     <Text Include="readme.txt" />
