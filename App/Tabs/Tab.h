@@ -2,7 +2,7 @@
 
 #include "Tabs/Panes/Tree.h"
 #include "SplitPanel.h"
-#include "TerminalControl.xaml.h"
+#include "Terminal/TerminalControl.xaml.h"
 #include <winrt/Microsoft.UI.Xaml.h>
 #include <winrt/Microsoft.UI.Xaml.Controls.h>
 #include <memory>

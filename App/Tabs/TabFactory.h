@@ -7,7 +7,7 @@
 #include "Tabs/Panes/PaneIdAllocator.h"
 #include "SplitPanel.h"
 #include "Tabs/Tab.h"
-#include "TerminalControl.xaml.h"
+#include "Terminal/TerminalControl.xaml.h"
 #include "ghostty.h"
 #include <microsoft.ui.xaml.media.dxinterop.h>
 #include <dcomp.h>
@@ -82,7 +82,7 @@ public:
     //
     // Ordering: the DComp surface handle is bound to the panel only
     // AFTER ghostty's renderer thread has presented at least one real
-    // frame — see TerminalControl::OnSwapChainReady. ghostty fires the
+    // frame — see SurfaceHost::OnSwapChainReady. ghostty fires the
     // swap-chain-ready callback from drawFrameEnd (post first present),
     // not from swap-chain creation, so the back buffer is guaranteed to
     // have displayable content by the time we attach.
@@ -187,7 +187,7 @@ public:
         // from panel.CompositionScaleX (initial value used in
         // cfg.scale_factor below; CompositionScaleChanged later
         // publishes updates atomically). Raw pointer is handed to
-        // libghostty as userdata; TerminalControl owns the shared_ptr
+        // libghostty as userdata; SurfaceHost owns the shared_ptr
         // and releases it on Detach (after surface_free has joined the
         // renderer thread).
         auto swapChainChanged = std::make_shared<
@@ -197,9 +197,9 @@ public:
         cfg.platform_tag = GHOSTTY_PLATFORM_WINDOWS;
         cfg.platform.windows.hwnd = m_hwnd;
         cfg.platform.windows.composition_surface_handle = handle;
-        cfg.platform.windows.swap_chain_ready_cb = &TerminalControl::OnSwapChainReady;
+        cfg.platform.windows.swap_chain_ready_cb = &SurfaceHost::OnSwapChainReady;
         cfg.platform.windows.swap_chain_ready_userdata = attachOwned;
-        cfg.platform.windows.swap_chain_changed_cb = &TerminalControl::OnSwapChainChanged;
+        cfg.platform.windows.swap_chain_changed_cb = &SurfaceHost::OnSwapChainChanged;
         cfg.platform.windows.swap_chain_changed_userdata = swapChainChanged.get();
         cfg.userdata = paneId.ToUserdata();
         // Initial swap chain size: prefer the host's caller-supplied

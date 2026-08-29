@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="GhosttyWin32.SearchOverlay"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    IsTabStop="False"
+    Visibility="Collapsed"
+    HorizontalAlignment="Right"
+    VerticalAlignment="Top"
+    Margin="0,0,16,0">
+    <!--
+      Search bar (START_SEARCH / END_SEARCH / SEARCH_TOTAL /
+      SEARCH_SELECTED). ghostty owns the matching and the lifecycle;
+      this is the input box and the "3 / 12" readout, talking back
+      through the composite's callbacks (needle, navigate, close)
+      which map onto binding actions like the macOS SurfaceView.
+      The only overlay that takes KEYBOARD focus — while the box has
+      it, keystrokes go to the TextBox and the composite keeps them
+      out of the pty. Top-right so it never collides with the status
+      badges below it or the link banner.
+    -->
+    <Border x:Name="Bar"
+            CornerRadius="0,0,6,6"
+            Padding="8,6,8,6"
+            Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}">
+        <StackPanel Orientation="Horizontal" Spacing="6">
+            <TextBox x:Name="Input"
+                     MinWidth="200"
+                     PlaceholderText="Search"
+                     IsSpellCheckEnabled="False"
+                     IsTextPredictionEnabled="False" />
+            <TextBlock x:Name="Count"
+                       VerticalAlignment="Center"
+                       MinWidth="48"
+                       TextAlignment="Center"
+                       FontSize="12"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <Button x:Name="PrevButton" Padding="6,2,6,2" ToolTipService.ToolTip="Previous (Shift+Enter)">
+                <FontIcon Glyph="&#xE70E;" FontSize="12" />
+            </Button>
+            <Button x:Name="NextButton" Padding="6,2,6,2" ToolTipService.ToolTip="Next (Enter)">
+                <FontIcon Glyph="&#xE70D;" FontSize="12" />
+            </Button>
+            <Button x:Name="CloseButton" Padding="6,2,6,2" ToolTipService.ToolTip="Close (Esc)">
+                <FontIcon Glyph="&#xE711;" FontSize="12" />
+            </Button>
+        </StackPanel>
+    </Border>
+</UserControl>
