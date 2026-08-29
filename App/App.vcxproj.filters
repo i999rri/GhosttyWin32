@@ -104,8 +104,8 @@
     <ClInclude Include="Windows\TransparentBackdrop.h">
       <Filter>Windows</Filter>
     </ClInclude>
-    <ClInclude Include="Tabs\Panes\SplitPanel.h">
-      <Filter>Tabs\Panes</Filter>
+    <ClInclude Include="Tabs\SplitPanel.h">
+      <Filter>Tabs</Filter>
     </ClInclude>
     <ClInclude Include="Terminal\TerminalControl.xaml.h">
       <Filter>Terminal</Filter>
@@ -139,8 +139,8 @@
     <ClCompile Include="Windows\TransparentBackdrop.cpp">
       <Filter>Windows</Filter>
     </ClCompile>
-    <ClCompile Include="Tabs\Panes\SplitPanel.cpp">
-      <Filter>Tabs\Panes</Filter>
+    <ClCompile Include="Tabs\SplitPanel.cpp">
+      <Filter>Tabs</Filter>
     </ClCompile>
     <ClCompile Include="Terminal\TerminalControl.xaml.cpp">
       <Filter>Terminal</Filter>
@@ -182,8 +182,8 @@
     <Midl Include="Windows\TransparentBackdrop.idl">
       <Filter>Windows</Filter>
     </Midl>
-    <Midl Include="Tabs\Panes\SplitPanel.idl">
-      <Filter>Tabs\Panes</Filter>
+    <Midl Include="Tabs\SplitPanel.idl">
+      <Filter>Tabs</Filter>
     </Midl>
     <Midl Include="Terminal\TerminalControl.idl">
       <Filter>Terminal</Filter>

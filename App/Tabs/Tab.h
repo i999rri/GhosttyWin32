@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Tabs/Panes/Tree.h"
-#include "Tabs/Panes/SplitPanel.h"
+#include "Tabs/SplitPanel.h"
 #include "Terminal/TerminalControl.xaml.h"
 #include <winrt/Microsoft.UI.Xaml.h>
 #include <winrt/Microsoft.UI.Xaml.Controls.h>

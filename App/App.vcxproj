@@ -169,7 +169,7 @@
       <DependentUpon>Windows\MainWindow.xaml</DependentUpon>
     </ClInclude>
     <ClInclude Include="Windows\MainWindows.h" />
-    <ClInclude Include="Tabs\Panes\SplitPanel.h" />
+    <ClInclude Include="Tabs\SplitPanel.h" />
     <ClInclude Include="Terminal\SurfaceHost.h" />
     <ClInclude Include="Tabs\ParkedTabs.h" />
     <ClInclude Include="Windows\TransparentBackdrop.h" />
@@ -223,7 +223,7 @@
     </ClCompile>
     <ClCompile Include="Windows\MainWindows.cpp" />
     <ClCompile Include="Ghostty\MainWindowRuntime.cpp" />
-    <ClCompile Include="Tabs\Panes\SplitPanel.cpp" />
+    <ClCompile Include="Tabs\SplitPanel.cpp" />
     <ClCompile Include="Terminal\SurfaceHost.cpp" />
     <ClCompile Include="Windows\TransparentBackdrop.cpp" />
     <ClCompile Include="Windows\WindowCloseGate.cpp" />
@@ -246,7 +246,7 @@
       <SubType>Code</SubType>
       <DependentUpon>Windows\MainWindow.xaml</DependentUpon>
     </Midl>
-    <Midl Include="Tabs\Panes\SplitPanel.idl">
+    <Midl Include="Tabs\SplitPanel.idl">
       <SubType>Code</SubType>
     </Midl>
     <Midl Include="Windows\TransparentBackdrop.idl">
