@@ -162,15 +162,16 @@ namespace winrt::GhosttyWin32::implementation
         // Idempotent.
         void EnsureImeContext();
 
-        // XAML GotFocus / LostFocus on the composite. GotFocus engages
-        // the EditContext (if the terminal owns input), notifies the
-        // window, and tells ghostty this surface is focused so the
-        // losing pane's renderer drops to the slow cadence.
+        // XAML GotFocus / LostFocus on the composite. GotFocus syncs
+        // the EditContext, notifies the window, and tells ghostty this
+        // surface is focused so the losing pane's renderer drops to
+        // the slow cadence.
         void OnFocusGained();
         void OnFocusLost();
 
         // Window-activation boundary: XAML's focus events do not fire
-        // on alt-tab, so the window pings the active control.
+        // on alt-tab, so the window pings the active control. Both
+        // only sync the EditContext.
         void NotifyImeFocusEnter();
         void NotifyImeFocusLeave();
 
@@ -209,6 +210,14 @@ namespace winrt::GhosttyWin32::implementation
         bool TerminalOwnsInput() const {
             return !m_terminalOwnsInput || m_terminalOwnsInput();
         }
+        // The one place the CoreTextEditContext is engaged or
+        // released. `focused` is whether the composite has keyboard
+        // focus at all; the context is engaged only when it does AND
+        // the terminal owns input (a sibling overlay holding the
+        // keyboard must not route its text through the terminal's
+        // IME path — #171). Every focus transition funnels here, so
+        // a new overlay never needs its own IME guard.
+        void SyncImeEngagement(bool focused);
         void CopySelectionToClipboard();
         void Tick();
 

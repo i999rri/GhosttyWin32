@@ -28,13 +28,13 @@ namespace winrt::GhosttyWin32::implementation
         auto weakSelf = get_weak();
 
         // The host asks this before letting keystrokes, IME engagement
-        // or IME commits through to the pty. The search box is a
-        // child of this control, so its input bubbles up here too;
-        // while it holds focus it owns the keyboard (#171 review:
-        // typing in the box also typed into the shell).
+        // or IME commits through to the pty. Overlay input bubbles up
+        // through this control too; while an overlay holds focus it
+        // owns the keyboard (#171 review: typing in the search box
+        // also typed into the shell).
         m_host->SetInputGate([weakSelf]() {
             auto self = weakSelf.get();
-            return self && !self->SearchBoxHasFocus();
+            return self && self->TerminalOwnsInput();
         });
 
         // Set up IME + self-focus on Loaded. Three reasons this all
@@ -345,10 +345,10 @@ namespace winrt::GhosttyWin32::implementation
         if (auto* se = SearchImpl()) se->SetSelected(selected);
     }
 
-    bool TerminalControl::SearchBoxHasFocus()
+    Microsoft::UI::Xaml::UIElement TerminalControl::FocusedOverlay()
     {
-        auto* se = SearchImpl();
-        return se && se->BoxHasFocus();
+        if (auto* se = SearchImpl(); se && se->BoxHasFocus()) return Search();
+        return nullptr;
     }
 
     bool TerminalControl::FocusSearchIfOpen()
