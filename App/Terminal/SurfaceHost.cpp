@@ -165,7 +165,8 @@ namespace winrt::GhosttyWin32::implementation
 
     void SurfaceHost::SyncImeEngagement(bool focused)
     {
-        m_editContext.SetEngaged(focused && TerminalOwnsInput());
+        if (TerminalReceivesText(focused)) m_editContext.Engage();
+        else                               m_editContext.Disengage();
     }
 
     void SurfaceHost::OnFocusGained()

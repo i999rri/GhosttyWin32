@@ -18,10 +18,11 @@ namespace winrt::GhosttyWin32::implementation
     //
     //   what it does      registers this element as a text field with
     //                     the text-services manager
-    //   what you can do   SetEngaged — make it (or stop it being) the
-    //                     context the OS routes input to; SetHandlers
-    //                     — say what happens on each of the seven
-    //                     events, as one unit; Release — drop it
+    //   what you can do   Engage / Disengage — make it (or stop it
+    //                     being) the field the OS types into;
+    //                     SetHandlers — say what happens on each of
+    //                     the seven events, as one unit; Release —
+    //                     drop it
     //   what can happen   the seven events in Handlers, on the UI
     //                     thread, only while a context exists
     //
@@ -29,8 +30,8 @@ namespace winrt::GhosttyWin32::implementation
     // element is in the live visual tree (one made earlier silently
     // fails — the "first tab can't toggle 半角/全角" bug), so the
     // wrapper waits for Loaded and creates it then. Anything asked
-    // before that (SetEngaged, SetHandlers) is remembered and applied
-    // on creation. A reparent's second Loaded is a no-op.
+    // before that (Engage / Disengage, SetHandlers) is remembered and
+    // applied on creation. A reparent's second Loaded is a no-op.
     //
     // UI thread only. Event handlers are revoked on Release and in the
     // destructor, so they never fire into a dead owner.
@@ -79,10 +80,17 @@ namespace winrt::GhosttyWin32::implementation
         // Release has not).
         bool HasContext() const noexcept { return m_context != nullptr; }
 
-        // Ask for (true) or give up (false) being the context the OS
-        // routes input to. Remembered if no context exists yet.
-        void SetEngaged(bool engaged);
-        // What the OS has actually been told.
+        // Become the field the OS types into: keystrokes that the IME
+        // turns into text, and the composition itself, come to this
+        // context's handlers. Only one context per view is engaged at
+        // a time — the last Engage wins. Remembered if no context
+        // exists yet.
+        void Engage() { SetEngaged(true); }
+        // Stop being that field. The OS routes text to whichever
+        // context engages next, or nowhere.
+        void Disengage() { SetEngaged(false); }
+        // What the OS has actually been told (Engage before Loaded is
+        // remembered, not yet applied).
         bool IsEngaged() const noexcept { return m_engaged; }
 
         // Install the handlers. Takes effect at once — the subscription
@@ -101,6 +109,7 @@ namespace winrt::GhosttyWin32::implementation
 
         void OnLoaded();
         void BindHandlers();
+        void SetEngaged(bool engaged);
         void ApplyEngagement();
 
         Microsoft::UI::Xaml::FrameworkElement m_element{ nullptr };

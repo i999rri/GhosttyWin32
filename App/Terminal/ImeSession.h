@@ -22,7 +22,7 @@ namespace winrt::GhosttyWin32::implementation
     //                     screen coordinates; nullopt = don't know yet
     //
     // Engagement is the owner's policy and goes straight to the
-    // EditContext (SetEngaged); this class only cares about text.
+    // EditContext (Engage / Disengage); this class only cares about text.
     //
     // UI thread only. Plain value: the handlers it installs on the
     // EditContext capture `this`, and the EditContext revokes them

@@ -209,13 +209,19 @@ namespace winrt::GhosttyWin32::implementation
         bool TerminalOwnsInput() const {
             return !m_terminalOwnsInput || m_terminalOwnsInput();
         }
-        // The one place the edit context is engaged or released.
-        // `focused` is whether the composite has keyboard focus at
-        // all; the context is engaged only when it does AND the
-        // terminal owns input (a sibling overlay holding the keyboard
-        // must not route its text through the terminal's IME path —
-        // #171). Every focus transition funnels here, so a new overlay
-        // never needs its own IME guard.
+        // The state that decides IME engagement: typed text reaches
+        // the terminal only while the composite has keyboard focus
+        // (`focused`, reported by the caller — XAML focus or window
+        // activation) and no sibling overlay holds the keyboard
+        // (TerminalOwnsInput). A search box with focus must not have
+        // its text routed through the terminal's IME path (#171).
+        bool TerminalReceivesText(bool focused) const {
+            return focused && TerminalOwnsInput();
+        }
+        // The one place the edit context is engaged or disengaged,
+        // from TerminalReceivesText. Every focus transition funnels
+        // here (GotFocus / LostFocus, window activate / deactivate),
+        // so a new overlay never needs its own IME guard.
         void SyncImeEngagement(bool focused);
         void CopySelectionToClipboard();
         void Tick();
