@@ -30,11 +30,7 @@ namespace winrt::GhosttyWin32::implementation
         m_hostHwnd = hostHwnd;
         m_attachRequest = std::move(attachRequest);
         m_swapChainChangedContext = std::move(swapChainChangedContext);
-        // IME setup is deferred to EnsureImeContext (called from the
-        // composite's Loaded). CreateEditContext only registers
-        // properly when the owning element is in the live visual
-        // tree, which doesn't happen until TabView.SelectedItem
-        // realises the control.
+        WireIme();
 
         // Capture a weak_ptr instead of `this` or the raw surface
         // pointer. Detach unhooks SizeChanged before
@@ -204,12 +200,13 @@ namespace winrt::GhosttyWin32::implementation
         SyncImeEngagement(false);
     }
 
-    void SurfaceHost::EnsureImeContext()
+    void SurfaceHost::WireIme()
     {
         // The session speaks the text-services protocol; these three
         // callbacks are what the text means for the surface. Wired
         // here (not in the ctor) so they can hold a weak_ptr to this
-        // host, and re-wired harmlessly if Loaded fires twice.
+        // host. The session brings its context up on the panel's
+        // Loaded by itself.
         std::weak_ptr<SurfaceHost> weak = weak_from_this();
         m_ime->SetOnPreedit([weak](std::string const& utf8) {
             auto self = weak.lock();
@@ -240,7 +237,6 @@ namespace winrt::GhosttyWin32::implementation
             return winrt::Windows::Foundation::Rect{
                 (float)screenPt.x, (float)screenPt.y, (float)w, (float)h };
         });
-        m_ime->Ensure();
     }
 
     // ----- input translation -----

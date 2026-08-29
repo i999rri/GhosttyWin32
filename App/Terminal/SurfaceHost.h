@@ -92,8 +92,9 @@ namespace winrt::GhosttyWin32::implementation
     class SurfaceHost : public std::enable_shared_from_this<SurfaceHost>
     {
     public:
-        explicit SurfaceHost(Microsoft::UI::Xaml::Controls::SwapChainPanel panel) noexcept
-            : m_panel(std::move(panel)) {}
+        explicit SurfaceHost(Microsoft::UI::Xaml::Controls::SwapChainPanel panel)
+            : m_panel(std::move(panel))
+            , m_ime(ImeSession::Create(m_panel)) {}
         ~SurfaceHost() { Detach(); }
 
         SurfaceHost(SurfaceHost const&) = delete;
@@ -154,12 +155,6 @@ namespace winrt::GhosttyWin32::implementation
             m_terminalOwnsInput = std::move(terminalOwnsInput);
         }
 
-        // Bring up the IME session (CoreTextEditContext). Must run
-        // once the panel's control is in the live visual tree (the
-        // composite calls it from Loaded — registration with the OS
-        // text-services manager silently fails earlier). Idempotent.
-        void EnsureImeContext();
-
         // XAML GotFocus / LostFocus on the composite. GotFocus syncs
         // the EditContext, notifies the window, and tells ghostty this
         // surface is focused so the losing pane's renderer drops to
@@ -205,6 +200,10 @@ namespace winrt::GhosttyWin32::implementation
         static void OnSwapChainChanged(void* swap_chain, void* userdata) noexcept;
 
     private:
+        // Hand the IME session what its text means for this surface
+        // (preedit, gated commit, caret rect). Called from Attach so
+        // the callbacks can hold a weak_ptr to this host.
+        void WireIme();
         bool TerminalOwnsInput() const {
             return !m_terminalOwnsInput || m_terminalOwnsInput();
         }
@@ -243,10 +242,10 @@ namespace winrt::GhosttyWin32::implementation
         // IME session (see ImeSession.h). One per surface so a
         // composition started in one tab doesn't leak preedit updates
         // to another tab's surface when the user switches. It speaks
-        // the text-services protocol; this host supplies what the
-        // text means for the surface through its callbacks (wired in
-        // EnsureImeContext).
-        std::shared_ptr<ImeSession> m_ime{ std::make_shared<ImeSession>() };
+        // the text-services protocol and waits for the panel's Loaded
+        // on its own; this host supplies what the text means for the
+        // surface through its callbacks (wired in Attach).
+        std::shared_ptr<ImeSession> m_ime;
 
         std::function<void(ghostty_surface_t)> m_onFocused;
         std::function<bool()> m_terminalOwnsInput;

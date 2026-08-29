@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Host/ImeBuffer.h"
+#include <winrt/Microsoft.UI.Xaml.h>
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.UI.Text.Core.h>
 #include <functional>
@@ -25,9 +26,17 @@ namespace winrt::GhosttyWin32::implementation
     // Engagement (which EditContext the OS routes input to) is the
     // owner's policy too — it calls SetEngaged from its focus logic.
     //
-    // Lifetime: owned through a shared_ptr; every handler captures a
-    // weak_ptr and no-ops once the session is gone (the OS can deliver
-    // a queued event after Reset).
+    // The one dependency it has, it waits for itself: a
+    // CoreTextEditContext only registers with the text-services
+    // manager once the view's XAML is live, so the session subscribes
+    // to its element's Loaded and brings the context up then. Until
+    // that moment it remembers what was asked of it (SetEngaged) and
+    // applies it on arrival, so nothing the owner does before Loaded
+    // is lost — and the owner never has to know the rule.
+    //
+    // Lifetime: owned through a shared_ptr (use Create); every handler
+    // captures a weak_ptr and no-ops once the session is gone (the OS
+    // can deliver a queued event after Reset).
     class ImeSession : public std::enable_shared_from_this<ImeSession>
     {
     public:
@@ -35,8 +44,12 @@ namespace winrt::GhosttyWin32::implementation
         using CaretRectCallback =
             std::function<std::optional<winrt::Windows::Foundation::Rect>()>;
 
-        ImeSession() = default;
-        ~ImeSession() { Reset(); }
+        // `element` is what the session waits on: the context is
+        // created when it fires Loaded (again after a reparent, which
+        // is a no-op once the context exists).
+        static std::shared_ptr<ImeSession> Create(
+            Microsoft::UI::Xaml::FrameworkElement const& element);
+        ~ImeSession();
 
         ImeSession(ImeSession const&) = delete;
         ImeSession& operator=(ImeSession const&) = delete;
@@ -45,25 +58,29 @@ namespace winrt::GhosttyWin32::implementation
         void SetOnCommit(TextCallback cb) noexcept { m_onCommit = std::move(cb); }
         void SetCaretRect(CaretRectCallback cb) noexcept { m_caretRect = std::move(cb); }
 
-        // Create the EditContext and wire its handlers. Must run once
-        // the owning element is in the live visual tree — registration
-        // with the text-services manager silently fails earlier.
-        // Idempotent.
-        void Ensure();
-
         // Route input to this context (true) or release it (false).
-        // No-op before Ensure.
+        // Remembered and applied when the context comes up if asked
+        // before Loaded.
         void SetEngaged(bool engaged);
 
         // True while a composition is in flight — keystrokes then
         // belong to the IME, not the terminal.
         bool Composing() const noexcept { return m_buffer.composing(); }
 
-        // Release the context and forget the composition. Idempotent;
-        // Ensure may be called again afterwards.
+        // Release the context and forget the composition. Idempotent.
+        // A later Loaded (reparent) brings the context back.
         void Reset();
 
     private:
+        explicit ImeSession(Microsoft::UI::Xaml::FrameworkElement element) noexcept
+            : m_element(std::move(element)) {}
+        void EnsureContext();
+        void ApplyEngagement();
+
+        Microsoft::UI::Xaml::FrameworkElement m_element{ nullptr };
+        winrt::event_token m_loadedToken{};
+        bool m_wantEngaged = false;
+
         core::host::ImeBuffer m_buffer;
         winrt::Windows::UI::Text::Core::CoreTextEditContext m_context{ nullptr };
 

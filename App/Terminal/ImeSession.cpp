@@ -7,7 +7,33 @@ namespace winrt::GhosttyWin32::implementation
     namespace txtCore = winrt::Windows::UI::Text::Core;
     namespace interop = core::interop;
 
-    void ImeSession::Ensure()
+    std::shared_ptr<ImeSession> ImeSession::Create(
+        Microsoft::UI::Xaml::FrameworkElement const& element)
+    {
+        std::shared_ptr<ImeSession> session(new ImeSession(element));
+        std::weak_ptr<ImeSession> weak = session;
+        // Loaded fires once the element is in the live visual tree —
+        // the moment a CoreTextEditContext can register — and again
+        // after every reparent (tab tear-out / adopt), where
+        // EnsureContext is a no-op.
+        session->m_loadedToken = element.Loaded([weak](auto&&, auto&&) {
+            if (auto self = weak.lock()) {
+                self->EnsureContext();
+                self->ApplyEngagement();
+            }
+        });
+        return session;
+    }
+
+    ImeSession::~ImeSession()
+    {
+        if (m_element && m_loadedToken.value != 0) {
+            m_element.Loaded(m_loadedToken);
+        }
+        Reset();
+    }
+
+    void ImeSession::EnsureContext()
     {
         if (m_context) return;
         // CoreTextServicesManager.GetForCurrentView lives at the view
@@ -99,13 +125,20 @@ namespace winrt::GhosttyWin32::implementation
 
     void ImeSession::SetEngaged(bool engaged)
     {
-        if (!m_context) return;
-        if (engaged) m_context.NotifyFocusEnter();
-        else         m_context.NotifyFocusLeave();
+        m_wantEngaged = engaged;
+        ApplyEngagement();
+    }
+
+    void ImeSession::ApplyEngagement()
+    {
+        if (!m_context) return;  // remembered; applied when Loaded brings it up
+        if (m_wantEngaged) m_context.NotifyFocusEnter();
+        else               m_context.NotifyFocusLeave();
     }
 
     void ImeSession::Reset()
     {
+        m_wantEngaged = false;
         if (m_context) {
             // Best-effort: tell the OS the context is leaving focus
             // before we drop our reference. Skipping this leaves the
