@@ -1348,27 +1348,37 @@ namespace winrt::GhosttyWin32::implementation
     {
         auto* t = m_tabs.FindByItem(item);
         if (!t) return;
+        if (TryParkTab(*t)) return;
+        TearDownTab(*t);
+    }
+
+    bool MainWindow::TryParkTab(Tab& tab)
+    {
         // Undo support (#151): instead of tearing the tab down, park
         // it alive for undo-timeout. Only when another tab remains —
         // closing the last tab closes the window, and window-close
         // undo is out of scope for stage 1. undo-timeout = 0 opts
-        // out entirely and takes the immediate-teardown path below.
-        if (m_ghosttyApp && TabView().TabItems().Size() > 1) {
-            uint64_t timeoutMs =
-                ghostty::Config(m_ghosttyApp->ConfigHandle()).UndoTimeoutMs();
-            if (timeoutMs > 0) {
-                ParkTab(item, timeoutMs, /*fromRedo=*/false);
-                return;
-            }
-        }
+        // out entirely.
+        if (!m_ghosttyApp || TabView().TabItems().Size() <= 1) return false;
+        uint64_t timeoutMs =
+            ghostty::Config(m_ghosttyApp->ConfigHandle()).UndoTimeoutMs();
+        if (timeoutMs == 0) return false;
+        ParkTab(tab.Item(), timeoutMs, /*fromRedo=*/false);
+        return true;
+    }
+
+    void MainWindow::TearDownTab(Tab& tab)
+    {
+        auto item = tab.Item();
         // A stale press record must not keep the closed item alive.
         App::g_app->PressedTab().Forget(item);
         // Detach every pane before RemoveAt: SetSwapChainHandle(nullptr)
         // AVs at +0x1F8 inside microsoft.ui.xaml.dll if the panel has
         // already been unparented. Multi-pane tabs have multiple swap
         // chains and each one needs clearing before the panel comes
-        // out of the live visual tree.
-        t->DetachAll();
+        // out of the live visual tree. Idempotent against panes a
+        // caller already detached.
+        tab.DetachAll();
         auto tv = TabView();
         uint32_t idx = 0;
         if (tv.TabItems().IndexOf(item, idx)) {
@@ -1380,11 +1390,14 @@ namespace winrt::GhosttyWin32::implementation
             // tearing down the focused control synchronously here
             // leaves XAML's focus subsystem holding a stale pointer
             // that AVs at +0x1F8 once the window teardown starts.
+            // RequestClose (not Close) so the close gate's bypass is
+            // set and a WM_CLOSE re-emitted by the framework does not
+            // re-prompt.
             RequestClose();
         } else {
             // ~Tab doesn't know about AppContent — unparent here or
             // the panel leaks as an orphan child.
-            RemoveTabPanelFromAppContent(*t);
+            RemoveTabPanelFromAppContent(tab);
             m_tabs.Remove(item);
         }
     }
@@ -2698,15 +2711,7 @@ namespace winrt::GhosttyWin32::implementation
                                                 : nullptr),
                             onlyPane ? 1 : 0, processAlive ? 1 : 0,
                             TabView().TabItems().Size());
-            if (m_ghosttyApp && TabView().TabItems().Size() > 1 &&
-                onlyPane && processAlive) {
-                uint64_t timeoutMs =
-                    ghostty::Config(m_ghosttyApp->ConfigHandle()).UndoTimeoutMs();
-                if (timeoutMs > 0) {
-                    ParkTab(tab->Item(), timeoutMs, /*fromRedo=*/false);
-                    return;
-                }
-            }
+            if (onlyPane && processAlive && TryParkTab(*tab)) return;
         }
 
         // Detach first so the surface / DComp handle are released
@@ -2758,22 +2763,8 @@ namespace winrt::GhosttyWin32::implementation
         // RemovedRoot or NotFound — treat as full-tab close.
         // (NotFound shouldn't happen, but failing closed by closing
         // the tab is the safer recovery than leaving a half-detached
-        // pane around.) DetachAll is idempotent against the leaf we
-        // already detached above and sweeps any remaining ones.
-        tab->DetachAll();
-        auto item = tab->Item();
-        App::g_app->PressedTab().Forget(item);
-        auto tv = TabView();
-        uint32_t idx = 0;
-        if (tv.TabItems().IndexOf(item, idx)) {
-            tv.TabItems().RemoveAt(idx);
-        }
-        DwmFlush();
-        if (tv.TabItems().Size() == 0) {
-            Close();
-        } else {
-            m_tabs.Remove(item);
-        }
+        // pane around.)
+        TearDownTab(*tab);
     }
 
     // Caption button click handlers. We route through Win32 messages
