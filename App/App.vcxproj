@@ -198,6 +198,7 @@
     <ClInclude Include="Terminal\Overlays\ScrollbackOverlay.xaml.h">
       <DependentUpon>Terminal\Overlays\ScrollbackOverlay.xaml</DependentUpon>
     </ClInclude>
+    <ClInclude Include="Terminal\Overlays\IKeyboardOverlay.h" />
     <ClInclude Include="Terminal\Overlays\SearchOverlay.xaml.h">
       <DependentUpon>Terminal\Overlays\SearchOverlay.xaml</DependentUpon>
     </ClInclude>

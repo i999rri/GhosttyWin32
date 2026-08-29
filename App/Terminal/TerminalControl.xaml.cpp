@@ -2,6 +2,7 @@
 #include "Terminal/TerminalControl.xaml.h"
 #include "resource.h"
 #include "Interop/Encoding.h"
+#include <algorithm>
 #if __has_include("TerminalControl.g.cpp")
 #include "TerminalControl.g.cpp"
 #endif
@@ -14,6 +15,9 @@ namespace winrt::GhosttyWin32::implementation
     {
         InitializeComponent();
         m_host = std::make_shared<SurfaceHost>(Panel());
+        // The overlays that can take the keyboard. Only ever appended
+        // to; the host's gate below is the only reader.
+        if (auto* se = SearchImpl()) m_keyboardOverlays.push_back(se);
 
         // Every handler below captures a weak_ref instead of `this`.
         // XAML can route a final pointer event during window/control
@@ -28,13 +32,13 @@ namespace winrt::GhosttyWin32::implementation
         auto weakSelf = get_weak();
 
         // The host asks this before letting keystrokes, IME engagement
-        // or IME commits through to the pty. The search box is a
-        // child of this control, so its input bubbles up here too;
-        // while it holds focus it owns the keyboard (#171 review:
-        // typing in the box also typed into the shell).
+        // or IME commits through to the pty. Overlay input bubbles up
+        // through this control too; while an overlay holds focus it
+        // owns the keyboard (#171 review: typing in the search box
+        // also typed into the shell).
         m_host->SetInputGate([weakSelf]() {
             auto self = weakSelf.get();
-            return self && !self->SearchBoxHasFocus();
+            return self && self->TerminalOwnsInput();
         });
 
         // Set up IME + self-focus on Loaded. Three reasons this all
@@ -345,10 +349,10 @@ namespace winrt::GhosttyWin32::implementation
         if (auto* se = SearchImpl()) se->SetSelected(selected);
     }
 
-    bool TerminalControl::SearchBoxHasFocus()
+    bool TerminalControl::TerminalOwnsInput() const
     {
-        auto* se = SearchImpl();
-        return se && se->BoxHasFocus();
+        return std::none_of(m_keyboardOverlays.begin(), m_keyboardOverlays.end(),
+                            [](IKeyboardOverlay* o) { return o->HoldsKeyboardFocus(); });
     }
 
     bool TerminalControl::FocusSearchIfOpen()

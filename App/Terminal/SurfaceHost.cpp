@@ -173,16 +173,16 @@ namespace winrt::GhosttyWin32::implementation
 
     // ----- focus / IME -----
 
+    void SurfaceHost::SyncImeEngagement(bool focused)
+    {
+        if (!m_editContext) return;
+        if (focused && TerminalOwnsInput()) m_editContext.NotifyFocusEnter();
+        else                                m_editContext.NotifyFocusLeave();
+    }
+
     void SurfaceHost::OnFocusGained()
     {
-        // Engaging the CoreTextEditContext while a sibling overlay
-        // owns text input would route that overlay's text through the
-        // terminal's IME path and into the pty (#171 review: search
-        // box input reached the shell) — the composite's gate says
-        // whether the terminal owns input right now.
-        if (m_editContext && TerminalOwnsInput()) {
-            m_editContext.NotifyFocusEnter();
-        }
+        SyncImeEngagement(true);
         // Surface-level focus event for the window. Mirrors the
         // upstream getActiveSurface pattern (#62): the window uses
         // this to retarget the tab's active pane without the host
@@ -199,19 +199,18 @@ namespace winrt::GhosttyWin32::implementation
 
     void SurfaceHost::OnFocusLost()
     {
-        if (m_editContext) m_editContext.NotifyFocusLeave();
+        SyncImeEngagement(false);
         m_surface.SetFocus(false);
     }
 
     void SurfaceHost::NotifyImeFocusEnter()
     {
-        // Same gate as OnFocusGained.
-        if (m_editContext && TerminalOwnsInput()) m_editContext.NotifyFocusEnter();
+        SyncImeEngagement(true);
     }
 
     void SurfaceHost::NotifyImeFocusLeave()
     {
-        if (m_editContext) m_editContext.NotifyFocusLeave();
+        SyncImeEngagement(false);
     }
 
     void SurfaceHost::EnsureImeContext()
@@ -288,7 +287,7 @@ namespace winrt::GhosttyWin32::implementation
                 auto utf8 = interop::Encoding::toUtf8(self->m_ime.text());
                 // A composition committed while a sibling overlay owns
                 // text input must not land in the pty (see
-                // OnFocusGained).
+                // SyncImeEngagement).
                 if (!utf8.empty() && self->TerminalOwnsInput()) {
                     self->m_surface.Text(utf8.c_str(), utf8.size());
                 }

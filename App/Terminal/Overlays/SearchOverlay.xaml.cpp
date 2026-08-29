@@ -70,7 +70,7 @@ namespace winrt::GhosttyWin32::implementation
         // Belt and braces for KeyUp: the release of a key typed in
         // the box must not bubble into the terminal's KeyUp.
         input.KeyUp([weakSelf](auto&&, muxi::KeyRoutedEventArgs const& args) {
-            if (auto self = weakSelf.get(); self && self->BoxHasFocus())
+            if (auto self = weakSelf.get(); self && self->HoldsKeyboardFocus())
                 args.Handled(true);
         });
 
@@ -112,7 +112,7 @@ namespace winrt::GhosttyWin32::implementation
         return wasOpen;
     }
 
-    bool SearchOverlay::BoxHasFocus()
+    bool SearchOverlay::HoldsKeyboardFocus()
     {
         if (!m_open) return false;
         auto input = Input();

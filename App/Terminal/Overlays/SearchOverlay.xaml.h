@@ -1,6 +1,7 @@
 #pragma once
 
 #include "SearchOverlay.g.h"
+#include "Terminal/Overlays/IKeyboardOverlay.h"
 #include <cstddef>
 #include <functional>
 
@@ -15,7 +16,7 @@ namespace winrt::GhosttyWin32::implementation
     // Debounce mirrors the macOS SurfaceView: needles under 3 chars
     // wait 300ms (cheap keystrokes, expensive short-needle scans);
     // 3+ chars and empty go immediately.
-    struct SearchOverlay : SearchOverlayT<SearchOverlay>
+    struct SearchOverlay : SearchOverlayT<SearchOverlay>, IKeyboardOverlay
     {
         SearchOverlay();
 
@@ -36,11 +37,9 @@ namespace winrt::GhosttyWin32::implementation
 
         bool IsOpen() const noexcept { return m_open; }
 
-        // Whether the input box currently holds keyboard focus (false
-        // while closed). This — not "open" — is what gates terminal
-        // input: the bar can stay open while the user clicks back
-        // into the terminal to keep typing (#171 review).
-        bool BoxHasFocus();
+        // IKeyboardOverlay: whether the input box currently holds
+        // keyboard focus (false while closed).
+        bool HoldsKeyboardFocus() override;
 
         // If open, put keyboard focus on the box and return true.
         bool FocusInput();
