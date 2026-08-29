@@ -115,7 +115,7 @@
       <WarningLevel>Level4</WarningLevel>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <AdditionalOptions>%(AdditionalOptions) /bigobj /utf-8</AdditionalOptions>
-      <AdditionalIncludeDirectories>$(ProjectDir);$(GeneratedFilesDir)Terminal;$(GeneratedFilesDir)Terminal\Overlays;$(ProjectDir)..\Core;$(ProjectDir)..\external\ghostty\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(GeneratedFilesDir)Windows;$(GeneratedFilesDir)Terminal;$(GeneratedFilesDir)Terminal\Overlays;$(ProjectDir)..\Core;$(ProjectDir)..\external\ghostty\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <AdditionalLibraryDirectories>$(ProjectDir)..\external\ghostty\zig-out\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
@@ -165,15 +165,15 @@
     <ClInclude Include="App.xaml.h">
       <DependentUpon>App.xaml</DependentUpon>
     </ClInclude>
-    <ClInclude Include="MainWindow.xaml.h">
-      <DependentUpon>MainWindow.xaml</DependentUpon>
+    <ClInclude Include="Windows\MainWindow.xaml.h">
+      <DependentUpon>Windows\MainWindow.xaml</DependentUpon>
     </ClInclude>
-    <ClInclude Include="MainWindows.h" />
-    <ClInclude Include="SplitPanel.h" />
+    <ClInclude Include="Windows\MainWindows.h" />
+    <ClInclude Include="Tabs\Panes\SplitPanel.h" />
     <ClInclude Include="Terminal\SurfaceHost.h" />
     <ClInclude Include="Tabs\ParkedTabs.h" />
-    <ClInclude Include="TransparentBackdrop.h" />
-    <ClInclude Include="WindowCloseGate.h" />
+    <ClInclude Include="Windows\TransparentBackdrop.h" />
+    <ClInclude Include="Windows\WindowCloseGate.h" />
     <ClInclude Include="Tabs\Panes\Branch.h" />
     <ClInclude Include="Tabs\Panes\Pane.h" />
     <ClInclude Include="Tabs\Panes\PaneId.h" />
@@ -204,7 +204,7 @@
   </ItemGroup>
   <ItemGroup>
     <ApplicationDefinition Include="App.xaml" />
-    <Page Include="MainWindow.xaml" />
+    <Page Include="Windows\MainWindow.xaml" />
     <Page Include="Terminal\TerminalControl.xaml" />
     <Page Include="Terminal\Overlays\PaneStatusOverlay.xaml" />
     <Page Include="Terminal\Overlays\ScrollbackOverlay.xaml" />
@@ -218,15 +218,15 @@
     <ClCompile Include="App.xaml.cpp">
       <DependentUpon>App.xaml</DependentUpon>
     </ClCompile>
-    <ClCompile Include="MainWindow.xaml.cpp">
-      <DependentUpon>MainWindow.xaml</DependentUpon>
+    <ClCompile Include="Windows\MainWindow.xaml.cpp">
+      <DependentUpon>Windows\MainWindow.xaml</DependentUpon>
     </ClCompile>
-    <ClCompile Include="MainWindows.cpp" />
+    <ClCompile Include="Windows\MainWindows.cpp" />
     <ClCompile Include="Ghostty\MainWindowRuntime.cpp" />
-    <ClCompile Include="SplitPanel.cpp" />
+    <ClCompile Include="Tabs\Panes\SplitPanel.cpp" />
     <ClCompile Include="Terminal\SurfaceHost.cpp" />
-    <ClCompile Include="TransparentBackdrop.cpp" />
-    <ClCompile Include="WindowCloseGate.cpp" />
+    <ClCompile Include="Windows\TransparentBackdrop.cpp" />
+    <ClCompile Include="Windows\WindowCloseGate.cpp" />
     <ClCompile Include="Terminal\TerminalControl.xaml.cpp">
       <DependentUpon>Terminal\TerminalControl.xaml</DependentUpon>
     </ClCompile>
@@ -242,14 +242,14 @@
     <ClCompile Include="$(GeneratedFilesDir)module.g.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <Midl Include="MainWindow.idl">
+    <Midl Include="Windows\MainWindow.idl">
       <SubType>Code</SubType>
-      <DependentUpon>MainWindow.xaml</DependentUpon>
+      <DependentUpon>Windows\MainWindow.xaml</DependentUpon>
     </Midl>
-    <Midl Include="SplitPanel.idl">
+    <Midl Include="Tabs\Panes\SplitPanel.idl">
       <SubType>Code</SubType>
     </Midl>
-    <Midl Include="TransparentBackdrop.idl">
+    <Midl Include="Windows\TransparentBackdrop.idl">
       <SubType>Code</SubType>
     </Midl>
     <Midl Include="Terminal\TerminalControl.idl">

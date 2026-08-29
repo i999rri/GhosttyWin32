@@ -5,7 +5,7 @@
 #include "Tabs/Panes/Branch.h"
 #include "Tabs/Panes/PaneId.h"
 #include "Tabs/Panes/PaneIdAllocator.h"
-#include "SplitPanel.h"
+#include "Tabs/Panes/SplitPanel.h"
 #include "Tabs/Tab.h"
 #include "Terminal/TerminalControl.xaml.h"
 #include "ghostty.h"

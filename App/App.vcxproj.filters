@@ -4,10 +4,8 @@
     <ApplicationDefinition Include="App.xaml" />
   </ItemGroup>
   <ItemGroup>
-    <Page Include="MainWindow.xaml" />
   </ItemGroup>
   <ItemGroup>
-    <Midl Include="MainWindow.idl" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp" />
@@ -37,6 +35,9 @@
     </Filter>
     <Filter Include="Terminal\Overlays">
       <UniqueIdentifier>{d92e6ba2-ac19-42f4-b02f-35b55c3b32bc}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Windows">
+      <UniqueIdentifier>{6f8380b0-f6ad-449b-aeac-091578b99d9c}</UniqueIdentifier>
     </Filter>
     <Filter Include="Ghostty">
       <UniqueIdentifier>{C7F2A1D5-4B6E-49A3-B8C2-3D5E7A8F1C9B}</UniqueIdentifier>
@@ -91,6 +92,21 @@
     <ClInclude Include="Ghostty\MainWindowRuntime.h">
       <Filter>Ghostty</Filter>
     </ClInclude>
+    <ClInclude Include="Windows\MainWindow.xaml.h">
+      <Filter>Windows</Filter>
+    </ClInclude>
+    <ClInclude Include="Windows\MainWindows.h">
+      <Filter>Windows</Filter>
+    </ClInclude>
+    <ClInclude Include="Windows\WindowCloseGate.h">
+      <Filter>Windows</Filter>
+    </ClInclude>
+    <ClInclude Include="Windows\TransparentBackdrop.h">
+      <Filter>Windows</Filter>
+    </ClInclude>
+    <ClInclude Include="Tabs\Panes\SplitPanel.h">
+      <Filter>Tabs\Panes</Filter>
+    </ClInclude>
     <ClInclude Include="Terminal\TerminalControl.xaml.h">
       <Filter>Terminal</Filter>
     </ClInclude>
@@ -111,6 +127,21 @@
     <ClCompile Include="Ghostty\MainWindowRuntime.cpp">
       <Filter>Ghostty</Filter>
     </ClCompile>
+    <ClCompile Include="Windows\MainWindow.xaml.cpp">
+      <Filter>Windows</Filter>
+    </ClCompile>
+    <ClCompile Include="Windows\MainWindows.cpp">
+      <Filter>Windows</Filter>
+    </ClCompile>
+    <ClCompile Include="Windows\WindowCloseGate.cpp">
+      <Filter>Windows</Filter>
+    </ClCompile>
+    <ClCompile Include="Windows\TransparentBackdrop.cpp">
+      <Filter>Windows</Filter>
+    </ClCompile>
+    <ClCompile Include="Tabs\Panes\SplitPanel.cpp">
+      <Filter>Tabs\Panes</Filter>
+    </ClCompile>
     <ClCompile Include="Terminal\TerminalControl.xaml.cpp">
       <Filter>Terminal</Filter>
     </ClCompile>
@@ -128,6 +159,9 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <Page Include="Windows\MainWindow.xaml">
+      <Filter>Windows</Filter>
+    </Page>
     <Page Include="Terminal\TerminalControl.xaml">
       <Filter>Terminal</Filter>
     </Page>
@@ -142,6 +176,15 @@
     </Page>
   </ItemGroup>
   <ItemGroup>
+    <Midl Include="Windows\MainWindow.idl">
+      <Filter>Windows</Filter>
+    </Midl>
+    <Midl Include="Windows\TransparentBackdrop.idl">
+      <Filter>Windows</Filter>
+    </Midl>
+    <Midl Include="Tabs\Panes\SplitPanel.idl">
+      <Filter>Tabs\Panes</Filter>
+    </Midl>
     <Midl Include="Terminal\TerminalControl.idl">
       <Filter>Terminal</Filter>
     </Midl>

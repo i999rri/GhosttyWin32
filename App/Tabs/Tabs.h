@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Tabs/Panes/Tree.h"
-#include "SplitPanel.h"
+#include "Tabs/Panes/SplitPanel.h"
 #include "Tabs/Tab.h"
 #include "ghostty.h"
 #include <vector>

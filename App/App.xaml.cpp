@@ -1,6 +1,6 @@
 #include "pch.h"
 #include "App.xaml.h"
-#include "MainWindow.xaml.h"
+#include "Windows/MainWindow.xaml.h"
 #include "Ghostty/MainWindowRuntime.h"
 #include "Ghostty/RuntimeConfigFactory.h"
 #include <algorithm>

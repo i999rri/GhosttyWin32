@@ -1,7 +1,7 @@
 #include "pch.h"
 #include "Ghostty/MainWindowRuntime.h"
 
-#include "MainWindow.xaml.h"
+#include "Windows/MainWindow.xaml.h"
 #include "Ghostty/CallbackDispatcher.h"
 #include "Interop/Encoding.h"
 #include "Tabs/Panes/PaneId.h"

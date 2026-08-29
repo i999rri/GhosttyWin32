@@ -1,5 +1,5 @@
 #include "pch.h"
-#include "TransparentBackdrop.h"
+#include "Windows/TransparentBackdrop.h"
 // Neither is in pch. Note the namespace split: the target interface
 // lives in Microsoft.UI.Composition, but its SystemBackdrop property
 // (WinAppSDK 1.8 projection) takes a brush from the SYSTEM
