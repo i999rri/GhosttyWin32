@@ -394,7 +394,7 @@ namespace winrt::GhosttyWin32::implementation
         // orphan (the pre-#184 shell-exit leak) or a double
         // unparent; breaks into the debugger with the offending
         // path on the stack. No-op in release builds.
-        void AssertPanelInvariant() noexcept;
+        void DebugAssertPanelInvariant() noexcept;
         // Detach the item from the tab strip and move its Tab into
         // m_parkedTabs. fromRedo keeps the redo history intact (a
         // user-initiated close invalidates it).

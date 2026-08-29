@@ -1399,11 +1399,11 @@ namespace winrt::GhosttyWin32::implementation
             // the panel leaks as an orphan child.
             RemoveTabPanelFromAppContent(tab);
             m_tabs.Remove(item);
-            AssertPanelInvariant();
+            DebugAssertPanelInvariant();
         }
     }
 
-    void MainWindow::AssertPanelInvariant() noexcept
+    void MainWindow::DebugAssertPanelInvariant() noexcept
     {
 #if defined(_DEBUG)
         unsigned panels = 0;
@@ -1462,10 +1462,10 @@ namespace winrt::GhosttyWin32::implementation
                 if (auto self = weak.get()) {
                     expired->DetachAll();
                     self->RemoveTabPanelFromAppContent(*expired);
-                    self->AssertPanelInvariant();
+                    self->DebugAssertPanelInvariant();
                 }
             });
-        AssertPanelInvariant();
+        DebugAssertPanelInvariant();
     }
 
     void MainWindow::Undo()
@@ -1488,7 +1488,7 @@ namespace winrt::GhosttyWin32::implementation
         // opacity toggle, recolour) — restate the window state over
         // the whole tab set, same as AdoptTornOutTab does.
         ApplyBackgroundOpacityAppearance();
-        AssertPanelInvariant();
+        DebugAssertPanelInvariant();
     }
 
     void MainWindow::Redo()
