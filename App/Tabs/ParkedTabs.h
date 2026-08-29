@@ -135,6 +135,7 @@ public:
     }
 
     bool Empty() const noexcept { return m_entries.empty(); }
+    size_t Size() const noexcept { return m_entries.size(); }
 
     // ----- redo bookkeeping -----
     // Redo = "close that tab again": remember the items most

@@ -104,10 +104,9 @@ namespace winrt::GhosttyWin32::implementation
         // dispatcher reaches them through the interface.
         void CreateTab() override;
         void CloseTabBySurface(ghostty_surface_t surface) override;
-        // Shared tab-teardown primitive used by every close path (tab
-        // X, close_tab keybind, gate-approved close). Assumes the
-        // caller already ran confirmation; keeps the tricky detach /
-        // unparent / RemoveAt ordering in one place.
+        // Gate-approved close of a whole tab (tab X, close_tab
+        // keybind). Parks it for undo when allowed, otherwise tears
+        // it down now. Assumes the caller already ran confirmation.
         void CloseTabByItem(winrt::Microsoft::UI::Xaml::Controls::TabViewItem const& item);
         void GoToTab(int requested) override;
         void SetTabTitleForSurface(ghostty_surface_t surface,
@@ -377,6 +376,25 @@ namespace winrt::GhosttyWin32::implementation
         // add/remove, panel visibility, appearance restate, and the
         // expiry teardown callback).
         ParkedTabs m_parkedTabs;
+        // Undo support (#151): park `tab` instead of tearing it down
+        // when another tab remains and undo-timeout is non-zero.
+        // Returns whether it parked; callers add their own extra
+        // conditions before asking.
+        bool TryParkTab(Tab& tab);
+        // The one immediate tab teardown, shared by every close path
+        // once parking is ruled out. Keeps the ordering contract in a
+        // single place: DetachAll while the panel is still parented →
+        // RemoveAt → unparent the panel → destroy the Tab, or
+        // RequestClose when it was the last tab.
+        void TearDownTab(Tab& tab);
+        // Debug-only structural check, run after every operation
+        // that parents or unparents a tab's SplitPanel: the panels
+        // under AppContent must equal the tabs this window owns —
+        // listed in m_tabs plus parked for undo. A miss is an
+        // orphan (the pre-#184 shell-exit leak) or a double
+        // unparent; breaks into the debugger with the offending
+        // path on the stack. No-op in release builds.
+        void DebugAssertPanelInvariant() noexcept;
         // Detach the item from the tab strip and move its Tab into
         // m_parkedTabs. fromRedo keeps the redo history intact (a
         // user-initiated close invalidates it).
