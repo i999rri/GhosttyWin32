@@ -170,7 +170,7 @@
     </ClInclude>
     <ClInclude Include="Windows\MainWindows.h" />
     <ClInclude Include="Tabs\SplitPanel.h" />
-    <ClInclude Include="Terminal\EditContextSource.h" />
+    <ClInclude Include="Terminal\EditContext.h" />
     <ClInclude Include="Terminal\ImeSession.h" />
     <ClInclude Include="Terminal\SurfaceHost.h" />
     <ClInclude Include="Tabs\ParkedTabs.h" />
@@ -227,7 +227,7 @@
     <ClCompile Include="Windows\MainWindows.cpp" />
     <ClCompile Include="Ghostty\MainWindowRuntime.cpp" />
     <ClCompile Include="Tabs\SplitPanel.cpp" />
-    <ClCompile Include="Terminal\EditContextSource.cpp" />
+    <ClCompile Include="Terminal\EditContext.cpp" />
     <ClCompile Include="Terminal\ImeSession.cpp" />
     <ClCompile Include="Terminal\SurfaceHost.cpp" />
     <ClCompile Include="Windows\TransparentBackdrop.cpp" />

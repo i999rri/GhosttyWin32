@@ -119,8 +119,7 @@ namespace winrt::GhosttyWin32::implementation
             m_swapChainChangedContext->cancelled.store(true);
         }
 
-        // The session lets go of the context, the source drops it.
-        m_ime->Reset();
+        m_ime.Reset();
         m_editContext.Release();
 
         if (m_panel) {
@@ -166,7 +165,7 @@ namespace winrt::GhosttyWin32::implementation
 
     void SurfaceHost::SyncImeEngagement(bool focused)
     {
-        m_ime->SetEngaged(focused && TerminalOwnsInput());
+        m_editContext.SetEngaged(focused && TerminalOwnsInput());
     }
 
     void SurfaceHost::OnFocusGained()
@@ -209,14 +208,14 @@ namespace winrt::GhosttyWin32::implementation
         // here (not in the ctor) so they can hold a weak_ptr to this
         // host.
         std::weak_ptr<SurfaceHost> weak = weak_from_this();
-        m_ime->SetOnPreedit([weak](std::string const& utf8) {
+        m_ime.SetOnPreedit([weak](std::string const& utf8) {
             auto self = weak.lock();
             if (!self || !self->m_surface) return;
             if (utf8.empty()) self->m_surface.Preedit(nullptr, 0);
             else              self->m_surface.Preedit(utf8.c_str(), utf8.size());
             self->Tick();
         });
-        m_ime->SetOnCommit([weak](std::string const& utf8) {
+        m_ime.SetOnCommit([weak](std::string const& utf8) {
             auto self = weak.lock();
             if (!self || !self->m_surface) return;
             self->m_surface.Preedit(nullptr, 0);
@@ -228,7 +227,7 @@ namespace winrt::GhosttyWin32::implementation
             }
             self->Tick();
         });
-        m_ime->SetCaretRect([weak]() -> std::optional<winrt::Windows::Foundation::Rect> {
+        m_ime.SetCaretRect([weak]() -> std::optional<winrt::Windows::Foundation::Rect> {
             auto self = weak.lock();
             if (!self || !self->m_surface || !self->m_hostHwnd) return std::nullopt;
             double x = 0, y = 0, w = 0, h = 0;
@@ -325,7 +324,7 @@ namespace winrt::GhosttyWin32::implementation
         // on purpose so the overlay's own handling still sees the key.
         if (!TerminalOwnsInput()) return;
 
-        input::TerminalKeyDown key(args, m_ime->Composing());
+        input::TerminalKeyDown key(args, m_ime.Composing());
 
         // IME owns the composition lifecycle; don't double-encode
         // into the pty.

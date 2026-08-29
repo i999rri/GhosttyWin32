@@ -110,7 +110,7 @@
     <ClInclude Include="Terminal\TerminalControl.xaml.h">
       <Filter>Terminal</Filter>
     </ClInclude>
-    <ClInclude Include="Terminal\EditContextSource.h">
+    <ClInclude Include="Terminal\EditContext.h">
       <Filter>Terminal</Filter>
     </ClInclude>
     <ClInclude Include="Terminal\ImeSession.h">
@@ -154,7 +154,7 @@
     <ClCompile Include="Terminal\TerminalControl.xaml.cpp">
       <Filter>Terminal</Filter>
     </ClCompile>
-    <ClCompile Include="Terminal\EditContextSource.cpp">
+    <ClCompile Include="Terminal\EditContext.cpp">
       <Filter>Terminal</Filter>
     </ClCompile>
     <ClCompile Include="Terminal\ImeSession.cpp">
