@@ -1,14 +1,13 @@
 #pragma once
 
 #include "Ghostty/Surface.h"
-#include "Host/ImeBuffer.h"
+#include "Terminal/ImeSession.h"
 #include "Interop/Encoding.h"
 #include "Win32/Clipboard.h"
 #include "ghostty.h"
 #include <winrt/Microsoft.UI.Dispatching.h>
 #include <winrt/Microsoft.UI.Xaml.Controls.h>
 #include <winrt/Microsoft.UI.Xaml.Input.h>
-#include <winrt/Windows.UI.Text.Core.h>
 #include <atomic>
 #include <functional>
 #include <memory>
@@ -155,11 +154,10 @@ namespace winrt::GhosttyWin32::implementation
             m_terminalOwnsInput = std::move(terminalOwnsInput);
         }
 
-        // Builds the CoreTextEditContext and wires its seven handlers.
-        // Must run once the panel's control is in the live visual
-        // tree (the composite calls it from Loaded — registration
-        // with the OS text-services manager silently fails earlier).
-        // Idempotent.
+        // Bring up the IME session (CoreTextEditContext). Must run
+        // once the panel's control is in the live visual tree (the
+        // composite calls it from Loaded — registration with the OS
+        // text-services manager silently fails earlier). Idempotent.
         void EnsureImeContext();
 
         // XAML GotFocus / LostFocus on the composite. GotFocus syncs
@@ -210,13 +208,13 @@ namespace winrt::GhosttyWin32::implementation
         bool TerminalOwnsInput() const {
             return !m_terminalOwnsInput || m_terminalOwnsInput();
         }
-        // The one place the CoreTextEditContext is engaged or
-        // released. `focused` is whether the composite has keyboard
-        // focus at all; the context is engaged only when it does AND
-        // the terminal owns input (a sibling overlay holding the
-        // keyboard must not route its text through the terminal's
-        // IME path — #171). Every focus transition funnels here, so
-        // a new overlay never needs its own IME guard.
+        // The one place the IME session is engaged or released.
+        // `focused` is whether the composite has keyboard focus at
+        // all; the session is engaged only when it does AND the
+        // terminal owns input (a sibling overlay holding the keyboard
+        // must not route its text through the terminal's IME path —
+        // #171). Every focus transition funnels here, so a new overlay
+        // never needs its own IME guard.
         void SyncImeEngagement(bool focused);
         void CopySelectionToClipboard();
         void Tick();
@@ -242,15 +240,13 @@ namespace winrt::GhosttyWin32::implementation
         std::shared_ptr<SwapChainAttachRequest> m_attachRequest;
         std::shared_ptr<SwapChainChangedContext> m_swapChainChangedContext;
 
-        // IME plumbing. Each surface gets its own EditContext so a
+        // IME session (see ImeSession.h). One per surface so a
         // composition started in one tab doesn't leak preedit updates
-        // to another tab's surface when the user switches.
-        // CoreTextServicesManager allows multiple EditContexts in a
-        // single view; only one receives input at a time, controlled
-        // via NotifyFocusEnter/Leave on tab switches and window
-        // activation.
-        host::ImeBuffer m_ime;
-        winrt::Windows::UI::Text::Core::CoreTextEditContext m_editContext{ nullptr };
+        // to another tab's surface when the user switches. It speaks
+        // the text-services protocol; this host supplies what the
+        // text means for the surface through its callbacks (wired in
+        // EnsureImeContext).
+        std::shared_ptr<ImeSession> m_ime{ std::make_shared<ImeSession>() };
 
         std::function<void(ghostty_surface_t)> m_onFocused;
         std::function<bool()> m_terminalOwnsInput;
