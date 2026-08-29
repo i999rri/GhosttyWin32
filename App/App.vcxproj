@@ -190,16 +190,16 @@
     <ClInclude Include="Input\TerminalKeyDown.h" />
     <ClInclude Include="Input\TerminalKeyUp.h" />
     <ClInclude Include="Terminal\TerminalControl.xaml.h">
-      <DependentUpon>TerminalControl.xaml</DependentUpon>
+      <DependentUpon>Terminal\TerminalControl.xaml</DependentUpon>
     </ClInclude>
     <ClInclude Include="Terminal\Overlays\PaneStatusOverlay.xaml.h">
-      <DependentUpon>PaneStatusOverlay.xaml</DependentUpon>
+      <DependentUpon>Terminal\Overlays\PaneStatusOverlay.xaml</DependentUpon>
     </ClInclude>
     <ClInclude Include="Terminal\Overlays\ScrollbackOverlay.xaml.h">
-      <DependentUpon>ScrollbackOverlay.xaml</DependentUpon>
+      <DependentUpon>Terminal\Overlays\ScrollbackOverlay.xaml</DependentUpon>
     </ClInclude>
     <ClInclude Include="Terminal\Overlays\SearchOverlay.xaml.h">
-      <DependentUpon>SearchOverlay.xaml</DependentUpon>
+      <DependentUpon>Terminal\Overlays\SearchOverlay.xaml</DependentUpon>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -228,16 +228,16 @@
     <ClCompile Include="TransparentBackdrop.cpp" />
     <ClCompile Include="WindowCloseGate.cpp" />
     <ClCompile Include="Terminal\TerminalControl.xaml.cpp">
-      <DependentUpon>TerminalControl.xaml</DependentUpon>
+      <DependentUpon>Terminal\TerminalControl.xaml</DependentUpon>
     </ClCompile>
     <ClCompile Include="Terminal\Overlays\PaneStatusOverlay.xaml.cpp">
-      <DependentUpon>PaneStatusOverlay.xaml</DependentUpon>
+      <DependentUpon>Terminal\Overlays\PaneStatusOverlay.xaml</DependentUpon>
     </ClCompile>
     <ClCompile Include="Terminal\Overlays\ScrollbackOverlay.xaml.cpp">
-      <DependentUpon>ScrollbackOverlay.xaml</DependentUpon>
+      <DependentUpon>Terminal\Overlays\ScrollbackOverlay.xaml</DependentUpon>
     </ClCompile>
     <ClCompile Include="Terminal\Overlays\SearchOverlay.xaml.cpp">
-      <DependentUpon>SearchOverlay.xaml</DependentUpon>
+      <DependentUpon>Terminal\Overlays\SearchOverlay.xaml</DependentUpon>
     </ClCompile>
     <ClCompile Include="$(GeneratedFilesDir)module.g.cpp" />
   </ItemGroup>
@@ -254,19 +254,19 @@
     </Midl>
     <Midl Include="Terminal\TerminalControl.idl">
       <SubType>Code</SubType>
-      <DependentUpon>TerminalControl.xaml</DependentUpon>
+      <DependentUpon>Terminal\TerminalControl.xaml</DependentUpon>
     </Midl>
     <Midl Include="Terminal\Overlays\PaneStatusOverlay.idl">
       <SubType>Code</SubType>
-      <DependentUpon>PaneStatusOverlay.xaml</DependentUpon>
+      <DependentUpon>Terminal\Overlays\PaneStatusOverlay.xaml</DependentUpon>
     </Midl>
     <Midl Include="Terminal\Overlays\ScrollbackOverlay.idl">
       <SubType>Code</SubType>
-      <DependentUpon>ScrollbackOverlay.xaml</DependentUpon>
+      <DependentUpon>Terminal\Overlays\ScrollbackOverlay.xaml</DependentUpon>
     </Midl>
     <Midl Include="Terminal\Overlays\SearchOverlay.idl">
       <SubType>Code</SubType>
-      <DependentUpon>SearchOverlay.xaml</DependentUpon>
+      <DependentUpon>Terminal\Overlays\SearchOverlay.xaml</DependentUpon>
     </Midl>
   </ItemGroup>
   <ItemGroup>
