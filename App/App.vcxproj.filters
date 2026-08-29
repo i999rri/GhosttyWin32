@@ -52,6 +52,15 @@
     <ClInclude Include="Tabs\TabFactory.h">
       <Filter>Tabs</Filter>
     </ClInclude>
+    <ClInclude Include="Tabs\ParkedTabs.h">
+      <Filter>Tabs</Filter>
+    </ClInclude>
+    <ClInclude Include="Tabs\PressedTab.h">
+      <Filter>Tabs</Filter>
+    </ClInclude>
+    <ClInclude Include="Tabs\TabDrag.h">
+      <Filter>Tabs</Filter>
+    </ClInclude>
     <ClInclude Include="Tabs\Panes\Branch.h">
       <Filter>Tabs\Panes</Filter>
     </ClInclude>
