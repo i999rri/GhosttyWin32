@@ -55,6 +55,10 @@ namespace winrt::GhosttyWin32::implementation
         // applies any engagement asked for before it arrived. Attaching
         // a second context replaces the first.
         void AttachContext(Context const& context);
+        // Whether a context has been attached (and not yet Reset).
+        // Before that, SetEngaged is remembered rather than applied
+        // and Composing() is necessarily false.
+        bool HasContext() const noexcept { return m_context != nullptr; }
 
         void SetOnPreedit(TextCallback cb) noexcept { m_onPreedit = std::move(cb); }
         void SetOnCommit(TextCallback cb) noexcept { m_onCommit = std::move(cb); }
