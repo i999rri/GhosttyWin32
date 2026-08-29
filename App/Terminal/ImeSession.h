@@ -41,13 +41,20 @@ namespace winrt::GhosttyWin32::implementation
         using CaretRectCallback =
             std::function<std::optional<winrt::Windows::Foundation::Rect>()>;
 
-        // Binds to the context `source` delivers (now or on Loaded).
-        // `source` must outlive the session.
+        // A session that takes whatever context `source` delivers (now
+        // or on Loaded) through AttachContext. `source` must outlive
+        // the session.
         static std::shared_ptr<ImeSession> Create(EditContextSource& source);
         ~ImeSession() { Reset(); }
 
         ImeSession(ImeSession const&) = delete;
         ImeSession& operator=(ImeSession const&) = delete;
+
+        // The context is supplied from outside (EditContextSource); the
+        // session never makes one. Binds the seven handlers to it and
+        // applies any engagement asked for before it arrived. Attaching
+        // a second context replaces the first.
+        void AttachContext(Context const& context);
 
         void SetOnPreedit(TextCallback cb) noexcept { m_onPreedit = std::move(cb); }
         void SetOnCommit(TextCallback cb) noexcept { m_onCommit = std::move(cb); }
@@ -60,14 +67,13 @@ namespace winrt::GhosttyWin32::implementation
         // belong to the IME, not the terminal.
         bool Composing() const noexcept { return m_buffer.composing(); }
 
-        // Let go of the context and forget the composition. Idempotent.
-        // The owner's engagement wish is left alone.
+        // Let go of the context (releasing OS focus if this session
+        // holds it) and forget the composition. Idempotent. The owner's
+        // engagement wish is left alone.
         void Reset();
 
     private:
         ImeSession() = default;
-        // Attach the seven handlers to `context` and adopt it.
-        void Bind(Context const& context);
         void ApplyEngagement();
 
         // What the owner asked for (its focus policy — never changed

@@ -12,18 +12,15 @@ namespace winrt::GhosttyWin32::implementation
         std::shared_ptr<ImeSession> session(new ImeSession());
         std::weak_ptr<ImeSession> weak = session;
         source.WhenReady([weak](Context const& context) {
-            if (auto self = weak.lock()) {
-                self->Bind(context);
-                self->ApplyEngagement();
-            }
+            if (auto self = weak.lock()) self->AttachContext(context);
         });
         return session;
     }
 
-    void ImeSession::Bind(Context const& context)
+    void ImeSession::AttachContext(Context const& context)
     {
+        Reset();  // a previous context, if any, is released first
         m_context = context;
-        m_engaged = false;
         std::weak_ptr<ImeSession> weak = weak_from_this();
 
         context.TextRequested([weak](
@@ -99,6 +96,8 @@ namespace winrt::GhosttyWin32::implementation
                 if (self->m_onPreedit) self->m_onPreedit(std::string{});
             }
         });
+
+        ApplyEngagement();
     }
 
     void ImeSession::SetEngaged(bool engaged)
