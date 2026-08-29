@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Ghostty/Surface.h"
+#include "Terminal/EditContextSource.h"
 #include "Terminal/ImeSession.h"
 #include "Interop/Encoding.h"
 #include "Win32/Clipboard.h"
@@ -94,7 +95,8 @@ namespace winrt::GhosttyWin32::implementation
     public:
         explicit SurfaceHost(Microsoft::UI::Xaml::Controls::SwapChainPanel panel)
             : m_panel(std::move(panel))
-            , m_ime(ImeSession::Create(m_panel)) {}
+            , m_editContext(m_panel)
+            , m_ime(ImeSession::Create(m_editContext)) {}
         ~SurfaceHost() { Detach(); }
 
         SurfaceHost(SurfaceHost const&) = delete;
@@ -239,12 +241,16 @@ namespace winrt::GhosttyWin32::implementation
         std::shared_ptr<SwapChainAttachRequest> m_attachRequest;
         std::shared_ptr<SwapChainChangedContext> m_swapChainChangedContext;
 
-        // IME session (see ImeSession.h). One per surface so a
-        // composition started in one tab doesn't leak preedit updates
-        // to another tab's surface when the user switches. It speaks
-        // the text-services protocol and waits for the panel's Loaded
-        // on its own; this host supplies what the text means for the
-        // surface through its callbacks (wired in Attach).
+        // IME, in two parts. EditContextSource owns the one timing
+        // rule (a CoreTextEditContext can only be made once the panel
+        // is in the live tree) and hands the context over; ImeSession
+        // speaks the text-services protocol on it. One pair per
+        // surface so a composition started in one tab doesn't leak
+        // preedit updates to another tab's surface. This host supplies
+        // what the text means for the surface through the session's
+        // callbacks (wired in Attach). Declaration order matters:
+        // the session subscribes to the source in the ctor.
+        EditContextSource m_editContext;
         std::shared_ptr<ImeSession> m_ime;
 
         std::function<void(ghostty_surface_t)> m_onFocused;

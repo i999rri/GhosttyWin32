@@ -7,48 +7,24 @@ namespace winrt::GhosttyWin32::implementation
     namespace txtCore = winrt::Windows::UI::Text::Core;
     namespace interop = core::interop;
 
-    std::shared_ptr<ImeSession> ImeSession::Create(
-        Microsoft::UI::Xaml::FrameworkElement const& element)
+    std::shared_ptr<ImeSession> ImeSession::Create(EditContextSource& source)
     {
-        std::shared_ptr<ImeSession> session(new ImeSession(element));
+        std::shared_ptr<ImeSession> session(new ImeSession());
         std::weak_ptr<ImeSession> weak = session;
-        // Loaded fires once the element is in the live visual tree —
-        // the moment a CoreTextEditContext can register — and again
-        // after every reparent (tab tear-out / adopt), where
-        // EnsureContext is a no-op.
-        session->m_loadedToken = element.Loaded([weak](auto&&, auto&&) {
+        source.WhenReady([weak](Context const& context) {
             if (auto self = weak.lock()) {
-                self->EnsureContext();
+                self->Bind(context);
                 self->ApplyEngagement();
             }
         });
         return session;
     }
 
-    ImeSession::~ImeSession()
+    void ImeSession::Bind(Context const& context)
     {
-        if (m_element && m_loadedToken.value != 0) {
-            m_element.Loaded(m_loadedToken);
-        }
-        Reset();
-    }
-
-    void ImeSession::EnsureContext()
-    {
-        if (!m_context) m_context = CreateContext(weak_from_this());
-    }
-
-    txtCore::CoreTextEditContext ImeSession::CreateContext(std::weak_ptr<ImeSession> weak)
-    {
-        // CoreTextServicesManager.GetForCurrentView lives at the view
-        // (~window) level, but CreateEditContext spins up an
-        // independent context — multiple surfaces in the same window
-        // each get their own. The OS arbitrates which one receives
-        // input via NotifyFocusEnter/Leave, driven by SetEngaged.
-        auto manager = txtCore::CoreTextServicesManager::GetForCurrentView();
-        auto context = manager.CreateEditContext();
-        context.InputPaneDisplayPolicy(txtCore::CoreTextInputPaneDisplayPolicy::Manual);
-        context.InputScope(txtCore::CoreTextInputScope::Default);
+        m_context = context;
+        m_engaged = false;
+        std::weak_ptr<ImeSession> weak = weak_from_this();
 
         context.TextRequested([weak](
             txtCore::CoreTextEditContext const&,
@@ -123,7 +99,6 @@ namespace winrt::GhosttyWin32::implementation
                 if (self->m_onPreedit) self->m_onPreedit(std::string{});
             }
         });
-        return context;
     }
 
     void ImeSession::SetEngaged(bool engaged)
@@ -134,7 +109,7 @@ namespace winrt::GhosttyWin32::implementation
 
     void ImeSession::ApplyEngagement()
     {
-        if (!m_context) return;  // remembered; applied when Loaded brings it up
+        if (!m_context) return;  // remembered; applied when a context is delivered
         if (m_wantEngaged == m_engaged) return;
         if (m_wantEngaged) m_context.NotifyFocusEnter();
         else               m_context.NotifyFocusLeave();
@@ -144,10 +119,10 @@ namespace winrt::GhosttyWin32::implementation
     void ImeSession::Reset()
     {
         // Give back only what we took: if this context is the one the
-        // OS routes input to, release it before dropping the
-        // reference, or the text-services manager keeps a stale focus
-        // pointer until GC catches up. The owner's wish (m_wantEngaged)
-        // is not ours to change.
+        // OS routes input to, release it before letting go, or the
+        // text-services manager keeps a stale focus pointer until GC
+        // catches up. The owner's wish (m_wantEngaged) is not ours to
+        // change.
         if (m_context) {
             if (m_engaged) {
                 m_context.NotifyFocusLeave();

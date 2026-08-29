@@ -119,7 +119,9 @@ namespace winrt::GhosttyWin32::implementation
             m_swapChainChangedContext->cancelled.store(true);
         }
 
+        // The session lets go of the context, the source drops it.
         m_ime->Reset();
+        m_editContext.Release();
 
         if (m_panel) {
             if (m_sizeChangedToken.value != 0) {
@@ -205,8 +207,7 @@ namespace winrt::GhosttyWin32::implementation
         // The session speaks the text-services protocol; these three
         // callbacks are what the text means for the surface. Wired
         // here (not in the ctor) so they can hold a weak_ptr to this
-        // host. The session brings its context up on the panel's
-        // Loaded by itself.
+        // host.
         std::weak_ptr<SurfaceHost> weak = weak_from_this();
         m_ime->SetOnPreedit([weak](std::string const& utf8) {
             auto self = weak.lock();
