@@ -79,7 +79,11 @@ namespace winrt::GhosttyWin32::implementation
 
         Microsoft::UI::Xaml::FrameworkElement m_element{ nullptr };
         winrt::event_token m_loadedToken{};
+        // What the owner asked for (its focus policy — never changed
+        // here) versus what has been told to the OS. They differ
+        // before Loaded and are reconciled by ApplyEngagement.
         bool m_wantEngaged = false;
+        bool m_engaged = false;
 
         core::host::ImeBuffer m_buffer;
         winrt::Windows::UI::Text::Core::CoreTextEditContext m_context{ nullptr };

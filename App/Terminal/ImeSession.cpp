@@ -132,19 +132,24 @@ namespace winrt::GhosttyWin32::implementation
     void ImeSession::ApplyEngagement()
     {
         if (!m_context) return;  // remembered; applied when Loaded brings it up
+        if (m_wantEngaged == m_engaged) return;
         if (m_wantEngaged) m_context.NotifyFocusEnter();
         else               m_context.NotifyFocusLeave();
+        m_engaged = m_wantEngaged;
     }
 
     void ImeSession::Reset()
     {
-        m_wantEngaged = false;
+        // Give back only what we took: if this context is the one the
+        // OS routes input to, release it before dropping the
+        // reference, or the text-services manager keeps a stale focus
+        // pointer until GC catches up. The owner's wish (m_wantEngaged)
+        // is not ours to change.
         if (m_context) {
-            // Best-effort: tell the OS the context is leaving focus
-            // before we drop our reference. Skipping this leaves the
-            // text-services manager holding a stale focus pointer
-            // until GC catches up.
-            m_context.NotifyFocusLeave();
+            if (m_engaged) {
+                m_context.NotifyFocusLeave();
+                m_engaged = false;
+            }
             m_context = nullptr;
         }
         m_buffer.reset();
