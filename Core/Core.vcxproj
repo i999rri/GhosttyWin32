@@ -106,16 +106,15 @@
     <ClInclude Include="Interop\Encoding.h" />
     <ClInclude Include="Win32\Clipboard.h" />
     <ClInclude Include="Win32\DebugTrace.h" />
+    <ClInclude Include="Win32\NativeWindow.h" />
     <ClInclude Include="Win32\SEHGuard.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Ghostty\Actions\Actions.cpp" />
-    <ClCompile Include="Ghostty\Actions\Tags\Fullscreen.cpp" />
-    <ClCompile Include="Ghostty\Actions\Tags\CellSize.cpp" />
-    <ClCompile Include="Ghostty\Actions\Tags\SizeLimit.cpp" />
     <ClCompile Include="Ghostty\Actions\Tags\TriggerLabel.cpp" />
     <ClCompile Include="Ghostty\CallbackDispatcher.cpp" />
     <ClCompile Include="Ghostty\RuntimeConfigFactory.cpp" />
+    <ClCompile Include="Win32\NativeWindow.cpp" />
     <ClCompile Include="Win32\SEHGuard.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

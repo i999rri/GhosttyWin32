@@ -97,9 +97,9 @@ namespace winrt::GhosttyWin32::implementation
             if (windowNative) windowNative->get_WindowHandle(&m_hwnd);
             // A drop-outside tear-out host adopts its tab (which
             // arms the cell-snap metrics) BEFORE this first
-            // activation assigns the HWND — complete the deferred
-            // subclass install now (#155).
-            m_cellSize.Attach(m_hwnd);
+            // activation assigns the HWND — binding now installs
+            // whatever rules were set meanwhile (#155).
+            m_native.Bind(m_hwnd);
             // The pre-first-frame hide avoids flashing an empty window
             // before ghostty presents. A drop host receives a tab that
             // is already presenting, so it has frames to show from the
@@ -1649,7 +1649,8 @@ namespace winrt::GhosttyWin32::implementation
 
     void MainWindow::ApplySizeLimit(ghostty_action_size_limit_s limit)
     {
-        m_sizeLimit.Apply(m_hwnd, limit);
+        m_sizeLimit.Apply(limit);
+        m_native.SetSizeLimit(m_sizeLimit);
     }
 
     void MainWindow::ApplyCellSizeForSurface(ghostty_surface_t surface,
@@ -1673,7 +1674,8 @@ namespace winrt::GhosttyWin32::implementation
 
     void MainWindow::ArmCellSnap(ghostty_action_cell_size_s cell)
     {
-        m_cellSize.Apply(m_hwnd, cell, WindowStepResizeByConfig());
+        m_cellSize.Apply(cell, WindowStepResizeByConfig());
+        m_native.SetCellSnap(m_cellSize);
         DEBUG_TRACE(L"CellSnap[%llu]: applied %ux%u enabled=%d\n",
                         GetTickCount64() % 100'000, cell.width,
                         cell.height, m_cellSize.Enabled() ? 1 : 0);
@@ -1687,7 +1689,11 @@ namespace winrt::GhosttyWin32::implementation
 
     void MainWindow::ToggleFullscreen()
     {
-        m_fullscreen.Toggle(m_hwnd);
+        using Transition = ghostty::actions::tags::Fullscreen::Transition;
+        switch (m_fullscreen.Toggle()) {
+            case Transition::Enter: m_native.EnterFullscreen(); break;
+            case Transition::Leave: m_native.LeaveFullscreen(); break;
+        }
     }
 
     void MainWindow::ToggleWindowDecorations()
@@ -2025,6 +2031,7 @@ namespace winrt::GhosttyWin32::implementation
         // only re-fires on metric changes, so re-read the gate here
         // so a reload flips snapping immediately (#155).
         m_cellSize.SetEnabled(WindowStepResizeByConfig());
+        m_native.SetCellSnap(m_cellSize);
         DEBUG_TRACE(L"CellSnap[%llu]: config replaced, enabled=%d\n",
                         GetTickCount64() % 100'000,
                         m_cellSize.Enabled() ? 1 : 0);

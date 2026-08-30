@@ -11,6 +11,7 @@
 #include "Host/IWindow.h"
 #include "Interop/Encoding.h"
 #include "Win32/Clipboard.h"
+#include "Win32/NativeWindow.h"
 #include "Tabs/Panes/PaneId.h"
 #include "Tabs/ParkedTabs.h"
 #include "Tabs/Tab.h"
@@ -115,10 +116,11 @@ namespace winrt::GhosttyWin32::implementation
         void CopyTabTitleForSurface(ghostty_surface_t surface) override;
         void MoveActiveTabBy(ssize_t amount) override;
 
-        // State-owner delegating overrides. Each is a one-liner;
-        // the actual logic lives in the dedicated value (m_sizeLimit,
-        // m_fullscreen) so MainWindow doesn't accrete fields
-        // that nothing outside one specific handler reads.
+        // State-owner delegating overrides. Each is a couple of
+        // lines: the tag (m_sizeLimit, m_fullscreen, ...) decides,
+        // m_native carries the decision out on the HWND, so
+        // MainWindow doesn't accrete fields that nothing outside one
+        // specific handler reads.
         void ApplySizeLimit(ghostty_action_size_limit_s limit) override;
         void ToggleFullscreen() override;
         void ToggleWindowDecorations() override;
@@ -387,13 +389,17 @@ namespace winrt::GhosttyWin32::implementation
         // and left every window after the first stuck in the
         // "already set up" branch with no HWND, no tabs, no terminal.
         bool m_activatedOnce = false;
-        // SIZE_LIMIT / TOGGLE_FULLSCREEN state. Default constructed
-        // (no limit set, not in fullscreen). Subclasses installed
-        // by SizeLimit are auto-removed by Win32 when m_hwnd is
-        // destroyed, so no explicit teardown ordering is needed.
+        // SIZE_LIMIT / CELL_SIZE / TOGGLE_FULLSCREEN values. Default
+        // constructed (no limit set, nothing measured, not in
+        // fullscreen). Pure; m_native applies them to the HWND.
         ghostty::actions::tags::SizeLimit          m_sizeLimit;
         ghostty::actions::tags::CellSize           m_cellSize;
         ghostty::actions::tags::Fullscreen         m_fullscreen;
+        // The HWND side: the subclass that enforces the size rules
+        // and the placement fullscreen comes back to. Bound at the
+        // first Activated; rules set before that (a tear-out host
+        // adopts first) are installed then.
+        win32::NativeWindow m_native;
         ghostty::actions::tags::WindowDecorations  m_windowDecorations;
         // The tags that travel with a torn-out tab, as one value —
         // see WindowState.h for which and why.
