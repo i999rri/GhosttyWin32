@@ -101,6 +101,9 @@
     <ClInclude Include="Windows\WindowCloseGate.h">
       <Filter>Windows</Filter>
     </ClInclude>
+    <ClInclude Include="Windows\WindowState.h">
+      <Filter>Windows</Filter>
+    </ClInclude>
     <ClInclude Include="Windows\TransparentBackdrop.h">
       <Filter>Windows</Filter>
     </ClInclude>

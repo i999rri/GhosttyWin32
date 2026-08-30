@@ -313,7 +313,7 @@ namespace winrt::GhosttyWin32::implementation
         w.Activate();
     }
 
-    MainWindow* App::CreateTearOutWindow()
+    MainWindow* App::CreateTearOutWindow(WindowState const& inherited)
     {
         auto w = make<MainWindow>();
         auto* impl = winrt::get_self<MainWindow>(w);
@@ -321,6 +321,7 @@ namespace winrt::GhosttyWin32::implementation
         // one-shot init: this window adopts the dragged tab instead
         // of creating one.
         impl->SuppressInitialTab();
+        impl->InheritState(inherited);
         TrackWindow(w);
         // Deliberately no Activate(): the drop handler positions the
         // window at the drop point after adopting the tab and decides

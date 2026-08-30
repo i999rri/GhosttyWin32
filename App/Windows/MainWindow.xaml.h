@@ -2,7 +2,6 @@
 
 #include "MainWindow.g.h"
 #include "ghostty.h"
-#include "Ghostty/Actions/Tags/BackgroundOpacity.h"
 #include "Ghostty/Actions/Tags/CellSize.h"
 #include "Ghostty/Actions/Tags/Fullscreen.h"
 #include "Ghostty/Actions/Tags/SizeLimit.h"
@@ -18,6 +17,7 @@
 #include "Tabs/TabFactory.h"
 #include "Tabs/Tabs.h"
 #include "Windows/WindowCloseGate.h"
+#include "Windows/WindowState.h"
 
 namespace winrt::GhosttyWin32::implementation
 {
@@ -290,15 +290,14 @@ namespace winrt::GhosttyWin32::implementation
         // App::CreateTearOutWindow through the existing friendship.
         void SuppressInitialTab() noexcept { m_suppressInitialTab = true; }
 
-        // Window-scoped state a torn-out tab should keep: the
-        // background-opacity mode of the window it came from
-        // (upstream macOS keeps it on the controller, which moves
-        // with the tab). Called by the drop-outside handler before
-        // AdoptTornOutTab, whose final re-apply then paints this
-        // window like the source.
-        void InheritWindowState(MainWindow const& source) noexcept {
-            m_backgroundOpacity = source.m_backgroundOpacity;
-        }
+        // The window-scoped state this window was born with and
+        // has toggled since — what a torn-out tab takes along.
+        WindowState const& State() const noexcept { return m_state; }
+        // Start from another window's state. Called by
+        // App::CreateTearOutWindow before the tab is adopted;
+        // AdoptTornOutTab's final re-apply then paints this window
+        // like the source.
+        void InheritState(WindowState const& state) noexcept { m_state = state; }
 
         // Take `item`'s Tab out of this window alive: strip entry
         // removed, panel unparented from AppContent, focused-surface
@@ -386,8 +385,10 @@ namespace winrt::GhosttyWin32::implementation
         ghostty::actions::tags::SizeLimit          m_sizeLimit;
         ghostty::actions::tags::CellSize           m_cellSize;
         ghostty::actions::tags::Fullscreen         m_fullscreen;
-        ghostty::actions::tags::BackgroundOpacity  m_backgroundOpacity;
         ghostty::actions::tags::WindowDecorations  m_windowDecorations;
+        // The tags that travel with a torn-out tab, as one value —
+        // see WindowState.h for which and why.
+        WindowState m_state;
         Tabs m_tabs;
         // Undo support for tab closes (#151): parked-tab stack,
         // expiry timers, redo bookkeeping — see Tabs/ParkedTabs.h.

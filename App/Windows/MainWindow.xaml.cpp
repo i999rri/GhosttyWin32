@@ -445,11 +445,10 @@ namespace winrt::GhosttyWin32::implementation
                     }
                     return;
                 }
-                auto* host = App::g_app->CreateTearOutWindow();
+                auto* host = App::g_app->CreateTearOutWindow(self->State());
                 if (!host) return;
                 try {
                     if (auto tab = self->ReleaseTornOutTab(item)) {
-                        host->InheritWindowState(*self);
                         host->AdoptTornOutTab(std::move(tab), -1);
                         if (haveCursor) {
                             host->AppWindow().Move({ dropX, dropY });
@@ -1834,8 +1833,8 @@ namespace winrt::GhosttyWin32::implementation
         ghostty::Config cfg(m_ghosttyApp->ConfigHandle());
         // The tag holds the guards (config already opaque, or
         // fullscreen); a guarded toggle changes nothing to re-apply.
-        if (!m_backgroundOpacity.Toggle(cfg.BackgroundOpacity(),
-                                        m_fullscreen.Active())) {
+        if (!m_state.backgroundOpacity.Toggle(cfg.BackgroundOpacity(),
+                                              m_fullscreen.Active())) {
             return;
         }
         ApplyBackgroundOpacityAppearance();
@@ -1853,7 +1852,7 @@ namespace winrt::GhosttyWin32::implementation
             opacity = cfg.BackgroundOpacity();
             blur = cfg.BackgroundBlurEnabled();
         }
-        return m_backgroundOpacity.Effective(opacity, blur);
+        return m_state.backgroundOpacity.Effective(opacity, blur);
     }
 
     void MainWindow::ApplyBackgroundOpacityAppearance()
