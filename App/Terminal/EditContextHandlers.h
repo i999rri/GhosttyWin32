@@ -9,7 +9,7 @@ namespace winrt::GhosttyWin32::implementation
 {
     // Everything that can happen on an edit context, as one unit: the
     // seven only make sense together, so they are installed together
-    // (IEditContextHandlerSink::SetHandlers) and a missing one is a
+    // (IEditContextEvents::SetHandlers) and a missing one is a
     // visibly empty field at the call site, not a forgotten call. An
     // empty function means "not interested". All fire on the UI
     // thread, only while a context exists.
@@ -40,14 +40,15 @@ namespace winrt::GhosttyWin32::implementation
         FocusRemoved focusRemoved;
     };
 
-    // The one thing a handler owner needs from an edit context: a
-    // place to install its handlers. EditContext implements it over
-    // the WinRT type; tests implement it with a struct that just
-    // keeps what it was given.
-    class IEditContextHandlerSink
+    // The events of an edit context, as seen by whoever handles them:
+    // the one thing ImeSession needs from a context is somewhere to
+    // install its handlers. EditContext implements it over the WinRT
+    // type; tests implement it with a struct that just keeps what it
+    // was given and fires the events by hand.
+    class IEditContextEvents
     {
     public:
-        virtual ~IEditContextHandlerSink() = default;
+        virtual ~IEditContextEvents() = default;
         // Replaces any earlier set; `{}` clears all seven.
         virtual void SetHandlers(EditContextHandlers handlers) = 0;
     };

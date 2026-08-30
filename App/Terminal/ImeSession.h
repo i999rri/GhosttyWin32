@@ -13,7 +13,7 @@ namespace winrt::GhosttyWin32::implementation
     // One surface's side of the IME conversation: the composition
     // buffer (core::host::ImeBuffer) and what to do on each of the
     // edit context's events. It never touches the WinRT context — it
-    // only installs handlers on an IEditContextHandlerSink (EditContext
+    // only installs handlers on an IEditContextEvents (EditContext
     // in the app, a plain struct in tests) — and never sees the
     // surface. What the composed text should do leaves through three
     // callbacks the owner (SurfaceHost) supplies:
@@ -28,7 +28,7 @@ namespace winrt::GhosttyWin32::implementation
     // text.
     //
     // UI thread only. Plain value: the handlers it installs capture
-    // `this`, so the sink must outlive the session — the destructor
+    // `this`, so the events object must outlive the session — the destructor
     // takes them off again.
     class ImeSession
     {
@@ -37,10 +37,10 @@ namespace winrt::GhosttyWin32::implementation
         using CaretRectCallback =
             std::function<std::optional<winrt::Windows::Foundation::Rect>()>;
 
-        explicit ImeSession(IEditContextHandlerSink& sink)
-            : m_sink(sink)
+        explicit ImeSession(IEditContextEvents& events)
+            : m_events(events)
         {
-            m_sink.SetHandlers({
+            m_events.SetHandlers({
                 .textRequested = [this]() {
                     return winrt::hstring(m_buffer.paddedText());
                 },
@@ -78,8 +78,8 @@ namespace winrt::GhosttyWin32::implementation
         ~ImeSession()
         {
             // Handlers capture `this`; take them off before this object
-            // is gone (the sink may outlive us by a moment).
-            m_sink.SetHandlers({});
+            // is gone (the events object may outlive us by a moment).
+            m_events.SetHandlers({});
         }
 
         ImeSession(ImeSession const&) = delete;
@@ -97,7 +97,7 @@ namespace winrt::GhosttyWin32::implementation
         void Reset() { m_buffer.reset(); }
 
     private:
-        IEditContextHandlerSink& m_sink;
+        IEditContextEvents& m_events;
         core::host::ImeBuffer m_buffer;
 
         TextCallback m_onPreedit;

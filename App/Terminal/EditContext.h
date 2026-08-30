@@ -35,7 +35,7 @@ namespace winrt::GhosttyWin32::implementation
     //
     // UI thread only. Event handlers are revoked on Release and in the
     // destructor, so they never fire into a dead owner.
-    class EditContext : public IEditContextHandlerSink
+    class EditContext : public IEditContextEvents
     {
     public:
         using Handlers = EditContextHandlers;
