@@ -214,6 +214,12 @@ namespace winrt::GhosttyWin32::implementation
         // this window's guts, granted access by name rather than by
         // widening the public surface.
         friend struct App;
+        // TearOut runs the tab-moves-to-a-new-window sequence, which
+        // is the window's own protocol (State / TabCount /
+        // ReleaseTornOutTab / AdoptTornOutTab) pulled out of the
+        // constructor so it can be read in one place. Same footing
+        // as App: named access, not a public surface.
+        friend class TearOut;
 
 
         void InitGhostty();
@@ -298,6 +304,9 @@ namespace winrt::GhosttyWin32::implementation
         // AdoptTornOutTab's final re-apply then paints this window
         // like the source.
         void InheritState(WindowState const& state) noexcept { m_state = state; }
+
+        // How many tabs the strip holds (parked ones excluded).
+        size_t TabCount() const noexcept { return m_tabs.Size(); }
 
         // Take `item`'s Tab out of this window alive: strip entry
         // removed, panel unparented from AppContent, focused-surface

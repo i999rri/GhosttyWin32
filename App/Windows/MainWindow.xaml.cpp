@@ -3,6 +3,7 @@
 #include "App.xaml.h"
 #include "Ghostty/CallbackDispatcher.h"
 #include "Ghostty/Config.h"
+#include "Windows/TearOut.h"
 #include "Windows/TransparentBackdrop.h"
 #include "Host/KeyModifiers.h"
 #include "Interop/Encoding.h"
@@ -431,38 +432,12 @@ namespace winrt::GhosttyWin32::implementation
                 auto item = App::g_app->TabDrag().TakeLastDraggedTab();
                 if (!item) return;
                 POINT cursor{};
-                bool haveCursor = GetCursorPos(&cursor) != 0;
-                // Offsets place the window so its tab strip lands near
-                // the pointer instead of the window's top-left corner.
-                int32_t dropX = static_cast<int32_t>(cursor.x) - 120;
-                int32_t dropY = static_cast<int32_t>(cursor.y) - 24;
-                // Dragging out the only tab must not leave an empty
-                // shell behind — just move this window to the drop
-                // point instead, browser-style.
-                if (self->m_tabs.Size() <= 1) {
-                    if (haveCursor) {
-                        self->AppWindow().Move({ dropX, dropY });
-                    }
-                    return;
-                }
-                auto* host = App::g_app->CreateTearOutWindow(self->State());
-                if (!host) return;
-                try {
-                    if (auto tab = self->ReleaseTornOutTab(item)) {
-                        host->AdoptTornOutTab(std::move(tab), -1);
-                        if (haveCursor) {
-                            host->AppWindow().Move({ dropX, dropY });
-                        }
-                        // The drag is over, so activation is safe —
-                        // hand the new window focus like a browser
-                        // does after a tab is torn off.
-                        host->Activate();
-                    } else {
-                        // Nothing moved; don't leak an empty host.
-                        host->RequestClose();
-                    }
-                } catch (winrt::hresult_error const&) {
-                }
+                std::optional<POINT> dropPoint;
+                if (GetCursorPos(&cursor)) dropPoint = cursor;
+                TearOut::ToNewWindow(*self, item, dropPoint,
+                    [](WindowState const& inherited) {
+                        return App::g_app->CreateTearOutWindow(inherited);
+                    });
             });
 
             // Don't call Window.SetTitleBar(AppTitleBar()) — that would

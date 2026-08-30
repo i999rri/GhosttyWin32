@@ -176,6 +176,7 @@
     <ClInclude Include="Terminal\SurfaceHost.h" />
     <ClInclude Include="Tabs\ParkedTabs.h" />
     <ClInclude Include="Windows\TransparentBackdrop.h" />
+    <ClInclude Include="Windows\TearOut.h" />
     <ClInclude Include="Windows\WindowCloseGate.h" />
     <ClInclude Include="Windows\WindowState.h" />
     <ClInclude Include="Tabs\Panes\Branch.h" />
@@ -232,6 +233,7 @@
     <ClCompile Include="Terminal\EditContext.cpp" />
     <ClCompile Include="Terminal\SurfaceHost.cpp" />
     <ClCompile Include="Windows\TransparentBackdrop.cpp" />
+    <ClCompile Include="Windows\TearOut.cpp" />
     <ClCompile Include="Windows\WindowCloseGate.cpp" />
     <ClCompile Include="Terminal\TerminalControl.xaml.cpp">
       <DependentUpon>Terminal\TerminalControl.xaml</DependentUpon>
