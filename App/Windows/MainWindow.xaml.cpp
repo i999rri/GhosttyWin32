@@ -449,6 +449,7 @@ namespace winrt::GhosttyWin32::implementation
                 if (!host) return;
                 try {
                     if (auto tab = self->ReleaseTornOutTab(item)) {
+                        host->InheritWindowState(*self);
                         host->AdoptTornOutTab(std::move(tab), -1);
                         if (haveCursor) {
                             host->AppWindow().Move({ dropX, dropY });

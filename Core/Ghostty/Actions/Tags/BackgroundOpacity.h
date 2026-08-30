@@ -59,9 +59,9 @@ public:
         bool operator==(const Appearance&) const noexcept = default;
     };
 
+    // A plain value: copying one window's mode into another (a
+    // tear-out host taking its source's) is ordinary assignment.
     BackgroundOpacity() = default;
-    BackgroundOpacity(const BackgroundOpacity&) = delete;
-    BackgroundOpacity& operator=(const BackgroundOpacity&) = delete;
 
     // Apply the user's TOGGLE keypress. `configOpacity` is the current
     // `background-opacity` (Config::BackgroundOpacity()), `fullscreen`

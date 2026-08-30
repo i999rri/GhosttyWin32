@@ -290,6 +290,16 @@ namespace winrt::GhosttyWin32::implementation
         // App::CreateTearOutWindow through the existing friendship.
         void SuppressInitialTab() noexcept { m_suppressInitialTab = true; }
 
+        // Window-scoped state a torn-out tab should keep: the
+        // background-opacity mode of the window it came from
+        // (upstream macOS keeps it on the controller, which moves
+        // with the tab). Called by the drop-outside handler before
+        // AdoptTornOutTab, whose final re-apply then paints this
+        // window like the source.
+        void InheritWindowState(MainWindow const& source) noexcept {
+            m_backgroundOpacity = source.m_backgroundOpacity;
+        }
+
         // Take `item`'s Tab out of this window alive: strip entry
         // removed, panel unparented from AppContent, focused-surface
         // cache cleared if it pointed into the tab — but nothing
