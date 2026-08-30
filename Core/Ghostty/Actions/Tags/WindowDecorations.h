@@ -27,9 +27,9 @@ namespace core::ghostty::actions::tags {
 // the toggle/effective logic is trivially unit-testable.
 class WindowDecorations {
 public:
+    // A plain value: a window born for another window's tab copies
+    // the override along with the rest of WindowState::Inherited.
     WindowDecorations() = default;
-    WindowDecorations(const WindowDecorations&) = delete;
-    WindowDecorations& operator=(const WindowDecorations&) = delete;
 
     // Apply the user's TOGGLE keypress. `configDecorated` is what the
     // current config says (`Config::WindowDecoratedByConfig()`).

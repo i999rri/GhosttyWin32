@@ -313,7 +313,7 @@ namespace winrt::GhosttyWin32::implementation
         w.Activate();
     }
 
-    MainWindow* App::CreateTearOutWindow(WindowState const& inherited)
+    MainWindow* App::CreateTearOutWindow(WindowState::Inherited const& inherited)
     {
         auto w = make<MainWindow>();
         auto* impl = winrt::get_self<MainWindow>(w);

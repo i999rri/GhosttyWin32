@@ -435,7 +435,7 @@ namespace winrt::GhosttyWin32::implementation
                 std::optional<POINT> dropPoint;
                 if (GetCursorPos(&cursor)) dropPoint = cursor;
                 TearOut::ToNewWindow(*self, item, dropPoint,
-                    [](WindowState const& inherited) {
+                    [](WindowState::Inherited const& inherited) {
                         return App::g_app->CreateTearOutWindow(inherited);
                     });
             });
@@ -1109,7 +1109,7 @@ namespace winrt::GhosttyWin32::implementation
         // with chrome already off.
         if (!m_tabs.Empty()) {
             ghostty::Config cfg(m_ghosttyApp->ConfigHandle());
-            if (!m_windowDecorations.Effective(cfg.WindowDecoratedByConfig())) {
+            if (!m_state.inherited.windowDecorations.Effective(cfg.WindowDecoratedByConfig())) {
                 if (App::g_app) App::g_app->CreateNewWindow();
                 return;
             }
@@ -1649,8 +1649,8 @@ namespace winrt::GhosttyWin32::implementation
 
     void MainWindow::ApplySizeLimit(ghostty_action_size_limit_s limit)
     {
-        m_sizeLimit.Apply(limit);
-        m_native.SetSizeLimit(m_sizeLimit);
+        m_state.sizeLimit.Apply(limit);
+        m_native.SetSizeLimit(m_state.sizeLimit);
     }
 
     void MainWindow::ApplyCellSizeForSurface(ghostty_surface_t surface,
@@ -1674,11 +1674,11 @@ namespace winrt::GhosttyWin32::implementation
 
     void MainWindow::ArmCellSnap(ghostty_action_cell_size_s cell)
     {
-        m_cellSize.Apply(cell, WindowStepResizeByConfig());
-        m_native.SetCellSnap(m_cellSize);
+        m_state.cellSize.Apply(cell, WindowStepResizeByConfig());
+        m_native.SetCellSnap(m_state.cellSize);
         DEBUG_TRACE(L"CellSnap[%llu]: applied %ux%u enabled=%d\n",
                         GetTickCount64() % 100'000, cell.width,
-                        cell.height, m_cellSize.Enabled() ? 1 : 0);
+                        cell.height, m_state.cellSize.Enabled() ? 1 : 0);
     }
 
     bool MainWindow::WindowStepResizeByConfig() const
@@ -1690,7 +1690,7 @@ namespace winrt::GhosttyWin32::implementation
     void MainWindow::ToggleFullscreen()
     {
         using Transition = ghostty::actions::tags::Fullscreen::Transition;
-        switch (m_fullscreen.Toggle()) {
+        switch (m_state.fullscreen.Toggle()) {
             case Transition::Enter: m_native.EnterFullscreen(); break;
             case Transition::Leave: m_native.LeaveFullscreen(); break;
         }
@@ -1703,7 +1703,7 @@ namespace winrt::GhosttyWin32::implementation
         // effective state into XAML Visibility.
         ghostty::Config cfg(m_ghosttyApp->ConfigHandle());
         bool configDecorated = cfg.WindowDecoratedByConfig();
-        m_windowDecorations.Toggle(configDecorated);
+        m_state.inherited.windowDecorations.Toggle(configDecorated);
         ApplyWindowDecorationsAppearance();
     }
 
@@ -1744,7 +1744,7 @@ namespace winrt::GhosttyWin32::implementation
         // so "undecorated" here means hiding our own custom chrome row.
         ghostty::Config cfg(m_ghosttyApp->ConfigHandle());
         bool configDecorated = cfg.WindowDecoratedByConfig();
-        bool decorated = m_windowDecorations.Effective(configDecorated);
+        bool decorated = m_state.inherited.windowDecorations.Effective(configDecorated);
         AppTitleBar().Visibility(decorated
             ? winrt::Microsoft::UI::Xaml::Visibility::Visible
             : winrt::Microsoft::UI::Xaml::Visibility::Collapsed);
@@ -1812,8 +1812,8 @@ namespace winrt::GhosttyWin32::implementation
         ghostty::Config cfg(m_ghosttyApp->ConfigHandle());
         // The tag holds the guards (config already opaque, or
         // fullscreen); a guarded toggle changes nothing to re-apply.
-        if (!m_state.backgroundOpacity.Toggle(cfg.BackgroundOpacity(),
-                                              m_fullscreen.Active())) {
+        if (!m_state.inherited.backgroundOpacity.Toggle(cfg.BackgroundOpacity(),
+                                              m_state.fullscreen.Active())) {
             return;
         }
         ApplyBackgroundOpacityAppearance();
@@ -1831,7 +1831,7 @@ namespace winrt::GhosttyWin32::implementation
             opacity = cfg.BackgroundOpacity();
             blur = cfg.BackgroundBlurEnabled();
         }
-        return m_state.backgroundOpacity.Effective(opacity, blur);
+        return m_state.inherited.backgroundOpacity.Effective(opacity, blur);
     }
 
     void MainWindow::ApplyBackgroundOpacityAppearance()
@@ -2030,11 +2030,11 @@ namespace winrt::GhosttyWin32::implementation
         // window-step-resize can be toggled by itself; CELL_SIZE
         // only re-fires on metric changes, so re-read the gate here
         // so a reload flips snapping immediately (#155).
-        m_cellSize.SetEnabled(WindowStepResizeByConfig());
-        m_native.SetCellSnap(m_cellSize);
+        m_state.cellSize.SetEnabled(WindowStepResizeByConfig());
+        m_native.SetCellSnap(m_state.cellSize);
         DEBUG_TRACE(L"CellSnap[%llu]: config replaced, enabled=%d\n",
                         GetTickCount64() % 100'000,
-                        m_cellSize.Enabled() ? 1 : 0);
+                        m_state.cellSize.Enabled() ? 1 : 0);
         // background-opacity / background-blur likewise: a reload
         // only brings CONFIG_CHANGE (COLOR_CHANGE is the OSC path),
         // so nothing else re-reads them until the next toggle.

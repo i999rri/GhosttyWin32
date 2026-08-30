@@ -118,7 +118,7 @@ namespace winrt::GhosttyWin32::implementation
         // adopts the dropped one) and no Activate() — the drop
         // handler positions the window at the drop point after
         // adopting the tab and decides activation itself.
-        MainWindow* CreateTearOutWindow(WindowState const& inherited);
+        MainWindow* CreateTearOutWindow(WindowState::Inherited const& inherited);
 
         // The live window whose tab strip owns `item`, or null.
         // Locates the source window of a dragged tab on the drop
