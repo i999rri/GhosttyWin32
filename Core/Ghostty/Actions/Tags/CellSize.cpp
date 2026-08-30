@@ -1,4 +1,5 @@
 #include "CellSize.h"
+#include "Win32/DebugTrace.h"
 #include <cmath>
 #include <cwchar>
 #include <commctrl.h>
@@ -59,12 +60,10 @@ LRESULT CALLBACK CellSize::SubclassProc(
     // go quiet after a new tab even though the gate reads enabled.
     if (msg == WM_ENTERSIZEMOVE) {
         auto* self = reinterpret_cast<CellSize*>(ref);
-        wchar_t buf[128];
-        swprintf_s(buf, L"CellSnap: sizing loop enter, enabled=%d cell=%ux%u\n",
-                   self && self->m_enabled ? 1 : 0,
-                   self ? self->m_value.width : 0,
-                   self ? self->m_value.height : 0);
-        OutputDebugStringW(buf);
+        DEBUG_TRACE(L"CellSnap: sizing loop enter, enabled=%d cell=%ux%u\n",
+                    self && self->m_enabled ? 1 : 0,
+                    self ? self->m_value.width : 0,
+                    self ? self->m_value.height : 0);
     }
 #endif
     if (msg == WM_SIZING) {

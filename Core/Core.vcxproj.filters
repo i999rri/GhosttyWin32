@@ -78,6 +78,9 @@
     <ClInclude Include="Win32\Clipboard.h">
       <Filter>Win32</Filter>
     </ClInclude>
+    <ClInclude Include="Win32\DebugTrace.h">
+      <Filter>Win32</Filter>
+    </ClInclude>
     <ClInclude Include="Win32\SEHGuard.h">
       <Filter>Win32</Filter>
     </ClInclude>

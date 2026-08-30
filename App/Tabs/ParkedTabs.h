@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Tabs/Tab.h"
+#include "Win32/DebugTrace.h"
 #include <winrt/Microsoft.UI.Dispatching.h>
 #include <winrt/Microsoft.UI.Xaml.Controls.h>
 #include <algorithm>
@@ -9,23 +10,6 @@
 #include <memory>
 #include <optional>
 #include <vector>
-
-// Undo-park lifecycle tracing (#151). Debug / ASan builds only —
-// Release compiles the calls (and the format strings) out entirely.
-// Every call site passes at least the tick argument, so the plain
-// __VA_ARGS__ form works under the conformant preprocessor too.
-// Defined here because both this class and MainWindow's close-path
-// decision log speak the same trace vocabulary.
-#if defined(_DEBUG)
-#define UNDO_PARK_TRACE(fmt, ...)                                     \
-    do {                                                              \
-        wchar_t undoParkTraceBuf_[224];                               \
-        swprintf_s(undoParkTraceBuf_, fmt, __VA_ARGS__);              \
-        OutputDebugStringW(undoParkTraceBuf_);                        \
-    } while (0)
-#else
-#define UNDO_PARK_TRACE(fmt, ...) do { } while (0)
-#endif
 
 namespace winrt::GhosttyWin32::implementation {
 
@@ -81,7 +65,7 @@ public:
             }
         }
         if (!m_entries.empty()) {
-            UNDO_PARK_TRACE(L"UndoPark[%llu]: re-armed %zu parked timer(s)\n",
+            DEBUG_TRACE(L"UndoPark[%llu]: re-armed %zu parked timer(s)\n",
                             GetTickCount64() % 100'000, m_entries.size());
         }
 #endif
@@ -106,7 +90,7 @@ public:
         entry.timer = timer;
         m_entries.push_back(std::move(entry));
         timer.Start();
-        UNDO_PARK_TRACE(L"UndoPark[%llu]: parked tab=%p idx=%u timeout=%llums "
+        DEBUG_TRACE(L"UndoPark[%llu]: parked tab=%p idx=%u timeout=%llums "
                         L"(parked total: %zu)\n",
                         GetTickCount64() % 100'000, static_cast<void*>(key),
                         index, timeoutMs, m_entries.size());
@@ -121,14 +105,14 @@ public:
     std::optional<Restored> PopNewest()
     {
         if (m_entries.empty()) {
-            UNDO_PARK_TRACE(L"UndoPark[%llu]: undo requested, stack empty\n",
+            DEBUG_TRACE(L"UndoPark[%llu]: undo requested, stack empty\n",
                             GetTickCount64() % 100'000);
             return std::nullopt;
         }
         Entry entry = std::move(m_entries.back());
         m_entries.pop_back();
         if (entry.timer) entry.timer.Stop();
-        UNDO_PARK_TRACE(L"UndoPark[%llu]: undo tab=%p (parked left: %zu)\n",
+        DEBUG_TRACE(L"UndoPark[%llu]: undo tab=%p (parked left: %zu)\n",
                         GetTickCount64() % 100'000,
                         static_cast<void*>(entry.tab.get()), m_entries.size());
         return Restored{ std::move(entry.tab), entry.index };
@@ -193,7 +177,7 @@ private:
         auto tab = std::move(it->tab);
         auto onExpire = std::move(it->onExpire);
         m_entries.erase(it);
-        UNDO_PARK_TRACE(L"UndoPark[%llu]: expired tab=%p (parked left: %zu)\n",
+        DEBUG_TRACE(L"UndoPark[%llu]: expired tab=%p (parked left: %zu)\n",
                         GetTickCount64() % 100'000, static_cast<void*>(key),
                         m_entries.size());
         if (onExpire) onExpire(std::move(tab));
