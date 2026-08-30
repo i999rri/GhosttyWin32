@@ -9,6 +9,7 @@
 #include "Interop/Encoding.h"
 #include "Display/PhysicalPixels.h"
 #include "Win32/Clipboard.h"
+#include "Win32/DebugTrace.h"
 #include "Win32/SEHGuard.h"
 #if __has_include("MainWindow.g.cpp")
 #include "MainWindow.g.cpp"
@@ -38,7 +39,6 @@
 using namespace winrt;
 using namespace Microsoft::UI::Xaml;
 namespace muxc = Microsoft::UI::Xaml::Controls;
-// UNDO_PARK_TRACE comes from Tabs/ParkedTabs.h (via MainWindow.xaml.h).
 
 namespace winrt::GhosttyWin32::implementation
 {
@@ -1389,10 +1389,8 @@ namespace winrt::GhosttyWin32::implementation
         }
         const auto tabs = static_cast<unsigned>(m_tabs.Size());
         const auto parked = static_cast<unsigned>(m_parkedTabs.Size());
-        wchar_t buf[96];
-        swprintf_s(buf, L"PanelInvariant: tabs=%u parked=%u panels=%u\n",
-                   tabs, parked, panels);
-        OutputDebugStringW(buf);
+        DEBUG_TRACE(L"PanelInvariant: tabs=%u parked=%u panels=%u\n",
+                    tabs, parked, panels);
         if (panels != tabs + parked && IsDebuggerPresent()) __debugbreak();
 #endif
     }
@@ -1664,7 +1662,7 @@ namespace winrt::GhosttyWin32::implementation
         // one window share the font config, so whichever pane
         // reported last is the right step anyway.
         if (!m_tabs.FindBySurface(surface)) {
-            UNDO_PARK_TRACE(L"CellSnap[%llu]: CELL_SIZE %ux%u for surface=%p "
+            DEBUG_TRACE(L"CellSnap[%llu]: CELL_SIZE %ux%u for surface=%p "
                             L"not in this window, skipped\n",
                             GetTickCount64() % 100'000, cell.width,
                             cell.height, static_cast<void*>(surface));
@@ -1676,7 +1674,7 @@ namespace winrt::GhosttyWin32::implementation
     void MainWindow::ArmCellSnap(ghostty_action_cell_size_s cell)
     {
         m_cellSize.Apply(m_hwnd, cell, WindowStepResizeByConfig());
-        UNDO_PARK_TRACE(L"CellSnap[%llu]: applied %ux%u enabled=%d\n",
+        DEBUG_TRACE(L"CellSnap[%llu]: applied %ux%u enabled=%d\n",
                         GetTickCount64() % 100'000, cell.width,
                         cell.height, m_cellSize.Enabled() ? 1 : 0);
     }
@@ -2027,7 +2025,7 @@ namespace winrt::GhosttyWin32::implementation
         // only re-fires on metric changes, so re-read the gate here
         // so a reload flips snapping immediately (#155).
         m_cellSize.SetEnabled(WindowStepResizeByConfig());
-        UNDO_PARK_TRACE(L"CellSnap[%llu]: config replaced, enabled=%d\n",
+        DEBUG_TRACE(L"CellSnap[%llu]: config replaced, enabled=%d\n",
                         GetTickCount64() % 100'000,
                         m_cellSize.Enabled() ? 1 : 0);
         // background-opacity / background-blur likewise: a reload
@@ -2690,7 +2688,7 @@ namespace winrt::GhosttyWin32::implementation
             auto* tcForPark = pane->Impl();
             bool processAlive =
                 tcForPark && !tcForPark->Surface().ProcessExited();
-            UNDO_PARK_TRACE(L"UndoPark[%llu]: close-eval pane=%p wrapping=%p "
+            DEBUG_TRACE(L"UndoPark[%llu]: close-eval pane=%p wrapping=%p "
                             L"parent=%p onlyPane=%d alive=%d tabs=%u\n",
                             GetTickCount64() % 100'000,
                             static_cast<void*>(pane),
