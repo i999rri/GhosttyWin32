@@ -170,6 +170,7 @@
     <ClCompile Include="test_fullscreen.cpp" />
     <ClCompile Include="test_key_event_translator.cpp" />
     <ClCompile Include="test_window_decorations.cpp" />
+    <ClCompile Include="test_background_opacity.cpp" />
     <ClCompile Include="test_tab_drag.cpp" />
     <ClCompile Include="test_pressed_tab.cpp" />
     <ClCompile Include="test_trigger_label.cpp" />

@@ -1094,10 +1094,8 @@ namespace winrt::GhosttyWin32::implementation
             // background-opacity mode is window-scoped (#69), and a
             // pane born after a toggle must match its window.
             auto onLeafCreated = [this](implementation::TerminalControl& tc) {
-                ghostty::Config cfg(m_ghosttyApp->ConfigHandle());
-                const bool underlay =
-                    m_bgOpaque && cfg.BackgroundOpacity() < 1.0;
-                tc.SetOpaqueBackground(underlay, m_bgColor);
+                tc.SetOpaqueBackground(
+                    BackgroundOpacityAppearance().paneUnderlay, m_bgColor);
             };
             // Hand the factory the App wrapper, not a Config snapshot:
             // the config handle is freed and swapped on every config
@@ -1833,50 +1831,48 @@ namespace winrt::GhosttyWin32::implementation
     {
         if (!m_ghosttyApp) return;
         ghostty::Config cfg(m_ghosttyApp->ConfigHandle());
-        // macOS guards: nothing to toggle when no transparency is
-        // configured; never while fullscreen.
-        if (cfg.BackgroundOpacity() >= 1.0) return;
-        if (m_fullscreen.Active()) return;
-        m_bgOpaque = !m_bgOpaque;
+        // The tag holds the guards (config already opaque, or
+        // fullscreen); a guarded toggle changes nothing to re-apply.
+        if (!m_backgroundOpacity.Toggle(cfg.BackgroundOpacity(),
+                                        m_fullscreen.Active())) {
+            return;
+        }
         ApplyBackgroundOpacityAppearance();
+    }
+
+    ghostty::actions::tags::BackgroundOpacity::Appearance
+    MainWindow::BackgroundOpacityAppearance() const
+    {
+        // No ghostty yet = nothing configured = opaque, same as a
+        // config with background-opacity 1.0.
+        double opacity = 1.0;
+        bool blur = false;
+        if (m_ghosttyApp) {
+            ghostty::Config cfg(m_ghosttyApp->ConfigHandle());
+            opacity = cfg.BackgroundOpacity();
+            blur = cfg.BackgroundBlurEnabled();
+        }
+        return m_backgroundOpacity.Effective(opacity, blur);
     }
 
     void MainWindow::ApplyBackgroundOpacityAppearance()
     {
-        bool translucent = false;
-        if (m_ghosttyApp) {
-            ghostty::Config cfg(m_ghosttyApp->ConfigHandle());
-            translucent = cfg.BackgroundOpacity() < 1.0 && !m_bgOpaque;
-        }
-        // Backdrop selection mirrors Windows Terminal's two
-        // transparency modes and maps 1:1 onto ghostty config:
-        //   translucent + background-blur  -> DesktopAcrylic (blur
-        //     whatever is behind the window)
-        //   translucent, no blur           -> TransparentBackdrop
-        //     (crisp see-through — WT's "vintage opacity" look)
-        //   opaque                         -> Mica, as before
-        // Mica alone was tried first and reads as "slightly gray",
-        // not transparent — it only tints toward the wallpaper
-        // (observed during #69 verification).
-        bool blur = false;
-        if (translucent && m_ghosttyApp) {
-            blur = ghostty::Config(m_ghosttyApp->ConfigHandle())
-                       .BackgroundBlurEnabled();
-        }
+        // Every branch below is a decision the tag already made
+        // (see BackgroundOpacity.h for why each backdrop); this
+        // method only turns it into XAML / DWM calls.
+        using Backdrop = ghostty::actions::tags::BackgroundOpacity::Backdrop;
+        const auto look = BackgroundOpacityAppearance();
         try {
-            if (translucent) {
-                if (blur) {
-                    // Not the stock DesktopAcrylicBackdrop: its
-                    // material tint swallows the terminal's own
-                    // translucency. ClearAcrylic is pure blur, so
-                    // background-opacity and background-blur compose
-                    // (frosted glass).
+            switch (look.backdrop) {
+                case Backdrop::ClearAcrylic:
                     SystemBackdrop(winrt::GhosttyWin32::ClearAcrylicBackdrop());
-                } else {
+                    break;
+                case Backdrop::Transparent:
                     SystemBackdrop(winrt::GhosttyWin32::TransparentBackdrop());
-                }
-            } else {
-                SystemBackdrop(winrt::Microsoft::UI::Xaml::Media::MicaBackdrop());
+                    break;
+                case Backdrop::Mica:
+                    SystemBackdrop(winrt::Microsoft::UI::Xaml::Media::MicaBackdrop());
+                    break;
             }
         } catch (winrt::hresult_error const&) {
             // Backdrop swap can fail during teardown; visuals only.
@@ -1886,16 +1882,13 @@ namespace winrt::GhosttyWin32::implementation
         // see-through. Enabling "blur behind" with an empty region is
         // the long-standing switch that makes DWM honour the window's
         // per-pixel alpha (the blur itself has been a no-op since
-        // Win8; only the alpha semantics remain). Only needed for the
-        // crisp mode — Acrylic/Mica are DWM materials that composite
-        // on their own.
+        // Win8; only the alpha semantics remain).
         if (m_hwnd) {
-            const bool wantAlpha = translucent && !blur;
             DWM_BLURBEHIND bb{};
             bb.dwFlags = DWM_BB_ENABLE;
-            bb.fEnable = wantAlpha ? TRUE : FALSE;
+            bb.fEnable = look.dwmPerPixelAlpha ? TRUE : FALSE;
             HRGN rgn = nullptr;
-            if (wantAlpha) {
+            if (look.dwmPerPixelAlpha) {
                 rgn = CreateRectRgn(-1, -1, 0, 0);
                 bb.dwFlags |= DWM_BB_BLURREGION;
                 bb.hRgnBlur = rgn;
@@ -1903,24 +1896,17 @@ namespace winrt::GhosttyWin32::implementation
             DwmEnableBlurBehindWindow(m_hwnd, &bb);
             if (rgn) DeleteObject(rgn);
         }
-        // Root: in translucent mode the root stays unpainted so the
-        // window backdrop shows through behind the panes; otherwise
-        // paint it with the terminal background as before.
         if (auto content = Content()) {
             auto panel = content.as<winrt::Microsoft::UI::Xaml::Controls::Panel>();
-            if (translucent) {
-                panel.Background(nullptr);
-            } else {
+            if (look.paintRoot) {
                 panel.Background(
                     winrt::Microsoft::UI::Xaml::Media::SolidColorBrush(m_bgColor));
+            } else {
+                panel.Background(nullptr);
             }
         }
-        // Underlays only earn their pixel cost when they change the
-        // result: config transparency present AND the user toggled
-        // opaque. (With opacity 1.0 the swap chain is opaque anyway.)
-        const bool underlay = !translucent && m_bgOpaque;
         for (auto& tab : m_tabs) {
-            if (tab) tab->ApplyBackgroundOpacity(underlay, m_bgColor);
+            if (tab) tab->ApplyBackgroundOpacity(look.paneUnderlay, m_bgColor);
         }
     }
 

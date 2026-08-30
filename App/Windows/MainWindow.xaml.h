@@ -2,6 +2,7 @@
 
 #include "MainWindow.g.h"
 #include "ghostty.h"
+#include "Ghostty/Actions/Tags/BackgroundOpacity.h"
 #include "Ghostty/Actions/Tags/CellSize.h"
 #include "Ghostty/Actions/Tags/Fullscreen.h"
 #include "Ghostty/Actions/Tags/SizeLimit.h"
@@ -123,12 +124,17 @@ namespace winrt::GhosttyWin32::implementation
         void ToggleWindowDecorations() override;
         void SetFloatOnTop(ghostty_action_float_window_e mode) override;
         void ToggleBackgroundOpacity() override;
-        // Push the current background-opacity mode (m_bgOpaque +
-        // config) to the XAML root and every pane. Called from the
-        // toggle, from pane-creation funnels (CreateTab / split /
-        // adopt) so new panes match the window state, and from
+        // Carry out what the BackgroundOpacity tag decides for the
+        // current config: window backdrop, DWM alpha, root brush,
+        // per-pane underlays. Called from the toggle, from
+        // pane-creation funnels (CreateTab / split / adopt) so new
+        // panes match the window state, and from
         // ApplyBackgroundColor when the terminal recolours.
         void ApplyBackgroundOpacityAppearance();
+        // The tag's verdict for the current config; the one place
+        // the config is read for this purpose.
+        ghostty::actions::tags::BackgroundOpacity::Appearance
+        BackgroundOpacityAppearance() const;
         // Apply the current decoration state (config + any override
         // installed by ToggleWindowDecorations) to the XAML caption
         // buttons / drag region. Called once at startup so the config
@@ -368,6 +374,7 @@ namespace winrt::GhosttyWin32::implementation
         ghostty::actions::tags::SizeLimit          m_sizeLimit;
         ghostty::actions::tags::CellSize           m_cellSize;
         ghostty::actions::tags::Fullscreen         m_fullscreen;
+        ghostty::actions::tags::BackgroundOpacity  m_backgroundOpacity;
         ghostty::actions::tags::WindowDecorations  m_windowDecorations;
         Tabs m_tabs;
         // Undo support for tab closes (#151): parked-tab stack,
@@ -414,12 +421,6 @@ namespace winrt::GhosttyWin32::implementation
         // one is up throws. Set when the dialog opens, cleared in its
         // Completed handler.
         bool m_renamePromptOpen = false;
-        // TOGGLE_BACKGROUND_OPACITY state (#69). false = the config's
-        // background-opacity applies (translucent when < 1.0, which
-        // is also the launch state, matching macOS); true = the user
-        // toggled to fully opaque. Meaningless while the config
-        // opacity is 1.0 — the toggle no-ops there.
-        bool m_bgOpaque = false;
         // Terminal background colour as last applied (config value at
         // init, updated by COLOR_CHANGE via ApplyBackgroundColor).
         // Feeds the opaque underlays and the root brush.
