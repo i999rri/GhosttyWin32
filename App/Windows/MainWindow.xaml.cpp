@@ -2,6 +2,7 @@
 #include "Windows/MainWindow.xaml.h"
 #include "App.xaml.h"
 #include "Ghostty/CallbackDispatcher.h"
+#include "Ghostty/Actions/Splits.h"
 #include "Ghostty/Config.h"
 #include "Windows/TearOut.h"
 #include "Windows/TransparentBackdrop.h"
@@ -39,6 +40,7 @@
 using namespace winrt;
 using namespace Microsoft::UI::Xaml;
 namespace muxc = Microsoft::UI::Xaml::Controls;
+namespace splits = core::ghostty::actions::splits;
 
 namespace winrt::GhosttyWin32::implementation
 {
@@ -2184,94 +2186,6 @@ namespace winrt::GhosttyWin32::implementation
         }
     }
 
-    namespace {
-        void CollectPanes(Branch& branch, std::vector<Pane*>& out) {
-            branch.ForEachPane([&out](Pane& p) { out.push_back(&p); });
-        }
-
-        // arrangedRect lives on Branch, not Pane — layout callers
-        // resolve the pane back to its wrapping Branch through this.
-        Branch* BranchOfPane(implementation::SplitPanel* panelImpl,
-                             Pane const* pane)
-        {
-            if (!panelImpl || !pane) return nullptr;
-            auto* root = panelImpl->Tree().Root();
-            return root ? root->FindBranchOfPane(*pane) : nullptr;
-        }
-
-        // Score = primary distance + 2 * perpendicular. The 2x
-        // penalty keeps focus moves predictable when an off-axis
-        // pane is technically closer in straight-line distance than
-        // the aligned neighbour. Returns nullptr when no pane sits
-        // on the requested side.
-        Pane* FindAdjacentPane(implementation::SplitPanel* panelImpl,
-                               Pane* active,
-                               std::vector<Pane*> const& panes,
-                               ghostty_action_goto_split_e dir)
-        {
-            if (!active || !panelImpl) return nullptr;
-            auto* activeBranch = BranchOfPane(panelImpl, active);
-            if (!activeBranch) return nullptr;
-            auto a = activeBranch->arrangedRect;
-            float ax2 = a.X + a.Width;
-            float ay2 = a.Y + a.Height;
-            float aCenterX = a.X + a.Width  * 0.5f;
-            float aCenterY = a.Y + a.Height * 0.5f;
-
-            Pane* best = nullptr;
-            double bestScore = std::numeric_limits<double>::max();
-            for (auto* candidate : panes) {
-                if (candidate == active) continue;
-                auto* candBranch = BranchOfPane(panelImpl, candidate);
-                if (!candBranch) continue;
-                auto c = candBranch->arrangedRect;
-                float cx2 = c.X + c.Width;
-                float cy2 = c.Y + c.Height;
-                float cCenterX = c.X + c.Width  * 0.5f;
-                float cCenterY = c.Y + c.Height * 0.5f;
-
-                double primary = 0.0, perpendicular = 0.0;
-                bool valid = false;
-                switch (dir) {
-                case GHOSTTY_GOTO_SPLIT_LEFT:
-                    // 1px slack absorbs float rounding on the boundary.
-                    if (cx2 > a.X + 1.0f) break;
-                    primary = a.X - cx2;
-                    perpendicular = std::abs(cCenterY - aCenterY);
-                    valid = true;
-                    break;
-                case GHOSTTY_GOTO_SPLIT_RIGHT:
-                    if (c.X < ax2 - 1.0f) break;
-                    primary = c.X - ax2;
-                    perpendicular = std::abs(cCenterY - aCenterY);
-                    valid = true;
-                    break;
-                case GHOSTTY_GOTO_SPLIT_UP:
-                    if (cy2 > a.Y + 1.0f) break;
-                    primary = a.Y - cy2;
-                    perpendicular = std::abs(cCenterX - aCenterX);
-                    valid = true;
-                    break;
-                case GHOSTTY_GOTO_SPLIT_DOWN:
-                    if (c.Y < ay2 - 1.0f) break;
-                    primary = c.Y - ay2;
-                    perpendicular = std::abs(cCenterX - aCenterX);
-                    valid = true;
-                    break;
-                default:
-                    return nullptr;  // PREVIOUS / NEXT handled elsewhere
-                }
-                if (!valid) continue;
-                double score = primary + 2.0 * perpendicular;
-                if (score < bestScore) {
-                    bestScore = score;
-                    best = candidate;
-                }
-            }
-            return best;
-        }
-    }
-
     void MainWindow::BroadcastOcclusion(bool visible)
     {
         for (auto& tab : m_tabs) {
@@ -2297,37 +2211,19 @@ namespace winrt::GhosttyWin32::implementation
         Pane* sourcePane = lookup.pane;
         auto* panelImpl = winrt::get_self<implementation::SplitPanel>(sourceTab->Panel());
         if (!panelImpl) return;
-
-        // Copy out before ReplacePane destroys the original Branch —
-        // the wrapper below needs its own reference to the underlying
-        // TerminalControl and id.
-        auto sourceControl = sourcePane->control;
-        PaneId sourcePaneId = sourcePane->id;
-
-        // RIGHT/DOWN put the new pane after the source on the layout
-        // axis; LEFT/UP put it before.
-        Split::Direction splitDir;
-        bool newFirst;
-        switch (direction) {
-            case GHOSTTY_SPLIT_DIRECTION_RIGHT: splitDir = Split::Direction::Horizontal; newFirst = false; break;
-            case GHOSTTY_SPLIT_DIRECTION_LEFT:  splitDir = Split::Direction::Horizontal; newFirst = true;  break;
-            case GHOSTTY_SPLIT_DIRECTION_DOWN:  splitDir = Split::Direction::Vertical;   newFirst = false; break;
-            case GHOSTTY_SPLIT_DIRECTION_UP:    splitDir = Split::Direction::Vertical;   newFirst = true;  break;
-            default: return;
-        }
+        auto placement = splits::PlaceSplit(direction);
+        if (!placement) return;
 
         // Size hint for the new ghostty surface: the source pane's
         // current SwapChainPanel size halved on the split axis,
         // expressed in PHYSICAL pixels (see display::MeasuredPhysical
         // for why the conversion matters).
-        uint32_t srcW = 0, srcH = 0;
+        splits::Size hint{};
         if (auto* srcTc = sourcePane->Impl()) {
             auto sz = display::MeasuredPhysical(srcTc->InnerPanel());
-            srcW = sz.width;
-            srcH = sz.height;
+            hint = { sz.width, sz.height };
         }
-        uint32_t newW = (splitDir == Split::Direction::Horizontal) ? srcW / 2 : srcW;
-        uint32_t newH = (splitDir == Split::Direction::Vertical)   ? srcH / 2 : srcH;
+        hint = splits::HalfAlong(hint, placement->axis);
 
         // Wrap MakePane in an SEH guard for the same reason CreateTab
         // does — ghostty_surface_new calls into dx_create_texture
@@ -2343,7 +2239,7 @@ namespace winrt::GhosttyWin32::implementation
             uint32_t initialHeight;
             std::unique_ptr<Branch> result;
         };
-        SplitCtx ctx{ m_tabFactory.get(), newW, newH, nullptr };
+        SplitCtx ctx{ m_tabFactory.get(), hint.width, hint.height, nullptr };
         int ok = RunSEHGuarded([](void* arg) noexcept {
             auto* c = static_cast<SplitCtx*>(arg);
             c->result = c->factory->MakePane(c->initialWidth, c->initialHeight);
@@ -2364,22 +2260,16 @@ namespace winrt::GhosttyWin32::implementation
             if (m_hwnd) PostMessageW(m_hwnd, WM_CLOSE, 0, 0);
             return;
         }
-        auto newBranch = std::move(ctx.result);
-        if (!newBranch) return;
-        // Cache before newBranch is moved into the subtree — get_if
-        // on the variant is only valid while the branch is around.
-        Pane* newPanePtr = newBranch->TryGet<Pane>();
+        auto fresh = std::move(ctx.result);
+        if (!fresh) return;
+        // Keep a handle to the new control: if the tree mutation fails
+        // the branch is destroyed and the attached surface must be
+        // detached rather than leaked.
         winrt::GhosttyWin32::TerminalControl newControl{ nullptr };
-        if (newPanePtr) newControl = newPanePtr->control;
+        if (auto* p = fresh->TryGet<Pane>()) newControl = p->control;
 
-        auto sourceWrapper = MakePaneBranch(sourceControl, sourcePaneId);
-        auto subtree = newFirst
-            ? MakeSplitBranch(splitDir, 0.5, std::move(newBranch), std::move(sourceWrapper))
-            : MakeSplitBranch(splitDir, 0.5, std::move(sourceWrapper), std::move(newBranch));
-
-        if (!panelImpl->ReplacePane(*sourcePane, std::move(subtree))) {
-            // Tree mutation failed after the new surface was already
-            // attached — detach so it doesn't leak.
+        Pane* created = panelImpl->SplitPane(*sourcePane, *placement, std::move(fresh));
+        if (!created) {
             if (newControl) {
                 if (auto* tc = winrt::get_self<implementation::TerminalControl>(newControl)) {
                     tc->Detach();
@@ -2391,7 +2281,7 @@ namespace winrt::GhosttyWin32::implementation
         // Focus shifts to the freshly-created pane: matches the
         // expectation set by every other terminal (a `:vsplit` lands
         // the cursor in the new pane).
-        sourceTab->SetActivePane(newPanePtr);
+        sourceTab->SetActivePane(created);
         if (newControl) {
             newControl.Focus(Microsoft::UI::Xaml::FocusState::Programmatic);
         }
@@ -2417,19 +2307,7 @@ namespace winrt::GhosttyWin32::implementation
         auto* panelImpl = winrt::get_self<implementation::SplitPanel>(tab->Panel());
         if (!panelImpl) return;
 
-        // Already zoomed → unzoom regardless of which pane fired the
-        // action. Matches how Windows Terminal / iTerm exit zoom mode:
-        // a second press anywhere collapses it back.
-        if (panelImpl->Zoomed()) {
-            panelImpl->SetZoomed(nullptr);
-            return;
-        }
-        // Single-pane tab has nothing to expand against; visual state
-        // would be identical to the normal layout.
-        auto* root = panelImpl->Tree().Root();
-        if (root && root->TryGet<Pane>() == pane) return;
-
-        panelImpl->SetZoomed(pane);
+        if (!panelImpl->ToggleZoom(*pane)) return;
         tab->SetActivePane(pane);
         // Re-focus so the zoomed pane keeps input even when zoom was
         // toggled from a non-active pane via a remapped binding.
@@ -2445,33 +2323,11 @@ namespace winrt::GhosttyWin32::implementation
         auto lookup = m_tabs.FindPaneBySurface(surface);
         if (!lookup.pane) return;
         auto* tab = lookup.tab;
-        Pane* active = lookup.pane;
         auto* panelImpl = winrt::get_self<implementation::SplitPanel>(tab->Panel());
         if (!panelImpl) return;
 
-        std::vector<Pane*> panes;
-        if (auto* root = panelImpl->Tree().Root()) CollectPanes(*root, panes);
-        if (panes.size() <= 1) return;  // nothing to navigate to
-
-        Pane* target = nullptr;
-        if (direction == GHOSTTY_GOTO_SPLIT_PREVIOUS
-            || direction == GHOSTTY_GOTO_SPLIT_NEXT) {
-            // Cycle through DFS order. wrap-around so the last pane's
-            // NEXT lands on the first and vice versa.
-            auto it = std::find(panes.begin(), panes.end(), active);
-            if (it == panes.end()) return;
-            size_t idx = static_cast<size_t>(std::distance(panes.begin(), it));
-            size_t newIdx;
-            if (direction == GHOSTTY_GOTO_SPLIT_NEXT) {
-                newIdx = (idx + 1) % panes.size();
-            } else {
-                newIdx = (idx == 0) ? panes.size() - 1 : idx - 1;
-            }
-            target = panes[newIdx];
-        } else {
-            target = FindAdjacentPane(panelImpl, active, panes, direction);
-        }
-        if (!target || target == active) return;
+        Pane* target = panelImpl->PaneToward(*lookup.pane, direction);
+        if (!target || target == lookup.pane) return;
 
         tab->SetActivePane(target);
         if (target->control) {
@@ -2485,52 +2341,9 @@ namespace winrt::GhosttyWin32::implementation
         if (!surface) return;
         auto lookup = m_tabs.FindPaneBySurface(surface);
         if (!lookup.pane) return;
-        auto* tab = lookup.tab;
-        Pane* pane = lookup.pane;
-        auto* panelImpl = winrt::get_self<implementation::SplitPanel>(tab->Panel());
+        auto* panelImpl = winrt::get_self<implementation::SplitPanel>(lookup.tab->Panel());
         if (!panelImpl) return;
-
-        // The split axis we're resizing matches the direction axis:
-        // LEFT/RIGHT → Horizontal split, UP/DOWN → Vertical split.
-        Split::Direction needDir =
-            (resize.direction == GHOSTTY_RESIZE_SPLIT_LEFT
-             || resize.direction == GHOSTTY_RESIZE_SPLIT_RIGHT)
-            ? Split::Direction::Horizontal
-            : Split::Direction::Vertical;
-
-        // Walk to the nearest ancestor Split whose axis matches.
-        Branch* node = BranchOfPane(panelImpl, pane);
-        while (node && node->parent) {
-            Branch* parent = node->parent;
-            auto* parentSplit = parent ? parent->TryGet<Split>() : nullptr;
-            if (parentSplit && parentSplit->direction == needDir) {
-                node = parent;
-                break;
-            }
-            node = parent;
-        }
-        if (!node) return;
-        auto* targetSplit = node->TryGet<Split>();
-        if (!targetSplit || targetSplit->direction != needDir) return;
-
-        auto rect = node->arrangedRect;
-        float extent = (needDir == Split::Direction::Horizontal) ? rect.Width : rect.Height;
-        float useable = std::max(1.0f,
-            extent - static_cast<float>(implementation::SplitPanel::kSplitterThickness));
-        double deltaRatio = static_cast<double>(resize.amount) / useable;
-
-        // Arrow direction == direction the boundary moves, regardless
-        // of which side of the split the active pane is on.
-        //   * RIGHT / DOWN move the boundary toward +axis → ratio
-        //     grows (first child gets larger).
-        //   * LEFT / UP move the boundary toward -axis → ratio shrinks.
-        bool increase = (resize.direction == GHOSTTY_RESIZE_SPLIT_RIGHT
-                      || resize.direction == GHOSTTY_RESIZE_SPLIT_DOWN);
-
-        targetSplit->ratio = ClampSplitRatio(
-            targetSplit->ratio + (increase ? deltaRatio : -deltaRatio));
-        panelImpl->InvalidateMeasure();
-        panelImpl->InvalidateArrange();
+        panelImpl->ResizeSplit(*lookup.pane, resize);
     }
 
     TerminalControl* MainWindow::ControlByPaneId(PaneId id) noexcept
@@ -2693,7 +2506,7 @@ namespace winrt::GhosttyWin32::implementation
             auto* panelForPark =
                 winrt::get_self<implementation::SplitPanel>(tab->Panel());
             Branch* wrappingForPark =
-                panelForPark ? BranchOfPane(panelForPark, pane) : nullptr;
+                panelForPark ? panelForPark->Tree().TryFindBranch(*pane) : nullptr;
             bool onlyPane = wrappingForPark && !wrappingForPark->parent;
             auto* tcForPark = pane->Impl();
             bool processAlive =
@@ -2726,7 +2539,7 @@ namespace winrt::GhosttyWin32::implementation
         // immediate Split ancestor.
         Pane* siblingPane = nullptr;
         bool closingActive = (tab->ActivePane() == pane);
-        if (auto* wrapping = BranchOfPane(panelImpl, pane)) {
+        if (auto* wrapping = panelImpl ? panelImpl->Tree().TryFindBranch(*pane) : nullptr) {
             if (auto* parent = wrapping->parent) {
                 if (auto* parentSplit = parent->TryGet<Split>()) {
                     Branch* siblingBranch =
