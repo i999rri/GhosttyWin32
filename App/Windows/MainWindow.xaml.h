@@ -157,10 +157,12 @@ namespace winrt::GhosttyWin32::implementation
         void ApplyCellSizeForSurface(ghostty_surface_t surface,
                                      ghostty_action_cell_size_s cell) override;
         // Shared tail of the surface report and the adopt-time
-        // re-arm: update the WM_SIZING snapping tag with the metrics
-        // and re-read the window-step-resize gate. No-op on {0,0}
-        // (nothing reported yet).
+        // re-arm: hand the WM_SIZING snapping tag the metrics and
+        // the current window-step-resize gate.
         void ArmCellSnap(ghostty_action_cell_size_s cell);
+        // `window-step-resize` as the config says right now; false
+        // before ghostty is up. The one place it is read.
+        bool WindowStepResizeByConfig() const;
 
         // Terminal-driven appearance / lifecycle overrides. Bodies
         // are in MainWindow.xaml.cpp; the logic moved verbatim

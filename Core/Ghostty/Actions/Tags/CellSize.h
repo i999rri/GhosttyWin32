@@ -31,12 +31,15 @@ public:
     CellSize(const CellSize&) = delete;
     CellSize& operator=(const CellSize&) = delete;
 
-    // Update the active cell metrics and install the subclass on
-    // first use. Zero in either dimension disables snapping on
-    // that axis (defensive — the renderer always reports both).
-    // A null hwnd still records the metrics; call Attach once the
-    // HWND exists to complete the install.
-    void Apply(HWND hwnd, ghostty_action_cell_size_s cell) noexcept;
+    // Take a CELL_SIZE report: record the metrics, set the gate
+    // from `window-step-resize` (Config::WindowStepResize(),
+    // upstream default: false) and install the subclass on first
+    // use. A report with a zero dimension is ignored — nothing has
+    // been measured yet, and the previous metrics stay. A null
+    // hwnd still records the metrics; call Attach once the HWND
+    // exists to complete the install.
+    void Apply(HWND hwnd, ghostty_action_cell_size_s cell,
+               bool stepResize) noexcept;
 
     // Late subclass install for the adopt-before-activation order:
     // a fresh tear-out host adopts its tab (and arms the metrics)
@@ -46,10 +49,11 @@ public:
     // that never saw a CELL_SIZE keep paying no subclass cost).
     void Attach(HWND hwnd) noexcept;
 
-    // Gate from `window-step-resize` (upstream default: false).
-    // The metrics keep flowing regardless so a config toggle takes
-    // effect instantly without waiting for the next CELL_SIZE.
-    void SetEnabled(bool enabled) noexcept { m_enabled = enabled; }
+    // Re-read of the gate alone, for a config reload: CELL_SIZE
+    // only re-fires on metric changes, so a reload that flips
+    // `window-step-resize` by itself must reach the gate this way.
+    void SetEnabled(bool stepResize) noexcept { m_enabled = stepResize; }
+    bool Enabled() const noexcept { return m_enabled; }
 
 private:
     static LRESULT CALLBACK SubclassProc(

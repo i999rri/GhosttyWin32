@@ -1700,16 +1700,16 @@ namespace winrt::GhosttyWin32::implementation
 
     void MainWindow::ArmCellSnap(ghostty_action_cell_size_s cell)
     {
-        if (cell.width == 0 || cell.height == 0) return;
-        m_cellSize.Apply(m_hwnd, cell);
-        if (m_ghosttyApp) {
-            const bool enabled =
-                ghostty::Config(m_ghosttyApp->ConfigHandle()).WindowStepResize();
-            m_cellSize.SetEnabled(enabled);
-            UNDO_PARK_TRACE(L"CellSnap[%llu]: applied %ux%u enabled=%d\n",
-                            GetTickCount64() % 100'000, cell.width,
-                            cell.height, enabled ? 1 : 0);
-        }
+        m_cellSize.Apply(m_hwnd, cell, WindowStepResizeByConfig());
+        UNDO_PARK_TRACE(L"CellSnap[%llu]: applied %ux%u enabled=%d\n",
+                        GetTickCount64() % 100'000, cell.width,
+                        cell.height, m_cellSize.Enabled() ? 1 : 0);
+    }
+
+    bool MainWindow::WindowStepResizeByConfig() const
+    {
+        if (!m_ghosttyApp) return false;
+        return ghostty::Config(m_ghosttyApp->ConfigHandle()).WindowStepResize();
     }
 
     void MainWindow::ToggleFullscreen()
@@ -2051,11 +2051,10 @@ namespace winrt::GhosttyWin32::implementation
         // window-step-resize can be toggled by itself; CELL_SIZE
         // only re-fires on metric changes, so re-read the gate here
         // so a reload flips snapping immediately (#155).
-        const bool enabled =
-            ghostty::Config(m_ghosttyApp->ConfigHandle()).WindowStepResize();
-        m_cellSize.SetEnabled(enabled);
+        m_cellSize.SetEnabled(WindowStepResizeByConfig());
         UNDO_PARK_TRACE(L"CellSnap[%llu]: config replaced, enabled=%d\n",
-                        GetTickCount64() % 100'000, enabled ? 1 : 0);
+                        GetTickCount64() % 100'000,
+                        m_cellSize.Enabled() ? 1 : 0);
     }
 
     void MainWindow::ReloadConfig(bool soft)
