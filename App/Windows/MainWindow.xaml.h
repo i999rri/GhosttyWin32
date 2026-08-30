@@ -2,15 +2,12 @@
 
 #include "MainWindow.g.h"
 #include "ghostty.h"
-#include "Ghostty/Actions/Tags/CellSize.h"
-#include "Ghostty/Actions/Tags/Fullscreen.h"
-#include "Ghostty/Actions/Tags/SizeLimit.h"
-#include "Ghostty/Actions/Tags/WindowDecorations.h"
 #include "Ghostty/App.h"
 #include "Ghostty/CallbackDispatcher.h"
 #include "Host/IWindow.h"
 #include "Interop/Encoding.h"
 #include "Win32/Clipboard.h"
+#include "Win32/NativeWindow.h"
 #include "Tabs/Panes/PaneId.h"
 #include "Tabs/ParkedTabs.h"
 #include "Tabs/Tab.h"
@@ -115,10 +112,10 @@ namespace winrt::GhosttyWin32::implementation
         void CopyTabTitleForSurface(ghostty_surface_t surface) override;
         void MoveActiveTabBy(ssize_t amount) override;
 
-        // State-owner delegating overrides. Each is a one-liner;
-        // the actual logic lives in the dedicated value (m_sizeLimit,
-        // m_fullscreen) so MainWindow doesn't accrete fields
-        // that nothing outside one specific handler reads.
+        // State-owner delegating overrides. Each is a couple of
+        // lines: the tag in m_state decides, m_native carries the
+        // decision out on the HWND, so MainWindow doesn't accrete
+        // fields that nothing outside one specific handler reads.
         void ApplySizeLimit(ghostty_action_size_limit_s limit) override;
         void ToggleFullscreen() override;
         void ToggleWindowDecorations() override;
@@ -296,14 +293,17 @@ namespace winrt::GhosttyWin32::implementation
         // App::CreateTearOutWindow through the existing friendship.
         void SuppressInitialTab() noexcept { m_suppressInitialTab = true; }
 
-        // The window-scoped state this window was born with and
-        // has toggled since — what a torn-out tab takes along.
-        WindowState const& State() const noexcept { return m_state; }
-        // Start from another window's state. Called by
-        // App::CreateTearOutWindow before the tab is adopted;
+        // The part of this window's state that a window born for one
+        // of its tabs takes along (see WindowState.h).
+        WindowState::Inherited const& State() const noexcept { return m_state.inherited; }
+        // Start from another window's state. Called by App's window
+        // factories before the first Activated, so the startup
+        // appearance passes already see it; for a tear-out host,
         // AdoptTornOutTab's final re-apply then paints this window
         // like the source.
-        void InheritState(WindowState const& state) noexcept { m_state = state; }
+        void InheritState(WindowState::Inherited const& state) noexcept {
+            m_state.inherited = state;
+        }
 
         // How many tabs the strip holds (parked ones excluded).
         size_t TabCount() const noexcept { return m_tabs.Size(); }
@@ -387,17 +387,17 @@ namespace winrt::GhosttyWin32::implementation
         // and left every window after the first stuck in the
         // "already set up" branch with no HWND, no tabs, no terminal.
         bool m_activatedOnce = false;
-        // SIZE_LIMIT / TOGGLE_FULLSCREEN state. Default constructed
-        // (no limit set, not in fullscreen). Subclasses installed
-        // by SizeLimit are auto-removed by Win32 when m_hwnd is
-        // destroyed, so no explicit teardown ordering is needed.
-        ghostty::actions::tags::SizeLimit          m_sizeLimit;
-        ghostty::actions::tags::CellSize           m_cellSize;
-        ghostty::actions::tags::Fullscreen         m_fullscreen;
-        ghostty::actions::tags::WindowDecorations  m_windowDecorations;
-        // The tags that travel with a torn-out tab, as one value —
-        // see WindowState.h for which and why.
+        // Every window-scoped action tag, as one value — see
+        // WindowState.h for which of them a window born for one of
+        // this window's tabs takes along. Default constructed (no
+        // overrides, no limit set, nothing measured, not in
+        // fullscreen). Pure; the XAML side and m_native apply them.
         WindowState m_state;
+        // The HWND side: the subclass that enforces the size rules
+        // and the placement fullscreen comes back to. Bound at the
+        // first Activated; rules set before that (a tear-out host
+        // adopts first) are installed then.
+        win32::NativeWindow m_native;
         Tabs m_tabs;
         // Undo support for tab closes (#151): parked-tab stack,
         // expiry timers, redo bookkeeping — see Tabs/ParkedTabs.h.

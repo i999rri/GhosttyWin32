@@ -168,6 +168,8 @@
     <ClCompile Include="test_ghostty_callback_dispatcher.cpp" />
     <ClCompile Include="test_size_limit.cpp" />
     <ClCompile Include="test_fullscreen.cpp" />
+    <ClCompile Include="test_cell_size.cpp" />
+    <ClCompile Include="test_native_window.cpp" />
     <ClCompile Include="test_key_event_translator.cpp" />
     <ClCompile Include="test_window_decorations.cpp" />
     <ClCompile Include="test_background_opacity.cpp" />

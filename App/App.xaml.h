@@ -98,7 +98,14 @@ namespace winrt::GhosttyWin32::implementation
         // story. A Closed subscription drops the strong reference
         // when the user closes the window; the vector doesn't hold
         // stale entries for windows that outlive their HWND.
+        // The no-argument form is a window from scratch (launch,
+        // NEW_WINDOW): defaults for everything. The other is a
+        // window born for another window — the one that stands in
+        // for a new tab when that window's chrome is hidden — and
+        // starts from that window's inherited state so it comes up
+        // looking like where it was asked for.
         void CreateNewWindow();
+        void CreateNewWindow(WindowState::Inherited const& inherited);
 
         // Close every live top-level window (CLOSE_ALL_WINDOWS
         // action). Iterates a snapshot because each Close() erases
@@ -118,7 +125,7 @@ namespace winrt::GhosttyWin32::implementation
         // adopts the dropped one) and no Activate() — the drop
         // handler positions the window at the drop point after
         // adopting the tab and decides activation itself.
-        MainWindow* CreateTearOutWindow(WindowState const& inherited);
+        MainWindow* CreateTearOutWindow(WindowState::Inherited const& inherited);
 
         // The live window whose tab strip owns `item`, or null.
         // Locates the source window of a dragged tab on the drop

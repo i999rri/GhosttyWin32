@@ -81,6 +81,9 @@
     <ClInclude Include="Win32\DebugTrace.h">
       <Filter>Win32</Filter>
     </ClInclude>
+    <ClInclude Include="Win32\NativeWindow.h">
+      <Filter>Win32</Filter>
+    </ClInclude>
     <ClInclude Include="Win32\SEHGuard.h">
       <Filter>Win32</Filter>
     </ClInclude>
@@ -89,17 +92,14 @@
     <ClCompile Include="Ghostty\Actions\Actions.cpp">
       <Filter>Ghostty\Actions</Filter>
     </ClCompile>
-    <ClCompile Include="Ghostty\Actions\Tags\Fullscreen.cpp">
-      <Filter>Ghostty\Actions\Tags</Filter>
-    </ClCompile>
-    <ClCompile Include="Ghostty\Actions\Tags\SizeLimit.cpp">
-      <Filter>Ghostty\Actions\Tags</Filter>
-    </ClCompile>
     <ClCompile Include="Ghostty\CallbackDispatcher.cpp">
       <Filter>Ghostty</Filter>
     </ClCompile>
     <ClCompile Include="Ghostty\RuntimeConfigFactory.cpp">
       <Filter>Ghostty</Filter>
+    </ClCompile>
+    <ClCompile Include="Win32\NativeWindow.cpp">
+      <Filter>Win32</Filter>
     </ClCompile>
     <ClCompile Include="Win32\SEHGuard.cpp">
       <Filter>Win32</Filter>
