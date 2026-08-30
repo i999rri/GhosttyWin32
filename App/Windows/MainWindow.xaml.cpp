@@ -2055,6 +2055,10 @@ namespace winrt::GhosttyWin32::implementation
         UNDO_PARK_TRACE(L"CellSnap[%llu]: config replaced, enabled=%d\n",
                         GetTickCount64() % 100'000,
                         m_cellSize.Enabled() ? 1 : 0);
+        // background-opacity / background-blur likewise: a reload
+        // only brings CONFIG_CHANGE (COLOR_CHANGE is the OSC path),
+        // so nothing else re-reads them until the next toggle.
+        ApplyBackgroundOpacityAppearance();
     }
 
     void MainWindow::ReloadConfig(bool soft)
