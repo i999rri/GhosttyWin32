@@ -27,6 +27,9 @@
     <ClInclude Include="Ghostty\Actions\Actions.h">
       <Filter>Ghostty\Actions</Filter>
     </ClInclude>
+    <ClInclude Include="Ghostty\Actions\Tags\BackgroundOpacity.h">
+      <Filter>Ghostty\Actions\Tags</Filter>
+    </ClInclude>
     <ClInclude Include="Ghostty\Actions\Tags\Fullscreen.h">
       <Filter>Ghostty\Actions\Tags</Filter>
     </ClInclude>

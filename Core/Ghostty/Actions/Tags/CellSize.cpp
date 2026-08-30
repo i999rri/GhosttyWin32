@@ -30,9 +30,12 @@ LONG SnapEdge(LONG anchor, LONG moving, LONG step, int direction) noexcept
 
 }  // namespace
 
-void CellSize::Apply(HWND hwnd, ghostty_action_cell_size_s cell) noexcept
+void CellSize::Apply(HWND hwnd, ghostty_action_cell_size_s cell,
+                     bool stepResize) noexcept
 {
+    if (cell.width == 0 || cell.height == 0) return;
     m_value = cell;
+    m_enabled = stepResize;
     Attach(hwnd);
 }
 

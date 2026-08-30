@@ -98,7 +98,13 @@
     <ClInclude Include="Windows\MainWindows.h">
       <Filter>Windows</Filter>
     </ClInclude>
+    <ClInclude Include="Windows\TearOut.h">
+      <Filter>Windows</Filter>
+    </ClInclude>
     <ClInclude Include="Windows\WindowCloseGate.h">
+      <Filter>Windows</Filter>
+    </ClInclude>
+    <ClInclude Include="Windows\WindowState.h">
       <Filter>Windows</Filter>
     </ClInclude>
     <ClInclude Include="Windows\TransparentBackdrop.h">
@@ -143,6 +149,9 @@
       <Filter>Windows</Filter>
     </ClCompile>
     <ClCompile Include="Windows\MainWindows.cpp">
+      <Filter>Windows</Filter>
+    </ClCompile>
+    <ClCompile Include="Windows\TearOut.cpp">
       <Filter>Windows</Filter>
     </ClCompile>
     <ClCompile Include="Windows\WindowCloseGate.cpp">

@@ -3,6 +3,7 @@
 #include "App.xaml.g.h"
 #include "Ghostty/App.h"
 #include "Windows/MainWindows.h"
+#include "Windows/WindowState.h"
 #include "Tabs/Panes/PaneIdAllocator.h"
 #include "Tabs/PressedTab.h"
 #include "Tabs/TabDrag.h"
@@ -111,12 +112,13 @@ namespace winrt::GhosttyWin32::implementation
         // a home when it arrives.
         void Quit();
 
-        // Spawn the window that will host a torn-out tab. Same
+        // Spawn the window that will host a torn-out tab, starting
+        // from `inherited` (the source window's State()). Same
         // tracking as CreateNewWindow, but with no initial tab (it
         // adopts the dropped one) and no Activate() — the drop
         // handler positions the window at the drop point after
         // adopting the tab and decides activation itself.
-        MainWindow* CreateTearOutWindow();
+        MainWindow* CreateTearOutWindow(WindowState const& inherited);
 
         // The live window whose tab strip owns `item`, or null.
         // Locates the source window of a dragged tab on the drop

@@ -17,6 +17,7 @@
 #include "Tabs/TabFactory.h"
 #include "Tabs/Tabs.h"
 #include "Windows/WindowCloseGate.h"
+#include "Windows/WindowState.h"
 
 namespace winrt::GhosttyWin32::implementation
 {
@@ -123,12 +124,17 @@ namespace winrt::GhosttyWin32::implementation
         void ToggleWindowDecorations() override;
         void SetFloatOnTop(ghostty_action_float_window_e mode) override;
         void ToggleBackgroundOpacity() override;
-        // Push the current background-opacity mode (m_bgOpaque +
-        // config) to the XAML root and every pane. Called from the
-        // toggle, from pane-creation funnels (CreateTab / split /
-        // adopt) so new panes match the window state, and from
+        // Carry out what the BackgroundOpacity tag decides for the
+        // current config: window backdrop, DWM alpha, root brush,
+        // per-pane underlays. Called from the toggle, from
+        // pane-creation funnels (CreateTab / split / adopt) so new
+        // panes match the window state, and from
         // ApplyBackgroundColor when the terminal recolours.
         void ApplyBackgroundOpacityAppearance();
+        // The tag's verdict for the current config; the one place
+        // the config is read for this purpose.
+        ghostty::actions::tags::BackgroundOpacity::Appearance
+        BackgroundOpacityAppearance() const;
         // Apply the current decoration state (config + any override
         // installed by ToggleWindowDecorations) to the XAML caption
         // buttons / drag region. Called once at startup so the config
@@ -151,10 +157,12 @@ namespace winrt::GhosttyWin32::implementation
         void ApplyCellSizeForSurface(ghostty_surface_t surface,
                                      ghostty_action_cell_size_s cell) override;
         // Shared tail of the surface report and the adopt-time
-        // re-arm: update the WM_SIZING snapping tag with the metrics
-        // and re-read the window-step-resize gate. No-op on {0,0}
-        // (nothing reported yet).
+        // re-arm: hand the WM_SIZING snapping tag the metrics and
+        // the current window-step-resize gate.
         void ArmCellSnap(ghostty_action_cell_size_s cell);
+        // `window-step-resize` as the config says right now; false
+        // before ghostty is up. The one place it is read.
+        bool WindowStepResizeByConfig() const;
 
         // Terminal-driven appearance / lifecycle overrides. Bodies
         // are in MainWindow.xaml.cpp; the logic moved verbatim
@@ -206,6 +214,12 @@ namespace winrt::GhosttyWin32::implementation
         // this window's guts, granted access by name rather than by
         // widening the public surface.
         friend struct App;
+        // TearOut runs the tab-moves-to-a-new-window sequence, which
+        // is the window's own protocol (State / TabCount /
+        // ReleaseTornOutTab / AdoptTornOutTab) pulled out of the
+        // constructor so it can be read in one place. Same footing
+        // as App: named access, not a public surface.
+        friend class TearOut;
 
 
         void InitGhostty();
@@ -281,6 +295,18 @@ namespace winrt::GhosttyWin32::implementation
         // has frames to show from the first paint). Called by
         // App::CreateTearOutWindow through the existing friendship.
         void SuppressInitialTab() noexcept { m_suppressInitialTab = true; }
+
+        // The window-scoped state this window was born with and
+        // has toggled since — what a torn-out tab takes along.
+        WindowState const& State() const noexcept { return m_state; }
+        // Start from another window's state. Called by
+        // App::CreateTearOutWindow before the tab is adopted;
+        // AdoptTornOutTab's final re-apply then paints this window
+        // like the source.
+        void InheritState(WindowState const& state) noexcept { m_state = state; }
+
+        // How many tabs the strip holds (parked ones excluded).
+        size_t TabCount() const noexcept { return m_tabs.Size(); }
 
         // Take `item`'s Tab out of this window alive: strip entry
         // removed, panel unparented from AppContent, focused-surface
@@ -369,6 +395,9 @@ namespace winrt::GhosttyWin32::implementation
         ghostty::actions::tags::CellSize           m_cellSize;
         ghostty::actions::tags::Fullscreen         m_fullscreen;
         ghostty::actions::tags::WindowDecorations  m_windowDecorations;
+        // The tags that travel with a torn-out tab, as one value —
+        // see WindowState.h for which and why.
+        WindowState m_state;
         Tabs m_tabs;
         // Undo support for tab closes (#151): parked-tab stack,
         // expiry timers, redo bookkeeping — see Tabs/ParkedTabs.h.
@@ -414,12 +443,6 @@ namespace winrt::GhosttyWin32::implementation
         // one is up throws. Set when the dialog opens, cleared in its
         // Completed handler.
         bool m_renamePromptOpen = false;
-        // TOGGLE_BACKGROUND_OPACITY state (#69). false = the config's
-        // background-opacity applies (translucent when < 1.0, which
-        // is also the launch state, matching macOS); true = the user
-        // toggled to fully opaque. Meaningless while the config
-        // opacity is 1.0 — the toggle no-ops there.
-        bool m_bgOpaque = false;
         // Terminal background colour as last applied (config value at
         // init, updated by COLOR_CHANGE via ApplyBackgroundColor).
         // Feeds the opaque underlays and the root brush.

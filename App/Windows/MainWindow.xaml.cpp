@@ -3,6 +3,7 @@
 #include "App.xaml.h"
 #include "Ghostty/CallbackDispatcher.h"
 #include "Ghostty/Config.h"
+#include "Windows/TearOut.h"
 #include "Windows/TransparentBackdrop.h"
 #include "Host/KeyModifiers.h"
 #include "Interop/Encoding.h"
@@ -431,38 +432,12 @@ namespace winrt::GhosttyWin32::implementation
                 auto item = App::g_app->TabDrag().TakeLastDraggedTab();
                 if (!item) return;
                 POINT cursor{};
-                bool haveCursor = GetCursorPos(&cursor) != 0;
-                // Offsets place the window so its tab strip lands near
-                // the pointer instead of the window's top-left corner.
-                int32_t dropX = static_cast<int32_t>(cursor.x) - 120;
-                int32_t dropY = static_cast<int32_t>(cursor.y) - 24;
-                // Dragging out the only tab must not leave an empty
-                // shell behind — just move this window to the drop
-                // point instead, browser-style.
-                if (self->m_tabs.Size() <= 1) {
-                    if (haveCursor) {
-                        self->AppWindow().Move({ dropX, dropY });
-                    }
-                    return;
-                }
-                auto* host = App::g_app->CreateTearOutWindow();
-                if (!host) return;
-                try {
-                    if (auto tab = self->ReleaseTornOutTab(item)) {
-                        host->AdoptTornOutTab(std::move(tab), -1);
-                        if (haveCursor) {
-                            host->AppWindow().Move({ dropX, dropY });
-                        }
-                        // The drag is over, so activation is safe —
-                        // hand the new window focus like a browser
-                        // does after a tab is torn off.
-                        host->Activate();
-                    } else {
-                        // Nothing moved; don't leak an empty host.
-                        host->RequestClose();
-                    }
-                } catch (winrt::hresult_error const&) {
-                }
+                std::optional<POINT> dropPoint;
+                if (GetCursorPos(&cursor)) dropPoint = cursor;
+                TearOut::ToNewWindow(*self, item, dropPoint,
+                    [](WindowState const& inherited) {
+                        return App::g_app->CreateTearOutWindow(inherited);
+                    });
             });
 
             // Don't call Window.SetTitleBar(AppTitleBar()) — that would
@@ -1094,10 +1069,8 @@ namespace winrt::GhosttyWin32::implementation
             // background-opacity mode is window-scoped (#69), and a
             // pane born after a toggle must match its window.
             auto onLeafCreated = [this](implementation::TerminalControl& tc) {
-                ghostty::Config cfg(m_ghosttyApp->ConfigHandle());
-                const bool underlay =
-                    m_bgOpaque && cfg.BackgroundOpacity() < 1.0;
-                tc.SetOpaqueBackground(underlay, m_bgColor);
+                tc.SetOpaqueBackground(
+                    BackgroundOpacityAppearance().paneUnderlay, m_bgColor);
             };
             // Hand the factory the App wrapper, not a Config snapshot:
             // the config handle is freed and swapped on every config
@@ -1702,16 +1675,16 @@ namespace winrt::GhosttyWin32::implementation
 
     void MainWindow::ArmCellSnap(ghostty_action_cell_size_s cell)
     {
-        if (cell.width == 0 || cell.height == 0) return;
-        m_cellSize.Apply(m_hwnd, cell);
-        if (m_ghosttyApp) {
-            const bool enabled =
-                ghostty::Config(m_ghosttyApp->ConfigHandle()).WindowStepResize();
-            m_cellSize.SetEnabled(enabled);
-            UNDO_PARK_TRACE(L"CellSnap[%llu]: applied %ux%u enabled=%d\n",
-                            GetTickCount64() % 100'000, cell.width,
-                            cell.height, enabled ? 1 : 0);
-        }
+        m_cellSize.Apply(m_hwnd, cell, WindowStepResizeByConfig());
+        UNDO_PARK_TRACE(L"CellSnap[%llu]: applied %ux%u enabled=%d\n",
+                        GetTickCount64() % 100'000, cell.width,
+                        cell.height, m_cellSize.Enabled() ? 1 : 0);
+    }
+
+    bool MainWindow::WindowStepResizeByConfig() const
+    {
+        if (!m_ghosttyApp) return false;
+        return ghostty::Config(m_ghosttyApp->ConfigHandle()).WindowStepResize();
     }
 
     void MainWindow::ToggleFullscreen()
@@ -1833,50 +1806,48 @@ namespace winrt::GhosttyWin32::implementation
     {
         if (!m_ghosttyApp) return;
         ghostty::Config cfg(m_ghosttyApp->ConfigHandle());
-        // macOS guards: nothing to toggle when no transparency is
-        // configured; never while fullscreen.
-        if (cfg.BackgroundOpacity() >= 1.0) return;
-        if (m_fullscreen.Active()) return;
-        m_bgOpaque = !m_bgOpaque;
+        // The tag holds the guards (config already opaque, or
+        // fullscreen); a guarded toggle changes nothing to re-apply.
+        if (!m_state.backgroundOpacity.Toggle(cfg.BackgroundOpacity(),
+                                              m_fullscreen.Active())) {
+            return;
+        }
         ApplyBackgroundOpacityAppearance();
+    }
+
+    ghostty::actions::tags::BackgroundOpacity::Appearance
+    MainWindow::BackgroundOpacityAppearance() const
+    {
+        // No ghostty yet = nothing configured = opaque, same as a
+        // config with background-opacity 1.0.
+        double opacity = 1.0;
+        bool blur = false;
+        if (m_ghosttyApp) {
+            ghostty::Config cfg(m_ghosttyApp->ConfigHandle());
+            opacity = cfg.BackgroundOpacity();
+            blur = cfg.BackgroundBlurEnabled();
+        }
+        return m_state.backgroundOpacity.Effective(opacity, blur);
     }
 
     void MainWindow::ApplyBackgroundOpacityAppearance()
     {
-        bool translucent = false;
-        if (m_ghosttyApp) {
-            ghostty::Config cfg(m_ghosttyApp->ConfigHandle());
-            translucent = cfg.BackgroundOpacity() < 1.0 && !m_bgOpaque;
-        }
-        // Backdrop selection mirrors Windows Terminal's two
-        // transparency modes and maps 1:1 onto ghostty config:
-        //   translucent + background-blur  -> DesktopAcrylic (blur
-        //     whatever is behind the window)
-        //   translucent, no blur           -> TransparentBackdrop
-        //     (crisp see-through — WT's "vintage opacity" look)
-        //   opaque                         -> Mica, as before
-        // Mica alone was tried first and reads as "slightly gray",
-        // not transparent — it only tints toward the wallpaper
-        // (observed during #69 verification).
-        bool blur = false;
-        if (translucent && m_ghosttyApp) {
-            blur = ghostty::Config(m_ghosttyApp->ConfigHandle())
-                       .BackgroundBlurEnabled();
-        }
+        // Every branch below is a decision the tag already made
+        // (see BackgroundOpacity.h for why each backdrop); this
+        // method only turns it into XAML / DWM calls.
+        using Backdrop = ghostty::actions::tags::BackgroundOpacity::Backdrop;
+        const auto look = BackgroundOpacityAppearance();
         try {
-            if (translucent) {
-                if (blur) {
-                    // Not the stock DesktopAcrylicBackdrop: its
-                    // material tint swallows the terminal's own
-                    // translucency. ClearAcrylic is pure blur, so
-                    // background-opacity and background-blur compose
-                    // (frosted glass).
+            switch (look.backdrop) {
+                case Backdrop::ClearAcrylic:
                     SystemBackdrop(winrt::GhosttyWin32::ClearAcrylicBackdrop());
-                } else {
+                    break;
+                case Backdrop::Transparent:
                     SystemBackdrop(winrt::GhosttyWin32::TransparentBackdrop());
-                }
-            } else {
-                SystemBackdrop(winrt::Microsoft::UI::Xaml::Media::MicaBackdrop());
+                    break;
+                case Backdrop::Mica:
+                    SystemBackdrop(winrt::Microsoft::UI::Xaml::Media::MicaBackdrop());
+                    break;
             }
         } catch (winrt::hresult_error const&) {
             // Backdrop swap can fail during teardown; visuals only.
@@ -1886,16 +1857,13 @@ namespace winrt::GhosttyWin32::implementation
         // see-through. Enabling "blur behind" with an empty region is
         // the long-standing switch that makes DWM honour the window's
         // per-pixel alpha (the blur itself has been a no-op since
-        // Win8; only the alpha semantics remain). Only needed for the
-        // crisp mode — Acrylic/Mica are DWM materials that composite
-        // on their own.
+        // Win8; only the alpha semantics remain).
         if (m_hwnd) {
-            const bool wantAlpha = translucent && !blur;
             DWM_BLURBEHIND bb{};
             bb.dwFlags = DWM_BB_ENABLE;
-            bb.fEnable = wantAlpha ? TRUE : FALSE;
+            bb.fEnable = look.dwmPerPixelAlpha ? TRUE : FALSE;
             HRGN rgn = nullptr;
-            if (wantAlpha) {
+            if (look.dwmPerPixelAlpha) {
                 rgn = CreateRectRgn(-1, -1, 0, 0);
                 bb.dwFlags |= DWM_BB_BLURREGION;
                 bb.hRgnBlur = rgn;
@@ -1903,24 +1871,17 @@ namespace winrt::GhosttyWin32::implementation
             DwmEnableBlurBehindWindow(m_hwnd, &bb);
             if (rgn) DeleteObject(rgn);
         }
-        // Root: in translucent mode the root stays unpainted so the
-        // window backdrop shows through behind the panes; otherwise
-        // paint it with the terminal background as before.
         if (auto content = Content()) {
             auto panel = content.as<winrt::Microsoft::UI::Xaml::Controls::Panel>();
-            if (translucent) {
-                panel.Background(nullptr);
-            } else {
+            if (look.paintRoot) {
                 panel.Background(
                     winrt::Microsoft::UI::Xaml::Media::SolidColorBrush(m_bgColor));
+            } else {
+                panel.Background(nullptr);
             }
         }
-        // Underlays only earn their pixel cost when they change the
-        // result: config transparency present AND the user toggled
-        // opaque. (With opacity 1.0 the swap chain is opaque anyway.)
-        const bool underlay = !translucent && m_bgOpaque;
         for (auto& tab : m_tabs) {
-            if (tab) tab->ApplyBackgroundOpacity(underlay, m_bgColor);
+            if (tab) tab->ApplyBackgroundOpacity(look.paneUnderlay, m_bgColor);
         }
     }
 
@@ -2065,11 +2026,14 @@ namespace winrt::GhosttyWin32::implementation
         // window-step-resize can be toggled by itself; CELL_SIZE
         // only re-fires on metric changes, so re-read the gate here
         // so a reload flips snapping immediately (#155).
-        const bool enabled =
-            ghostty::Config(m_ghosttyApp->ConfigHandle()).WindowStepResize();
-        m_cellSize.SetEnabled(enabled);
+        m_cellSize.SetEnabled(WindowStepResizeByConfig());
         UNDO_PARK_TRACE(L"CellSnap[%llu]: config replaced, enabled=%d\n",
-                        GetTickCount64() % 100'000, enabled ? 1 : 0);
+                        GetTickCount64() % 100'000,
+                        m_cellSize.Enabled() ? 1 : 0);
+        // background-opacity / background-blur likewise: a reload
+        // only brings CONFIG_CHANGE (COLOR_CHANGE is the OSC path),
+        // so nothing else re-reads them until the next toggle.
+        ApplyBackgroundOpacityAppearance();
     }
 
     void MainWindow::ReloadConfig(bool soft)
