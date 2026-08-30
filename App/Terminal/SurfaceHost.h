@@ -1,14 +1,14 @@
 #pragma once
 
 #include "Ghostty/Surface.h"
-#include "Host/ImeBuffer.h"
+#include "Terminal/EditContext.h"
+#include "Terminal/ImeSession.h"
 #include "Interop/Encoding.h"
 #include "Win32/Clipboard.h"
 #include "ghostty.h"
 #include <winrt/Microsoft.UI.Dispatching.h>
 #include <winrt/Microsoft.UI.Xaml.Controls.h>
 #include <winrt/Microsoft.UI.Xaml.Input.h>
-#include <winrt/Windows.UI.Text.Core.h>
 #include <atomic>
 #include <functional>
 #include <memory>
@@ -93,8 +93,10 @@ namespace winrt::GhosttyWin32::implementation
     class SurfaceHost : public std::enable_shared_from_this<SurfaceHost>
     {
     public:
-        explicit SurfaceHost(Microsoft::UI::Xaml::Controls::SwapChainPanel panel) noexcept
-            : m_panel(std::move(panel)) {}
+        explicit SurfaceHost(Microsoft::UI::Xaml::Controls::SwapChainPanel panel)
+            : m_panel(std::move(panel))
+            , m_editContext(m_panel)
+            , m_ime(m_editContext) {}
         ~SurfaceHost() { Detach(); }
 
         SurfaceHost(SurfaceHost const&) = delete;
@@ -155,23 +157,21 @@ namespace winrt::GhosttyWin32::implementation
             m_terminalOwnsInput = std::move(terminalOwnsInput);
         }
 
-        // Builds the CoreTextEditContext and wires its seven handlers.
-        // Must run once the panel's control is in the live visual
-        // tree (the composite calls it from Loaded — registration
-        // with the OS text-services manager silently fails earlier).
-        // Idempotent.
-        void EnsureImeContext();
-
-        // XAML GotFocus / LostFocus on the composite. GotFocus syncs
-        // the EditContext, notifies the window, and tells ghostty this
-        // surface is focused so the losing pane's renderer drops to
-        // the slow cadence.
+        // XAML GotFocus / LostFocus on the composite. GotFocus also
+        // fires when an overlay inside the composite (the search box)
+        // takes focus, because the event bubbles — so "gained" means
+        // "focus is somewhere in this pane", and whether the terminal
+        // itself receives text is decided by TerminalOwnsInput.
+        // Gained additionally notifies the window and tells ghostty
+        // this surface is focused so the losing pane's renderer drops
+        // to the slow cadence.
         void OnFocusGained();
         void OnFocusLost();
 
         // Window-activation boundary: XAML's focus events do not fire
-        // on alt-tab, so the window pings the active control. Both
-        // only sync the EditContext.
+        // on alt-tab (logical focus stays on the element), so the
+        // window tells its active pane when it comes to the front or
+        // goes behind. Engagement only.
         void NotifyImeFocusEnter();
         void NotifyImeFocusLeave();
 
@@ -207,17 +207,13 @@ namespace winrt::GhosttyWin32::implementation
         static void OnSwapChainChanged(void* swap_chain, void* userdata) noexcept;
 
     private:
+        // Hand the IME session what its text means for this surface
+        // (preedit, gated commit, caret rect). Called from Attach so
+        // the callbacks can hold a weak_ptr to this host.
+        void WireIme();
         bool TerminalOwnsInput() const {
             return !m_terminalOwnsInput || m_terminalOwnsInput();
         }
-        // The one place the CoreTextEditContext is engaged or
-        // released. `focused` is whether the composite has keyboard
-        // focus at all; the context is engaged only when it does AND
-        // the terminal owns input (a sibling overlay holding the
-        // keyboard must not route its text through the terminal's
-        // IME path — #171). Every focus transition funnels here, so
-        // a new overlay never needs its own IME guard.
-        void SyncImeEngagement(bool focused);
         void CopySelectionToClipboard();
         void Tick();
 
@@ -242,15 +238,19 @@ namespace winrt::GhosttyWin32::implementation
         std::shared_ptr<SwapChainAttachRequest> m_attachRequest;
         std::shared_ptr<SwapChainChangedContext> m_swapChainChangedContext;
 
-        // IME plumbing. Each surface gets its own EditContext so a
-        // composition started in one tab doesn't leak preedit updates
-        // to another tab's surface when the user switches.
-        // CoreTextServicesManager allows multiple EditContexts in a
-        // single view; only one receives input at a time, controlled
-        // via NotifyFocusEnter/Leave on tab switches and window
-        // activation.
-        host::ImeBuffer m_ime;
-        winrt::Windows::UI::Text::Core::CoreTextEditContext m_editContext{ nullptr };
+        // IME, in two parts. EditContext wraps the CoreTextEditContext
+        // — its creation timing, engagement, and the seven events —
+        // and ImeSession says what happens on those events (the
+        // composition buffer, preedit, commit). One pair per surface
+        // so a composition started in one tab doesn't leak preedit
+        // updates to another tab's surface. This host supplies what
+        // the text means for the surface through the session's
+        // callbacks (wired in Attach). Declaration order matters: the
+        // session installs its handlers on the context in its ctor
+        // and removes them in its dtor, so the context must be
+        // constructed first and destroyed last.
+        EditContext m_editContext;
+        ImeSession m_ime;
 
         std::function<void(ghostty_surface_t)> m_onFocused;
         std::function<bool()> m_terminalOwnsInput;

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <ApplicationDefinition Include="App.xaml" />
@@ -110,6 +110,15 @@
     <ClInclude Include="Terminal\TerminalControl.xaml.h">
       <Filter>Terminal</Filter>
     </ClInclude>
+    <ClInclude Include="Terminal\EditContextHandlers.h">
+      <Filter>Terminal</Filter>
+    </ClInclude>
+    <ClInclude Include="Terminal\EditContext.h">
+      <Filter>Terminal</Filter>
+    </ClInclude>
+    <ClInclude Include="Terminal\ImeSession.h">
+      <Filter>Terminal</Filter>
+    </ClInclude>
     <ClInclude Include="Terminal\SurfaceHost.h">
       <Filter>Terminal</Filter>
     </ClInclude>
@@ -146,6 +155,9 @@
       <Filter>Tabs</Filter>
     </ClCompile>
     <ClCompile Include="Terminal\TerminalControl.xaml.cpp">
+      <Filter>Terminal</Filter>
+    </ClCompile>
+    <ClCompile Include="Terminal\EditContext.cpp">
       <Filter>Terminal</Filter>
     </ClCompile>
     <ClCompile Include="Terminal\SurfaceHost.cpp">

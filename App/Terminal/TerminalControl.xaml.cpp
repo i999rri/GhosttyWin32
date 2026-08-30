@@ -41,33 +41,18 @@ namespace winrt::GhosttyWin32::implementation
             return self && self->TerminalOwnsInput();
         });
 
-        // Set up IME + self-focus on Loaded. Three reasons this all
-        // happens here rather than in Attach or the ctor:
-        //
-        //   * SelectedItem-driven focus from the outside (MainWindow's
-        //     SelectionChanged handler) fires while TabView's content
-        //     presenter is still swapping us in, and Focus() returns
-        //     false before layout completes. Loaded fires only once
-        //     the control is actually in the live visual tree and
-        //     measured — at that point Focus succeeds without retry.
-        //
-        //   * CoreTextEditContext registration with the OS-side text-
-        //     services manager only takes effect when the EditContext
-        //     is created against an element that's in the live visual
-        //     tree. Creating it earlier (in Attach, before
-        //     TabView.SelectedItem realises us) silently fails to
-        //     register, so NotifyFocusEnter doesn't engage IME — the
-        //     symptom was "first tab can't toggle 半角/全角 until a
-        //     second tab is created."
-        //
-        //   * Loaded fires once per control, after both of the above
-        //     conditions are true, so the setup is naturally a single
-        //     idempotent step.
+        // Take focus on Loaded rather than in the ctor: SelectedItem-
+        // driven focus from the outside (MainWindow's SelectionChanged
+        // handler) fires while TabView's content presenter is still
+        // swapping us in, and Focus() returns false before layout
+        // completes. Loaded fires only once the control is actually in
+        // the live visual tree and measured — at that point Focus
+        // succeeds without retry. (The IME session waits for Loaded on
+        // its own; see ImeSession.h.)
         Loaded([weakSelf](auto&&, auto&&) {
-            auto self = weakSelf.get();
-            if (!self) return;
-            self->m_host->EnsureImeContext();
-            self->Focus(mux::FocusState::Programmatic);
+            if (auto self = weakSelf.get()) {
+                self->Focus(mux::FocusState::Programmatic);
+            }
         });
 
         // Mirror keyboard-focus state into the host (EditContext

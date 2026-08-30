@@ -30,11 +30,7 @@ namespace winrt::GhosttyWin32::implementation
         m_hostHwnd = hostHwnd;
         m_attachRequest = std::move(attachRequest);
         m_swapChainChangedContext = std::move(swapChainChangedContext);
-        // IME setup is deferred to EnsureImeContext (called from the
-        // composite's Loaded). CreateEditContext only registers
-        // properly when the owning element is in the live visual
-        // tree, which doesn't happen until TabView.SelectedItem
-        // realises the control.
+        WireIme();
 
         // Capture a weak_ptr instead of `this` or the raw surface
         // pointer. Detach unhooks SizeChanged before
@@ -123,14 +119,8 @@ namespace winrt::GhosttyWin32::implementation
             m_swapChainChangedContext->cancelled.store(true);
         }
 
-        if (m_editContext) {
-            // Best-effort: tell the OS the EditContext is leaving focus
-            // before we drop our reference. Skipping this leaves the
-            // text-services manager holding a stale focus pointer until
-            // GC catches up.
-            m_editContext.NotifyFocusLeave();
-            m_editContext = nullptr;
-        }
+        m_ime.Reset();
+        m_editContext.Release();
 
         if (m_panel) {
             if (m_sizeChangedToken.value != 0) {
@@ -173,16 +163,15 @@ namespace winrt::GhosttyWin32::implementation
 
     // ----- focus / IME -----
 
-    void SurfaceHost::SyncImeEngagement(bool focused)
-    {
-        if (!m_editContext) return;
-        if (focused && TerminalOwnsInput()) m_editContext.NotifyFocusEnter();
-        else                                m_editContext.NotifyFocusLeave();
-    }
-
     void SurfaceHost::OnFocusGained()
     {
-        SyncImeEngagement(true);
+        // Focus is somewhere in this pane. If the terminal is what
+        // receives text, this context becomes the field the OS types
+        // into; if an overlay (the search box) holds the keyboard, it
+        // must not — its text would be routed through the terminal's
+        // IME path into the pty (#171).
+        if (TerminalOwnsInput()) m_editContext.Engage();
+        else                     m_editContext.Disengage();
         // Surface-level focus event for the window. Mirrors the
         // upstream getActiveSurface pattern (#62): the window uses
         // this to retarget the tab's active pane without the host
@@ -199,127 +188,61 @@ namespace winrt::GhosttyWin32::implementation
 
     void SurfaceHost::OnFocusLost()
     {
-        SyncImeEngagement(false);
+        // Focus left this pane entirely.
+        m_editContext.Disengage();
         m_surface.SetFocus(false);
     }
 
     void SurfaceHost::NotifyImeFocusEnter()
     {
-        SyncImeEngagement(true);
+        // The window came to the front with this pane active. Same
+        // rule as OnFocusGained: only if the terminal, not an
+        // overlay, is what receives text.
+        if (TerminalOwnsInput()) m_editContext.Engage();
+        else                     m_editContext.Disengage();
     }
 
     void SurfaceHost::NotifyImeFocusLeave()
     {
-        SyncImeEngagement(false);
+        // The window went behind another.
+        m_editContext.Disengage();
     }
 
-    void SurfaceHost::EnsureImeContext()
+    void SurfaceHost::WireIme()
     {
-        if (m_editContext) return;
-        namespace txtCore = winrt::Windows::UI::Text::Core;
-        // CoreTextServicesManager.GetForCurrentView lives at the view
-        // (~window) level, but CreateEditContext spins up an
-        // independent context — multiple surfaces in the same window
-        // each get their own. The OS arbitrates which one receives
-        // input via NotifyFocusEnter/Leave; we drive those on focus
-        // change (OnFocusGained/Lost) and on window activation
-        // (NotifyImeFocusEnter/Leave).
-        auto manager = txtCore::CoreTextServicesManager::GetForCurrentView();
-        m_editContext = manager.CreateEditContext();
-        m_editContext.InputPaneDisplayPolicy(txtCore::CoreTextInputPaneDisplayPolicy::Manual);
-        m_editContext.InputScope(txtCore::CoreTextInputScope::Default);
-
+        // The session speaks the text-services protocol; these three
+        // callbacks are what the text means for the surface. Wired
+        // here (not in the ctor) so they can hold a weak_ptr to this
+        // host.
         std::weak_ptr<SurfaceHost> weak = weak_from_this();
-
-        m_editContext.TextRequested([weak](
-            txtCore::CoreTextEditContext const&,
-            txtCore::CoreTextTextRequestedEventArgs const& args) {
-            auto self = weak.lock();
-            if (!self) return;
-            args.Request().Text(winrt::hstring(self->m_ime.paddedText()));
-        });
-
-        m_editContext.SelectionRequested([weak](
-            txtCore::CoreTextEditContext const&,
-            txtCore::CoreTextSelectionRequestedEventArgs const& args) {
-            auto self = weak.lock();
-            if (!self) return;
-            int32_t pos = self->m_ime.selectionPosition();
-            args.Request().Selection({ pos, pos });
-        });
-
-        m_editContext.TextUpdating([weak](
-            txtCore::CoreTextEditContext const&,
-            txtCore::CoreTextTextUpdatingEventArgs const& args) {
+        m_ime.SetOnPreedit([weak](std::string const& utf8) {
             auto self = weak.lock();
             if (!self || !self->m_surface) return;
-            auto range = args.Range();
-            auto newText = args.Text();
-            self->m_ime.applyTextUpdate(range.StartCaretPosition, range.EndCaretPosition,
-                                        newText.c_str(), newText.size());
-            if (self->m_ime.composing()) {
-                if (self->m_ime.text().empty()) {
-                    self->m_surface.Preedit(nullptr, 0);
-                } else {
-                    auto utf8 = interop::Encoding::toUtf8(self->m_ime.text());
-                    if (!utf8.empty())
-                        self->m_surface.Preedit(utf8.c_str(), utf8.size());
-                }
+            if (utf8.empty()) self->m_surface.Preedit(nullptr, 0);
+            else              self->m_surface.Preedit(utf8.c_str(), utf8.size());
+            self->Tick();
+        });
+        m_ime.SetOnCommit([weak](std::string const& utf8) {
+            auto self = weak.lock();
+            if (!self || !self->m_surface) return;
+            self->m_surface.Preedit(nullptr, 0);
+            // A composition committed while a sibling overlay owns
+            // text input must not land in the pty (see
+            // OnFocusGained).
+            if (!utf8.empty() && self->TerminalOwnsInput()) {
+                self->m_surface.Text(utf8.c_str(), utf8.size());
             }
             self->Tick();
         });
-
-        m_editContext.CompositionStarted([weak](
-            txtCore::CoreTextEditContext const&,
-            txtCore::CoreTextCompositionStartedEventArgs const&) {
+        m_ime.SetCaretRect([weak]() -> std::optional<winrt::Windows::Foundation::Rect> {
             auto self = weak.lock();
-            if (!self) return;
-            self->m_ime.compositionStarted();
-        });
-
-        m_editContext.CompositionCompleted([weak](
-            txtCore::CoreTextEditContext const&,
-            txtCore::CoreTextCompositionCompletedEventArgs const&) {
-            auto self = weak.lock();
-            if (!self) return;
-            if (self->m_surface) {
-                self->m_surface.Preedit(nullptr, 0);
-                auto utf8 = interop::Encoding::toUtf8(self->m_ime.text());
-                // A composition committed while a sibling overlay owns
-                // text input must not land in the pty (see
-                // SyncImeEngagement).
-                if (!utf8.empty() && self->TerminalOwnsInput()) {
-                    self->m_surface.Text(utf8.c_str(), utf8.size());
-                }
-                self->Tick();
-            }
-            self->m_ime.compositionCompleted();
-        });
-
-        m_editContext.LayoutRequested([weak](
-            txtCore::CoreTextEditContext const&,
-            txtCore::CoreTextLayoutRequestedEventArgs const& args) {
-            auto self = weak.lock();
-            if (!self || !self->m_surface || !self->m_hostHwnd) return;
+            if (!self || !self->m_surface || !self->m_hostHwnd) return std::nullopt;
             double x = 0, y = 0, w = 0, h = 0;
             self->m_surface.ImePoint(&x, &y, &w, &h);
             POINT screenPt = { (LONG)x, (LONG)y };
             ClientToScreen(self->m_hostHwnd, &screenPt);
-            winrt::Windows::Foundation::Rect bounds{
+            return winrt::Windows::Foundation::Rect{
                 (float)screenPt.x, (float)screenPt.y, (float)w, (float)h };
-            args.Request().LayoutBounds().ControlBounds(bounds);
-            args.Request().LayoutBounds().TextBounds(bounds);
-        });
-
-        m_editContext.FocusRemoved([weak](
-            txtCore::CoreTextEditContext const&, auto&&) {
-            auto self = weak.lock();
-            if (!self) return;
-            if (self->m_ime.composing()) {
-                self->m_ime.reset();
-                if (self->m_surface)
-                    self->m_surface.Preedit(nullptr, 0);
-            }
         });
     }
 
@@ -408,7 +331,7 @@ namespace winrt::GhosttyWin32::implementation
         // on purpose so the overlay's own handling still sees the key.
         if (!TerminalOwnsInput()) return;
 
-        input::TerminalKeyDown key(args, m_ime.composing());
+        input::TerminalKeyDown key(args, m_ime.Composing());
 
         // IME owns the composition lifecycle; don't double-encode
         // into the pty.
