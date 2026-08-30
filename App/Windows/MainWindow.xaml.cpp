@@ -1106,11 +1106,14 @@ namespace winrt::GhosttyWin32::implementation
         // `window-decoration=false` disables native tabs entirely and
         // new-tab requests become new windows. The first tab is exempt
         // so the terminal can come up at all when the user launches
-        // with chrome already off.
+        // with chrome already off. The window stands in for a tab of
+        // this one, so it starts from this window's inherited state
+        // (chrome override, background-opacity mode) rather than the
+        // defaults.
         if (!m_tabs.Empty()) {
             ghostty::Config cfg(m_ghosttyApp->ConfigHandle());
             if (!m_state.inherited.windowDecorations.Effective(cfg.WindowDecoratedByConfig())) {
-                if (App::g_app) App::g_app->CreateNewWindow();
+                if (App::g_app) App::g_app->CreateNewWindow(m_state.inherited);
                 return;
             }
         }

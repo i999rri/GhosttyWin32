@@ -308,7 +308,16 @@ namespace winrt::GhosttyWin32::implementation
 
     void App::CreateNewWindow()
     {
+        CreateNewWindow(WindowState::Inherited{});
+    }
+
+    void App::CreateNewWindow(WindowState::Inherited const& inherited)
+    {
         auto w = make<MainWindow>();
+        // Before the first Activated: its one-shot init applies the
+        // decoration and background-opacity appearance from this
+        // state, so the window never shows the defaults first.
+        winrt::get_self<MainWindow>(w)->InheritState(inherited);
         TrackWindow(w);
         w.Activate();
     }
