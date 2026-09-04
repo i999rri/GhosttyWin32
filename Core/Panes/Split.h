@@ -1,6 +1,8 @@
 #pragma once
 
+#include <ghostty.h>
 #include <memory>
+#include <optional>
 #include <utility>
 
 namespace core::panes {
@@ -39,6 +41,26 @@ struct Split {
 
     bool IsHorizontal() const noexcept { return direction == Direction::Horizontal; }
     bool IsVertical()   const noexcept { return direction == Direction::Vertical; }
+
+    // NEW_SPLIT: which way the new split divides, and whether the new
+    // pane goes before the existing one. RIGHT / DOWN put it after
+    // the source on the layout axis; LEFT / UP put it before.
+    struct Placement {
+        Direction direction;
+        bool newFirst;
+    };
+
+    static std::optional<Placement> Place(
+        ghostty_action_split_direction_e direction) noexcept
+    {
+        switch (direction) {
+        case GHOSTTY_SPLIT_DIRECTION_RIGHT: return Placement{ Direction::Horizontal, false };
+        case GHOSTTY_SPLIT_DIRECTION_LEFT:  return Placement{ Direction::Horizontal, true };
+        case GHOSTTY_SPLIT_DIRECTION_DOWN:  return Placement{ Direction::Vertical,   false };
+        case GHOSTTY_SPLIT_DIRECTION_UP:    return Placement{ Direction::Vertical,   true };
+        default:                            return std::nullopt;
+        }
+    }
 
     // Templates instantiate at the call site, so Branch just needs to
     // be forward-declared here; Branch.h includes this header before

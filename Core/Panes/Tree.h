@@ -1,8 +1,12 @@
 #pragma once
 
 #include <Panes/Branch.h>
+#include <algorithm>
 #include <cassert>
+#include <cmath>
 #include <functional>
+#include <ghostty.h>
+#include <limits>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -84,6 +88,115 @@ public:
             }
         }
         return nullptr;
+    }
+
+    // GOTO_SPLIT: the pane focus should move to from `from` — the
+    // spatial neighbour for LEFT / RIGHT / UP / DOWN, the depth-first
+    // neighbour (wrapping at either end) for PREVIOUS / NEXT — or
+    // null when there is none (a lone pane, an unknown direction, or
+    // nothing on that side).
+    //
+    // The spatial rule works on the arranged rects the layout pass
+    // wrote onto each leaf's wrapping Branch. A candidate qualifies
+    // when its whole extent lies on the requested side of `from`
+    // (with 1px of slack to absorb float rounding on a shared
+    // boundary). Among those, the score is
+    //   primary distance + 2 × perpendicular offset of the centres
+    // and the lowest wins: the 2× penalty keeps focus moves
+    // predictable when an off-axis pane is technically closer in
+    // straight-line distance than the aligned neighbour.
+    Pane* Neighbor(Pane const& from, ghostty_action_goto_split_e direction) {
+        auto panes = Panes();
+        if (panes.size() <= 1) return nullptr;   // nothing to navigate to
+        auto it = std::find(panes.begin(), panes.end(), &from);
+        if (it == panes.end()) return nullptr;
+        const size_t index = static_cast<size_t>(std::distance(panes.begin(), it));
+
+        if (direction == GHOSTTY_GOTO_SPLIT_NEXT) {
+            return panes[(index + 1) % panes.size()];
+        }
+        if (direction == GHOSTTY_GOTO_SPLIT_PREVIOUS) {
+            return panes[index == 0 ? panes.size() - 1 : index - 1];
+        }
+
+        const auto a = TryFindBranch(from)->arrangedRect;
+        const auto right   = [](winrt::Windows::Foundation::Rect const& r) { return r.X + r.Width; };
+        const auto bottom  = [](winrt::Windows::Foundation::Rect const& r) { return r.Y + r.Height; };
+        const auto centerX = [](winrt::Windows::Foundation::Rect const& r) { return r.X + r.Width * 0.5f; };
+        const auto centerY = [](winrt::Windows::Foundation::Rect const& r) { return r.Y + r.Height * 0.5f; };
+
+        Pane* best = nullptr;
+        double bestScore = std::numeric_limits<double>::max();
+        for (size_t i = 0; i < panes.size(); ++i) {
+            if (i == index) continue;
+            Branch* branch = TryFindBranch(*panes[i]);
+            if (!branch) continue;
+            const auto c = branch->arrangedRect;
+
+            double primary = 0.0, perpendicular = 0.0;
+            switch (direction) {
+            case GHOSTTY_GOTO_SPLIT_LEFT:
+                if (right(c) > a.X + 1.0f) continue;
+                primary = a.X - right(c);
+                perpendicular = std::abs(centerY(c) - centerY(a));
+                break;
+            case GHOSTTY_GOTO_SPLIT_RIGHT:
+                if (c.X < right(a) - 1.0f) continue;
+                primary = c.X - right(a);
+                perpendicular = std::abs(centerY(c) - centerY(a));
+                break;
+            case GHOSTTY_GOTO_SPLIT_UP:
+                if (bottom(c) > a.Y + 1.0f) continue;
+                primary = a.Y - bottom(c);
+                perpendicular = std::abs(centerX(c) - centerX(a));
+                break;
+            case GHOSTTY_GOTO_SPLIT_DOWN:
+                if (c.Y < bottom(a) - 1.0f) continue;
+                primary = c.Y - bottom(a);
+                perpendicular = std::abs(centerX(c) - centerX(a));
+                break;
+            default:
+                return nullptr;
+            }
+            const double score = primary + 2.0 * perpendicular;
+            if (score < bestScore) {
+                bestScore = score;
+                best = panes[i];
+            }
+        }
+        return best;
+    }
+
+    // RESIZE_SPLIT: move the boundary of the nearest split above
+    // `pane` on the arrow's axis by `resize.amount` pixels. LEFT /
+    // RIGHT move a vertical boundary, so the split being resized is
+    // a horizontal one; UP / DOWN the other way round. The arrow is
+    // the direction the boundary moves regardless of which side of
+    // the split `pane` is on: RIGHT / DOWN grow the first child,
+    // LEFT / UP shrink it, and the ratio is clamped so neither child
+    // can vanish. `splitterThickness` is what the divider takes of
+    // the split's arranged extent. Returns false when no split on
+    // that axis exists (a lone pane, or only splits the other way).
+    bool ResizeSplit(Pane const& pane, ghostty_action_resize_split_s resize,
+                     float splitterThickness) noexcept {
+        const auto axis = (resize.direction == GHOSTTY_RESIZE_SPLIT_LEFT
+                        || resize.direction == GHOSTTY_RESIZE_SPLIT_RIGHT)
+            ? Split::Direction::Horizontal
+            : Split::Direction::Vertical;
+        Branch* node = NearestSplitAbove(pane, axis);
+        if (!node) return false;
+        auto* split = node->TryGet<Split>();
+        if (!split) return false;
+
+        const float extent = axis == Split::Direction::Horizontal
+            ? node->arrangedRect.Width
+            : node->arrangedRect.Height;
+        const float usable = std::max(1.0f, extent - splitterThickness);
+        const double delta = static_cast<double>(resize.amount) / usable;
+        const bool increase = (resize.direction == GHOSTTY_RESIZE_SPLIT_RIGHT
+                            || resize.direction == GHOSTTY_RESIZE_SPLIT_DOWN);
+        split->ratio = ClampSplitRatio(split->ratio + (increase ? delta : -delta));
+        return true;
     }
 
     // Preserves `target`'s identity by rewiring its wrapping Branch's
