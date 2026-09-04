@@ -191,6 +191,7 @@
     <ClInclude Include="Tabs\TabFactory.h" />
     <ClInclude Include="Tabs\Tabs.h" />
     <ClInclude Include="Display\PhysicalPixels.h" />
+    <ClInclude Include="Display\PhysicalSizeFactory.h" />
     <ClInclude Include="Ghostty\MainWindowRuntime.h" />
     <ClInclude Include="Input\TerminalKeyDown.h" />
     <ClInclude Include="Input\TerminalKeyUp.h" />

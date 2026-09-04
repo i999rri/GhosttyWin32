@@ -106,7 +106,7 @@ void SplitPanel::EqualizeAll() {
 }
 
 Pane* SplitPanel::SplitPane(Pane const& source,
-                            Split::Placement placement,
+                            Split::Direction direction,
                             std::unique_ptr<Branch> fresh) {
     if (!fresh) return nullptr;
     // The pane inside `fresh` keeps its address when the branch is
@@ -117,9 +117,8 @@ Pane* SplitPanel::SplitPane(Pane const& source,
     // `source`: the new wrapper needs its own reference to the
     // control and the same PaneId so close_surface_cb still routes.
     auto sourceWrapper = MakePaneBranch(source);
-    auto subtree = placement.newFirst
-        ? MakeSplitBranch(placement.direction, 0.5, std::move(fresh), std::move(sourceWrapper))
-        : MakeSplitBranch(placement.direction, 0.5, std::move(sourceWrapper), std::move(fresh));
+    auto subtree = MakeSplitBranch(std::move(sourceWrapper), direction,
+                                   std::move(fresh));
     if (!ReplacePane(source, std::move(subtree))) return nullptr;
     return created;
 }

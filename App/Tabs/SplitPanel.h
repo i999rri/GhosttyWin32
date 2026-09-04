@@ -76,13 +76,14 @@ struct SplitPanel : SplitPanelT<SplitPanel> {
     // bookkeeping are the caller's (MainWindow's) — they belong to
     // the tab, not the layout.
 
-    // NEW_SPLIT: wrap `source` and `fresh` in a split placed per
-    // `placement`, keeping `source`'s control and PaneId. Returns the
+    // NEW_SPLIT: wrap `source` and `fresh` in a split, the new pane
+    // on the side `direction` points at, keeping `source`'s control
+    // and PaneId. Returns the
     // pane inside `fresh` (now in the tree), or null when `source` is
     // not in this tree — `fresh` is then destroyed unused, so a caller
     // that attached a surface to it must detach that first.
     Pane* SplitPane(Pane const& source,
-                    Split::Placement placement,
+                    Split::Direction direction,
                     std::unique_ptr<Branch> fresh);
 
     // GOTO_SPLIT: the pane focus should move to from `from` — the

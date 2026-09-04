@@ -143,11 +143,33 @@ inline std::unique_ptr<Branch> MakePaneBranch(Pane pane)
 }
 
 inline std::unique_ptr<Branch> MakeSplitBranch(
-    Split::Direction direction, double ratio,
+    Split::Layout layout, double ratio,
     std::unique_ptr<Branch> left, std::unique_ptr<Branch> right)
 {
     return std::make_unique<Branch>(
-        Split{ direction, ratio, std::move(left), std::move(right) });
+        Split{ layout, ratio, std::move(left), std::move(right) });
+}
+
+// NEW_SPLIT's construction path, shaped like the action itself:
+// split `source`, toward `direction`, growing `newPane`. A split
+// always has a pane that existed before it, so the source anchors
+// the signature; layout and slot assignment are both derived from
+// the one direction here, in the only place that needs to know —
+// callers hand over roles and never touch slots. The Layout
+// overload above stays for construction where no direction exists
+// (restoring a saved tree, tests building shapes directly).
+inline std::unique_ptr<Branch> MakeSplitBranch(
+    std::unique_ptr<Branch> source,
+    Split::Direction direction,
+    std::unique_ptr<Branch> newPane,
+    double ratio = 0.5)
+{
+    // The new pane lands on the side the arrow points at: LEFT / UP
+    // is the first (left / top) slot, the source keeps the other.
+    const bool newPaneFirst = direction.IsLeft() || direction.IsUp();
+    return MakeSplitBranch(direction.Layout(), ratio,
+                           newPaneFirst ? std::move(newPane) : std::move(source),
+                           newPaneFirst ? std::move(source)  : std::move(newPane));
 }
 
 }  // namespace core::panes

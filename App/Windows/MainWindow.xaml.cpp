@@ -8,6 +8,7 @@
 #include "Host/KeyModifiers.h"
 #include "Interop/Encoding.h"
 #include "Display/PhysicalPixels.h"
+#include "Display/PhysicalSizeFactory.h"
 #include "Win32/Clipboard.h"
 #include "Win32/DebugTrace.h"
 #include "Win32/SEHGuard.h"
@@ -1207,22 +1208,14 @@ namespace winrt::GhosttyWin32::implementation
         // client rect, which causes a "stretch then resize" flash as
         // soon as the panel becomes Visible.
         //
-        // Values are PHYSICAL pixels (see display::MeasuredPhysical for
-        // why the conversion matters). First-tab case: ActiveControl()
-        // is null and AppContent has already been measured (Activated
-        // fires after the first layout pass), so the AppContent
-        // fallback gives a non-zero hint.
-        uint32_t initialW = 0, initialH = 0;
-        if (auto* prevControl = ActiveControl()) {
-            auto sz = display::MeasuredPhysical(prevControl->InnerPanel());
-            initialW = sz.width;
-            initialH = sz.height;
-        }
-        if (initialW == 0 || initialH == 0) {
-            auto sz = display::MeasuredPhysical(AppContent());
-            if (initialW == 0) initialW = sz.width;
-            if (initialH == 0) initialH = sz.height;
-        }
+        // First-tab case: ActiveControl() is null and AppContent has
+        // already been measured (Activated fires after the first
+        // layout pass), so the content-only overload gives a non-zero
+        // hint.
+        auto* prevControl = ActiveControl();
+        const auto initial = prevControl
+            ? display::PhysicalSizeFactory::ForNewTab(prevControl->InnerPanel(), AppContent())
+            : display::PhysicalSizeFactory::ForNewTab(AppContent());
 
         // Wrap TabFactory::Make in SEH guard so a hardware exception in
         // the NVIDIA driver during ghostty_surface_new (e.g.
@@ -1238,7 +1231,7 @@ namespace winrt::GhosttyWin32::implementation
             uint32_t initialHeight;
             std::unique_ptr<Tab> result;
         };
-        CreateCtx ctx{ &item, m_tabFactory.get(), std::move(onActivated), initialW, initialH, nullptr };
+        CreateCtx ctx{ &item, m_tabFactory.get(), std::move(onActivated), initial.width, initial.height, nullptr };
         int ok = RunSEHGuarded([](void* arg) noexcept {
             auto* c = static_cast<CreateCtx*>(arg);
             c->result = c->factory->Make(*c->item, std::move(c->onActivated), c->initialWidth, c->initialHeight);
@@ -2205,21 +2198,12 @@ namespace winrt::GhosttyWin32::implementation
         Pane* sourcePane = lookup.pane;
         auto* panelImpl = winrt::get_self<implementation::SplitPanel>(sourceTab->Panel());
         if (!panelImpl) return;
-        auto placement = Split::Place(direction);
-        if (!placement) return;
+        auto splitDirection = Split::Direction::From(direction);
+        if (!splitDirection) return;
 
-        // Size hint for the new ghostty surface: the source pane's
-        // current SwapChainPanel size halved on the split axis,
-        // expressed in PHYSICAL pixels (see display::MeasuredPhysical
-        // for why the conversion matters).
         display::PhysicalSize hint{};
         if (auto* srcTc = ControlOf(*sourcePane)) {
-            hint = display::MeasuredPhysical(srcTc->InnerPanel());
-        }
-        if (placement->direction == Split::Direction::Horizontal) {
-            hint.width /= 2;
-        } else {
-            hint.height /= 2;
+            hint = display::PhysicalSizeFactory::ForSplit(srcTc->InnerPanel(), *splitDirection);
         }
 
         // Wrap MakePane in an SEH guard for the same reason CreateTab
@@ -2267,7 +2251,7 @@ namespace winrt::GhosttyWin32::implementation
         host::IPaneView* newView = nullptr;
         if (auto* p = fresh->TryGet<Pane>()) { newHandle = p->handle; newView = p->view; }
 
-        Pane* created = panelImpl->SplitPane(*sourcePane, *placement, std::move(fresh));
+        Pane* created = panelImpl->SplitPane(*sourcePane, *splitDirection, std::move(fresh));
         if (!created) {
             if (newView) newView->Detach();
             return;

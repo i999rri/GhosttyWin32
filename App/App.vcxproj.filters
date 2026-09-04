@@ -83,6 +83,9 @@
     <ClInclude Include="Display\PhysicalPixels.h">
       <Filter>Display</Filter>
     </ClInclude>
+    <ClInclude Include="Display\PhysicalSizeFactory.h">
+      <Filter>Display</Filter>
+    </ClInclude>
     <ClInclude Include="Input\TerminalKeyDown.h">
       <Filter>Input</Filter>
     </ClInclude>

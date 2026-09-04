@@ -76,14 +76,14 @@ public:
         return out;
     }
 
-    // The nearest Split above `pane` that divides along `axis` — the
-    // one RESIZE_SPLIT moves for an arrow across that axis. Null when
-    // no ancestor does (a lone pane, or only splits the other way).
-    Branch* NearestSplitAbove(Pane const& pane, Split::Direction axis) noexcept {
+    // The nearest Split above `pane` with the given layout — the one
+    // RESIZE_SPLIT moves for an arrow across that axis. Null when no
+    // ancestor has it (a lone pane, or only splits the other way).
+    Branch* NearestSplitAbove(Pane const& pane, Split::Layout layout) noexcept {
         Branch* node = TryFindBranch(pane);
         while (node && node->parent) {
             node = node->parent;
-            if (auto* split = node->TryGet<Split>(); split && split->direction == axis) {
+            if (auto* split = node->TryGet<Split>(); split && split->layout == layout) {
                 return node;
             }
         }
@@ -179,16 +179,16 @@ public:
     // that axis exists (a lone pane, or only splits the other way).
     bool ResizeSplit(Pane const& pane, ghostty_action_resize_split_s resize,
                      float splitterThickness) noexcept {
-        const auto axis = (resize.direction == GHOSTTY_RESIZE_SPLIT_LEFT
-                        || resize.direction == GHOSTTY_RESIZE_SPLIT_RIGHT)
-            ? Split::Direction::Horizontal
-            : Split::Direction::Vertical;
-        Branch* node = NearestSplitAbove(pane, axis);
+        const auto layout = (resize.direction == GHOSTTY_RESIZE_SPLIT_LEFT
+                          || resize.direction == GHOSTTY_RESIZE_SPLIT_RIGHT)
+            ? Split::Layout::Horizontal()
+            : Split::Layout::Vertical();
+        Branch* node = NearestSplitAbove(pane, layout);
         if (!node) return false;
         auto* split = node->TryGet<Split>();
         if (!split) return false;
 
-        const float extent = axis == Split::Direction::Horizontal
+        const float extent = layout.IsHorizontal()
             ? node->arrangedRect.Width
             : node->arrangedRect.Height;
         const float usable = std::max(1.0f, extent - splitterThickness);
