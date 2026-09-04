@@ -5,6 +5,7 @@
 #include <functional>
 #include <memory>
 #include <utility>
+#include <vector>
 
 namespace winrt::GhosttyWin32::implementation {
 
@@ -59,6 +60,28 @@ public:
     // tree, pane not present) share one nullable return.
     Branch* TryFindBranch(Pane const& pane) noexcept {
         return HasRoot() ? m_root->FindBranchOfPane(pane) : nullptr;
+    }
+
+    // Every pane in depth-first order — the order GOTO_SPLIT
+    // PREVIOUS / NEXT cycles through.
+    std::vector<Pane*> Panes() {
+        std::vector<Pane*> out;
+        ForEachPane([&out](Pane& p) { out.push_back(&p); });
+        return out;
+    }
+
+    // The nearest Split above `pane` that divides along `axis` — the
+    // one RESIZE_SPLIT moves for an arrow across that axis. Null when
+    // no ancestor does (a lone pane, or only splits the other way).
+    Branch* NearestSplitAbove(Pane const& pane, Split::Direction axis) noexcept {
+        Branch* node = TryFindBranch(pane);
+        while (node && node->parent) {
+            node = node->parent;
+            if (auto* split = node->TryGet<Split>(); split && split->direction == axis) {
+                return node;
+            }
+        }
+        return nullptr;
     }
 
     // Preserves `target`'s identity by rewiring its wrapping Branch's

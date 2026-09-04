@@ -1,7 +1,9 @@
 #pragma once
 
 #include "SplitPanel.g.h"
+#include "Ghostty/Actions/Splits.h"
 #include "Tabs/Panes/Tree.h"
+#include "ghostty.h"
 #include <memory>
 #include <vector>
 
@@ -67,6 +69,38 @@ struct SplitPanel : SplitPanelT<SplitPanel> {
     // its area evenly. Matches EQUALIZE_SPLITS; no-op on a single-pane
     // tree.
     void EqualizeAll();
+
+    // ----- the split actions, over this panel's tree -----
+    // Each takes the pane the action was fired on, applies the rule
+    // from core::ghostty::actions::splits to the tree and its arranged
+    // rects, and reports what changed. Focus and active-pane bookkeeping
+    // are the caller's (MainWindow's) — they belong to the tab, not the
+    // layout.
+
+    // NEW_SPLIT: wrap `source` and `fresh` in a split placed per
+    // `placement`, keeping `source`'s control and PaneId. Returns the
+    // pane inside `fresh` (now in the tree), or null when `source` is
+    // not in this tree — `fresh` is then destroyed unused, so a caller
+    // that attached a surface to it must detach that first.
+    Pane* SplitPane(Pane const& source,
+                    core::ghostty::actions::splits::Placement placement,
+                    std::unique_ptr<Branch> fresh);
+
+    // GOTO_SPLIT: the pane focus should move to from `from` — the
+    // spatial neighbour for LEFT / RIGHT / UP / DOWN, the depth-first
+    // neighbour for PREVIOUS / NEXT — or null when there is none.
+    Pane* PaneToward(Pane const& from, ghostty_action_goto_split_e direction);
+
+    // RESIZE_SPLIT: move the boundary of the nearest split above
+    // `pane` on the arrow's axis. Returns false when no such split
+    // exists (a lone pane, or only splits the other way).
+    bool ResizeSplit(Pane const& pane, ghostty_action_resize_split_s resize);
+
+    // TOGGLE_SPLIT_ZOOM: a second press anywhere collapses an active
+    // zoom (as Windows Terminal / iTerm do); a lone pane has nothing
+    // to expand against; otherwise `pane` fills the panel. Returns
+    // whether `pane` is zoomed afterwards.
+    bool ToggleZoom(Pane const& pane);
 
     // Zoom one pane to fill the entire SplitPanel — every other pane
     // and every splitter is hidden via Visibility=Collapsed. Pass
