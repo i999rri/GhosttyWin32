@@ -2,7 +2,6 @@
 #include "Windows/MainWindow.xaml.h"
 #include "App.xaml.h"
 #include "Ghostty/CallbackDispatcher.h"
-#include "Ghostty/Actions/Splits.h"
 #include "Ghostty/Config.h"
 #include "Windows/TearOut.h"
 #include "Windows/TransparentBackdrop.h"
@@ -40,7 +39,6 @@
 using namespace winrt;
 using namespace Microsoft::UI::Xaml;
 namespace muxc = Microsoft::UI::Xaml::Controls;
-namespace splits = core::ghostty::actions::splits;
 
 namespace winrt::GhosttyWin32::implementation
 {
@@ -2207,19 +2205,22 @@ namespace winrt::GhosttyWin32::implementation
         Pane* sourcePane = lookup.pane;
         auto* panelImpl = winrt::get_self<implementation::SplitPanel>(sourceTab->Panel());
         if (!panelImpl) return;
-        auto placement = splits::PlaceSplit(direction);
+        auto placement = Split::Place(direction);
         if (!placement) return;
 
         // Size hint for the new ghostty surface: the source pane's
         // current SwapChainPanel size halved on the split axis,
         // expressed in PHYSICAL pixels (see display::MeasuredPhysical
         // for why the conversion matters).
-        splits::Size hint{};
+        display::PhysicalSize hint{};
         if (auto* srcTc = ControlOf(*sourcePane)) {
-            auto sz = display::MeasuredPhysical(srcTc->InnerPanel());
-            hint = { sz.width, sz.height };
+            hint = display::MeasuredPhysical(srcTc->InnerPanel());
         }
-        hint = splits::HalfAlong(hint, placement->axis);
+        if (placement->direction == Split::Direction::Horizontal) {
+            hint.width /= 2;
+        } else {
+            hint.height /= 2;
+        }
 
         // Wrap MakePane in an SEH guard for the same reason CreateTab
         // does — ghostty_surface_new calls into dx_create_texture

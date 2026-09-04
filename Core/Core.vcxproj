@@ -85,7 +85,6 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="Ghostty\Actions\Actions.h" />
-    <ClInclude Include="Ghostty\Actions\Splits.h" />
     <ClInclude Include="Ghostty\Actions\Tags\Fullscreen.h" />
     <ClInclude Include="Ghostty\Actions\Tags\BackgroundOpacity.h" />
     <ClInclude Include="Ghostty\Actions\Tags\CellSize.h" />

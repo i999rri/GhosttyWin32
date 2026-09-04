@@ -1,7 +1,6 @@
 #pragma once
 
 #include "SplitPanel.g.h"
-#include "Ghostty/Actions/Splits.h"
 #include "Tabs/Panes/Tree.h"
 #include "ghostty.h"
 #include <memory>
@@ -71,11 +70,11 @@ struct SplitPanel : SplitPanelT<SplitPanel> {
     void EqualizeAll();
 
     // ----- the split actions, over this panel's tree -----
-    // Each takes the pane the action was fired on, applies the rule
-    // from core::ghostty::actions::splits to the tree and its arranged
-    // rects, and reports what changed. Focus and active-pane bookkeeping
-    // are the caller's (MainWindow's) — they belong to the tab, not the
-    // layout.
+    // Each takes the pane the action was fired on, asks the tree for
+    // its answer (the rules live on Tree / Split, tested in
+    // test_tree.cpp), and reports what changed. Focus and active-pane
+    // bookkeeping are the caller's (MainWindow's) — they belong to
+    // the tab, not the layout.
 
     // NEW_SPLIT: wrap `source` and `fresh` in a split placed per
     // `placement`, keeping `source`'s control and PaneId. Returns the
@@ -83,7 +82,7 @@ struct SplitPanel : SplitPanelT<SplitPanel> {
     // not in this tree — `fresh` is then destroyed unused, so a caller
     // that attached a surface to it must detach that first.
     Pane* SplitPane(Pane const& source,
-                    core::ghostty::actions::splits::Placement placement,
+                    Split::Placement placement,
                     std::unique_ptr<Branch> fresh);
 
     // GOTO_SPLIT: the pane focus should move to from `from` — the
