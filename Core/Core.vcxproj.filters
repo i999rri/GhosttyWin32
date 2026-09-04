@@ -19,6 +19,9 @@
     <Filter Include="Interop">
       <UniqueIdentifier>{5924F11C-C724-4FB1-912F-C123175E936D}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Panes">
+      <UniqueIdentifier>{8a4f31f2-5c1e-4a67-9d3b-2f60c9d0a7e4}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Win32">
       <UniqueIdentifier>{1A4E2C7D-B3C8-46D5-B6E0-7A5E8D9C0F1B}</UniqueIdentifier>
     </Filter>
@@ -80,6 +83,27 @@
     </ClInclude>
     <ClInclude Include="Win32\Clipboard.h">
       <Filter>Win32</Filter>
+    </ClInclude>
+    <ClInclude Include="Host\IPaneView.h">
+      <Filter>Host</Filter>
+    </ClInclude>
+    <ClInclude Include="Panes\Branch.h">
+      <Filter>Panes</Filter>
+    </ClInclude>
+    <ClInclude Include="Panes\Pane.h">
+      <Filter>Panes</Filter>
+    </ClInclude>
+    <ClInclude Include="Panes\PaneId.h">
+      <Filter>Panes</Filter>
+    </ClInclude>
+    <ClInclude Include="Panes\PaneIdAllocator.h">
+      <Filter>Panes</Filter>
+    </ClInclude>
+    <ClInclude Include="Panes\Split.h">
+      <Filter>Panes</Filter>
+    </ClInclude>
+    <ClInclude Include="Panes\Tree.h">
+      <Filter>Panes</Filter>
     </ClInclude>
     <ClInclude Include="Win32\DebugTrace.h">
       <Filter>Win32</Filter>

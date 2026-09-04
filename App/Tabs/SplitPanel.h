@@ -112,8 +112,11 @@ struct SplitPanel : SplitPanelT<SplitPanel> {
 
     // Read-only access to the underlying tree — walker calls go through
     // here (`splitPanel->Tree().AnyPaneMatches(...)`).
-    class Tree&       Tree()       noexcept { return m_tree; }
-    class Tree const& Tree() const noexcept { return m_tree; }
+    // Qualified, not `class Tree`: Tree is an alias of the Core type
+    // now, and an elaborated-type-specifier cannot name an alias —
+    // the qualified name sidesteps the method-name shadowing instead.
+    core::panes::Tree&       Tree()       noexcept { return m_tree; }
+    core::panes::Tree const& Tree() const noexcept { return m_tree; }
 
     // Panel overrides.
     winrt::Windows::Foundation::Size MeasureOverride(winrt::Windows::Foundation::Size availableSize);
@@ -176,7 +179,7 @@ private:
     // Tree().Zoomed().
     void UpdateChildVisibility();
 
-    class Tree m_tree;
+    core::panes::Tree m_tree;
     std::vector<SplitterEntry> m_splitters;
     // Cached brush handed to every splitter Border. Null before
     // TabFactory calls SetDividerColor — MakeSplitter then falls

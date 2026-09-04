@@ -286,7 +286,7 @@ public:
         // toggle.
         if (m_onLeafCreated) m_onLeafCreated(*controlImpl);
 
-        return MakePaneBranch(control, paneId);
+        return MakePaneBranch(Pane{ control, controlImpl, paneId });
     }
 
 private:
@@ -297,9 +297,7 @@ private:
     // without depending on Tab.
     static void DetachSubtree(Branch& branch) {
         branch.ForEachPane([](Pane& p) {
-            if (auto* tc = p.Impl()) {
-                tc->Detach();
-            }
+            if (p.view) p.view->Detach();
         });
     }
 

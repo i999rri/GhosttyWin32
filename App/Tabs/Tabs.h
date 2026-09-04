@@ -82,8 +82,7 @@ public:
             if (!panelImpl) continue;
             if (auto* pane = panelImpl->Tree().FindPaneBy(
                     [surface](Pane const& p) {
-                        auto const* tc = p.Impl();
-                        return tc && tc->Surface().Owns(surface);
+                        return p.view && p.view->Surface().Owns(surface);
                     })) {
                 return { t.get(), pane };
             }
