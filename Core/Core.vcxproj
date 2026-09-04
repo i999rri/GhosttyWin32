@@ -98,6 +98,7 @@
     <ClInclude Include="Ghostty\IGhosttyRuntime.h" />
     <ClInclude Include="Ghostty\RuntimeConfigFactory.h" />
     <ClInclude Include="Ghostty\Surface.h" />
+    <ClInclude Include="Host\IPaneView.h" />
     <ClInclude Include="Host\ISurfaceView.h" />
     <ClInclude Include="Host\IWindow.h" />
     <ClInclude Include="Host\EngagementState.h" />
@@ -106,6 +107,12 @@
     <ClInclude Include="Input\KeyEventTranslator.h" />
     <ClInclude Include="Interop\Encoding.h" />
     <ClInclude Include="Win32\Clipboard.h" />
+    <ClInclude Include="Panes\Branch.h" />
+    <ClInclude Include="Panes\Pane.h" />
+    <ClInclude Include="Panes\PaneId.h" />
+    <ClInclude Include="Panes\PaneIdAllocator.h" />
+    <ClInclude Include="Panes\Split.h" />
+    <ClInclude Include="Panes\Tree.h" />
     <ClInclude Include="Win32\DebugTrace.h" />
     <ClInclude Include="Win32\NativeWindow.h" />
     <ClInclude Include="Win32\SEHGuard.h" />

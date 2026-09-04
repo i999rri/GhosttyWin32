@@ -84,7 +84,7 @@ public:
     // through here so they keep working when the tree gains additional
     // panes and the active pane shifts on GOTO_SPLIT.
     implementation::TerminalControl* ActiveControl() const noexcept {
-        return m_activePane ? m_activePane->Impl() : nullptr;
+        return m_activePane ? ControlOf(*m_activePane) : nullptr;
     }
 
     Microsoft::UI::Xaml::Controls::TabViewItem const& Item() const noexcept { return m_item; }
@@ -138,8 +138,7 @@ public:
         auto* panelImpl = winrt::get_self<implementation::SplitPanel>(m_panel);
         if (!panelImpl) return false;
         return panelImpl->Tree().AnyPaneMatches([](Pane const& p) {
-            auto const* tc = p.Impl();
-            return tc && tc->Surface().NeedsConfirmQuit();
+            return p.view && p.view->Surface().NeedsConfirmQuit();
         });
     }
 
@@ -162,9 +161,7 @@ public:
         m_activePane = pane;
         if (auto* panelImpl = winrt::get_self<implementation::SplitPanel>(m_panel)) {
             panelImpl->Tree().ForEachPane([this](Pane& p) {
-                if (auto* tc = p.Impl()) {
-                    tc->ApplyFocusVisual(&p == m_activePane);
-                }
+                if (p.view) p.view->ApplyFocusVisual(&p == m_activePane);
             });
         }
     }
@@ -174,9 +171,7 @@ public:
     void ApplyBackgroundOpacity(bool opaque, winrt::Windows::UI::Color bg) {
         if (auto* panelImpl = winrt::get_self<implementation::SplitPanel>(m_panel)) {
             panelImpl->Tree().ForEachPane([&](Pane& p) {
-                if (auto* tc = p.Impl()) {
-                    tc->SetOpaqueBackground(opaque, bg);
-                }
+                if (p.view) p.view->SetOpaqueBackground(opaque, bg);
             });
         }
     }
@@ -190,9 +185,7 @@ public:
     void DetachAll() {
         if (auto* panelImpl = winrt::get_self<implementation::SplitPanel>(m_panel)) {
             panelImpl->Tree().ForEachPane([](Pane& p) {
-                if (auto* tc = p.Impl()) {
-                    tc->Detach();
-                }
+                if (p.view) p.view->Detach();
             });
         }
     }
@@ -202,9 +195,8 @@ public:
     // a bare SwapChainPanel this Focus call actually moves focus
     // reliably.
     bool Focus() {
-        if (!m_activePane || !m_activePane->control) return false;
-        return m_activePane->control.Focus(
-            Microsoft::UI::Xaml::FocusState::Programmatic);
+        if (!m_activePane || !m_activePane->view) return false;
+        return m_activePane->view->TakeFocus();
     }
 
 private:

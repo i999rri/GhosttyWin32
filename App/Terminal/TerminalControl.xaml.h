@@ -7,6 +7,7 @@
 #include "Terminal/Overlays/SearchOverlay.xaml.h"
 #include "Terminal/Overlays/IKeyboardOverlay.h"
 #include "Ghostty/Surface.h"
+#include "Host/IPaneView.h"
 #include "Host/ISurfaceView.h"
 #include "ghostty.h"
 #include <functional>
@@ -54,7 +55,9 @@ namespace winrt::GhosttyWin32::implementation
     //
     // The public Attach / Detach / Rehost / Surface() forward to the
     // host so Tab, TabFactory and MainWindow keep one handle per pane.
-    struct TerminalControl : TerminalControlT<TerminalControl>, host::ISurfaceView
+    struct TerminalControl : TerminalControlT<TerminalControl>
+        , host::ISurfaceView
+        , host::IPaneView
     {
         TerminalControl();
         ~TerminalControl();
@@ -166,7 +169,12 @@ namespace winrt::GhosttyWin32::implementation
         // with the cached fill / opacity). The XAML element stays
         // hit-test transparent in both states so pointer routing
         // doesn't change with focus.
-        void ApplyFocusVisual(bool focused);
+        void ApplyFocusVisual(bool focused) override;
+        // IPaneView::TakeFocus — the UserControl has IsTabStop=true,
+        // so unlike a bare SwapChainPanel this actually moves focus.
+        bool TakeFocus() override {
+            return Focus(Microsoft::UI::Xaml::FocusState::Programmatic);
+        }
 
     private:
         // Implementation objects behind the x:Name'd overlay children.

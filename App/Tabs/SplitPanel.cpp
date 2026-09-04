@@ -3,6 +3,23 @@
 #include <algorithm>
 #if __has_include("SplitPanel.g.cpp")
 #include "SplitPanel.g.cpp"
+
+namespace {
+
+// The pane's control as the UIElement it is, for the layout side.
+// The handle is an IInspectable so the tree never names XAML types;
+// this panel is where it becomes an element again. Null-safe: an
+// empty pane yields an empty element, exactly like the old direct
+// control read.
+winrt::Microsoft::UI::Xaml::UIElement ElementOf(
+    winrt::GhosttyWin32::implementation::Pane const& p)
+{
+    return p.handle
+        ? p.handle.try_as<winrt::Microsoft::UI::Xaml::UIElement>()
+        : nullptr;
+}
+
+}  // namespace
 #endif
 
 namespace winrt::GhosttyWin32::implementation {
@@ -54,7 +71,7 @@ void SplitPanel::UpdateChildVisibility() {
         return;
     }
     // Zoom active — only the zoomed pane's content stays visible.
-    UIElement zoomElement = zoomed->control;
+    UIElement zoomElement = ElementOf(*zoomed);
     for (auto&& child : Children()) {
         if (auto el = child.try_as<UIElement>()) {
             el.Visibility(el == zoomElement ? Visibility::Visible : Visibility::Collapsed);
@@ -115,7 +132,7 @@ Pane* SplitPanel::SplitPane(Pane const& source,
     // Copy out before ReplacePane destroys the Branch wrapping
     // `source`: the new wrapper needs its own reference to the
     // control and the same PaneId so close_surface_cb still routes.
-    auto sourceWrapper = MakePaneBranch(source.control, source.id);
+    auto sourceWrapper = MakePaneBranch(source);
     auto subtree = placement.newFirst
         ? MakeSplitBranch(ToTree(placement.axis), 0.5, std::move(fresh), std::move(sourceWrapper))
         : MakeSplitBranch(ToTree(placement.axis), 0.5, std::move(sourceWrapper), std::move(fresh));
@@ -185,7 +202,7 @@ void SplitPanel::SyncChildrenFromTree() {
 
 void SplitPanel::AppendBranchToChildren(Branch& branch) {
     if (auto* pane = branch.TryGet<Pane>()) {
-        if (auto element = pane->control) {
+        if (auto element = ElementOf(*pane)) {
             Children().Append(element);
         }
         return;
@@ -254,7 +271,7 @@ Windows::Foundation::Size SplitPanel::MeasureOverride(Windows::Foundation::Size 
     // Zoom path: only the zoomed pane participates in layout. Others
     // are Visibility=Collapsed so Panel's base class skips them.
     if (auto const* zoomed = m_tree.Zoomed()) {
-        if (auto element = zoomed->control) {
+        if (auto element = ElementOf(*zoomed)) {
             element.Measure(availableSize);
             return element.DesiredSize();
         }
@@ -274,7 +291,7 @@ Windows::Foundation::Size SplitPanel::MeasureOverride(Windows::Foundation::Size 
 
 Windows::Foundation::Size SplitPanel::MeasureBranch(Branch& branch, Windows::Foundation::Size available) {
     if (auto* pane = branch.TryGet<Pane>()) {
-        if (auto element = pane->control) {
+        if (auto element = ElementOf(*pane)) {
             element.Measure(available);
             return element.DesiredSize();
         }
@@ -322,7 +339,7 @@ Windows::Foundation::Size SplitPanel::ArrangeOverride(Windows::Foundation::Size 
         if (auto* zoomedBranch = root->FindBranchOfPane(*zoomed)) {
             zoomedBranch->arrangedRect = fullRect;
         }
-        if (auto element = zoomed->control) {
+        if (auto element = ElementOf(*zoomed)) {
             element.Arrange(fullRect);
         }
         return finalSize;
@@ -335,7 +352,7 @@ void SplitPanel::ArrangeBranch(Branch& branch, Windows::Foundation::Rect rect) {
     branch.arrangedRect = rect;
 
     if (auto* pane = branch.TryGet<Pane>()) {
-        if (auto element = pane->control) {
+        if (auto element = ElementOf(*pane)) {
             element.Arrange(rect);
         }
         return;
