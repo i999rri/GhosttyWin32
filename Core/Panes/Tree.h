@@ -79,6 +79,25 @@ public:
         return out;
     }
 
+    // Every pane's wrapping Branch, in the same depth-first order —
+    // the pane and the arranged rect the layout pass gave it,
+    // together. The spatial rules read both, so walking this list
+    // needs no per-pane TryFindBranch re-search.
+    std::vector<Branch*> PaneBranches() {
+        std::vector<Branch*> out;
+        auto walk = [&out](auto&& self, Branch& branch) -> void {
+            if (branch.Is<Pane>()) {
+                out.push_back(&branch);
+                return;
+            }
+            if (auto* split = branch.TryGet<Split>()) {
+                split->ForEachChild([&](Branch& child) { self(self, child); });
+            }
+        };
+        if (HasRoot()) walk(walk, *m_root);
+        return out;
+    }
+
     // The nearest Split above `pane` with the given layout — the one
     // RESIZE_SPLIT moves for an arrow across that axis. Null when no
     // ancestor has it (a lone pane, or only splits the other way).
@@ -99,30 +118,29 @@ public:
     // at either end) for Previous / Next — or null when there is
     // none (a lone pane, or nothing on that side).
     Pane* GotoTarget(Pane const& from, Goto target) {
-        auto panes = Panes();
-        if (panes.size() <= 1) return nullptr;   // nowhere to go
-        auto it = std::find(panes.begin(), panes.end(), &from);
-        if (it == panes.end()) return nullptr;
-        const size_t index = static_cast<size_t>(std::distance(panes.begin(), it));
+        auto branches = PaneBranches();
+        if (branches.size() <= 1) return nullptr;   // nowhere to go
+        auto it = std::find_if(branches.begin(), branches.end(),
+            [&from](Branch* b) { return b->TryGet<Pane>() == &from; });
+        if (it == branches.end()) return nullptr;
+        const size_t index = static_cast<size_t>(std::distance(branches.begin(), it));
 
         if (target.IsNext()) {
-            return panes[(index + 1) % panes.size()];
+            return branches[(index + 1) % branches.size()]->TryGet<Pane>();
         }
         if (target.IsPrevious()) {
-            return panes[index == 0 ? panes.size() - 1 : index - 1];
+            return branches[index == 0 ? branches.size() - 1 : index - 1]->TryGet<Pane>();
         }
 
-        const auto fromRect = TryFindBranch(from)->arrangedRect;
+        const auto fromRect = branches[index]->arrangedRect;
         Pane* best = nullptr;
         double bestScore = std::numeric_limits<double>::max();
-        for (size_t i = 0; i < panes.size(); ++i) {
+        for (size_t i = 0; i < branches.size(); ++i) {
             if (i == index) continue;
-            Branch* branch = TryFindBranch(*panes[i]);
-            if (!branch) continue;
-            const auto score = SpatialScore(target, fromRect, branch->arrangedRect);
+            const auto score = SpatialScore(target, fromRect, branches[i]->arrangedRect);
             if (score && *score < bestScore) {
                 bestScore = *score;
-                best = panes[i];
+                best = branches[i]->TryGet<Pane>();
             }
         }
         return best;

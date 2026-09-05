@@ -467,3 +467,13 @@ TEST(TreeTest, GotoFromMapsTheGhosttyTarget) {
     EXPECT_EQ(G::From(GHOSTTY_GOTO_SPLIT_UP),       G::Up());
     EXPECT_EQ(G::From(GHOSTTY_GOTO_SPLIT_DOWN),     G::Down());
 }
+
+TEST(TreeTest, PaneBranchesWalksTheSameOrderAsPanes) {
+    auto t = Grid2x2();
+    auto panes = t.Panes();
+    auto branches = t.PaneBranches();
+    ASSERT_EQ(branches.size(), panes.size());
+    for (size_t i = 0; i < panes.size(); ++i) {
+        EXPECT_EQ(branches[i]->TryGet<Pane>(), panes[i]);
+    }
+}
