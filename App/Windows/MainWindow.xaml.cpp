@@ -6,6 +6,7 @@
 #include "Windows/TearOut.h"
 #include "Windows/TransparentBackdrop.h"
 #include "Host/KeyModifiers.h"
+#include "Host/TitleSource.h"
 #include "Interop/Encoding.h"
 #include "Display/PhysicalPixels.h"
 #include "Display/PhysicalSizeFactory.h"
@@ -1515,11 +1516,11 @@ namespace winrt::GhosttyWin32::implementation
             // terminal-set title, and shells re-assert their OSC
             // title on every prompt — honouring it here would undo
             // the rename within seconds.
-            if (t->HasUserTitle()) return;
+            if (t->TitleSource().Outranks(core::host::TitleSource::Shell())) return;
             t->Item().Header(box_value(winrt::hstring(title)));
             // Once the shell has spoken, the foreground-pid poll
             // stops overwriting the header for this tab.
-            t->MarkExplicitTitle();
+            t->SetTitleSource(core::host::TitleSource::Shell());
         }
     }
 
@@ -1584,8 +1585,8 @@ namespace winrt::GhosttyWin32::implementation
     {
         for (auto& tab : m_tabs) {
             if (!tab) continue;
-            // Shell-supplied titles are sticky — leave them alone.
-            if (tab->HasExplicitTitle()) continue;
+            // A shell- or user-set title outranks the automatic one.
+            if (tab->TitleSource().Outranks(core::host::TitleSource::Automatic())) continue;
             auto* tc = tab->ActiveControl();
             if (!tc) continue;
             uint32_t pid = tc->Surface().ForegroundPid();
@@ -1987,18 +1988,15 @@ namespace winrt::GhosttyWin32::implementation
             if (self) self->m_renamePromptOpen = false;
             if (sender.GetResults() != muxc::ContentDialogResult::Primary) return;
             auto text = input.Text();
-            // Empty input is treated as cancel: this port has no
-            // inverse of MarkExplicitTitle yet, so "reset to the
-            // automatic title" can't be honoured truthfully.
             if (text.empty()) return;
             item.Header(box_value(text));
             if (self) {
                 if (auto* tab = self->m_tabs.FindByItem(item)) {
-                    // User latch: outranks both the foreground-pid
-                    // poll AND shell SET_TITLE (see HasUserTitle) —
-                    // shells re-assert their OSC title constantly,
-                    // so anything weaker gets undone in seconds.
-                    tab->MarkUserTitle();
+                    // A user title outranks both the foreground-pid
+                    // poll AND shell SET_TITLE — shells re-assert
+                    // their OSC title constantly, so anything weaker
+                    // gets undone in seconds.
+                    tab->SetTitleSource(core::host::TitleSource::User());
                 }
             }
         });
