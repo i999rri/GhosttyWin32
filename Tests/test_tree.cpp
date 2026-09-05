@@ -11,15 +11,19 @@ namespace core::panes {
 // gtest prints a scoped enum only through a PrintTo overload found
 // by ADL; without one, a failing EXPECT_EQ on these values
 // cannot be reported.
-inline void PrintTo(Split::Layout l, std::ostream* os) {
+inline void PrintTo(Layout l, std::ostream* os) {
     *os << (l.IsHorizontal() ? "Horizontal" : "Vertical");
 }
-inline void PrintTo(Split::Direction d, std::ostream* os) {
+inline void PrintTo(Direction d, std::ostream* os) {
     *os << (d.IsLeft() ? "Left" : d.IsRight() ? "Right" : d.IsUp() ? "Up" : "Down");
 }
 }  // namespace core::panes
 
 using core::panes::Branch;
+using core::panes::Direction;
+using core::panes::Goto;
+using core::panes::Layout;
+using core::panes::Resize;
 using core::panes::MakePaneBranch;
 using core::panes::MakeSplitBranch;
 using core::panes::Pane;
@@ -34,8 +38,8 @@ std::unique_ptr<Branch> Leaf(uint64_t id) {
 }
 
 // root = Split{ 1, Split{ 2, 3 } } — the smallest nested shape.
-Tree Nested(Split::Layout outer = Split::Layout::Horizontal(),
-            Split::Layout inner = Split::Layout::Vertical()) {
+Tree Nested(Layout outer = Layout::Horizontal(),
+            Layout inner = Layout::Vertical()) {
     auto sub = MakeSplitBranch(inner, 0.5, Leaf(2), Leaf(3));
     return Tree{ MakeSplitBranch(outer, 0.5, Leaf(1), std::move(sub)) };
 }
@@ -63,9 +67,9 @@ void Arrange(Tree& t, uint64_t id, float x, float y, float w, float h) {
 //   --+--
 //   3 | 4
 Tree Grid2x2() {
-    auto left  = MakeSplitBranch(Split::Layout::Vertical(), 0.5, Leaf(1), Leaf(3));
-    auto right = MakeSplitBranch(Split::Layout::Vertical(), 0.5, Leaf(2), Leaf(4));
-    Tree t{ MakeSplitBranch(Split::Layout::Horizontal(), 0.5,
+    auto left  = MakeSplitBranch(Layout::Vertical(), 0.5, Leaf(1), Leaf(3));
+    auto right = MakeSplitBranch(Layout::Vertical(), 0.5, Leaf(2), Leaf(4));
+    Tree t{ MakeSplitBranch(Layout::Horizontal(), 0.5,
                             std::move(left), std::move(right)) };
     Arrange(t, 1, 0,   0,   100, 100);
     Arrange(t, 2, 100, 0,   100, 100);
@@ -74,12 +78,12 @@ Tree Grid2x2() {
     return t;
 }
 
-Tree::Resize Resize(ghostty_action_resize_split_direction_e dir,
-                    uint16_t amount) {
+Resize ResizeBy(ghostty_action_resize_split_direction_e dir,
+                uint16_t amount) {
     ghostty_action_resize_split_s r{};
     r.direction = dir;
     r.amount = amount;
-    auto typed = Tree::Resize::From(r);
+    auto typed = Resize::From(r);
     EXPECT_TRUE(typed.has_value());
     return *typed;
 }
@@ -106,23 +110,23 @@ TEST(TreeTest, TryFindBranchLocatesTheWrappingNode) {
 }
 
 TEST(TreeTest, NearestSplitAboveMatchesTheAxis) {
-    auto t = Nested(Split::Layout::Horizontal(), Split::Layout::Vertical());
+    auto t = Nested(Layout::Horizontal(), Layout::Vertical());
     auto* paneC = ById(t, 3);
     ASSERT_NE(paneC, nullptr);
 
     // 3's immediate parent splits vertically; the root horizontally.
-    auto* vertical = t.NearestSplitAbove(*paneC, Split::Layout::Vertical());
+    auto* vertical = t.NearestSplitAbove(*paneC, Layout::Vertical());
     ASSERT_NE(vertical, nullptr);
-    EXPECT_EQ(vertical->TryGet<Split>()->layout, Split::Layout::Vertical());
+    EXPECT_EQ(vertical->TryGet<Split>()->layout, Layout::Vertical());
 
-    auto* horizontal = t.NearestSplitAbove(*paneC, Split::Layout::Horizontal());
+    auto* horizontal = t.NearestSplitAbove(*paneC, Layout::Horizontal());
     ASSERT_NE(horizontal, nullptr);
     EXPECT_EQ(horizontal, t.Root());
 
     // A lone pane has no split above it at all.
     Tree lone{ Leaf(1) };
     auto* only = ById(lone, 1);
-    EXPECT_EQ(lone.NearestSplitAbove(*only, Split::Layout::Horizontal()), nullptr);
+    EXPECT_EQ(lone.NearestSplitAbove(*only, Layout::Horizontal()), nullptr);
 }
 
 // ----- ReplacePane (the NEW_SPLIT mutation) -----
@@ -132,7 +136,7 @@ TEST(TreeTest, ReplacePaneSwapsARootLeafForASubtree) {
     auto* pane = ById(t, 1);
     ASSERT_NE(pane, nullptr);
 
-    auto sub = MakeSplitBranch(Split::Layout::Horizontal(), 0.5, Leaf(1), Leaf(2));
+    auto sub = MakeSplitBranch(Layout::Horizontal(), 0.5, Leaf(1), Leaf(2));
     ASSERT_TRUE(t.ReplacePane(*pane, std::move(sub)));
     EXPECT_EQ(Ids(t), (std::vector<uint64_t>{ 1, 2 }));
     EXPECT_EQ(t.Root()->TryGet<Split>()->left->parent, t.Root());
@@ -143,7 +147,7 @@ TEST(TreeTest, ReplacePaneRewiresTheParentSlot) {
     auto* paneB = ById(t, 2);
     ASSERT_NE(paneB, nullptr);
 
-    auto sub = MakeSplitBranch(Split::Layout::Horizontal(), 0.5, Leaf(2), Leaf(4));
+    auto sub = MakeSplitBranch(Layout::Horizontal(), 0.5, Leaf(2), Leaf(4));
     ASSERT_TRUE(t.ReplacePane(*paneB, std::move(sub)));
     EXPECT_EQ(Ids(t), (std::vector<uint64_t>{ 1, 2, 4, 3 }));
 
@@ -171,7 +175,7 @@ TEST(TreeTest, RemovingTheRootLeafEmptiesTheTree) {
 }
 
 TEST(TreeTest, RemovingOneOfTwoPromotesTheSiblingToRoot) {
-    Tree t{ MakeSplitBranch(Split::Layout::Horizontal(), 0.5, Leaf(1), Leaf(2)) };
+    Tree t{ MakeSplitBranch(Layout::Horizontal(), 0.5, Leaf(1), Leaf(2)) };
     auto* paneA = ById(t, 1);
     EXPECT_TRUE(t.RemovePane(*paneA).IsCollapsed());
     EXPECT_EQ(Ids(t), (std::vector<uint64_t>{ 2 }));
@@ -219,17 +223,17 @@ TEST(TreeTest, MutationsClearAZoomOnTheTouchedPane) {
 
 TEST(TreeTest, NeighborFindsTheAlignedNeighbour) {
     auto t = Grid2x2();
-    EXPECT_EQ(t.Neighbor(*ById(t, 1), Tree::Goto::Right()), ById(t, 2));
-    EXPECT_EQ(t.Neighbor(*ById(t, 1), Tree::Goto::Down()),  ById(t, 3));
-    EXPECT_EQ(t.Neighbor(*ById(t, 4), Tree::Goto::Left()),  ById(t, 3));
-    EXPECT_EQ(t.Neighbor(*ById(t, 4), Tree::Goto::Up()),    ById(t, 2));
+    EXPECT_EQ(t.Neighbor(*ById(t, 1), Goto::Right()), ById(t, 2));
+    EXPECT_EQ(t.Neighbor(*ById(t, 1), Goto::Down()),  ById(t, 3));
+    EXPECT_EQ(t.Neighbor(*ById(t, 4), Goto::Left()),  ById(t, 3));
+    EXPECT_EQ(t.Neighbor(*ById(t, 4), Goto::Up()),    ById(t, 2));
 }
 
 TEST(TreeTest, NeighborIsNoneAtTheEdge) {
     auto t = Grid2x2();
-    EXPECT_EQ(t.Neighbor(*ById(t, 1), Tree::Goto::Left()),  nullptr);
-    EXPECT_EQ(t.Neighbor(*ById(t, 1), Tree::Goto::Up()),    nullptr);
-    EXPECT_EQ(t.Neighbor(*ById(t, 4), Tree::Goto::Right()), nullptr);
+    EXPECT_EQ(t.Neighbor(*ById(t, 1), Goto::Left()),  nullptr);
+    EXPECT_EQ(t.Neighbor(*ById(t, 1), Goto::Up()),    nullptr);
+    EXPECT_EQ(t.Neighbor(*ById(t, 4), Goto::Right()), nullptr);
 }
 
 TEST(TreeTest, NeighborPrefersAlignedOverNearerDiagonal) {
@@ -238,52 +242,52 @@ TEST(TreeTest, NeighborPrefersAlignedOverNearerDiagonal) {
     // that is aligned. The 2x perpendicular penalty makes the aligned
     // one win even though the tall one is closer in straight-line
     // distance.
-    auto sub = MakeSplitBranch(Split::Layout::Horizontal(), 0.5, Leaf(2), Leaf(3));
-    Tree t{ MakeSplitBranch(Split::Layout::Horizontal(), 0.5,
+    auto sub = MakeSplitBranch(Layout::Horizontal(), 0.5, Leaf(2), Leaf(3));
+    Tree t{ MakeSplitBranch(Layout::Horizontal(), 0.5,
                             Leaf(1), std::move(sub)) };
     Arrange(t, 1, 0,   0, 100, 100);   // active
     Arrange(t, 2, 100, 0, 100, 400);   // touching, centre 150px below
     Arrange(t, 3, 220, 0, 100, 100);   // 120px away, aligned
     // scores: [2] 0 + 2*150 = 300, [3] 120 + 0 = 120
-    EXPECT_EQ(t.Neighbor(*ById(t, 1), Tree::Goto::Right()), ById(t, 3));
+    EXPECT_EQ(t.Neighbor(*ById(t, 1), Goto::Right()), ById(t, 3));
 }
 
 TEST(TreeTest, NeighborAbsorbsBoundaryRounding) {
     // A neighbour whose edge overlaps the boundary by half a pixel
     // (float layout) still counts as "on that side".
-    Tree t{ MakeSplitBranch(Split::Layout::Horizontal(), 0.5, Leaf(1), Leaf(2)) };
+    Tree t{ MakeSplitBranch(Layout::Horizontal(), 0.5, Leaf(1), Leaf(2)) };
     Arrange(t, 1, 0,     0, 100,    100);
     Arrange(t, 2, 99.5f, 0, 100.5f, 100);
-    EXPECT_EQ(t.Neighbor(*ById(t, 1), Tree::Goto::Right()), ById(t, 2));
+    EXPECT_EQ(t.Neighbor(*ById(t, 1), Goto::Right()), ById(t, 2));
     // More than a pixel of overlap is a pane beside us, not beyond.
     Arrange(t, 2, 98.0f, 0, 100.5f, 100);
-    EXPECT_EQ(t.Neighbor(*ById(t, 1), Tree::Goto::Right()), nullptr);
+    EXPECT_EQ(t.Neighbor(*ById(t, 1), Goto::Right()), nullptr);
 }
 
 // ----- GOTO_SPLIT, cyclic -----
 
 TEST(TreeTest, NeighborCyclesDepthFirstWrappingBothWays) {
     auto t = Nested();   // depth-first order 1, 2, 3
-    EXPECT_EQ(t.Neighbor(*ById(t, 1), Tree::Goto::Next()),     ById(t, 2));
-    EXPECT_EQ(t.Neighbor(*ById(t, 3), Tree::Goto::Next()),     ById(t, 1));
-    EXPECT_EQ(t.Neighbor(*ById(t, 1), Tree::Goto::Previous()), ById(t, 3));
-    EXPECT_EQ(t.Neighbor(*ById(t, 2), Tree::Goto::Previous()), ById(t, 1));
+    EXPECT_EQ(t.Neighbor(*ById(t, 1), Goto::Next()),     ById(t, 2));
+    EXPECT_EQ(t.Neighbor(*ById(t, 3), Goto::Next()),     ById(t, 1));
+    EXPECT_EQ(t.Neighbor(*ById(t, 1), Goto::Previous()), ById(t, 3));
+    EXPECT_EQ(t.Neighbor(*ById(t, 2), Goto::Previous()), ById(t, 1));
 }
 
 TEST(TreeTest, NeighborRejectsBadInput) {
     auto t = Nested();
     // A pane that isn't in this tree.
     Pane stray{ nullptr, nullptr, PaneId{ 99 } };
-    EXPECT_EQ(t.Neighbor(stray, Tree::Goto::Next()), nullptr);
+    EXPECT_EQ(t.Neighbor(stray, Goto::Next()), nullptr);
     // A lone pane has nowhere to go.
     Tree lone{ Leaf(1) };
-    EXPECT_EQ(lone.Neighbor(*ById(lone, 1), Tree::Goto::Next()), nullptr);
+    EXPECT_EQ(lone.Neighbor(*ById(lone, 1), Goto::Next()), nullptr);
 }
 
 // ----- NEW_SPLIT -----
 
 TEST(TreeTest, DirectionFromMapsTheGhosttyArrow) {
-    using D = Split::Direction;
+    using D = Direction;
     EXPECT_EQ(D::From(GHOSTTY_SPLIT_DIRECTION_RIGHT), D::Right());
     EXPECT_EQ(D::From(GHOSTTY_SPLIT_DIRECTION_LEFT),  D::Left());
     EXPECT_EQ(D::From(GHOSTTY_SPLIT_DIRECTION_DOWN),  D::Down());
@@ -299,12 +303,12 @@ namespace {
 // Splitting source pane 1 toward `direction`, growing new pane 2 —
 // returns the (layout, left id, right id) the factory produced.
 struct SplitShape {
-    Split::Layout layout;
+    Layout layout;
     uint64_t left;
     uint64_t right;
 };
 
-SplitShape ShapeOfSplitToward(Split::Direction direction) {
+SplitShape ShapeOfSplitToward(Direction direction) {
     auto b = MakeSplitBranch(Leaf(1), direction, Leaf(2));
     auto* split = b->TryGet<Split>();
     EXPECT_NE(split, nullptr);
@@ -316,41 +320,41 @@ SplitShape ShapeOfSplitToward(Split::Direction direction) {
 }  // namespace
 
 TEST(TreeTest, MakeSplitBranchGrowsTheNewPaneWhereTheArrowPoints) {
-    using D = Split::Direction;
+    using D = Direction;
     // source = 1, new pane = 2; left is the left / top slot.
     {
         auto s = ShapeOfSplitToward(D::Right());
-        EXPECT_EQ(s.layout, Split::Layout::Horizontal());
+        EXPECT_EQ(s.layout, Layout::Horizontal());
         EXPECT_EQ(s.left,  1u);   // the source keeps its side
         EXPECT_EQ(s.right, 2u);   // the new pane grows to the right
     }
     {
         auto s = ShapeOfSplitToward(D::Left());
-        EXPECT_EQ(s.layout, Split::Layout::Horizontal());
+        EXPECT_EQ(s.layout, Layout::Horizontal());
         EXPECT_EQ(s.left,  2u);
         EXPECT_EQ(s.right, 1u);
     }
     {
         auto s = ShapeOfSplitToward(D::Down());
-        EXPECT_EQ(s.layout, Split::Layout::Vertical());
+        EXPECT_EQ(s.layout, Layout::Vertical());
         EXPECT_EQ(s.left,  1u);   // the source stays on top
         EXPECT_EQ(s.right, 2u);   // the new pane grows below
     }
     {
         auto s = ShapeOfSplitToward(D::Up());
-        EXPECT_EQ(s.layout, Split::Layout::Vertical());
+        EXPECT_EQ(s.layout, Layout::Vertical());
         EXPECT_EQ(s.left,  2u);
         EXPECT_EQ(s.right, 1u);
     }
 }
 
 TEST(TreeTest, DirectionAnswersItsLayout) {
-    using D = Split::Direction;
+    using D = Direction;
     // Left/Right split side by side; Up/Down stack.
-    EXPECT_EQ(D::Right().Layout(), Split::Layout::Horizontal());
-    EXPECT_EQ(D::Left().Layout(),  Split::Layout::Horizontal());
-    EXPECT_EQ(D::Down().Layout(),  Split::Layout::Vertical());
-    EXPECT_EQ(D::Up().Layout(),    Split::Layout::Vertical());
+    EXPECT_EQ(D::Right().Layout(), Layout::Horizontal());
+    EXPECT_EQ(D::Left().Layout(),  Layout::Horizontal());
+    EXPECT_EQ(D::Down().Layout(),  Layout::Vertical());
+    EXPECT_EQ(D::Up().Layout(),    Layout::Vertical());
 }
 
 // ----- RESIZE_SPLIT -----
@@ -358,9 +362,9 @@ TEST(TreeTest, DirectionAnswersItsLayout) {
 namespace {
 
 // A lone split whose arranged extent the test controls directly.
-Tree SplitWithExtent(Split::Layout layout, float extent) {
+Tree SplitWithExtent(Layout layout, float extent) {
     Tree t{ MakeSplitBranch(layout, 0.5, Leaf(1), Leaf(2)) };
-    t.Root()->arrangedRect = layout == Split::Layout::Horizontal()
+    t.Root()->arrangedRect = layout == Layout::Horizontal()
         ? winrt::Windows::Foundation::Rect{ 0, 0, extent, 100 }
         : winrt::Windows::Foundation::Rect{ 0, 0, 100, extent };
     return t;
@@ -375,23 +379,23 @@ double RatioOf(Tree& t) {
 TEST(TreeTest, ResizeSplitMovesTheBoundaryTheArrowsWay) {
     // 1000px wide split, 0px divider: 100px is a tenth.
     {
-        auto t = SplitWithExtent(Split::Layout::Horizontal(), 1000);
-        EXPECT_TRUE(t.ResizeSplit(*ById(t, 1), Resize(GHOSTTY_RESIZE_SPLIT_RIGHT, 100), 0));
+        auto t = SplitWithExtent(Layout::Horizontal(), 1000);
+        EXPECT_TRUE(t.ResizeSplit(*ById(t, 1), ResizeBy(GHOSTTY_RESIZE_SPLIT_RIGHT, 100), 0));
         EXPECT_DOUBLE_EQ(RatioOf(t), 0.6);
     }
     {
-        auto t = SplitWithExtent(Split::Layout::Horizontal(), 1000);
-        EXPECT_TRUE(t.ResizeSplit(*ById(t, 1), Resize(GHOSTTY_RESIZE_SPLIT_LEFT, 100), 0));
+        auto t = SplitWithExtent(Layout::Horizontal(), 1000);
+        EXPECT_TRUE(t.ResizeSplit(*ById(t, 1), ResizeBy(GHOSTTY_RESIZE_SPLIT_LEFT, 100), 0));
         EXPECT_DOUBLE_EQ(RatioOf(t), 0.4);
     }
     {
-        auto t = SplitWithExtent(Split::Layout::Vertical(), 1000);
-        EXPECT_TRUE(t.ResizeSplit(*ById(t, 1), Resize(GHOSTTY_RESIZE_SPLIT_DOWN, 100), 0));
+        auto t = SplitWithExtent(Layout::Vertical(), 1000);
+        EXPECT_TRUE(t.ResizeSplit(*ById(t, 1), ResizeBy(GHOSTTY_RESIZE_SPLIT_DOWN, 100), 0));
         EXPECT_DOUBLE_EQ(RatioOf(t), 0.6);
     }
     {
-        auto t = SplitWithExtent(Split::Layout::Vertical(), 1000);
-        EXPECT_TRUE(t.ResizeSplit(*ById(t, 1), Resize(GHOSTTY_RESIZE_SPLIT_UP, 100), 0));
+        auto t = SplitWithExtent(Layout::Vertical(), 1000);
+        EXPECT_TRUE(t.ResizeSplit(*ById(t, 1), ResizeBy(GHOSTTY_RESIZE_SPLIT_UP, 100), 0));
         EXPECT_DOUBLE_EQ(RatioOf(t), 0.4);
     }
 }
@@ -399,28 +403,28 @@ TEST(TreeTest, ResizeSplitMovesTheBoundaryTheArrowsWay) {
 TEST(TreeTest, ResizeSplitAccountsForTheDivider) {
     // The divider is not pane space: 100px of a 1001px split with a
     // 1px divider is a tenth of the usable 1000.
-    auto t = SplitWithExtent(Split::Layout::Horizontal(), 1001);
-    EXPECT_TRUE(t.ResizeSplit(*ById(t, 1), Resize(GHOSTTY_RESIZE_SPLIT_RIGHT, 100), 1));
+    auto t = SplitWithExtent(Layout::Horizontal(), 1001);
+    EXPECT_TRUE(t.ResizeSplit(*ById(t, 1), ResizeBy(GHOSTTY_RESIZE_SPLIT_RIGHT, 100), 1));
     EXPECT_DOUBLE_EQ(RatioOf(t), 0.6);
 }
 
 TEST(TreeTest, ResizeSplitNeverLetsAChildVanish) {
     {
-        auto t = SplitWithExtent(Split::Layout::Horizontal(), 1000);
+        auto t = SplitWithExtent(Layout::Horizontal(), 1000);
         t.Root()->TryGet<Split>()->ratio = 0.9;
-        EXPECT_TRUE(t.ResizeSplit(*ById(t, 1), Resize(GHOSTTY_RESIZE_SPLIT_RIGHT, 500), 0));
+        EXPECT_TRUE(t.ResizeSplit(*ById(t, 1), ResizeBy(GHOSTTY_RESIZE_SPLIT_RIGHT, 500), 0));
         EXPECT_DOUBLE_EQ(RatioOf(t), 0.95);
     }
     {
-        auto t = SplitWithExtent(Split::Layout::Horizontal(), 1000);
+        auto t = SplitWithExtent(Layout::Horizontal(), 1000);
         t.Root()->TryGet<Split>()->ratio = 0.1;
-        EXPECT_TRUE(t.ResizeSplit(*ById(t, 1), Resize(GHOSTTY_RESIZE_SPLIT_LEFT, 500), 0));
+        EXPECT_TRUE(t.ResizeSplit(*ById(t, 1), ResizeBy(GHOSTTY_RESIZE_SPLIT_LEFT, 500), 0));
         EXPECT_DOUBLE_EQ(RatioOf(t), 0.05);
     }
     {
         // A degenerate extent does not divide by zero.
-        auto t = SplitWithExtent(Split::Layout::Horizontal(), 0);
-        EXPECT_TRUE(t.ResizeSplit(*ById(t, 1), Resize(GHOSTTY_RESIZE_SPLIT_RIGHT, 1), 1));
+        auto t = SplitWithExtent(Layout::Horizontal(), 0);
+        EXPECT_TRUE(t.ResizeSplit(*ById(t, 1), ResizeBy(GHOSTTY_RESIZE_SPLIT_RIGHT, 1), 1));
         EXPECT_DOUBLE_EQ(RatioOf(t), 0.95);
     }
 }
@@ -428,10 +432,10 @@ TEST(TreeTest, ResizeSplitNeverLetsAChildVanish) {
 TEST(TreeTest, ResizeSplitIsFalseWithoutASplitOnThatAxis) {
     // The tree splits horizontally only -- an UP/DOWN arrow crosses a
     // vertical split, and there is none.
-    auto t = SplitWithExtent(Split::Layout::Horizontal(), 1000);
-    EXPECT_FALSE(t.ResizeSplit(*ById(t, 1), Resize(GHOSTTY_RESIZE_SPLIT_UP, 100), 0));
+    auto t = SplitWithExtent(Layout::Horizontal(), 1000);
+    EXPECT_FALSE(t.ResizeSplit(*ById(t, 1), ResizeBy(GHOSTTY_RESIZE_SPLIT_UP, 100), 0));
     Tree lone{ Leaf(1) };
-    EXPECT_FALSE(lone.ResizeSplit(*ById(lone, 1), Resize(GHOSTTY_RESIZE_SPLIT_RIGHT, 100), 0));
+    EXPECT_FALSE(lone.ResizeSplit(*ById(lone, 1), ResizeBy(GHOSTTY_RESIZE_SPLIT_RIGHT, 100), 0));
 }
 
 // ----- the resize request at the boundary -----
@@ -440,22 +444,22 @@ TEST(TreeTest, ResizeFromCarriesTheArrowInLayoutAndSign) {
     // LEFT / RIGHT cross a vertical boundary — a horizontal split —
     // and the sign is the way the boundary moves (+right / +down,
     // the first child grows).
-    auto right = Resize(GHOSTTY_RESIZE_SPLIT_RIGHT, 100);
-    EXPECT_EQ(right.Layout(), Split::Layout::Horizontal());
+    auto right = ResizeBy(GHOSTTY_RESIZE_SPLIT_RIGHT, 100);
+    EXPECT_EQ(right.Layout(), Layout::Horizontal());
     EXPECT_EQ(right.SignedAmount(), 100);
-    auto left = Resize(GHOSTTY_RESIZE_SPLIT_LEFT, 100);
-    EXPECT_EQ(left.Layout(), Split::Layout::Horizontal());
+    auto left = ResizeBy(GHOSTTY_RESIZE_SPLIT_LEFT, 100);
+    EXPECT_EQ(left.Layout(), Layout::Horizontal());
     EXPECT_EQ(left.SignedAmount(), -100);
-    auto down = Resize(GHOSTTY_RESIZE_SPLIT_DOWN, 100);
-    EXPECT_EQ(down.Layout(), Split::Layout::Vertical());
+    auto down = ResizeBy(GHOSTTY_RESIZE_SPLIT_DOWN, 100);
+    EXPECT_EQ(down.Layout(), Layout::Vertical());
     EXPECT_EQ(down.SignedAmount(), 100);
-    auto up = Resize(GHOSTTY_RESIZE_SPLIT_UP, 100);
-    EXPECT_EQ(up.Layout(), Split::Layout::Vertical());
+    auto up = ResizeBy(GHOSTTY_RESIZE_SPLIT_UP, 100);
+    EXPECT_EQ(up.Layout(), Layout::Vertical());
     EXPECT_EQ(up.SignedAmount(), -100);
 }
 
 TEST(TreeTest, GotoFromMapsTheGhosttyTarget) {
-    using G = Tree::Goto;
+    using G = Goto;
     EXPECT_EQ(G::From(GHOSTTY_GOTO_SPLIT_PREVIOUS), G::Previous());
     EXPECT_EQ(G::From(GHOSTTY_GOTO_SPLIT_NEXT),     G::Next());
     EXPECT_EQ(G::From(GHOSTTY_GOTO_SPLIT_LEFT),     G::Left());

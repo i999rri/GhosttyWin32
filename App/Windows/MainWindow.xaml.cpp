@@ -2198,7 +2198,7 @@ namespace winrt::GhosttyWin32::implementation
         Pane* sourcePane = lookup.pane;
         auto* panelImpl = winrt::get_self<implementation::SplitPanel>(sourceTab->Panel());
         if (!panelImpl) return;
-        auto splitDirection = Split::Direction::From(direction);
+        auto splitDirection = Direction::From(direction);
         if (!splitDirection) return;
 
         display::PhysicalSize hint{};
@@ -2301,7 +2301,7 @@ namespace winrt::GhosttyWin32::implementation
         auto* panelImpl = winrt::get_self<implementation::SplitPanel>(tab->Panel());
         if (!panelImpl) return;
 
-        auto gotoTarget = Tree::Goto::From(direction);
+        auto gotoTarget = Goto::From(direction);
         if (!gotoTarget) return;
         Pane* target = panelImpl->PaneToward(*lookup.pane, *gotoTarget);
         if (!target || target == lookup.pane) return;
@@ -2318,7 +2318,7 @@ namespace winrt::GhosttyWin32::implementation
         if (!lookup.pane) return;
         auto* panelImpl = winrt::get_self<implementation::SplitPanel>(lookup.tab->Panel());
         if (!panelImpl) return;
-        auto request = Tree::Resize::From(resize);
+        auto request = Resize::From(resize);
         if (!request) return;
         panelImpl->ResizeSplit(*lookup.pane, *request);
     }

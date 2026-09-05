@@ -1,13 +1,14 @@
 #pragma once
 
 #include <Panes/Branch.h>
+#include <Panes/Goto.h>
+#include <Panes/RemoveResult.h>
+#include <Panes/Resize.h>
 #include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <functional>
-#include <ghostty.h>
 #include <limits>
-#include <optional>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -80,7 +81,7 @@ public:
     // The nearest Split above `pane` with the given layout — the one
     // RESIZE_SPLIT moves for an arrow across that axis. Null when no
     // ancestor has it (a lone pane, or only splits the other way).
-    Branch* NearestSplitAbove(Pane const& pane, Split::Layout layout) noexcept {
+    Branch* NearestSplitAbove(Pane const& pane, Layout layout) noexcept {
         Branch* node = TryFindBranch(pane);
         while (node && node->parent) {
             node = node->parent;
@@ -90,52 +91,6 @@ public:
         }
         return nullptr;
     }
-
-    // GOTO_SPLIT's target (upstream SplitTree.Goto): a step through
-    // the panes in depth-first order (Previous / Next, wrapping at
-    // either end) or a spatial arrow to the nearest pane on that
-    // side. Unlike Resize below there is no conversion in here — the
-    // value exists so consumers read predicates (target.IsNext())
-    // instead of spelling enum comparisons at every branch.
-    class Goto {
-    public:
-        static constexpr Goto Previous() noexcept { return { Kind::Previous }; }
-        static constexpr Goto Next()     noexcept { return { Kind::Next }; }
-        static constexpr Goto Left()     noexcept { return { Kind::Left }; }
-        static constexpr Goto Right()    noexcept { return { Kind::Right }; }
-        static constexpr Goto Up()       noexcept { return { Kind::Up }; }
-        static constexpr Goto Down()     noexcept { return { Kind::Down }; }
-
-        // The ghostty action enum, validated: any other value is a
-        // target we don't model, not a default.
-        static constexpr std::optional<Goto> From(
-            ghostty_action_goto_split_e target) noexcept
-        {
-            switch (target) {
-            case GHOSTTY_GOTO_SPLIT_PREVIOUS: return Previous();
-            case GHOSTTY_GOTO_SPLIT_NEXT:     return Next();
-            case GHOSTTY_GOTO_SPLIT_LEFT:     return Left();
-            case GHOSTTY_GOTO_SPLIT_RIGHT:    return Right();
-            case GHOSTTY_GOTO_SPLIT_UP:       return Up();
-            case GHOSTTY_GOTO_SPLIT_DOWN:     return Down();
-            default:                          return std::nullopt;
-            }
-        }
-
-        constexpr bool IsPrevious() const noexcept { return m_kind == Kind::Previous; }
-        constexpr bool IsNext()     const noexcept { return m_kind == Kind::Next; }
-        constexpr bool IsLeft()     const noexcept { return m_kind == Kind::Left; }
-        constexpr bool IsRight()    const noexcept { return m_kind == Kind::Right; }
-        constexpr bool IsUp()       const noexcept { return m_kind == Kind::Up; }
-        constexpr bool IsDown()     const noexcept { return m_kind == Kind::Down; }
-
-        constexpr bool operator==(Goto const&) const noexcept = default;
-
-    private:
-        enum class Kind { Previous, Next, Left, Right, Up, Down };
-        constexpr Goto(Kind k) noexcept : m_kind(k) {}
-        Kind m_kind;
-    };
 
     // GOTO_SPLIT: the pane focus should move to from `from` — the
     // spatial neighbour for an arrow, the depth-first neighbour
@@ -206,48 +161,6 @@ public:
         return best;
     }
 
-    // RESIZE_SPLIT's request, typed at the boundary because typing
-    // it IS the decision: the keybind's arrow + magnitude become the
-    // layout of the split the arrow crosses (LEFT / RIGHT move a
-    // vertical boundary, so a horizontal split) and the signed
-    // distance the boundary moves in pixels, positive toward
-    // right / down — the first child grows. The sign carries the
-    // arrow, so no bool does; upstream's tree resize is fed the
-    // same way (a layout plus a signed ratio).
-    class Resize {
-    public:
-        static constexpr std::optional<Resize> From(
-            ghostty_action_resize_split_s resize) noexcept
-        {
-            const int amount = static_cast<int>(resize.amount);
-            switch (resize.direction) {
-            case GHOSTTY_RESIZE_SPLIT_RIGHT:
-                return Resize{ Split::Layout::Horizontal(),  amount };
-            case GHOSTTY_RESIZE_SPLIT_LEFT:
-                return Resize{ Split::Layout::Horizontal(), -amount };
-            case GHOSTTY_RESIZE_SPLIT_DOWN:
-                return Resize{ Split::Layout::Vertical(),    amount };
-            case GHOSTTY_RESIZE_SPLIT_UP:
-                return Resize{ Split::Layout::Vertical(),   -amount };
-            default:
-                return std::nullopt;
-            }
-        }
-
-        // (Qualified return type: the method name shadows the type
-        // inside this class.)
-        constexpr Split::Layout Layout() const noexcept { return m_layout; }
-        constexpr int SignedAmount() const noexcept { return m_amount; }
-
-        constexpr bool operator==(Resize const&) const noexcept = default;
-
-    private:
-        constexpr Resize(Split::Layout layout, int amount) noexcept
-            : m_layout(layout), m_amount(amount) {}
-        Split::Layout m_layout;
-        int m_amount;
-    };
-
     // RESIZE_SPLIT: move the boundary of the nearest split with the
     // request's layout by its signed amount, regardless of which
     // side of the split `pane` is on. The ratio is clamped so
@@ -307,26 +220,6 @@ public:
         if (m_zoomed == &target) m_zoomed = nullptr;
         return true;
     }
-
-    // Callers key UI reactions off which case fired: last-pane closes
-    // the whole tab, split-collapse just relayouts, not-found is a
-    // stale close event. Predicate methods so call sites read as
-    // `result.IsCollapsed()` rather than `result == …::Collapsed`.
-    class RemoveResult {
-    public:
-        static constexpr RemoveResult NotFound()    noexcept { return { Kind::NotFound }; }
-        static constexpr RemoveResult Collapsed()   noexcept { return { Kind::Collapsed }; }
-        static constexpr RemoveResult RemovedRoot() noexcept { return { Kind::RemovedRoot }; }
-
-        constexpr bool IsNotFound()    const noexcept { return m_kind == Kind::NotFound; }
-        constexpr bool IsCollapsed()   const noexcept { return m_kind == Kind::Collapsed; }
-        constexpr bool IsRemovedRoot() const noexcept { return m_kind == Kind::RemovedRoot; }
-
-    private:
-        enum class Kind { NotFound, Collapsed, RemovedRoot };
-        constexpr RemoveResult(Kind k) noexcept : m_kind(k) {}
-        Kind m_kind;
-    };
 
     RemoveResult RemovePane(Pane const& target) noexcept {
         Branch* wrapping = TryFindBranch(target);

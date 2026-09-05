@@ -1,5 +1,6 @@
 #pragma once
 
+#include <Panes/Direction.h>
 #include <Panes/Pane.h>
 #include <Panes/Split.h>
 #include <winrt/Windows.Foundation.h>
@@ -143,7 +144,7 @@ inline std::unique_ptr<Branch> MakePaneBranch(Pane pane)
 }
 
 inline std::unique_ptr<Branch> MakeSplitBranch(
-    Split::Layout layout, double ratio,
+    Layout layout, double ratio,
     std::unique_ptr<Branch> left, std::unique_ptr<Branch> right)
 {
     return std::make_unique<Branch>(
@@ -160,7 +161,7 @@ inline std::unique_ptr<Branch> MakeSplitBranch(
 // (restoring a saved tree, tests building shapes directly).
 inline std::unique_ptr<Branch> MakeSplitBranch(
     std::unique_ptr<Branch> source,
-    Split::Direction direction,
+    Direction direction,
     std::unique_ptr<Branch> newPane,
     double ratio = 0.5)
 {

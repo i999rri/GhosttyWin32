@@ -39,7 +39,7 @@ bool SplitPanel::ReplacePane(Pane const& pane, std::unique_ptr<Branch> newSubtre
     return true;
 }
 
-Tree::RemoveResult SplitPanel::RemovePane(Pane const& pane) {
+RemoveResult SplitPanel::RemovePane(Pane const& pane) {
     auto result = m_tree.RemovePane(pane);
     if (!result.IsNotFound()) {
         SyncChildrenFromTree();
@@ -106,7 +106,7 @@ void SplitPanel::EqualizeAll() {
 }
 
 Pane* SplitPanel::SplitPane(Pane const& source,
-                            Split::Direction direction,
+                            Direction direction,
                             std::unique_ptr<Branch> fresh) {
     if (!fresh) return nullptr;
     // The pane inside `fresh` keeps its address when the branch is
@@ -123,11 +123,11 @@ Pane* SplitPanel::SplitPane(Pane const& source,
     return created;
 }
 
-Pane* SplitPanel::PaneToward(Pane const& from, core::panes::Tree::Goto target) {
+Pane* SplitPanel::PaneToward(Pane const& from, Goto target) {
     return m_tree.Neighbor(from, target);
 }
 
-bool SplitPanel::ResizeSplit(Pane const& pane, core::panes::Tree::Resize resize) {
+bool SplitPanel::ResizeSplit(Pane const& pane, Resize resize) {
     if (!m_tree.ResizeSplit(pane, resize, static_cast<float>(kSplitterThickness))) {
         return false;
     }

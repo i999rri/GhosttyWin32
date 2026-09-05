@@ -87,6 +87,21 @@
     <ClInclude Include="Panes\Branch.h">
       <Filter>Panes</Filter>
     </ClInclude>
+    <ClInclude Include="Panes\Direction.h">
+      <Filter>Panes</Filter>
+    </ClInclude>
+    <ClInclude Include="Panes\Goto.h">
+      <Filter>Panes</Filter>
+    </ClInclude>
+    <ClInclude Include="Panes\Layout.h">
+      <Filter>Panes</Filter>
+    </ClInclude>
+    <ClInclude Include="Panes\RemoveResult.h">
+      <Filter>Panes</Filter>
+    </ClInclude>
+    <ClInclude Include="Panes\Resize.h">
+      <Filter>Panes</Filter>
+    </ClInclude>
     <ClInclude Include="Panes\Pane.h">
       <Filter>Panes</Filter>
     </ClInclude>

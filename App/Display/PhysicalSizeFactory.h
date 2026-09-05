@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Display/PhysicalPixels.h"
-#include <Panes/Split.h>
+#include <Panes/Direction.h>
 
 namespace winrt::GhosttyWin32::implementation::display {
 
@@ -19,7 +19,7 @@ public:
     // the source occupied.
     template <typename TElement>
     static PhysicalSize ForSplit(TElement const& source,
-                                 core::panes::Split::Direction direction)
+                                 core::panes::Direction direction)
     {
         auto size = MeasuredPhysical(source);
         if (direction.IsHorizontal()) {

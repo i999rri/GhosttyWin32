@@ -62,7 +62,7 @@ struct SplitPanel : SplitPanelT<SplitPanel> {
     // The pane's TerminalControl is NOT detached here; the caller is
     // expected to do that before invoking RemovePane so the surface
     // and DComp handle are released synchronously.
-    Tree::RemoveResult RemovePane(Pane const& pane);
+    RemoveResult RemovePane(Pane const& pane);
 
     // Reset every Split node's ratio to 0.5 so each split divides
     // its area evenly. Matches EQUALIZE_SPLITS; no-op on a single-pane
@@ -83,20 +83,18 @@ struct SplitPanel : SplitPanelT<SplitPanel> {
     // not in this tree — `fresh` is then destroyed unused, so a caller
     // that attached a surface to it must detach that first.
     Pane* SplitPane(Pane const& source,
-                    Split::Direction direction,
+                    Direction direction,
                     std::unique_ptr<Branch> fresh);
 
     // GOTO_SPLIT: the pane focus should move to from `from` — the
     // spatial neighbour for an arrow, the depth-first neighbour for
-    // Previous / Next — or null when there is none. (Qualified
-    // parameter type: Tree is also this panel's accessor name.)
-    Pane* PaneToward(Pane const& from, core::panes::Tree::Goto target);
+    // Previous / Next — or null when there is none.
+    Pane* PaneToward(Pane const& from, Goto target);
 
     // RESIZE_SPLIT: move the boundary of the nearest split with the
     // request's layout. Returns false when no such split exists (a
-    // lone pane, or only splits the other way). (Qualified parameter
-    // type: Tree is also this panel's accessor name.)
-    bool ResizeSplit(Pane const& pane, core::panes::Tree::Resize resize);
+    // lone pane, or only splits the other way).
+    bool ResizeSplit(Pane const& pane, Resize resize);
 
     // TOGGLE_SPLIT_ZOOM: a second press anywhere collapses an active
     // zoom (as Windows Terminal / iTerm do); a lone pane has nothing

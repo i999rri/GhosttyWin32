@@ -107,9 +107,14 @@
     <ClInclude Include="Interop\Encoding.h" />
     <ClInclude Include="Win32\Clipboard.h" />
     <ClInclude Include="Panes\Branch.h" />
+    <ClInclude Include="Panes\Direction.h" />
+    <ClInclude Include="Panes\Goto.h" />
+    <ClInclude Include="Panes\Layout.h" />
     <ClInclude Include="Panes\Pane.h" />
     <ClInclude Include="Panes\PaneId.h" />
     <ClInclude Include="Panes\PaneIdAllocator.h" />
+    <ClInclude Include="Panes\RemoveResult.h" />
+    <ClInclude Include="Panes\Resize.h" />
     <ClInclude Include="Panes\Split.h" />
     <ClInclude Include="Panes\Tree.h" />
     <ClInclude Include="Win32\DebugTrace.h" />
