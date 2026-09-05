@@ -8,11 +8,18 @@ namespace core::panes {
 
 struct Branch;
 
-// Clamp the ratio so both children stay visible even if the user
-// drags a splitter all the way to the edge.
+// The ratio that divides a split evenly — the shape every new
+// split starts with, and what EQUALIZE_SPLITS resets to.
+constexpr double kEvenSplitRatio = 0.5;
+
+// Neither child of a split may vanish: ratios live inside these
+// bounds even if the user drags a splitter all the way to the edge.
+constexpr double kMinSplitRatio = 0.05;
+constexpr double kMaxSplitRatio = 0.95;
+
 constexpr double ClampSplitRatio(double r) noexcept {
-    if (r < 0.05) return 0.05;
-    if (r > 0.95) return 0.95;
+    if (r < kMinSplitRatio) return kMinSplitRatio;
+    if (r > kMaxSplitRatio) return kMaxSplitRatio;
     return r;
 }
 
@@ -20,7 +27,7 @@ constexpr double ClampSplitRatio(double r) noexcept {
 // would be invalidated by relocation.
 struct Split {
     Layout layout{ Layout::Horizontal() };
-    double    ratio{ 0.5 };
+    double    ratio{ kEvenSplitRatio };
     std::unique_ptr<Branch> left;
     std::unique_ptr<Branch> right;
 

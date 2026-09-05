@@ -97,7 +97,7 @@ void SplitPanel::EqualizeAll() {
     for (auto const& entry : m_splitters) {
         if (entry.branch) {
             if (auto* split = entry.branch->TryGet<Split>()) {
-                split->ratio = 0.5;
+                split->ratio = kEvenSplitRatio;
             }
         }
     }

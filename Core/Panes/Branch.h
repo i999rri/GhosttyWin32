@@ -163,7 +163,7 @@ inline std::unique_ptr<Branch> MakeSplitBranch(
     std::unique_ptr<Branch> source,
     Direction direction,
     std::unique_ptr<Branch> newPane,
-    double ratio = 0.5)
+    double ratio = kEvenSplitRatio)
 {
     // The new pane lands on the side the arrow points at: LEFT / UP
     // is the first (left / top) slot, the source keeps the other.

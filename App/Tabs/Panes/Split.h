@@ -12,5 +12,6 @@ using Split = core::panes::Split;
 using Layout = core::panes::Layout;
 using Direction = core::panes::Direction;
 using core::panes::ClampSplitRatio;
+using core::panes::kEvenSplitRatio;
 
 }  // namespace winrt::GhosttyWin32::implementation

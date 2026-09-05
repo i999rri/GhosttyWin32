@@ -163,7 +163,7 @@ public:
         const float extent = resize.Layout().IsHorizontal()
             ? node->arrangedRect.Width
             : node->arrangedRect.Height;
-        const float usable = std::max(1.0f, extent - splitterThickness);
+        const float usable = std::max(kMinUsableExtentPx, extent - splitterThickness);
         const double delta = static_cast<double>(resize.SignedAmount()) / usable;
         split->ratio = ClampSplitRatio(split->ratio + delta);
         return true;
@@ -262,6 +262,20 @@ public:
     void ClearZoomed() noexcept { m_zoomed = nullptr; }
 
 private:
+    // Panes sharing an edge can overlap by a rounding hair — the
+    // layout pass writes arranged rects as floats — so "past the
+    // boundary" allows this much slack.
+    static constexpr float kSharedBoundarySlackPx = 1.0f;
+
+    // The weight of the centres' off-axis offset in the spatial
+    // score: heavy enough that the aligned pane beats a diagonal
+    // one that is closer in straight-line distance.
+    static constexpr double kOffAxisPenalty = 2.0;
+
+    // A degenerate arranged extent must not divide the resize
+    // amount by zero.
+    static constexpr float kMinUsableExtentPx = 1.0f;
+
     // A rect projected onto `target`'s axis, oriented so the arrow
     // points toward +: `begin` / `end` bound the rect along the
     // arrow, `center` is its middle on the other axis. Negating the
@@ -286,10 +300,8 @@ private:
     // Whether `candidate` lies wholly on the `target` side of
     // `from`, and if so its rank as a neighbour — nullopt means
     // "not on that side at all". The rank is
-    //   gap along the arrow + 2 × off-axis offset of the centres
-    // and lower is better: the 2× penalty keeps focus moves
-    // predictable when an off-axis pane is technically closer in
-    // straight-line distance than the aligned neighbour.
+    //   gap along the arrow + kOffAxisPenalty × centre offset
+    // and lower is better.
     static std::optional<double> SpatialScore(
         Goto target,
         winrt::Windows::Foundation::Rect const& from,
@@ -299,13 +311,12 @@ private:
         const ArrowSpan c = ProjectOntoArrow(target, candidate);
 
         // Qualify: the candidate begins at or beyond from's end
-        // along the arrow, with 1px of slack absorbing float
-        // rounding on a shared boundary.
-        if (c.begin < f.end - 1.0f) return std::nullopt;
+        // along the arrow.
+        if (c.begin < f.end - kSharedBoundarySlackPx) return std::nullopt;
 
         const double primary       = c.begin - f.end;
         const double perpendicular = std::abs(c.center - f.center);
-        return primary + 2.0 * perpendicular;
+        return primary + kOffAxisPenalty * perpendicular;
     }
 
     std::unique_ptr<Branch> m_root;
