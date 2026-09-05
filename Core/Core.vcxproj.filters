@@ -72,6 +72,9 @@
     <ClInclude Include="Host\KeyModifiers.h">
       <Filter>Host</Filter>
     </ClInclude>
+    <ClInclude Include="Host\TitleSource.h">
+      <Filter>Host</Filter>
+    </ClInclude>
     <ClInclude Include="Input\KeyEventTranslator.h">
       <Filter>Input</Filter>
     </ClInclude>
