@@ -7,6 +7,7 @@
 #include <functional>
 #include <ghostty.h>
 #include <limits>
+#include <optional>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -167,35 +168,68 @@ public:
         return best;
     }
 
-    // RESIZE_SPLIT: move the boundary of the nearest split above
-    // `pane` on the arrow's axis by `resize.amount` pixels. LEFT /
-    // RIGHT move a vertical boundary, so the split being resized is
-    // a horizontal one; UP / DOWN the other way round. The arrow is
-    // the direction the boundary moves regardless of which side of
-    // the split `pane` is on: RIGHT / DOWN grow the first child,
-    // LEFT / UP shrink it, and the ratio is clamped so neither child
-    // can vanish. `splitterThickness` is what the divider takes of
-    // the split's arranged extent. Returns false when no split on
-    // that axis exists (a lone pane, or only splits the other way).
-    bool ResizeSplit(Pane const& pane, ghostty_action_resize_split_s resize,
+    // RESIZE_SPLIT's request, typed at the boundary because typing
+    // it IS the decision: the keybind's arrow + magnitude become the
+    // layout of the split the arrow crosses (LEFT / RIGHT move a
+    // vertical boundary, so a horizontal split) and the signed
+    // distance the boundary moves in pixels, positive toward
+    // right / down — the first child grows. The sign carries the
+    // arrow, so no bool does; upstream's tree resize is fed the
+    // same way (a layout plus a signed ratio).
+    class Resize {
+    public:
+        static constexpr std::optional<Resize> From(
+            ghostty_action_resize_split_s resize) noexcept
+        {
+            const int amount = static_cast<int>(resize.amount);
+            switch (resize.direction) {
+            case GHOSTTY_RESIZE_SPLIT_RIGHT:
+                return Resize{ Split::Layout::Horizontal(),  amount };
+            case GHOSTTY_RESIZE_SPLIT_LEFT:
+                return Resize{ Split::Layout::Horizontal(), -amount };
+            case GHOSTTY_RESIZE_SPLIT_DOWN:
+                return Resize{ Split::Layout::Vertical(),    amount };
+            case GHOSTTY_RESIZE_SPLIT_UP:
+                return Resize{ Split::Layout::Vertical(),   -amount };
+            default:
+                return std::nullopt;
+            }
+        }
+
+        // (Qualified return type: the method name shadows the type
+        // inside this class.)
+        constexpr Split::Layout Layout() const noexcept { return m_layout; }
+        constexpr int SignedAmount() const noexcept { return m_amount; }
+
+        constexpr bool operator==(Resize const&) const noexcept = default;
+
+    private:
+        constexpr Resize(Split::Layout layout, int amount) noexcept
+            : m_layout(layout), m_amount(amount) {}
+        Split::Layout m_layout;
+        int m_amount;
+    };
+
+    // RESIZE_SPLIT: move the boundary of the nearest split with the
+    // request's layout by its signed amount, regardless of which
+    // side of the split `pane` is on. The ratio is clamped so
+    // neither child can vanish. `splitterThickness` is what the
+    // divider takes of the split's arranged extent. Returns false
+    // when no split with that layout exists (a lone pane, or only
+    // splits the other way).
+    bool ResizeSplit(Pane const& pane, Resize resize,
                      float splitterThickness) noexcept {
-        const auto layout = (resize.direction == GHOSTTY_RESIZE_SPLIT_LEFT
-                          || resize.direction == GHOSTTY_RESIZE_SPLIT_RIGHT)
-            ? Split::Layout::Horizontal()
-            : Split::Layout::Vertical();
-        Branch* node = NearestSplitAbove(pane, layout);
+        Branch* node = NearestSplitAbove(pane, resize.Layout());
         if (!node) return false;
         auto* split = node->TryGet<Split>();
         if (!split) return false;
 
-        const float extent = layout.IsHorizontal()
+        const float extent = resize.Layout().IsHorizontal()
             ? node->arrangedRect.Width
             : node->arrangedRect.Height;
         const float usable = std::max(1.0f, extent - splitterThickness);
-        const double delta = static_cast<double>(resize.amount) / usable;
-        const bool increase = (resize.direction == GHOSTTY_RESIZE_SPLIT_RIGHT
-                            || resize.direction == GHOSTTY_RESIZE_SPLIT_DOWN);
-        split->ratio = ClampSplitRatio(split->ratio + (increase ? delta : -delta));
+        const double delta = static_cast<double>(resize.SignedAmount()) / usable;
+        split->ratio = ClampSplitRatio(split->ratio + delta);
         return true;
     }
 

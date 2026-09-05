@@ -2316,7 +2316,9 @@ namespace winrt::GhosttyWin32::implementation
         if (!lookup.pane) return;
         auto* panelImpl = winrt::get_self<implementation::SplitPanel>(lookup.tab->Panel());
         if (!panelImpl) return;
-        panelImpl->ResizeSplit(*lookup.pane, resize);
+        auto request = Tree::Resize::From(resize);
+        if (!request) return;
+        panelImpl->ResizeSplit(*lookup.pane, *request);
     }
 
     TerminalControl* MainWindow::ControlByPaneId(PaneId id) noexcept

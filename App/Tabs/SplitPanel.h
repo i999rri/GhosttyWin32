@@ -91,10 +91,11 @@ struct SplitPanel : SplitPanelT<SplitPanel> {
     // neighbour for PREVIOUS / NEXT — or null when there is none.
     Pane* PaneToward(Pane const& from, ghostty_action_goto_split_e direction);
 
-    // RESIZE_SPLIT: move the boundary of the nearest split above
-    // `pane` on the arrow's axis. Returns false when no such split
-    // exists (a lone pane, or only splits the other way).
-    bool ResizeSplit(Pane const& pane, ghostty_action_resize_split_s resize);
+    // RESIZE_SPLIT: move the boundary of the nearest split with the
+    // request's layout. Returns false when no such split exists (a
+    // lone pane, or only splits the other way). (Qualified parameter
+    // type: Tree is also this panel's accessor name.)
+    bool ResizeSplit(Pane const& pane, core::panes::Tree::Resize resize);
 
     // TOGGLE_SPLIT_ZOOM: a second press anywhere collapses an active
     // zoom (as Windows Terminal / iTerm do); a lone pane has nothing

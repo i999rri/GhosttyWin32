@@ -74,12 +74,14 @@ Tree Grid2x2() {
     return t;
 }
 
-ghostty_action_resize_split_s Resize(ghostty_action_resize_split_direction_e dir,
-                                     uint16_t amount) {
+Tree::Resize Resize(ghostty_action_resize_split_direction_e dir,
+                    uint16_t amount) {
     ghostty_action_resize_split_s r{};
     r.direction = dir;
     r.amount = amount;
-    return r;
+    auto typed = Tree::Resize::From(r);
+    EXPECT_TRUE(typed.has_value());
+    return *typed;
 }
 
 }  // namespace
@@ -430,4 +432,24 @@ TEST(TreeTest, ResizeSplitIsFalseWithoutASplitOnThatAxis) {
     EXPECT_FALSE(t.ResizeSplit(*ById(t, 1), Resize(GHOSTTY_RESIZE_SPLIT_UP, 100), 0));
     Tree lone{ Leaf(1) };
     EXPECT_FALSE(lone.ResizeSplit(*ById(lone, 1), Resize(GHOSTTY_RESIZE_SPLIT_RIGHT, 100), 0));
+}
+
+// ----- the resize request at the boundary -----
+
+TEST(TreeTest, ResizeFromCarriesTheArrowInLayoutAndSign) {
+    // LEFT / RIGHT cross a vertical boundary — a horizontal split —
+    // and the sign is the way the boundary moves (+right / +down,
+    // the first child grows).
+    auto right = Resize(GHOSTTY_RESIZE_SPLIT_RIGHT, 100);
+    EXPECT_EQ(right.Layout(), Split::Layout::Horizontal());
+    EXPECT_EQ(right.SignedAmount(), 100);
+    auto left = Resize(GHOSTTY_RESIZE_SPLIT_LEFT, 100);
+    EXPECT_EQ(left.Layout(), Split::Layout::Horizontal());
+    EXPECT_EQ(left.SignedAmount(), -100);
+    auto down = Resize(GHOSTTY_RESIZE_SPLIT_DOWN, 100);
+    EXPECT_EQ(down.Layout(), Split::Layout::Vertical());
+    EXPECT_EQ(down.SignedAmount(), 100);
+    auto up = Resize(GHOSTTY_RESIZE_SPLIT_UP, 100);
+    EXPECT_EQ(up.Layout(), Split::Layout::Vertical());
+    EXPECT_EQ(up.SignedAmount(), -100);
 }

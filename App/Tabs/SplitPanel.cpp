@@ -127,7 +127,7 @@ Pane* SplitPanel::PaneToward(Pane const& from, ghostty_action_goto_split_e direc
     return m_tree.Neighbor(from, direction);
 }
 
-bool SplitPanel::ResizeSplit(Pane const& pane, ghostty_action_resize_split_s resize) {
+bool SplitPanel::ResizeSplit(Pane const& pane, core::panes::Tree::Resize resize) {
     if (!m_tree.ResizeSplit(pane, resize, static_cast<float>(kSplitterThickness))) {
         return false;
     }
