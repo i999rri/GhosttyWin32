@@ -161,6 +161,7 @@
     <ClCompile Include="test_ime_buffer.cpp" />
     <ClCompile Include="test_ime_session.cpp" />
     <ClCompile Include="test_engagement_state.cpp" />
+    <ClCompile Include="test_title_source.cpp" />
     <ClCompile Include="test_key_modifiers.cpp" />
     <ClCompile Include="test_encoding.cpp" />
     <ClCompile Include="test_ghostty_config.cpp" />

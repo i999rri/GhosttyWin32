@@ -103,6 +103,7 @@
     <ClInclude Include="Host\EngagementState.h" />
     <ClInclude Include="Host\ImeBuffer.h" />
     <ClInclude Include="Host\KeyModifiers.h" />
+    <ClInclude Include="Host\TitleSource.h" />
     <ClInclude Include="Input\KeyEventTranslator.h" />
     <ClInclude Include="Interop\Encoding.h" />
     <ClInclude Include="Win32\Clipboard.h" />
