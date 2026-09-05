@@ -1988,7 +1988,20 @@ namespace winrt::GhosttyWin32::implementation
             if (self) self->m_renamePromptOpen = false;
             if (sender.GetResults() != muxc::ContentDialogResult::Primary) return;
             auto text = input.Text();
-            if (text.empty()) return;
+            if (text.empty()) {
+                // Empty input resets to the automatic title —
+                // upstream's documented prompt behaviour. Hand the
+                // header back to the foreground-pid poll and clear
+                // its cache so the next tick rewrites the header
+                // even when the foreground PID hasn't changed.
+                if (self) {
+                    if (auto* tab = self->m_tabs.FindByItem(item)) {
+                        tab->SetTitleSource(core::host::TitleSource::Automatic());
+                        tab->SetForegroundCache(0, {});
+                    }
+                }
+                return;
+            }
             item.Header(box_value(text));
             if (self) {
                 if (auto* tab = self->m_tabs.FindByItem(item)) {
