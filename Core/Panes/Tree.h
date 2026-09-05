@@ -136,7 +136,9 @@ public:
 
         const auto fromRect = branches[index]->arrangedRect;
         Pane* best = nullptr;
-        double bestScore = std::numeric_limits<double>::max();
+        // Parenthesized: a header cannot assume its includer defined
+        // NOMINMAX, and windows.h min/max macros eat the bare calls.
+        double bestScore = (std::numeric_limits<double>::max)();
         for (size_t i = 0; i < branches.size(); ++i) {
             if (i == index) continue;
             const auto score = SpatialScore(target, fromRect, branches[i]->arrangedRect);
@@ -166,7 +168,7 @@ public:
         const float extent = resize.Layout().IsHorizontal()
             ? node->arrangedRect.Width
             : node->arrangedRect.Height;
-        const float usable = std::max(kMinUsableExtentPx, extent - splitterThickness);
+        const float usable = (std::max)(kMinUsableExtentPx, extent - splitterThickness);
         const double delta = static_cast<double>(resize.SignedAmount()) / usable;
         split->ratio = ClampSplitRatio(split->ratio + delta);
         return true;
