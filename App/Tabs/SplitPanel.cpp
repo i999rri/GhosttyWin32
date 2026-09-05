@@ -146,34 +146,73 @@ bool SplitPanel::ToggleZoom(Pane const& pane) {
 }
 
 void SplitPanel::SyncChildrenFromTree() {
-    Children().Clear();
-    m_splitters.clear();
     m_draggingBranch = nullptr;
     // Any tree shape change invalidates a stored zoom pointer.
     m_tree.ClearZoomed();
-    if (auto* root = m_tree.Root()) AppendBranchToChildren(*root);
-    // Re-evaluate Visibility after rebuilding Children (previous zoom
-    // could have left Visibility=Collapsed on now-unrelated elements).
+
+    // What Children() should become. Collected before m_splitters is
+    // replaced so surviving Splits can be looked up in the previous
+    // sync's entries and keep their Borders.
+    std::vector<winrt::Microsoft::UI::Xaml::UIElement> desired;
+    std::vector<SplitterEntry> splitters;
+    if (auto* root = m_tree.Root()) CollectChildrenOf(*root, desired, splitters);
+    m_splitters = std::move(splitters);
+
+    // Reconcile by diff (see the declaration for why): first drop
+    // what left the tree, then place what is new. No current
+    // mutation reorders survivors, so a staying element is never
+    // detached — the move branch below is a safety net only.
+    auto children = Children();
+    auto isDesired = [&desired](winrt::Microsoft::UI::Xaml::UIElement const& el) {
+        return std::find(desired.begin(), desired.end(), el) != desired.end();
+    };
+    for (int32_t i = static_cast<int32_t>(children.Size()) - 1; i >= 0; --i) {
+        if (!isDesired(children.GetAt(static_cast<uint32_t>(i)))) {
+            children.RemoveAt(static_cast<uint32_t>(i));
+        }
+    }
+    for (uint32_t i = 0; i < desired.size(); ++i) {
+        if (i < children.Size() && children.GetAt(i) == desired[i]) continue;
+
+        // An element may appear only once in Children(), so an
+        // out-of-order survivor is moved rather than re-inserted.
+        for (uint32_t j = i + 1; j < children.Size(); ++j) {
+            if (children.GetAt(j) == desired[i]) {
+                children.RemoveAt(j);
+                break;
+            }
+        }
+        children.InsertAt(i, desired[i]);
+    }
+
+    // Re-evaluate Visibility after the diff (a previous zoom could
+    // have left Visibility=Collapsed on now-unrelated elements).
     UpdateChildVisibility();
 }
 
-void SplitPanel::AppendBranchToChildren(Branch& branch) {
+void SplitPanel::CollectChildrenOf(
+    Branch& branch,
+    std::vector<winrt::Microsoft::UI::Xaml::UIElement>& desired,
+    std::vector<SplitterEntry>& splitters)
+{
     if (auto* pane = branch.TryGet<Pane>()) {
         if (auto element = ElementOf(*pane)) {
-            Children().Append(element);
+            desired.push_back(element);
         }
         return;
     }
     auto* split = branch.TryGet<Split>();
     if (!split) return;
+
     // Walk left → splitter → right. Placing the splitter between the
     // children in Children() means it paints on top of the junction so
     // the drag strip is always reachable for input.
-    if (split->left)  AppendBranchToChildren(*split->left);
-    auto splitter = MakeSplitter(&branch);
-    Children().Append(splitter);
-    m_splitters.push_back({ splitter, &branch });
-    if (split->right) AppendBranchToChildren(*split->right);
+    if (split->left)  CollectChildrenOf(*split->left, desired, splitters);
+    auto splitter = SplitterForBranch(&branch);
+    if (!splitter) splitter = MakeSplitter(&branch);
+    desired.push_back(splitter);
+    splitters.push_back({ splitter, &branch });
+    if (split->right) CollectChildrenOf(*split->right, desired, splitters);
 }
 
 Microsoft::UI::Xaml::Controls::Border SplitPanel::MakeSplitter(Branch* splitBranch) {
