@@ -87,9 +87,10 @@ struct SplitPanel : SplitPanelT<SplitPanel> {
                     std::unique_ptr<Branch> fresh);
 
     // GOTO_SPLIT: the pane focus should move to from `from` — the
-    // spatial neighbour for LEFT / RIGHT / UP / DOWN, the depth-first
-    // neighbour for PREVIOUS / NEXT — or null when there is none.
-    Pane* PaneToward(Pane const& from, ghostty_action_goto_split_e direction);
+    // spatial neighbour for an arrow, the depth-first neighbour for
+    // Previous / Next — or null when there is none. (Qualified
+    // parameter type: Tree is also this panel's accessor name.)
+    Pane* PaneToward(Pane const& from, core::panes::Tree::Goto target);
 
     // RESIZE_SPLIT: move the boundary of the nearest split with the
     // request's layout. Returns false when no such split exists (a

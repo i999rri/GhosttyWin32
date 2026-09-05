@@ -2301,7 +2301,9 @@ namespace winrt::GhosttyWin32::implementation
         auto* panelImpl = winrt::get_self<implementation::SplitPanel>(tab->Panel());
         if (!panelImpl) return;
 
-        Pane* target = panelImpl->PaneToward(*lookup.pane, direction);
+        auto gotoTarget = Tree::Goto::From(direction);
+        if (!gotoTarget) return;
+        Pane* target = panelImpl->PaneToward(*lookup.pane, *gotoTarget);
         if (!target || target == lookup.pane) return;
 
         tab->SetActivePane(target);

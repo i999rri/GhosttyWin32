@@ -91,11 +91,56 @@ public:
         return nullptr;
     }
 
+    // GOTO_SPLIT's target (upstream SplitTree.Goto): a step through
+    // the panes in depth-first order (Previous / Next, wrapping at
+    // either end) or a spatial arrow to the nearest pane on that
+    // side. Unlike Resize below there is no conversion in here — the
+    // value exists so consumers read predicates (target.IsNext())
+    // instead of spelling enum comparisons at every branch.
+    class Goto {
+    public:
+        static constexpr Goto Previous() noexcept { return { Kind::Previous }; }
+        static constexpr Goto Next()     noexcept { return { Kind::Next }; }
+        static constexpr Goto Left()     noexcept { return { Kind::Left }; }
+        static constexpr Goto Right()    noexcept { return { Kind::Right }; }
+        static constexpr Goto Up()       noexcept { return { Kind::Up }; }
+        static constexpr Goto Down()     noexcept { return { Kind::Down }; }
+
+        // The ghostty action enum, validated: any other value is a
+        // target we don't model, not a default.
+        static constexpr std::optional<Goto> From(
+            ghostty_action_goto_split_e target) noexcept
+        {
+            switch (target) {
+            case GHOSTTY_GOTO_SPLIT_PREVIOUS: return Previous();
+            case GHOSTTY_GOTO_SPLIT_NEXT:     return Next();
+            case GHOSTTY_GOTO_SPLIT_LEFT:     return Left();
+            case GHOSTTY_GOTO_SPLIT_RIGHT:    return Right();
+            case GHOSTTY_GOTO_SPLIT_UP:       return Up();
+            case GHOSTTY_GOTO_SPLIT_DOWN:     return Down();
+            default:                          return std::nullopt;
+            }
+        }
+
+        constexpr bool IsPrevious() const noexcept { return m_kind == Kind::Previous; }
+        constexpr bool IsNext()     const noexcept { return m_kind == Kind::Next; }
+        constexpr bool IsLeft()     const noexcept { return m_kind == Kind::Left; }
+        constexpr bool IsRight()    const noexcept { return m_kind == Kind::Right; }
+        constexpr bool IsUp()       const noexcept { return m_kind == Kind::Up; }
+        constexpr bool IsDown()     const noexcept { return m_kind == Kind::Down; }
+
+        constexpr bool operator==(Goto const&) const noexcept = default;
+
+    private:
+        enum class Kind { Previous, Next, Left, Right, Up, Down };
+        constexpr Goto(Kind k) noexcept : m_kind(k) {}
+        Kind m_kind;
+    };
+
     // GOTO_SPLIT: the pane focus should move to from `from` — the
-    // spatial neighbour for LEFT / RIGHT / UP / DOWN, the depth-first
-    // neighbour (wrapping at either end) for PREVIOUS / NEXT — or
-    // null when there is none (a lone pane, an unknown direction, or
-    // nothing on that side).
+    // spatial neighbour for an arrow, the depth-first neighbour
+    // (wrapping at either end) for Previous / Next — or null when
+    // there is none (a lone pane, or nothing on that side).
     //
     // The spatial rule works on the arranged rects the layout pass
     // wrote onto each leaf's wrapping Branch. A candidate qualifies
@@ -106,17 +151,17 @@ public:
     // and the lowest wins: the 2× penalty keeps focus moves
     // predictable when an off-axis pane is technically closer in
     // straight-line distance than the aligned neighbour.
-    Pane* Neighbor(Pane const& from, ghostty_action_goto_split_e direction) {
+    Pane* Neighbor(Pane const& from, Goto target) {
         auto panes = Panes();
         if (panes.size() <= 1) return nullptr;   // nothing to navigate to
         auto it = std::find(panes.begin(), panes.end(), &from);
         if (it == panes.end()) return nullptr;
         const size_t index = static_cast<size_t>(std::distance(panes.begin(), it));
 
-        if (direction == GHOSTTY_GOTO_SPLIT_NEXT) {
+        if (target.IsNext()) {
             return panes[(index + 1) % panes.size()];
         }
-        if (direction == GHOSTTY_GOTO_SPLIT_PREVIOUS) {
+        if (target.IsPrevious()) {
             return panes[index == 0 ? panes.size() - 1 : index - 1];
         }
 
@@ -135,29 +180,22 @@ public:
             const auto c = branch->arrangedRect;
 
             double primary = 0.0, perpendicular = 0.0;
-            switch (direction) {
-            case GHOSTTY_GOTO_SPLIT_LEFT:
+            if (target.IsLeft()) {
                 if (right(c) > a.X + 1.0f) continue;
                 primary = a.X - right(c);
                 perpendicular = std::abs(centerY(c) - centerY(a));
-                break;
-            case GHOSTTY_GOTO_SPLIT_RIGHT:
+            } else if (target.IsRight()) {
                 if (c.X < right(a) - 1.0f) continue;
                 primary = c.X - right(a);
                 perpendicular = std::abs(centerY(c) - centerY(a));
-                break;
-            case GHOSTTY_GOTO_SPLIT_UP:
+            } else if (target.IsUp()) {
                 if (bottom(c) > a.Y + 1.0f) continue;
                 primary = a.Y - bottom(c);
                 perpendicular = std::abs(centerX(c) - centerX(a));
-                break;
-            case GHOSTTY_GOTO_SPLIT_DOWN:
+            } else {   // Down — From() admits nothing else spatial
                 if (c.Y < bottom(a) - 1.0f) continue;
                 primary = c.Y - bottom(a);
                 perpendicular = std::abs(centerX(c) - centerX(a));
-                break;
-            default:
-                return nullptr;
             }
             const double score = primary + 2.0 * perpendicular;
             if (score < bestScore) {

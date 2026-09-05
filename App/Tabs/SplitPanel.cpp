@@ -123,8 +123,8 @@ Pane* SplitPanel::SplitPane(Pane const& source,
     return created;
 }
 
-Pane* SplitPanel::PaneToward(Pane const& from, ghostty_action_goto_split_e direction) {
-    return m_tree.Neighbor(from, direction);
+Pane* SplitPanel::PaneToward(Pane const& from, core::panes::Tree::Goto target) {
+    return m_tree.Neighbor(from, target);
 }
 
 bool SplitPanel::ResizeSplit(Pane const& pane, core::panes::Tree::Resize resize) {

@@ -219,17 +219,17 @@ TEST(TreeTest, MutationsClearAZoomOnTheTouchedPane) {
 
 TEST(TreeTest, NeighborFindsTheAlignedNeighbour) {
     auto t = Grid2x2();
-    EXPECT_EQ(t.Neighbor(*ById(t, 1), GHOSTTY_GOTO_SPLIT_RIGHT), ById(t, 2));
-    EXPECT_EQ(t.Neighbor(*ById(t, 1), GHOSTTY_GOTO_SPLIT_DOWN),  ById(t, 3));
-    EXPECT_EQ(t.Neighbor(*ById(t, 4), GHOSTTY_GOTO_SPLIT_LEFT),  ById(t, 3));
-    EXPECT_EQ(t.Neighbor(*ById(t, 4), GHOSTTY_GOTO_SPLIT_UP),    ById(t, 2));
+    EXPECT_EQ(t.Neighbor(*ById(t, 1), Tree::Goto::Right()), ById(t, 2));
+    EXPECT_EQ(t.Neighbor(*ById(t, 1), Tree::Goto::Down()),  ById(t, 3));
+    EXPECT_EQ(t.Neighbor(*ById(t, 4), Tree::Goto::Left()),  ById(t, 3));
+    EXPECT_EQ(t.Neighbor(*ById(t, 4), Tree::Goto::Up()),    ById(t, 2));
 }
 
 TEST(TreeTest, NeighborIsNoneAtTheEdge) {
     auto t = Grid2x2();
-    EXPECT_EQ(t.Neighbor(*ById(t, 1), GHOSTTY_GOTO_SPLIT_LEFT),  nullptr);
-    EXPECT_EQ(t.Neighbor(*ById(t, 1), GHOSTTY_GOTO_SPLIT_UP),    nullptr);
-    EXPECT_EQ(t.Neighbor(*ById(t, 4), GHOSTTY_GOTO_SPLIT_RIGHT), nullptr);
+    EXPECT_EQ(t.Neighbor(*ById(t, 1), Tree::Goto::Left()),  nullptr);
+    EXPECT_EQ(t.Neighbor(*ById(t, 1), Tree::Goto::Up()),    nullptr);
+    EXPECT_EQ(t.Neighbor(*ById(t, 4), Tree::Goto::Right()), nullptr);
 }
 
 TEST(TreeTest, NeighborPrefersAlignedOverNearerDiagonal) {
@@ -245,7 +245,7 @@ TEST(TreeTest, NeighborPrefersAlignedOverNearerDiagonal) {
     Arrange(t, 2, 100, 0, 100, 400);   // touching, centre 150px below
     Arrange(t, 3, 220, 0, 100, 100);   // 120px away, aligned
     // scores: [2] 0 + 2*150 = 300, [3] 120 + 0 = 120
-    EXPECT_EQ(t.Neighbor(*ById(t, 1), GHOSTTY_GOTO_SPLIT_RIGHT), ById(t, 3));
+    EXPECT_EQ(t.Neighbor(*ById(t, 1), Tree::Goto::Right()), ById(t, 3));
 }
 
 TEST(TreeTest, NeighborAbsorbsBoundaryRounding) {
@@ -254,30 +254,30 @@ TEST(TreeTest, NeighborAbsorbsBoundaryRounding) {
     Tree t{ MakeSplitBranch(Split::Layout::Horizontal(), 0.5, Leaf(1), Leaf(2)) };
     Arrange(t, 1, 0,     0, 100,    100);
     Arrange(t, 2, 99.5f, 0, 100.5f, 100);
-    EXPECT_EQ(t.Neighbor(*ById(t, 1), GHOSTTY_GOTO_SPLIT_RIGHT), ById(t, 2));
+    EXPECT_EQ(t.Neighbor(*ById(t, 1), Tree::Goto::Right()), ById(t, 2));
     // More than a pixel of overlap is a pane beside us, not beyond.
     Arrange(t, 2, 98.0f, 0, 100.5f, 100);
-    EXPECT_EQ(t.Neighbor(*ById(t, 1), GHOSTTY_GOTO_SPLIT_RIGHT), nullptr);
+    EXPECT_EQ(t.Neighbor(*ById(t, 1), Tree::Goto::Right()), nullptr);
 }
 
 // ----- GOTO_SPLIT, cyclic -----
 
 TEST(TreeTest, NeighborCyclesDepthFirstWrappingBothWays) {
     auto t = Nested();   // depth-first order 1, 2, 3
-    EXPECT_EQ(t.Neighbor(*ById(t, 1), GHOSTTY_GOTO_SPLIT_NEXT),     ById(t, 2));
-    EXPECT_EQ(t.Neighbor(*ById(t, 3), GHOSTTY_GOTO_SPLIT_NEXT),     ById(t, 1));
-    EXPECT_EQ(t.Neighbor(*ById(t, 1), GHOSTTY_GOTO_SPLIT_PREVIOUS), ById(t, 3));
-    EXPECT_EQ(t.Neighbor(*ById(t, 2), GHOSTTY_GOTO_SPLIT_PREVIOUS), ById(t, 1));
+    EXPECT_EQ(t.Neighbor(*ById(t, 1), Tree::Goto::Next()),     ById(t, 2));
+    EXPECT_EQ(t.Neighbor(*ById(t, 3), Tree::Goto::Next()),     ById(t, 1));
+    EXPECT_EQ(t.Neighbor(*ById(t, 1), Tree::Goto::Previous()), ById(t, 3));
+    EXPECT_EQ(t.Neighbor(*ById(t, 2), Tree::Goto::Previous()), ById(t, 1));
 }
 
 TEST(TreeTest, NeighborRejectsBadInput) {
     auto t = Nested();
     // A pane that isn't in this tree.
     Pane stray{ nullptr, nullptr, PaneId{ 99 } };
-    EXPECT_EQ(t.Neighbor(stray, GHOSTTY_GOTO_SPLIT_NEXT), nullptr);
+    EXPECT_EQ(t.Neighbor(stray, Tree::Goto::Next()), nullptr);
     // A lone pane has nowhere to go.
     Tree lone{ Leaf(1) };
-    EXPECT_EQ(lone.Neighbor(*ById(lone, 1), GHOSTTY_GOTO_SPLIT_NEXT), nullptr);
+    EXPECT_EQ(lone.Neighbor(*ById(lone, 1), Tree::Goto::Next()), nullptr);
 }
 
 // ----- NEW_SPLIT -----
@@ -452,4 +452,14 @@ TEST(TreeTest, ResizeFromCarriesTheArrowInLayoutAndSign) {
     auto up = Resize(GHOSTTY_RESIZE_SPLIT_UP, 100);
     EXPECT_EQ(up.Layout(), Split::Layout::Vertical());
     EXPECT_EQ(up.SignedAmount(), -100);
+}
+
+TEST(TreeTest, GotoFromMapsTheGhosttyTarget) {
+    using G = Tree::Goto;
+    EXPECT_EQ(G::From(GHOSTTY_GOTO_SPLIT_PREVIOUS), G::Previous());
+    EXPECT_EQ(G::From(GHOSTTY_GOTO_SPLIT_NEXT),     G::Next());
+    EXPECT_EQ(G::From(GHOSTTY_GOTO_SPLIT_LEFT),     G::Left());
+    EXPECT_EQ(G::From(GHOSTTY_GOTO_SPLIT_RIGHT),    G::Right());
+    EXPECT_EQ(G::From(GHOSTTY_GOTO_SPLIT_UP),       G::Up());
+    EXPECT_EQ(G::From(GHOSTTY_GOTO_SPLIT_DOWN),     G::Down());
 }
