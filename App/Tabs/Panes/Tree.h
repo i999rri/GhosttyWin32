@@ -1,5 +1,7 @@
 #pragma once
 
+#include <Panes/Goto.h>
+#include <Panes/Resize.h>
 #include <Panes/Tree.h>
 #include "Tabs/Panes/Branch.h"
 
@@ -10,5 +12,8 @@ namespace winrt::GhosttyWin32::implementation {
 // working — SplitPanel owns a Tree and syncs its Children collection
 // after each mutation, exactly as before.
 using Tree = core::panes::Tree;
+using Goto = core::panes::Goto;
+using RemoveResult = core::panes::RemoveResult;
+using Resize = core::panes::Resize;
 
 }  // namespace winrt::GhosttyWin32::implementation

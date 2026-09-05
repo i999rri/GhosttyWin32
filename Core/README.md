@@ -7,6 +7,7 @@ Inside that line there are three kinds of code, by directory:
 | directory | what it is | may include |
 |---|---|---|
 | `Ghostty/` | libghostty as C++ values: the app and surface wrappers, `Config`, the action dispatch, and `Actions/Tags/` — one value per window-scoped action (`SizeLimit`, `CellSize`, `Fullscreen`, `WindowDecorations`, `BackgroundOpacity`) that holds the action's state and makes its decision, and nothing else | `ghostty.h`, the standard library. Not `<windows.h>` |
+| `Panes/` | one tab's split arrangement: the pane tree (`Pane`, `Split`, `Branch`, `Tree`) and its split operations (neighbour lookup, resize, placement). A pane carries its control as an `IInspectable` handle plus an `IPaneView`, so nothing here names a XAML type | `ghostty.h`, WinRT base types (`IInspectable`, `Rect`), the standard library. Not `<windows.h>` |
 | `Host/` | the contracts between the terminal side and the window side (`IWindow`, `ISurfaceView`), and host logic that is pure by nature (`ImeBuffer`, `EngagementState`) | as above; interface headers may name Win32 handle types |
 | `Win32/` | OS effects: `NativeWindow` (the HWND side of a top-level window — size-rule subclass, fullscreen placement), `Clipboard`, `SEHGuard`, `DebugTrace` | `<windows.h>`; may take the values from `Ghostty/Actions/Tags` to carry out |
 | `Input/`, `Interop/`, `Display/` | translations: key events, text encodings, DPI | as needed |

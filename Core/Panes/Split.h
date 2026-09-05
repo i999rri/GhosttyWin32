@@ -1,5 +1,6 @@
 #pragma once
 
+#include <Panes/Layout.h>
 #include <memory>
 #include <utility>
 
@@ -7,38 +8,40 @@ namespace core::panes {
 
 struct Branch;
 
-// Clamp the ratio so both children stay visible even if the user
-// drags a splitter all the way to the edge.
+// The ratio that divides a split evenly — the shape every new
+// split starts with, and what EQUALIZE_SPLITS resets to.
+constexpr double kEvenSplitRatio = 0.5;
+
+// Neither child of a split may vanish: ratios live inside these
+// bounds even if the user drags a splitter all the way to the edge.
+constexpr double kMinSplitRatio = 0.05;
+constexpr double kMaxSplitRatio = 0.95;
+
 constexpr double ClampSplitRatio(double r) noexcept {
-    if (r < 0.05) return 0.05;
-    if (r > 0.95) return 0.95;
+    if (r < kMinSplitRatio) return kMinSplitRatio;
+    if (r > kMaxSplitRatio) return kMaxSplitRatio;
     return r;
 }
 
 // A Split isn't move-enabled — raw Branch back-pointers on children
 // would be invalidated by relocation.
 struct Split {
-    enum class Direction {
-        Horizontal,   // children side by side, bar is vertical
-        Vertical,     // children stacked,       bar is horizontal
-    };
-
-    Direction direction{ Direction::Horizontal };
-    double    ratio{ 0.5 };
+    Layout layout{ Layout::Horizontal() };
+    double    ratio{ kEvenSplitRatio };
     std::unique_ptr<Branch> left;
     std::unique_ptr<Branch> right;
 
     Split() = default;
-    Split(Direction d, double r,
+    Split(Layout layout_, double r,
           std::unique_ptr<Branch> l,
           std::unique_ptr<Branch> right_)
-        : direction(d)
+        : layout(layout_)
         , ratio(ClampSplitRatio(r))
         , left(std::move(l))
         , right(std::move(right_)) {}
 
-    bool IsHorizontal() const noexcept { return direction == Direction::Horizontal; }
-    bool IsVertical()   const noexcept { return direction == Direction::Vertical; }
+    bool IsHorizontal() const noexcept { return layout.IsHorizontal(); }
+    bool IsVertical()   const noexcept { return layout.IsVertical(); }
 
     // Templates instantiate at the call site, so Branch just needs to
     // be forward-declared here; Branch.h includes this header before

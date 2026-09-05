@@ -30,9 +30,6 @@
     <ClInclude Include="Ghostty\Actions\Actions.h">
       <Filter>Ghostty\Actions</Filter>
     </ClInclude>
-    <ClInclude Include="Ghostty\Actions\Splits.h">
-      <Filter>Ghostty\Actions</Filter>
-    </ClInclude>
     <ClInclude Include="Ghostty\Actions\Tags\BackgroundOpacity.h">
       <Filter>Ghostty\Actions\Tags</Filter>
     </ClInclude>
@@ -88,6 +85,21 @@
       <Filter>Host</Filter>
     </ClInclude>
     <ClInclude Include="Panes\Branch.h">
+      <Filter>Panes</Filter>
+    </ClInclude>
+    <ClInclude Include="Panes\Direction.h">
+      <Filter>Panes</Filter>
+    </ClInclude>
+    <ClInclude Include="Panes\Goto.h">
+      <Filter>Panes</Filter>
+    </ClInclude>
+    <ClInclude Include="Panes\Layout.h">
+      <Filter>Panes</Filter>
+    </ClInclude>
+    <ClInclude Include="Panes\RemoveResult.h">
+      <Filter>Panes</Filter>
+    </ClInclude>
+    <ClInclude Include="Panes\Resize.h">
       <Filter>Panes</Filter>
     </ClInclude>
     <ClInclude Include="Panes\Pane.h">

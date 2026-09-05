@@ -39,7 +39,7 @@ bool SplitPanel::ReplacePane(Pane const& pane, std::unique_ptr<Branch> newSubtre
     return true;
 }
 
-Tree::RemoveResult SplitPanel::RemovePane(Pane const& pane) {
+RemoveResult SplitPanel::RemovePane(Pane const& pane) {
     auto result = m_tree.RemovePane(pane);
     if (!result.IsNotFound()) {
         SyncChildrenFromTree();
@@ -97,7 +97,7 @@ void SplitPanel::EqualizeAll() {
     for (auto const& entry : m_splitters) {
         if (entry.branch) {
             if (auto* split = entry.branch->TryGet<Split>()) {
-                split->ratio = 0.5;
+                split->ratio = kEvenSplitRatio;
             }
         }
     }
@@ -105,26 +105,11 @@ void SplitPanel::EqualizeAll() {
     InvalidateArrange();
 }
 
-namespace {
-
-namespace splits = core::ghostty::actions::splits;
-
-Split::Direction ToTree(splits::Axis axis) noexcept {
-    return axis == splits::Axis::Horizontal
-        ? Split::Direction::Horizontal
-        : Split::Direction::Vertical;
-}
-
-splits::Rect ToSplits(winrt::Windows::Foundation::Rect const& r) noexcept {
-    return { r.X, r.Y, r.Width, r.Height };
-}
-
-}  // namespace
-
 Pane* SplitPanel::SplitPane(Pane const& source,
-                            splits::Placement placement,
+                            Direction direction,
                             std::unique_ptr<Branch> fresh) {
     if (!fresh) return nullptr;
+
     // The pane inside `fresh` keeps its address when the branch is
     // moved into the subtree (unique_ptr hands over the same object),
     // so this stays valid past ReplacePane.
@@ -133,45 +118,17 @@ Pane* SplitPanel::SplitPane(Pane const& source,
     // `source`: the new wrapper needs its own reference to the
     // control and the same PaneId so close_surface_cb still routes.
     auto sourceWrapper = MakePaneBranch(source);
-    auto subtree = placement.newFirst
-        ? MakeSplitBranch(ToTree(placement.axis), 0.5, std::move(fresh), std::move(sourceWrapper))
-        : MakeSplitBranch(ToTree(placement.axis), 0.5, std::move(sourceWrapper), std::move(fresh));
+    auto subtree = MakeSplitBranch(std::move(sourceWrapper), direction,
+                                   std::move(fresh));
     if (!ReplacePane(source, std::move(subtree))) return nullptr;
     return created;
 }
 
-Pane* SplitPanel::PaneToward(Pane const& from, ghostty_action_goto_split_e direction) {
-    auto panes = m_tree.Panes();
-    if (panes.size() <= 1) return nullptr;   // nothing to navigate to
-    auto it = std::find(panes.begin(), panes.end(), &from);
-    if (it == panes.end()) return nullptr;
-    const size_t index = static_cast<size_t>(std::distance(panes.begin(), it));
-
-    if (direction == GHOSTTY_GOTO_SPLIT_PREVIOUS || direction == GHOSTTY_GOTO_SPLIT_NEXT) {
-        return panes[splits::CyclePane(index, panes.size(), direction)];
+bool SplitPanel::ResizeSplit(Pane const& pane, Resize resize) {
+    if (!m_tree.ResizeSplit(pane, resize, static_cast<float>(kSplitterThickness))) {
+        return false;
     }
-    // The spatial rule works on the arranged rects, which live on the
-    // wrapping Branch rather than the Pane.
-    std::vector<splits::Rect> rects;
-    rects.reserve(panes.size());
-    for (auto* pane : panes) {
-        auto* branch = m_tree.TryFindBranch(*pane);
-        rects.push_back(branch ? ToSplits(branch->arrangedRect) : splits::Rect{});
-    }
-    auto target = splits::AdjacentPane(rects, index, direction);
-    return target ? panes[*target] : nullptr;
-}
 
-bool SplitPanel::ResizeSplit(Pane const& pane, ghostty_action_resize_split_s resize) {
-    const auto axis = splits::ResizeAxis(resize.direction);
-    Branch* node = m_tree.NearestSplitAbove(pane, ToTree(axis));
-    if (!node) return false;
-    auto* split = node->TryGet<Split>();
-    if (!split) return false;
-    const auto rect = node->arrangedRect;
-    const float extent = (axis == splits::Axis::Horizontal) ? rect.Width : rect.Height;
-    split->ratio = splits::ResizedRatio(split->ratio, resize, extent,
-                                        static_cast<float>(kSplitterThickness));
     InvalidateMeasure();
     InvalidateArrange();
     return true;
