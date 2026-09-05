@@ -109,6 +109,7 @@ Pane* SplitPanel::SplitPane(Pane const& source,
                             Direction direction,
                             std::unique_ptr<Branch> fresh) {
     if (!fresh) return nullptr;
+
     // The pane inside `fresh` keeps its address when the branch is
     // moved into the subtree (unique_ptr hands over the same object),
     // so this stays valid past ReplacePane.
@@ -127,6 +128,7 @@ bool SplitPanel::ResizeSplit(Pane const& pane, Resize resize) {
     if (!m_tree.ResizeSplit(pane, resize, static_cast<float>(kSplitterThickness))) {
         return false;
     }
+
     InvalidateMeasure();
     InvalidateArrange();
     return true;

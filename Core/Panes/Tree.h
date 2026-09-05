@@ -120,9 +120,11 @@ public:
     Pane* GotoTarget(Pane const& from, Goto target) {
         auto branches = PaneBranches();
         if (branches.size() <= 1) return nullptr;   // nowhere to go
+
         auto it = std::find_if(branches.begin(), branches.end(),
             [&from](Branch* b) { return b->TryGet<Pane>() == &from; });
         if (it == branches.end()) return nullptr;
+
         const size_t index = static_cast<size_t>(std::distance(branches.begin(), it));
 
         if (target.IsNext()) {
@@ -157,6 +159,7 @@ public:
                      float splitterThickness) noexcept {
         Branch* node = NearestSplitAbove(pane, resize.Layout());
         if (!node) return false;
+
         auto* split = node->TryGet<Split>();
         if (!split) return false;
 
@@ -191,6 +194,7 @@ public:
 
         Branch* parent = wrapping->parent;
         if (!parent) return false;
+
         auto* parentSplit = parent->TryGet<Split>();
         if (!parentSplit) return false;
 
@@ -218,6 +222,7 @@ public:
 
         Branch* parent = wrapping->parent;
         if (!parent) return RemoveResult::NotFound();
+
         auto* parentSplit = parent->TryGet<Split>();
         if (!parentSplit) return RemoveResult::NotFound();
 
