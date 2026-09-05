@@ -2303,7 +2303,9 @@ namespace winrt::GhosttyWin32::implementation
 
         auto gotoTarget = Goto::From(direction);
         if (!gotoTarget) return;
-        Pane* target = panelImpl->PaneToward(*lookup.pane, *gotoTarget);
+        // A pure read — no layout to refresh — so it goes through
+        // the panel's Tree() directly, per SplitPanel's own rule.
+        Pane* target = panelImpl->Tree().GotoTarget(*lookup.pane, *gotoTarget);
         if (!target || target == lookup.pane) return;
 
         tab->SetActivePane(target);

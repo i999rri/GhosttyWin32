@@ -2,6 +2,7 @@
 
 #include <Panes/Branch.h>
 #include <Panes/Goto.h>
+#include <optional>
 #include <Panes/RemoveResult.h>
 #include <Panes/Resize.h>
 #include <algorithm>
@@ -92,23 +93,14 @@ public:
         return nullptr;
     }
 
-    // GOTO_SPLIT: the pane focus should move to from `from` — the
-    // spatial neighbour for an arrow, the depth-first neighbour
-    // (wrapping at either end) for Previous / Next — or null when
-    // there is none (a lone pane, or nothing on that side).
-    //
-    // The spatial rule works on the arranged rects the layout pass
-    // wrote onto each leaf's wrapping Branch. A candidate qualifies
-    // when its whole extent lies on the requested side of `from`
-    // (with 1px of slack to absorb float rounding on a shared
-    // boundary). Among those, the score is
-    //   primary distance + 2 × perpendicular offset of the centres
-    // and the lowest wins: the 2× penalty keeps focus moves
-    // predictable when an off-axis pane is technically closer in
-    // straight-line distance than the aligned neighbour.
-    Pane* Neighbor(Pane const& from, Goto target) {
+    // GOTO_SPLIT: the pane `target` points at from `from` — the
+    // best-scoring pane on that side for a spatial arrow (the rule
+    // is SpatialScore below), the depth-first neighbour (wrapping
+    // at either end) for Previous / Next — or null when there is
+    // none (a lone pane, or nothing on that side).
+    Pane* GotoTarget(Pane const& from, Goto target) {
         auto panes = Panes();
-        if (panes.size() <= 1) return nullptr;   // nothing to navigate to
+        if (panes.size() <= 1) return nullptr;   // nowhere to go
         auto it = std::find(panes.begin(), panes.end(), &from);
         if (it == panes.end()) return nullptr;
         const size_t index = static_cast<size_t>(std::distance(panes.begin(), it));
@@ -120,41 +112,16 @@ public:
             return panes[index == 0 ? panes.size() - 1 : index - 1];
         }
 
-        const auto a = TryFindBranch(from)->arrangedRect;
-        const auto right   = [](winrt::Windows::Foundation::Rect const& r) { return r.X + r.Width; };
-        const auto bottom  = [](winrt::Windows::Foundation::Rect const& r) { return r.Y + r.Height; };
-        const auto centerX = [](winrt::Windows::Foundation::Rect const& r) { return r.X + r.Width * 0.5f; };
-        const auto centerY = [](winrt::Windows::Foundation::Rect const& r) { return r.Y + r.Height * 0.5f; };
-
+        const auto fromRect = TryFindBranch(from)->arrangedRect;
         Pane* best = nullptr;
         double bestScore = std::numeric_limits<double>::max();
         for (size_t i = 0; i < panes.size(); ++i) {
             if (i == index) continue;
             Branch* branch = TryFindBranch(*panes[i]);
             if (!branch) continue;
-            const auto c = branch->arrangedRect;
-
-            double primary = 0.0, perpendicular = 0.0;
-            if (target.IsLeft()) {
-                if (right(c) > a.X + 1.0f) continue;
-                primary = a.X - right(c);
-                perpendicular = std::abs(centerY(c) - centerY(a));
-            } else if (target.IsRight()) {
-                if (c.X < right(a) - 1.0f) continue;
-                primary = c.X - right(a);
-                perpendicular = std::abs(centerY(c) - centerY(a));
-            } else if (target.IsUp()) {
-                if (bottom(c) > a.Y + 1.0f) continue;
-                primary = a.Y - bottom(c);
-                perpendicular = std::abs(centerX(c) - centerX(a));
-            } else {   // Down — From() admits nothing else spatial
-                if (c.Y < bottom(a) - 1.0f) continue;
-                primary = c.Y - bottom(a);
-                perpendicular = std::abs(centerX(c) - centerX(a));
-            }
-            const double score = primary + 2.0 * perpendicular;
-            if (score < bestScore) {
-                bestScore = score;
+            const auto score = SpatialScore(target, fromRect, branch->arrangedRect);
+            if (score && *score < bestScore) {
+                bestScore = *score;
                 best = panes[i];
             }
         }
@@ -277,6 +244,46 @@ public:
     void ClearZoomed() noexcept { m_zoomed = nullptr; }
 
 private:
+    // Whether `candidate` lies wholly on the `target` side of
+    // `from`, and if so its rank as a neighbour — nullopt means
+    // "not on that side at all". A candidate qualifies when its
+    // whole extent is past `from`'s edge, with 1px of slack to
+    // absorb float rounding on a shared boundary. The rank is
+    //   distance along the arrow + 2 × off-axis offset of the centres
+    // and lower is better: the 2× penalty keeps focus moves
+    // predictable when an off-axis pane is technically closer in
+    // straight-line distance than the aligned neighbour.
+    static std::optional<double> SpatialScore(
+        Goto target,
+        winrt::Windows::Foundation::Rect const& from,
+        winrt::Windows::Foundation::Rect const& candidate) noexcept
+    {
+        const auto right   = [](winrt::Windows::Foundation::Rect const& r) { return r.X + r.Width; };
+        const auto bottom  = [](winrt::Windows::Foundation::Rect const& r) { return r.Y + r.Height; };
+        const auto centerX = [](winrt::Windows::Foundation::Rect const& r) { return r.X + r.Width * 0.5f; };
+        const auto centerY = [](winrt::Windows::Foundation::Rect const& r) { return r.Y + r.Height * 0.5f; };
+
+        double primary = 0.0, perpendicular = 0.0;
+        if (target.IsLeft()) {
+            if (right(candidate) > from.X + 1.0f) return std::nullopt;
+            primary = from.X - right(candidate);
+            perpendicular = std::abs(centerY(candidate) - centerY(from));
+        } else if (target.IsRight()) {
+            if (candidate.X < right(from) - 1.0f) return std::nullopt;
+            primary = candidate.X - right(from);
+            perpendicular = std::abs(centerY(candidate) - centerY(from));
+        } else if (target.IsUp()) {
+            if (bottom(candidate) > from.Y + 1.0f) return std::nullopt;
+            primary = from.Y - bottom(candidate);
+            perpendicular = std::abs(centerX(candidate) - centerX(from));
+        } else {   // Down — GotoTarget routed Previous / Next already
+            if (candidate.Y < bottom(from) - 1.0f) return std::nullopt;
+            primary = candidate.Y - bottom(from);
+            perpendicular = std::abs(centerX(candidate) - centerX(from));
+        }
+        return primary + 2.0 * perpendicular;
+    }
+
     std::unique_ptr<Branch> m_root;
     // Non-owning pointer into m_root's subtree. Cleared whenever the
     // pointed-at pane could go away (SetRoot, ReplacePane, RemovePane).

@@ -123,10 +123,6 @@ Pane* SplitPanel::SplitPane(Pane const& source,
     return created;
 }
 
-Pane* SplitPanel::PaneToward(Pane const& from, Goto target) {
-    return m_tree.Neighbor(from, target);
-}
-
 bool SplitPanel::ResizeSplit(Pane const& pane, Resize resize) {
     if (!m_tree.ResizeSplit(pane, resize, static_cast<float>(kSplitterThickness))) {
         return false;

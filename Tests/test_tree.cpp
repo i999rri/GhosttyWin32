@@ -221,22 +221,22 @@ TEST(TreeTest, MutationsClearAZoomOnTheTouchedPane) {
 
 // ----- GOTO_SPLIT, spatial -----
 
-TEST(TreeTest, NeighborFindsTheAlignedNeighbour) {
+TEST(TreeTest, GotoTargetFindsTheAlignedNeighbour) {
     auto t = Grid2x2();
-    EXPECT_EQ(t.Neighbor(*ById(t, 1), Goto::Right()), ById(t, 2));
-    EXPECT_EQ(t.Neighbor(*ById(t, 1), Goto::Down()),  ById(t, 3));
-    EXPECT_EQ(t.Neighbor(*ById(t, 4), Goto::Left()),  ById(t, 3));
-    EXPECT_EQ(t.Neighbor(*ById(t, 4), Goto::Up()),    ById(t, 2));
+    EXPECT_EQ(t.GotoTarget(*ById(t, 1), Goto::Right()), ById(t, 2));
+    EXPECT_EQ(t.GotoTarget(*ById(t, 1), Goto::Down()),  ById(t, 3));
+    EXPECT_EQ(t.GotoTarget(*ById(t, 4), Goto::Left()),  ById(t, 3));
+    EXPECT_EQ(t.GotoTarget(*ById(t, 4), Goto::Up()),    ById(t, 2));
 }
 
-TEST(TreeTest, NeighborIsNoneAtTheEdge) {
+TEST(TreeTest, GotoTargetIsNoneAtTheEdge) {
     auto t = Grid2x2();
-    EXPECT_EQ(t.Neighbor(*ById(t, 1), Goto::Left()),  nullptr);
-    EXPECT_EQ(t.Neighbor(*ById(t, 1), Goto::Up()),    nullptr);
-    EXPECT_EQ(t.Neighbor(*ById(t, 4), Goto::Right()), nullptr);
+    EXPECT_EQ(t.GotoTarget(*ById(t, 1), Goto::Left()),  nullptr);
+    EXPECT_EQ(t.GotoTarget(*ById(t, 1), Goto::Up()),    nullptr);
+    EXPECT_EQ(t.GotoTarget(*ById(t, 4), Goto::Right()), nullptr);
 }
 
-TEST(TreeTest, NeighborPrefersAlignedOverNearerDiagonal) {
+TEST(TreeTest, GotoTargetPrefersAlignedOverNearerDiagonal) {
     // Active on the left; to its right a tall pane whose centre is
     // far off-axis but which touches, and a narrow pane further away
     // that is aligned. The 2x perpendicular penalty makes the aligned
@@ -249,39 +249,39 @@ TEST(TreeTest, NeighborPrefersAlignedOverNearerDiagonal) {
     Arrange(t, 2, 100, 0, 100, 400);   // touching, centre 150px below
     Arrange(t, 3, 220, 0, 100, 100);   // 120px away, aligned
     // scores: [2] 0 + 2*150 = 300, [3] 120 + 0 = 120
-    EXPECT_EQ(t.Neighbor(*ById(t, 1), Goto::Right()), ById(t, 3));
+    EXPECT_EQ(t.GotoTarget(*ById(t, 1), Goto::Right()), ById(t, 3));
 }
 
-TEST(TreeTest, NeighborAbsorbsBoundaryRounding) {
+TEST(TreeTest, GotoTargetAbsorbsBoundaryRounding) {
     // A neighbour whose edge overlaps the boundary by half a pixel
     // (float layout) still counts as "on that side".
     Tree t{ MakeSplitBranch(Layout::Horizontal(), 0.5, Leaf(1), Leaf(2)) };
     Arrange(t, 1, 0,     0, 100,    100);
     Arrange(t, 2, 99.5f, 0, 100.5f, 100);
-    EXPECT_EQ(t.Neighbor(*ById(t, 1), Goto::Right()), ById(t, 2));
+    EXPECT_EQ(t.GotoTarget(*ById(t, 1), Goto::Right()), ById(t, 2));
     // More than a pixel of overlap is a pane beside us, not beyond.
     Arrange(t, 2, 98.0f, 0, 100.5f, 100);
-    EXPECT_EQ(t.Neighbor(*ById(t, 1), Goto::Right()), nullptr);
+    EXPECT_EQ(t.GotoTarget(*ById(t, 1), Goto::Right()), nullptr);
 }
 
 // ----- GOTO_SPLIT, cyclic -----
 
-TEST(TreeTest, NeighborCyclesDepthFirstWrappingBothWays) {
+TEST(TreeTest, GotoTargetCyclesDepthFirstWrappingBothWays) {
     auto t = Nested();   // depth-first order 1, 2, 3
-    EXPECT_EQ(t.Neighbor(*ById(t, 1), Goto::Next()),     ById(t, 2));
-    EXPECT_EQ(t.Neighbor(*ById(t, 3), Goto::Next()),     ById(t, 1));
-    EXPECT_EQ(t.Neighbor(*ById(t, 1), Goto::Previous()), ById(t, 3));
-    EXPECT_EQ(t.Neighbor(*ById(t, 2), Goto::Previous()), ById(t, 1));
+    EXPECT_EQ(t.GotoTarget(*ById(t, 1), Goto::Next()),     ById(t, 2));
+    EXPECT_EQ(t.GotoTarget(*ById(t, 3), Goto::Next()),     ById(t, 1));
+    EXPECT_EQ(t.GotoTarget(*ById(t, 1), Goto::Previous()), ById(t, 3));
+    EXPECT_EQ(t.GotoTarget(*ById(t, 2), Goto::Previous()), ById(t, 1));
 }
 
-TEST(TreeTest, NeighborRejectsBadInput) {
+TEST(TreeTest, GotoTargetRejectsBadInput) {
     auto t = Nested();
     // A pane that isn't in this tree.
     Pane stray{ nullptr, nullptr, PaneId{ 99 } };
-    EXPECT_EQ(t.Neighbor(stray, Goto::Next()), nullptr);
+    EXPECT_EQ(t.GotoTarget(stray, Goto::Next()), nullptr);
     // A lone pane has nowhere to go.
     Tree lone{ Leaf(1) };
-    EXPECT_EQ(lone.Neighbor(*ById(lone, 1), Goto::Next()), nullptr);
+    EXPECT_EQ(lone.GotoTarget(*ById(lone, 1), Goto::Next()), nullptr);
 }
 
 // ----- NEW_SPLIT -----
