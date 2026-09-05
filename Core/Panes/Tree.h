@@ -291,6 +291,8 @@ private:
         Goto target,
         winrt::Windows::Foundation::Rect const& r) noexcept
     {
+        // * 0.5f: the rect's midpoint on the off-axis — the centre
+        // the score compares to judge alignment.
         if (target.IsRight()) return { r.X, r.X + r.Width, r.Y + r.Height * 0.5f };
         if (target.IsLeft())  return { -(r.X + r.Width), -r.X, r.Y + r.Height * 0.5f };
         if (target.IsDown())  return { r.Y, r.Y + r.Height, r.X + r.Width * 0.5f };
