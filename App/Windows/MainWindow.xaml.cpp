@@ -2401,8 +2401,8 @@ namespace winrt::GhosttyWin32::implementation
         // (ghostty_surface_size), no carried state needed.
         ghostty_action_cell_size_s adoptedCell{};
         if (auto* tc = tab->ActiveControl()) {
-            auto size = tc->Surface().Size();
-            adoptedCell = { size.cell_width_px, size.cell_height_px };
+            auto surfaceSize = tc->Surface().Size();
+            adoptedCell = { surfaceSize.cell_width_px, surfaceSize.cell_height_px };
         }
         m_tabs.Add(std::move(tab));
         tv.SelectedItem(selected);
