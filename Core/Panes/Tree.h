@@ -262,12 +262,31 @@ public:
     void ClearZoomed() noexcept { m_zoomed = nullptr; }
 
 private:
+    // A rect projected onto `target`'s axis, oriented so the arrow
+    // points toward +: `begin` / `end` bound the rect along the
+    // arrow, `center` is its middle on the other axis. Negating the
+    // coordinates for LEFT / UP is what lets one score formula
+    // serve all four arrows.
+    struct ArrowSpan {
+        float begin;
+        float end;
+        float center;
+    };
+
+    static ArrowSpan ProjectOntoArrow(
+        Goto target,
+        winrt::Windows::Foundation::Rect const& r) noexcept
+    {
+        if (target.IsRight()) return { r.X, r.X + r.Width, r.Y + r.Height * 0.5f };
+        if (target.IsLeft())  return { -(r.X + r.Width), -r.X, r.Y + r.Height * 0.5f };
+        if (target.IsDown())  return { r.Y, r.Y + r.Height, r.X + r.Width * 0.5f };
+        return /* Up */       { -(r.Y + r.Height), -r.Y, r.X + r.Width * 0.5f };
+    }
+
     // Whether `candidate` lies wholly on the `target` side of
     // `from`, and if so its rank as a neighbour — nullopt means
-    // "not on that side at all". A candidate qualifies when its
-    // whole extent is past `from`'s edge, with 1px of slack to
-    // absorb float rounding on a shared boundary. The rank is
-    //   distance along the arrow + 2 × off-axis offset of the centres
+    // "not on that side at all". The rank is
+    //   gap along the arrow + 2 × off-axis offset of the centres
     // and lower is better: the 2× penalty keeps focus moves
     // predictable when an off-axis pane is technically closer in
     // straight-line distance than the aligned neighbour.
@@ -276,29 +295,16 @@ private:
         winrt::Windows::Foundation::Rect const& from,
         winrt::Windows::Foundation::Rect const& candidate) noexcept
     {
-        const auto right   = [](winrt::Windows::Foundation::Rect const& r) { return r.X + r.Width; };
-        const auto bottom  = [](winrt::Windows::Foundation::Rect const& r) { return r.Y + r.Height; };
-        const auto centerX = [](winrt::Windows::Foundation::Rect const& r) { return r.X + r.Width * 0.5f; };
-        const auto centerY = [](winrt::Windows::Foundation::Rect const& r) { return r.Y + r.Height * 0.5f; };
+        const ArrowSpan f = ProjectOntoArrow(target, from);
+        const ArrowSpan c = ProjectOntoArrow(target, candidate);
 
-        double primary = 0.0, perpendicular = 0.0;
-        if (target.IsLeft()) {
-            if (right(candidate) > from.X + 1.0f) return std::nullopt;
-            primary = from.X - right(candidate);
-            perpendicular = std::abs(centerY(candidate) - centerY(from));
-        } else if (target.IsRight()) {
-            if (candidate.X < right(from) - 1.0f) return std::nullopt;
-            primary = candidate.X - right(from);
-            perpendicular = std::abs(centerY(candidate) - centerY(from));
-        } else if (target.IsUp()) {
-            if (bottom(candidate) > from.Y + 1.0f) return std::nullopt;
-            primary = from.Y - bottom(candidate);
-            perpendicular = std::abs(centerX(candidate) - centerX(from));
-        } else {   // Down — GotoTarget routed Previous / Next already
-            if (candidate.Y < bottom(from) - 1.0f) return std::nullopt;
-            primary = candidate.Y - bottom(from);
-            perpendicular = std::abs(centerX(candidate) - centerX(from));
-        }
+        // Qualify: the candidate begins at or beyond from's end
+        // along the arrow, with 1px of slack absorbing float
+        // rounding on a shared boundary.
+        if (c.begin < f.end - 1.0f) return std::nullopt;
+
+        const double primary       = c.begin - f.end;
+        const double perpendicular = std::abs(c.center - f.center);
         return primary + 2.0 * perpendicular;
     }
 
