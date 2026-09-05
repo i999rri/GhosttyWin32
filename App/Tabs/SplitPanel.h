@@ -137,19 +137,19 @@ private:
     // direction-based GOTO_SPLIT).
     void ArrangeBranch(Branch& branch, winrt::Windows::Foundation::Rect rect);
 
-    // Repopulates Children() and m_splitters to match the current tree.
-    // Called after every SetRoot / ReplacePane / RemovePane.
+    // Brings Children() and m_splitters in line with the current
+    // tree. Called after every SetRoot / ReplacePane / RemovePane.
+    // Reconciles by diff, not Clear + re-append: an element that
+    // merely stays must never leave the visual tree, or XAML fires
+    // its own asynchronous recovery focus which can land after the
+    // caller's programmatic Focus and steal it (issue #192).
     void SyncChildrenFromTree();
 
-    // Append a depth-first traversal of `branch` to Children(): every
-    // leaf's content, and one fresh Splitter Border per Split node
-    // (recorded in m_splitters so measure/arrange can find it).
-    void AppendBranchToChildren(Branch& branch);
-
     // Build a Border for the drag-handle of a Split branch and wire
-    // its pointer events. Borders are recreated on every
-    // SyncChildrenFromTree, so the captured Branch* is current at the
-    // time the lambda runs.
+    // its pointer events. The captured Branch* stays valid for the
+    // Border's whole life: a Branch's address is stable (move-
+    // disabled, unique_ptr-held), and SyncChildrenFromTree drops the
+    // Border when its branch leaves the tree.
     winrt::Microsoft::UI::Xaml::Controls::Border MakeSplitter(Branch* splitBranch);
 
     // Find the Border previously created for `splitBranch`, or nullptr.
@@ -169,6 +169,14 @@ private:
         winrt::Microsoft::UI::Xaml::Controls::Border element{ nullptr };
         Branch* branch{ nullptr };  // always a Branch holding a Split
     };
+
+    // Depth-first traversal of `branch`: every leaf's content and
+    // one splitter Border per Split node, in the order Children()
+    // should hold them. A Split that survived the mutation keeps
+    // its Border (looked up in the previous sync's m_splitters).
+    void CollectChildrenOf(Branch& branch,
+                           std::vector<winrt::Microsoft::UI::Xaml::UIElement>& desired,
+                           std::vector<SplitterEntry>& splitters);
 
     // Refresh Visibility on every child so the zoom state matches
     // Tree().Zoomed().
