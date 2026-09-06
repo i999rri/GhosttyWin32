@@ -1,7 +1,25 @@
 #include "pch.h"
-#include "SplitPanel.h"
+#include "Tabs/SplitPanel.h"
+#include <algorithm>
 #if __has_include("SplitPanel.g.cpp")
 #include "SplitPanel.g.cpp"
+
+namespace {
+
+// The pane's control as the UIElement it is, for the layout side.
+// The handle is an IInspectable so the tree never names XAML types;
+// this panel is where it becomes an element again. Null-safe: an
+// empty pane yields an empty element, exactly like the old direct
+// control read.
+winrt::Microsoft::UI::Xaml::UIElement ElementOf(
+    winrt::GhosttyWin32::implementation::Pane const& p)
+{
+    return p.handle
+        ? p.handle.try_as<winrt::Microsoft::UI::Xaml::UIElement>()
+        : nullptr;
+}
+
+}  // namespace
 #endif
 
 namespace winrt::GhosttyWin32::implementation {
@@ -21,7 +39,7 @@ bool SplitPanel::ReplacePane(Pane const& pane, std::unique_ptr<Branch> newSubtre
     return true;
 }
 
-Tree::RemoveResult SplitPanel::RemovePane(Pane const& pane) {
+RemoveResult SplitPanel::RemovePane(Pane const& pane) {
     auto result = m_tree.RemovePane(pane);
     if (!result.IsNotFound()) {
         SyncChildrenFromTree();
@@ -53,7 +71,7 @@ void SplitPanel::UpdateChildVisibility() {
         return;
     }
     // Zoom active — only the zoomed pane's content stays visible.
-    auto zoomElement = zoomed->content;
+    UIElement zoomElement = ElementOf(*zoomed);
     for (auto&& child : Children()) {
         if (auto el = child.try_as<UIElement>()) {
             el.Visibility(el == zoomElement ? Visibility::Visible : Visibility::Collapsed);
@@ -79,7 +97,7 @@ void SplitPanel::EqualizeAll() {
     for (auto const& entry : m_splitters) {
         if (entry.branch) {
             if (auto* split = entry.branch->TryGet<Split>()) {
-                split->ratio = 0.5;
+                split->ratio = kEvenSplitRatio;
             }
         }
     }
@@ -87,35 +105,114 @@ void SplitPanel::EqualizeAll() {
     InvalidateArrange();
 }
 
+Pane* SplitPanel::SplitPane(Pane const& source,
+                            Direction direction,
+                            std::unique_ptr<Branch> fresh) {
+    if (!fresh) return nullptr;
+
+    // The pane inside `fresh` keeps its address when the branch is
+    // moved into the subtree (unique_ptr hands over the same object),
+    // so this stays valid past ReplacePane.
+    Pane* created = fresh->TryGet<Pane>();
+    // Copy out before ReplacePane destroys the Branch wrapping
+    // `source`: the new wrapper needs its own reference to the
+    // control and the same PaneId so close_surface_cb still routes.
+    auto sourceWrapper = MakePaneBranch(source);
+    auto subtree = MakeSplitBranch(std::move(sourceWrapper), direction,
+                                   std::move(fresh));
+    if (!ReplacePane(source, std::move(subtree))) return nullptr;
+    return created;
+}
+
+bool SplitPanel::ResizeSplit(Pane const& pane, Resize resize) {
+    if (!m_tree.ResizeSplit(pane, resize, static_cast<float>(kSplitterThickness))) {
+        return false;
+    }
+
+    InvalidateMeasure();
+    InvalidateArrange();
+    return true;
+}
+
+bool SplitPanel::ToggleZoom(Pane const& pane) {
+    if (m_tree.Zoomed()) {
+        SetZoomed(nullptr);
+        return false;
+    }
+    auto* root = m_tree.Root();
+    if (root && root->TryGet<Pane>() == &pane) return false;   // lone pane
+    SetZoomed(&pane);
+    return true;
+}
+
 void SplitPanel::SyncChildrenFromTree() {
-    Children().Clear();
-    m_splitters.clear();
     m_draggingBranch = nullptr;
     // Any tree shape change invalidates a stored zoom pointer.
     m_tree.ClearZoomed();
-    if (auto* root = m_tree.Root()) AppendBranchToChildren(*root);
-    // Re-evaluate Visibility after rebuilding Children (previous zoom
-    // could have left Visibility=Collapsed on now-unrelated elements).
+
+    // What Children() should become. Collected before m_splitters is
+    // replaced so surviving Splits can be looked up in the previous
+    // sync's entries and keep their Borders.
+    std::vector<winrt::Microsoft::UI::Xaml::UIElement> desired;
+    std::vector<SplitterEntry> splitters;
+    if (auto* root = m_tree.Root()) CollectChildrenOf(*root, desired, splitters);
+    m_splitters = std::move(splitters);
+
+    // Reconcile by diff (see the declaration for why): first drop
+    // what left the tree, then place what is new. No current
+    // mutation reorders survivors, so a staying element is never
+    // detached — the move branch below is a safety net only.
+    auto children = Children();
+    auto isDesired = [&desired](winrt::Microsoft::UI::Xaml::UIElement const& el) {
+        return std::find(desired.begin(), desired.end(), el) != desired.end();
+    };
+    for (int32_t i = static_cast<int32_t>(children.Size()) - 1; i >= 0; --i) {
+        if (!isDesired(children.GetAt(static_cast<uint32_t>(i)))) {
+            children.RemoveAt(static_cast<uint32_t>(i));
+        }
+    }
+    for (uint32_t i = 0; i < desired.size(); ++i) {
+        if (i < children.Size() && children.GetAt(i) == desired[i]) continue;
+
+        // An element may appear only once in Children(), so an
+        // out-of-order survivor is moved rather than re-inserted.
+        for (uint32_t j = i + 1; j < children.Size(); ++j) {
+            if (children.GetAt(j) == desired[i]) {
+                children.RemoveAt(j);
+                break;
+            }
+        }
+        children.InsertAt(i, desired[i]);
+    }
+
+    // Re-evaluate Visibility after the diff (a previous zoom could
+    // have left Visibility=Collapsed on now-unrelated elements).
     UpdateChildVisibility();
 }
 
-void SplitPanel::AppendBranchToChildren(Branch& branch) {
+void SplitPanel::CollectChildrenOf(
+    Branch& branch,
+    std::vector<winrt::Microsoft::UI::Xaml::UIElement>& desired,
+    std::vector<SplitterEntry>& splitters)
+{
     if (auto* pane = branch.TryGet<Pane>()) {
-        if (auto element = pane->content) {
-            Children().Append(element);
+        if (auto element = ElementOf(*pane)) {
+            desired.push_back(element);
         }
         return;
     }
     auto* split = branch.TryGet<Split>();
     if (!split) return;
+
     // Walk left → splitter → right. Placing the splitter between the
     // children in Children() means it paints on top of the junction so
     // the drag strip is always reachable for input.
-    if (split->left)  AppendBranchToChildren(*split->left);
-    auto splitter = MakeSplitter(&branch);
-    Children().Append(splitter);
-    m_splitters.push_back({ splitter, &branch });
-    if (split->right) AppendBranchToChildren(*split->right);
+    if (split->left)  CollectChildrenOf(*split->left, desired, splitters);
+    auto splitter = SplitterForBranch(&branch);
+    if (!splitter) splitter = MakeSplitter(&branch);
+    desired.push_back(splitter);
+    splitters.push_back({ splitter, &branch });
+    if (split->right) CollectChildrenOf(*split->right, desired, splitters);
 }
 
 Microsoft::UI::Xaml::Controls::Border SplitPanel::MakeSplitter(Branch* splitBranch) {
@@ -170,7 +267,7 @@ Windows::Foundation::Size SplitPanel::MeasureOverride(Windows::Foundation::Size 
     // Zoom path: only the zoomed pane participates in layout. Others
     // are Visibility=Collapsed so Panel's base class skips them.
     if (auto const* zoomed = m_tree.Zoomed()) {
-        if (auto element = zoomed->content) {
+        if (auto element = ElementOf(*zoomed)) {
             element.Measure(availableSize);
             return element.DesiredSize();
         }
@@ -190,7 +287,7 @@ Windows::Foundation::Size SplitPanel::MeasureOverride(Windows::Foundation::Size 
 
 Windows::Foundation::Size SplitPanel::MeasureBranch(Branch& branch, Windows::Foundation::Size available) {
     if (auto* pane = branch.TryGet<Pane>()) {
-        if (auto element = pane->content) {
+        if (auto element = ElementOf(*pane)) {
             element.Measure(available);
             return element.DesiredSize();
         }
@@ -238,7 +335,7 @@ Windows::Foundation::Size SplitPanel::ArrangeOverride(Windows::Foundation::Size 
         if (auto* zoomedBranch = root->FindBranchOfPane(*zoomed)) {
             zoomedBranch->arrangedRect = fullRect;
         }
-        if (auto element = zoomed->content) {
+        if (auto element = ElementOf(*zoomed)) {
             element.Arrange(fullRect);
         }
         return finalSize;
@@ -251,7 +348,7 @@ void SplitPanel::ArrangeBranch(Branch& branch, Windows::Foundation::Rect rect) {
     branch.arrangedRect = rect;
 
     if (auto* pane = branch.TryGet<Pane>()) {
-        if (auto element = pane->content) {
+        if (auto element = ElementOf(*pane)) {
             element.Arrange(rect);
         }
         return;

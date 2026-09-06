@@ -2,6 +2,7 @@
 
 #include "SplitPanel.g.h"
 #include "Tabs/Panes/Tree.h"
+#include "ghostty.h"
 #include <memory>
 #include <vector>
 
@@ -61,12 +62,40 @@ struct SplitPanel : SplitPanelT<SplitPanel> {
     // The pane's TerminalControl is NOT detached here; the caller is
     // expected to do that before invoking RemovePane so the surface
     // and DComp handle are released synchronously.
-    Tree::RemoveResult RemovePane(Pane const& pane);
+    RemoveResult RemovePane(Pane const& pane);
 
     // Reset every Split node's ratio to 0.5 so each split divides
     // its area evenly. Matches EQUALIZE_SPLITS; no-op on a single-pane
     // tree.
     void EqualizeAll();
+
+    // ----- the split actions, over this panel's tree -----
+    // Each takes the pane the action was fired on, asks the tree for
+    // its answer (the rules live on Tree / Split, tested in
+    // test_tree.cpp), and reports what changed. Focus and active-pane
+    // bookkeeping are the caller's (MainWindow's) — they belong to
+    // the tab, not the layout.
+
+    // NEW_SPLIT: wrap `source` and `fresh` in a split, the new pane
+    // on the side `direction` points at, keeping `source`'s control
+    // and PaneId. Returns the
+    // pane inside `fresh` (now in the tree), or null when `source` is
+    // not in this tree — `fresh` is then destroyed unused, so a caller
+    // that attached a surface to it must detach that first.
+    Pane* SplitPane(Pane const& source,
+                    Direction direction,
+                    std::unique_ptr<Branch> fresh);
+
+    // RESIZE_SPLIT: move the boundary of the nearest split with the
+    // request's layout. Returns false when no such split exists (a
+    // lone pane, or only splits the other way).
+    bool ResizeSplit(Pane const& pane, Resize resize);
+
+    // TOGGLE_SPLIT_ZOOM: a second press anywhere collapses an active
+    // zoom (as Windows Terminal / iTerm do); a lone pane has nothing
+    // to expand against; otherwise `pane` fills the panel. Returns
+    // whether `pane` is zoomed afterwards.
+    bool ToggleZoom(Pane const& pane);
 
     // Zoom one pane to fill the entire SplitPanel — every other pane
     // and every splitter is hidden via Visibility=Collapsed. Pass
@@ -78,8 +107,11 @@ struct SplitPanel : SplitPanelT<SplitPanel> {
 
     // Read-only access to the underlying tree — walker calls go through
     // here (`splitPanel->Tree().AnyPaneMatches(...)`).
-    class Tree&       Tree()       noexcept { return m_tree; }
-    class Tree const& Tree() const noexcept { return m_tree; }
+    // Qualified, not `class Tree`: Tree is an alias of the Core type
+    // now, and an elaborated-type-specifier cannot name an alias —
+    // the qualified name sidesteps the method-name shadowing instead.
+    core::panes::Tree&       Tree()       noexcept { return m_tree; }
+    core::panes::Tree const& Tree() const noexcept { return m_tree; }
 
     // Panel overrides.
     winrt::Windows::Foundation::Size MeasureOverride(winrt::Windows::Foundation::Size availableSize);
@@ -105,19 +137,19 @@ private:
     // direction-based GOTO_SPLIT).
     void ArrangeBranch(Branch& branch, winrt::Windows::Foundation::Rect rect);
 
-    // Repopulates Children() and m_splitters to match the current tree.
-    // Called after every SetRoot / ReplacePane / RemovePane.
+    // Brings Children() and m_splitters in line with the current
+    // tree. Called after every SetRoot / ReplacePane / RemovePane.
+    // Reconciles by diff, not Clear + re-append: an element that
+    // merely stays must never leave the visual tree, or XAML fires
+    // its own asynchronous recovery focus which can land after the
+    // caller's programmatic Focus and steal it (issue #192).
     void SyncChildrenFromTree();
 
-    // Append a depth-first traversal of `branch` to Children(): every
-    // leaf's content, and one fresh Splitter Border per Split node
-    // (recorded in m_splitters so measure/arrange can find it).
-    void AppendBranchToChildren(Branch& branch);
-
     // Build a Border for the drag-handle of a Split branch and wire
-    // its pointer events. Borders are recreated on every
-    // SyncChildrenFromTree, so the captured Branch* is current at the
-    // time the lambda runs.
+    // its pointer events. The captured Branch* stays valid for the
+    // Border's whole life: a Branch's address is stable (move-
+    // disabled, unique_ptr-held), and SyncChildrenFromTree drops the
+    // Border when its branch leaves the tree.
     winrt::Microsoft::UI::Xaml::Controls::Border MakeSplitter(Branch* splitBranch);
 
     // Find the Border previously created for `splitBranch`, or nullptr.
@@ -138,11 +170,19 @@ private:
         Branch* branch{ nullptr };  // always a Branch holding a Split
     };
 
+    // Depth-first traversal of `branch`: every leaf's content and
+    // one splitter Border per Split node, in the order Children()
+    // should hold them. A Split that survived the mutation keeps
+    // its Border (looked up in the previous sync's m_splitters).
+    void CollectChildrenOf(Branch& branch,
+                           std::vector<winrt::Microsoft::UI::Xaml::UIElement>& desired,
+                           std::vector<SplitterEntry>& splitters);
+
     // Refresh Visibility on every child so the zoom state matches
     // Tree().Zoomed().
     void UpdateChildVisibility();
 
-    class Tree m_tree;
+    core::panes::Tree m_tree;
     std::vector<SplitterEntry> m_splitters;
     // Cached brush handed to every splitter Border. Null before
     // TabFactory calls SetDividerColor — MakeSplitter then falls

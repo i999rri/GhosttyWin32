@@ -1,5 +1,5 @@
 #include "pch.h"
-#include "WindowCloseGate.h"
+#include "Windows/WindowCloseGate.h"
 
 #include <winrt/Microsoft.UI.Xaml.Controls.h>
 #include <winrt/Windows.Foundation.h>

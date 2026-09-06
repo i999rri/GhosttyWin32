@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Tabs/Panes/Tree.h"
-#include "SplitPanel.h"
+#include "Tabs/SplitPanel.h"
 #include "Tabs/Tab.h"
 #include "ghostty.h"
 #include <vector>
@@ -82,8 +82,7 @@ public:
             if (!panelImpl) continue;
             if (auto* pane = panelImpl->Tree().FindPaneBy(
                     [surface](Pane const& p) {
-                        auto const* tc = Tab::PaneToTerminalControl(p);
-                        return tc && tc->Surface().Owns(surface);
+                        return p.view && p.view->Surface().Owns(surface);
                     })) {
                 return { t.get(), pane };
             }

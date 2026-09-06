@@ -190,6 +190,11 @@ runs:
         $msbuildArgs = @(
           "Package/Package.wapproj",
           "/p:Configuration=Release",
+          # The production package identity (Package.appxmanifest).
+          # Local builds default to the ".Dev" identity so they
+          # coexist with an installed Ghostty; only a build that is
+          # going to be published carries the real one.
+          "/p:ProductionIdentity=true",
           "/p:Platform=x64",
           "/p:PlatformToolset=v145",
           "/p:GenerateAppxPackageOnBuild=true",

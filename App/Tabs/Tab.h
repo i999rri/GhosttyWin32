@@ -1,8 +1,9 @@
 #pragma once
 
+#include "Host/TitleSource.h"
 #include "Tabs/Panes/Tree.h"
-#include "SplitPanel.h"
-#include "TerminalControl.xaml.h"
+#include "Tabs/SplitPanel.h"
+#include "Terminal/TerminalControl.xaml.h"
 #include <winrt/Microsoft.UI.Xaml.h>
 #include <winrt/Microsoft.UI.Xaml.Controls.h>
 #include <memory>
@@ -84,33 +85,19 @@ public:
     // through here so they keep working when the tree gains additional
     // panes and the active pane shifts on GOTO_SPLIT.
     implementation::TerminalControl* ActiveControl() const noexcept {
-        if (!m_activePane) return nullptr;
-        return PaneToTerminalControl(*m_activePane);
+        return m_activePane ? ControlOf(*m_activePane) : nullptr;
     }
 
     Microsoft::UI::Xaml::Controls::TabViewItem const& Item() const noexcept { return m_item; }
 
-    // True once the shell has set an explicit title via SET_TITLE /
-    // SET_TAB_TITLE (OSC 0/2 or `set_title` action). The foreground-
-    // pid poll uses this to decide whether the tab header is theirs
-    // to overwrite: shell-supplied titles win, auto-computed process
-    // names only fill in when the shell has said nothing.
-    bool HasExplicitTitle() const noexcept { return m_hasExplicitTitle; }
-    void MarkExplicitTitle() noexcept { m_hasExplicitTitle = true; }
-
-    // True once the USER named this tab via the rename prompt
-    // (PROMPT_TITLE). One level stronger than the shell latch above:
-    // upstream documents that a prompt-set title "overrides any
-    // title set by the terminal", so SET_TITLE / SET_TAB_TITLE must
-    // skip a user-titled tab (the shell keeps re-asserting its OSC
-    // title on every prompt, which would instantly undo the rename).
-    // Marking a user title implies the explicit latch too, so the
-    // pid poll stays out without callers having to set both.
-    bool HasUserTitle() const noexcept { return m_hasUserTitle; }
-    void MarkUserTitle() noexcept {
-        m_hasUserTitle = true;
-        m_hasExplicitTitle = true;
-    }
+    // Who last named this tab. Every header write site asks this
+    // before touching Item().Header() — see Host/TitleSource.h for
+    // the priority rule between the foreground-pid poll, shell
+    // SET_TITLE / SET_TAB_TITLE, and the rename prompt.
+    // (Qualified return type: the method name shadows the type
+    // inside this class.)
+    core::host::TitleSource TitleSource() const noexcept { return m_titleSource; }
+    void SetTitleSource(core::host::TitleSource source) noexcept { m_titleSource = source; }
 
     // Last PID resolved for this tab's active pane's foreground
     // process, and the basename cached from it. The poll updates both
@@ -139,8 +126,7 @@ public:
         auto* panelImpl = winrt::get_self<implementation::SplitPanel>(m_panel);
         if (!panelImpl) return false;
         return panelImpl->Tree().AnyPaneMatches([](Pane const& p) {
-            auto const* tc = PaneToTerminalControl(p);
-            return tc && tc->Surface().NeedsConfirmQuit();
+            return p.view && p.view->Surface().NeedsConfirmQuit();
         });
     }
 
@@ -163,9 +149,7 @@ public:
         m_activePane = pane;
         if (auto* panelImpl = winrt::get_self<implementation::SplitPanel>(m_panel)) {
             panelImpl->Tree().ForEachPane([this](Pane& p) {
-                if (auto* tc = PaneToTerminalControl(p)) {
-                    tc->ApplyFocusVisual(&p == m_activePane);
-                }
+                if (p.view) p.view->ApplyFocusVisual(&p == m_activePane);
             });
         }
     }
@@ -175,9 +159,7 @@ public:
     void ApplyBackgroundOpacity(bool opaque, winrt::Windows::UI::Color bg) {
         if (auto* panelImpl = winrt::get_self<implementation::SplitPanel>(m_panel)) {
             panelImpl->Tree().ForEachPane([&](Pane& p) {
-                if (auto* tc = PaneToTerminalControl(p)) {
-                    tc->SetOpaqueBackground(opaque, bg);
-                }
+                if (p.view) p.view->SetOpaqueBackground(opaque, bg);
             });
         }
     }
@@ -191,9 +173,7 @@ public:
     void DetachAll() {
         if (auto* panelImpl = winrt::get_self<implementation::SplitPanel>(m_panel)) {
             panelImpl->Tree().ForEachPane([](Pane& p) {
-                if (auto* tc = PaneToTerminalControl(p)) {
-                    tc->Detach();
-                }
+                if (p.view) p.view->Detach();
             });
         }
     }
@@ -203,27 +183,8 @@ public:
     // a bare SwapChainPanel this Focus call actually moves focus
     // reliably.
     bool Focus() {
-        if (!m_activePane) return false;
-        auto element = m_activePane->content;
-        if (!element) return false;
-        if (auto tc = element.try_as<winrt::GhosttyWin32::TerminalControl>()) {
-            return tc.Focus(Microsoft::UI::Xaml::FocusState::Programmatic);
-        }
-        return false;
-    }
-
-    // Extracts the impl pointer for a pane's TerminalControl, or
-    // returns nullptr if the pane hosts something else (Phase 1
-    // scaffolding accepts any UIElement, but in practice every pane
-    // in a real Tab is a TerminalControl). Kept public-static so
-    // helpers outside Tab can walk the tree consistently.
-    static implementation::TerminalControl* PaneToTerminalControl(Pane const& pane) noexcept {
-        auto element = pane.content;
-        if (!element) return nullptr;
-        if (auto tc = element.try_as<winrt::GhosttyWin32::TerminalControl>()) {
-            return winrt::get_self<implementation::TerminalControl>(tc);
-        }
-        return nullptr;
+        if (!m_activePane || !m_activePane->view) return false;
+        return m_activePane->view->TakeFocus();
     }
 
 private:
@@ -237,13 +198,9 @@ private:
     // pane is destroyed.
     Pane* m_activePane{ nullptr };
 
-    // See HasUserTitle. Sticky for the tab's lifetime — there is no
-    // inverse yet (the rename prompt treats empty input as cancel
-    // for exactly this reason).
-    bool m_hasUserTitle{ false };
-    // See HasExplicitTitle. Sticky: once the shell sets a title the
-    // poll leaves it alone for the rest of the tab's life.
-    bool m_hasExplicitTitle{ false };
+    // See TitleSource(). Starts Automatic: nobody has spoken yet, so
+    // the foreground-pid poll owns the header.
+    core::host::TitleSource m_titleSource{ core::host::TitleSource::Automatic() };
 
     // Foreground-pid poll cache. Zero means "not yet resolved".
     uint32_t         m_lastForegroundPid{ 0 };
