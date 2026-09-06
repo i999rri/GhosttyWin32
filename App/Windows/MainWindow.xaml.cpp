@@ -3,6 +3,7 @@
 #include "App.xaml.h"
 #include "Ghostty/CallbackDispatcher.h"
 #include "Ghostty/Config.h"
+#include "Windows/CommandPalette.xaml.h"
 #include "Windows/TearOut.h"
 #include "Windows/TransparentBackdrop.h"
 #include "Host/KeyModifiers.h"
@@ -1531,6 +1532,65 @@ namespace winrt::GhosttyWin32::implementation
         // Once the shell has spoken, the foreground-pid poll
         // stops overwriting the header for this tab.
         t->SetTitleSource(core::host::TitleSource::Shell());
+    }
+
+    void MainWindow::ToggleCommandPaletteForSurface(ghostty_surface_t surface)
+    {
+        // Owning-window guard, same as the other surface-summoned
+        // UIs: only the window whose tabs hold the surface reacts.
+        if (!m_tabs.FindBySurface(surface)) return;
+
+        auto* palette = winrt::get_self<implementation::CommandPalette>(PaletteOverlay());
+        if (!palette) return;
+
+        if (palette->IsOpen()) {
+            palette->Close();
+            if (auto* tab = ActiveTab()) tab->Focus();
+            return;
+        }
+
+        // Entries are re-read on every open — a config reload may
+        // have changed them — and copied out of config-owned memory
+        // here, before the handle can be replaced.
+        std::vector<implementation::PaletteEntry> entries;
+        if (m_ghosttyApp) {
+            ghostty::Config cfg(m_ghosttyApp->ConfigHandle());
+            const auto list = cfg.CommandPaletteEntries();
+            entries.reserve(list.len);
+            for (std::size_t i = 0; i < list.len; ++i) {
+                const auto& c = list.commands[i];
+                entries.push_back({
+                    winrt::hstring{ c.title
+                        ? core::interop::Encoding::toUtf16(c.title) : L"" },
+                    winrt::hstring{ c.description
+                        ? core::interop::Encoding::toUtf16(c.description) : L"" },
+                    std::string{ c.action ? c.action : "" },
+                });
+            }
+        }
+
+        // (Re)wire before every Open — idempotent, and the weak ref
+        // pattern matches every other overlay callback.
+        auto weak = get_weak();
+        palette->SetOnExecute([weak](std::string const& action) {
+            auto self = weak.get();
+            if (!self) return;
+            auto* tab = self->ActiveTab();
+            if (!tab) return;
+
+            // The active pane at execution time — the pane that had
+            // focus when the palette opened, since the palette held
+            // XAML focus in between.
+            if (auto* tc = tab->ActiveControl()) {
+                tc->Surface().BindingAction(action);
+            }
+        });
+        palette->SetOnClosed([weak]() {
+            auto self = weak.get();
+            if (!self) return;
+            if (auto* tab = self->ActiveTab()) tab->Focus();
+        });
+        palette->Open(std::move(entries));
     }
 
     namespace {
