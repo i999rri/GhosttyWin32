@@ -109,6 +109,14 @@ public:
         return list;
     }
 
+    // The trigger bound to toggle_command_palette, so the palette
+    // can recognize its own keybind while it holds focus.
+    ghostty_input_trigger_s CommandPaletteTrigger() const noexcept {
+        static constexpr char kAction[] = "toggle_command_palette";
+        if (!m_config) return {};
+        return ghostty_config_trigger(m_config, kAction, sizeof(kAction) - 1);
+    }
+
     // `window-step-resize` — snap interactive window resizing to
     // the cell grid (#155). Upstream default is false (smooth
     // pixel resizing) with snapping as an opt-in, and this port
