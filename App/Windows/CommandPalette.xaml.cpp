@@ -109,8 +109,7 @@ namespace winrt::GhosttyWin32::implementation
                 if (!self) return;
                 if (!self->m_listStale || self->m_open) return;
 
-                DEBUG_TRACE(L"Palette: idle pre-warm
-");
+                DEBUG_TRACE(L"Palette: idle pre-warm\n");
                 self->Refilter();
                 self->m_listStale = false;
             });
@@ -131,8 +130,7 @@ namespace winrt::GhosttyWin32::implementation
         if (m_listStale && !hadQuery) Refilter();
         m_listStale = false;
         input.Focus(mux::FocusState::Programmatic);
-        DEBUG_TRACE(L"Palette: open %llums (was-stale=%d)
-",
+        DEBUG_TRACE(L"Palette: open %llums (was-stale=%d)\n",
                     GetTickCount64() - t0, wasStale ? 1 : 0);
     }
 
@@ -184,8 +182,7 @@ namespace winrt::GhosttyWin32::implementation
         }
         if (!m_visible.empty()) Results().SelectedIndex(0);
 
-        DEBUG_TRACE(L"Palette: refilter %llums rows=%zu built=%zu
-",
+        DEBUG_TRACE(L"Palette: refilter %llums rows=%zu built=%zu\n",
                     GetTickCount64() - t0, m_visible.size(), built);
     }
 
