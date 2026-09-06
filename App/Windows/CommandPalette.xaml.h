@@ -28,10 +28,17 @@ namespace winrt::GhosttyWin32::implementation
     {
         CommandPalette();
 
-        // Show with a fresh entry set (re-read from config on every
-        // open — a reload may have changed it), clear the query,
-        // focus the box.
-        void Open(std::vector<PaletteEntry> entries);
+        // Replace the entry set — called when the config (the only
+        // source of entries) is loaded or replaced, not per open.
+        // Resets the row cache and pre-materializes the default
+        // list while hidden, so Open is pure show-and-focus.
+        void SetEntries(std::vector<PaletteEntry> entries);
+
+        bool HasEntries() const noexcept { return !m_entries.empty(); }
+
+        // Show, clear the query, focus the box. All the building
+        // happened in SetEntries / earlier refilters.
+        void Open();
 
         // Hide. Returns whether it was open, so the caller hands
         // focus back to the terminal only in that case.
@@ -60,9 +67,9 @@ namespace winrt::GhosttyWin32::implementation
 
         std::vector<PaletteEntry> m_entries;
         // Row elements, built lazily on first appearance and reused
-        // across refilters — rebuilding a few hundred TextBlocks on
-        // every keystroke is what made the first cut feel slow.
-        // Reset together with m_entries on Open.
+        // across refilters and opens — rebuilding a few hundred
+        // TextBlocks per keystroke is what made the first cut feel
+        // slow. Reset together with m_entries in SetEntries.
         std::vector<winrt::Microsoft::UI::Xaml::UIElement> m_rows;
         // Results row -> m_entries index, rebuilt by Refilter.
         std::vector<std::size_t> m_visible;

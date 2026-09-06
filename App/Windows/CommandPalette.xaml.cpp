@@ -88,15 +88,27 @@ namespace winrt::GhosttyWin32::implementation
         });
     }
 
-    void CommandPalette::Open(std::vector<PaletteEntry> entries)
+    void CommandPalette::SetEntries(std::vector<PaletteEntry> entries)
     {
         m_entries = std::move(entries);
         m_rows.assign(m_entries.size(), nullptr);
+        // Clearing the query refilters through TextChanged; when it
+        // was already empty no event fires, so refilter explicitly.
+        auto input = Input();
+        const bool hadQuery = !input.Text().empty();
+        input.Text(L"");
+        if (!hadQuery) Refilter();
+    }
+
+    void CommandPalette::Open()
+    {
         m_open = true;
         Visibility(mux::Visibility::Visible);
         auto input = Input();
+        // A leftover query from the previous open clears here (and
+        // refilters through TextChanged); otherwise the list is
+        // already current from SetEntries / the last clear.
         input.Text(L"");
-        Refilter();
         input.Focus(mux::FocusState::Programmatic);
     }
 
