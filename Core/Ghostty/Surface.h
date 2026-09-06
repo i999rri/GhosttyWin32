@@ -209,6 +209,17 @@ public:
             m_handle, kEnd, static_cast<uintptr_t>(std::strlen(kEnd)));
     }
 
+    // Run an arbitrary keybind-action string against this surface —
+    // the command palette's execution route. Same parser the search
+    // and scrollbar paths above go through; returns false when
+    // ghostty rejects the action string.
+    bool BindingAction(std::string const& actionUtf8) noexcept {
+        if (!m_handle || actionUtf8.empty()) return false;
+        return ghostty_surface_binding_action(
+            m_handle, actionUtf8.c_str(),
+            static_cast<uintptr_t>(actionUtf8.size()));
+    }
+
     // ---- selection ----
     bool HasSelection() const noexcept {
         return m_handle && ghostty_surface_has_selection(m_handle);
