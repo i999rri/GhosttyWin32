@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "Windows/CommandPalette.xaml.h"
 #include "Host/FuzzyMatch.h"
+#include "Win32/DebugTrace.h"
 #include <winrt/Windows.System.h>
 #include <algorithm>
 #if __has_include("CommandPalette.g.cpp")
@@ -108,6 +109,8 @@ namespace winrt::GhosttyWin32::implementation
                 if (!self) return;
                 if (!self->m_listStale || self->m_open) return;
 
+                DEBUG_TRACE(L"Palette: idle pre-warm
+");
                 self->Refilter();
                 self->m_listStale = false;
             });
@@ -115,6 +118,7 @@ namespace winrt::GhosttyWin32::implementation
 
     void CommandPalette::Open()
     {
+        const auto t0 = GetTickCount64();
         m_open = true;
         Visibility(mux::Visibility::Visible);
         auto input = Input();
@@ -126,6 +130,9 @@ namespace winrt::GhosttyWin32::implementation
         if (m_listStale && !hadQuery) Refilter();
         m_listStale = false;
         input.Focus(mux::FocusState::Programmatic);
+        DEBUG_TRACE(L"Palette: open %llums (stale-build=%d)
+",
+                    GetTickCount64() - t0, m_listStale ? 1 : 0);
     }
 
     bool CommandPalette::Close()
@@ -138,6 +145,8 @@ namespace winrt::GhosttyWin32::implementation
 
     void CommandPalette::Refilter()
     {
+        const auto t0 = GetTickCount64();
+        std::size_t built = 0;
         const std::wstring query{ std::wstring_view{ Input().Text() } };
 
         // Score against "title description" so a query can hit
@@ -166,10 +175,17 @@ namespace winrt::GhosttyWin32::implementation
         for (auto const& s : scored) {
             m_visible.push_back(s.index);
             auto& row = m_rows[s.index];
-            if (!row) row = MakeRow(m_entries[s.index]);
+            if (!row) {
+                row = MakeRow(m_entries[s.index]);
+                ++built;
+            }
             items.Append(row);
         }
         if (!m_visible.empty()) Results().SelectedIndex(0);
+
+        DEBUG_TRACE(L"Palette: refilter %llums rows=%zu built=%zu
+",
+                    GetTickCount64() - t0, m_visible.size(), built);
     }
 
     void CommandPalette::MoveSelection(int delta)
