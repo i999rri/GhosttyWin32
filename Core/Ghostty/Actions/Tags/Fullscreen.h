@@ -1,34 +1,34 @@
 #pragma once
 
-#include <windows.h>
-
 namespace core::ghostty::actions::tags {
 
-// TOGGLE_FULLSCREEN action state. Named after the ghostty action
-// tag so the relationship with action_cb is obvious; the class
-// is "the fullscreen thing", not "something that controls
-// fullscreen".
+// TOGGLE_FULLSCREEN action state: whether this window is in
+// borderless fullscreen, and which way the next toggle goes. Named
+// after the ghostty action tag so the relationship with action_cb is
+// obvious; the class is "the fullscreen thing", not "something that
+// controls fullscreen".
 //
-// Holds the pre-fullscreen window state (placement + style) so
-// leaving fullscreen restores the exact window the user had —
-// including a maximised state (RECT alone would lose that,
-// WINDOWPLACEMENT round-trips it).
+// Pure value object. Spanning the monitor and coming back — the
+// style strip, the saved placement — is win32::NativeWindow's job
+// (EnterFullscreen / LeaveFullscreen); this class only answers
+// `Active` and turns a keypress into Enter or Leave.
 //
-// Caveat carried over from the previous inline implementation:
-// the custom title bar lives in the XAML content tree, so it
-// stays visible at the top of the surface in fullscreen. Hiding
-// it is a follow-up; the window itself does fill the monitor
-// correctly.
+// Caveat carried over from the first implementation: the custom
+// title bar lives in the XAML content tree, so it stays visible at
+// the top of the surface in fullscreen. Hiding it is a follow-up;
+// the window itself fills the monitor correctly.
 class Fullscreen {
 public:
-    Fullscreen() = default;
-    Fullscreen(const Fullscreen&) = delete;
-    Fullscreen& operator=(const Fullscreen&) = delete;
+    enum class Transition { Enter, Leave };
 
-    // Toggle fullscreen on `hwnd`. On entry, snapshot placement +
-    // style and span the monitor; on exit, restore. No-op if the
-    // HWND is null.
-    void Toggle(HWND hwnd) noexcept;
+    Fullscreen() = default;
+
+    // Apply the user's TOGGLE keypress; returns what the window has
+    // to do about it.
+    Transition Toggle() noexcept {
+        m_active = !m_active;
+        return m_active ? Transition::Enter : Transition::Leave;
+    }
 
     // Whether borderless fullscreen is currently active. Used by
     // guards that must no-op while fullscreen (e.g. background-
@@ -37,8 +37,6 @@ public:
 
 private:
     bool m_active = false;
-    WINDOWPLACEMENT m_prevPlacement{};
-    LONG_PTR m_prevStyle = 0;
 };
 
 }  // namespace core::ghostty::actions::tags

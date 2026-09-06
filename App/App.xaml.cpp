@@ -1,6 +1,6 @@
 #include "pch.h"
 #include "App.xaml.h"
-#include "MainWindow.xaml.h"
+#include "Windows/MainWindow.xaml.h"
 #include "Ghostty/MainWindowRuntime.h"
 #include "Ghostty/RuntimeConfigFactory.h"
 #include <algorithm>
@@ -308,12 +308,21 @@ namespace winrt::GhosttyWin32::implementation
 
     void App::CreateNewWindow()
     {
+        CreateNewWindow(WindowState::Inherited{});
+    }
+
+    void App::CreateNewWindow(WindowState::Inherited const& inherited)
+    {
         auto w = make<MainWindow>();
+        // Before the first Activated: its one-shot init applies the
+        // decoration and background-opacity appearance from this
+        // state, so the window never shows the defaults first.
+        winrt::get_self<MainWindow>(w)->InheritState(inherited);
         TrackWindow(w);
         w.Activate();
     }
 
-    MainWindow* App::CreateTearOutWindow()
+    MainWindow* App::CreateTearOutWindow(WindowState::Inherited const& inherited)
     {
         auto w = make<MainWindow>();
         auto* impl = winrt::get_self<MainWindow>(w);
@@ -321,6 +330,7 @@ namespace winrt::GhosttyWin32::implementation
         // one-shot init: this window adopts the dragged tab instead
         // of creating one.
         impl->SuppressInitialTab();
+        impl->InheritState(inherited);
         TrackWindow(w);
         // Deliberately no Activate(): the drop handler positions the
         // window at the drop point after adopting the tab and decides

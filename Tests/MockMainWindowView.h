@@ -140,43 +140,132 @@ struct MockMainWindowView : core::host::IWindow {
     int redoCalls = 0;
     void Redo() override { ++redoCalls; }
 
-    int startSearchCalls = 0;
-    ghostty_surface_t lastStartSearchSurface = nullptr;
-    std::wstring lastStartSearchNeedle;
-    void StartSearchForSurface(ghostty_surface_t surface,
-                               std::wstring needle) override {
-        ++startSearchCalls;
-        lastStartSearchSurface = surface;
-        lastStartSearchNeedle = std::move(needle);
+    // ----- surface directory (ISurfaceView) -----
+    // One mock pane view. FindSurfaceView records which surface was
+    // asked for and returns this view for any non-null surface unless
+    // a test sets `surfaceViewFor` to narrow it — that lets tests
+    // cover both "routes to the owning pane" and "unknown surface is
+    // dropped" without a second mock. Call counters and last-values
+    // live on the view; the aliases below keep the field names the
+    // existing tests use.
+    struct MockSurfaceView : core::host::ISurfaceView {
+        int setCursorShapeCalls = 0;
+        ghostty_action_mouse_shape_e lastCursorShape{};
+        void SetCursorShape(ghostty_action_mouse_shape_e shape) override {
+            ++setCursorShapeCalls; lastCursorShape = shape;
+        }
+        int setMouseVisibilityCalls = 0;
+        bool lastMouseVisible = true;
+        void SetMouseVisibility(bool visible) override {
+            ++setMouseVisibilityCalls; lastMouseVisible = visible;
+        }
+        int setHoveredLinkCalls = 0;
+        std::wstring lastHoveredLinkUrl;
+        void SetHoveredLink(std::wstring url) override {
+            ++setHoveredLinkCalls; lastHoveredLinkUrl = std::move(url);
+        }
+        int setSecureInputCalls = 0;
+        ghostty_action_secure_input_e lastSecureInputMode{};
+        void SetSecureInput(ghostty_action_secure_input_e mode) override {
+            ++setSecureInputCalls; lastSecureInputMode = mode;
+        }
+        int setReadonlyCalls = 0;
+        bool lastReadonly = false;
+        void SetReadonly(bool readonly) override {
+            ++setReadonlyCalls; lastReadonly = readonly;
+        }
+        int appendKeySequenceCalls = 0;
+        std::wstring lastKeySequenceLabel;
+        void AppendKeySequence(std::wstring label) override {
+            ++appendKeySequenceCalls; lastKeySequenceLabel = std::move(label);
+        }
+        int clearKeySequenceCalls = 0;
+        void ClearKeySequence() override { ++clearKeySequenceCalls; }
+        int pushKeyTableCalls = 0;
+        std::wstring lastKeyTableName;
+        void PushKeyTable(std::wstring name) override {
+            ++pushKeyTableCalls; lastKeyTableName = std::move(name);
+        }
+        int popKeyTableCalls = 0;
+        bool lastPopKeyTableAll = false;
+        void PopKeyTable(bool all) override {
+            ++popKeyTableCalls; lastPopKeyTableAll = all;
+        }
+        int setScrollbarCalls = 0;
+        ghostty_action_scrollbar_s lastScrollbar{};
+        void SetScrollbar(ghostty_action_scrollbar_s bar) override {
+            ++setScrollbarCalls; lastScrollbar = bar;
+        }
+        int startSearchCalls = 0;
+        std::wstring lastStartSearchNeedle;
+        void StartSearch(std::wstring needle) override {
+            ++startSearchCalls; lastStartSearchNeedle = std::move(needle);
+        }
+        int endSearchCalls = 0;
+        void EndSearch() override { ++endSearchCalls; }
+        int setSearchTotalCalls = 0;
+        ptrdiff_t lastSearchTotal = -99;
+        void SetSearchTotal(ptrdiff_t total) override {
+            ++setSearchTotalCalls; lastSearchTotal = total;
+        }
+        int setSearchSelectedCalls = 0;
+        ptrdiff_t lastSearchSelected = -99;
+        void SetSearchSelected(ptrdiff_t selected) override {
+            ++setSearchSelectedCalls; lastSearchSelected = selected;
+        }
+    };
+    MockSurfaceView surfaceView;
+    // When non-null, only this surface resolves to `surfaceView`;
+    // any other surface is "not in this window" (nullptr).
+    ghostty_surface_t surfaceViewFor = nullptr;
+    int findSurfaceViewCalls = 0;
+    ghostty_surface_t lastFindSurfaceViewSurface = nullptr;
+    core::host::ISurfaceView* FindSurfaceView(ghostty_surface_t surface) override {
+        ++findSurfaceViewCalls;
+        lastFindSurfaceViewSurface = surface;
+        if (!surface) return nullptr;
+        if (surfaceViewFor && surface != surfaceViewFor) return nullptr;
+        return &surfaceView;
     }
-    int endSearchCalls = 0;
-    ghostty_surface_t lastEndSearchSurface = nullptr;
-    void EndSearchForSurface(ghostty_surface_t surface) override {
-        ++endSearchCalls;
-        lastEndSearchSurface = surface;
-    }
-    int setSearchTotalCalls = 0;
-    ptrdiff_t lastSearchTotal = -99;
-    void SetSearchTotalForSurface(ghostty_surface_t, ptrdiff_t total) override {
-        ++setSearchTotalCalls;
-        lastSearchTotal = total;
-    }
-    int setSearchSelectedCalls = 0;
-    ptrdiff_t lastSearchSelected = -99;
-    void SetSearchSelectedForSurface(ghostty_surface_t, ptrdiff_t selected) override {
-        ++setSearchSelectedCalls;
-        lastSearchSelected = selected;
-    }
-
-    int setScrollbarCalls = 0;
-    ghostty_surface_t lastScrollbarSurface = nullptr;
-    ghostty_action_scrollbar_s lastScrollbar{};
-    void SetScrollbarForSurface(ghostty_surface_t surface,
-                                ghostty_action_scrollbar_s bar) override {
-        ++setScrollbarCalls;
-        lastScrollbarSurface = surface;
-        lastScrollbar = bar;
-    }
+    // Field aliases so the existing tests keep reading naturally.
+    int& setCursorShapeCalls = surfaceView.setCursorShapeCalls;
+    ghostty_action_mouse_shape_e& lastCursorShape = surfaceView.lastCursorShape;
+    int& setMouseVisibilityCalls = surfaceView.setMouseVisibilityCalls;
+    bool& lastMouseVisible = surfaceView.lastMouseVisible;
+    int& setHoveredLinkCalls = surfaceView.setHoveredLinkCalls;
+    std::wstring& lastHoveredLinkUrl = surfaceView.lastHoveredLinkUrl;
+    int& setSecureInputCalls = surfaceView.setSecureInputCalls;
+    ghostty_action_secure_input_e& lastSecureInputMode = surfaceView.lastSecureInputMode;
+    int& setReadonlyCalls = surfaceView.setReadonlyCalls;
+    bool& lastReadonly = surfaceView.lastReadonly;
+    int& appendKeySequenceCalls = surfaceView.appendKeySequenceCalls;
+    std::wstring& lastKeySequenceLabel = surfaceView.lastKeySequenceLabel;
+    int& clearKeySequenceCalls = surfaceView.clearKeySequenceCalls;
+    int& pushKeyTableCalls = surfaceView.pushKeyTableCalls;
+    std::wstring& lastKeyTableName = surfaceView.lastKeyTableName;
+    int& popKeyTableCalls = surfaceView.popKeyTableCalls;
+    bool& lastPopKeyTableAll = surfaceView.lastPopKeyTableAll;
+    int& setScrollbarCalls = surfaceView.setScrollbarCalls;
+    ghostty_action_scrollbar_s& lastScrollbar = surfaceView.lastScrollbar;
+    int& startSearchCalls = surfaceView.startSearchCalls;
+    std::wstring& lastStartSearchNeedle = surfaceView.lastStartSearchNeedle;
+    int& endSearchCalls = surfaceView.endSearchCalls;
+    int& setSearchTotalCalls = surfaceView.setSearchTotalCalls;
+    ptrdiff_t& lastSearchTotal = surfaceView.lastSearchTotal;
+    int& setSearchSelectedCalls = surfaceView.setSearchSelectedCalls;
+    ptrdiff_t& lastSearchSelected = surfaceView.lastSearchSelected;
+    // The "which surface" the old relays recorded is now the
+    // directory's last lookup.
+    ghostty_surface_t& lastCursorShapeSurface = lastFindSurfaceViewSurface;
+    ghostty_surface_t& lastHoveredLinkSurface = lastFindSurfaceViewSurface;
+    ghostty_surface_t& lastSecureInputSurface = lastFindSurfaceViewSurface;
+    ghostty_surface_t& lastReadonlySurface = lastFindSurfaceViewSurface;
+    ghostty_surface_t& lastKeySequenceSurface = lastFindSurfaceViewSurface;
+    ghostty_surface_t& lastKeyTableSurface = lastFindSurfaceViewSurface;
+    ghostty_surface_t& lastMouseVisibilitySurface = lastFindSurfaceViewSurface;
+    ghostty_surface_t& lastScrollbarSurface = lastFindSurfaceViewSurface;
+    ghostty_surface_t& lastStartSearchSurface = lastFindSurfaceViewSurface;
+    ghostty_surface_t& lastEndSearchSurface = lastFindSurfaceViewSurface;
 
     int applyCellSizeCalls = 0;
     ghostty_surface_t lastCellSizeSurface = nullptr;
@@ -211,49 +300,11 @@ struct MockMainWindowView : core::host::IWindow {
         lastBgB = b;
     }
 
-    int setCursorShapeCalls = 0;
-    ghostty_surface_t lastCursorShapeSurface = nullptr;
-    ghostty_action_mouse_shape_e lastCursorShape{};
-    void SetCursorShapeForSurface(ghostty_surface_t s,
-                                  ghostty_action_mouse_shape_e shape) override {
-        ++setCursorShapeCalls;
-        lastCursorShapeSurface = s;
-        lastCursorShape = shape;
-    }
-
-    int setHoveredLinkCalls = 0;
-    ghostty_surface_t lastHoveredLinkSurface = nullptr;
-    std::wstring lastHoveredLinkUrl;
-    void SetHoveredLinkForSurface(ghostty_surface_t s, std::wstring url) override {
-        ++setHoveredLinkCalls;
-        lastHoveredLinkSurface = s;
-        lastHoveredLinkUrl = std::move(url);
-    }
-
-    int setSecureInputCalls = 0;
-    ghostty_surface_t lastSecureInputSurface = nullptr;
-    ghostty_action_secure_input_e lastSecureInputMode{};
-    void SetSecureInputForSurface(ghostty_surface_t s,
-                                  ghostty_action_secure_input_e mode) override {
-        ++setSecureInputCalls;
-        lastSecureInputSurface = s;
-        lastSecureInputMode = mode;
-    }
-
     int promptTitleCalls = 0;
     ghostty_surface_t lastPromptTitleSurface = nullptr;
     void PromptTitleForSurface(ghostty_surface_t s) override {
         ++promptTitleCalls;
         lastPromptTitleSurface = s;
-    }
-
-    int setReadonlyCalls = 0;
-    ghostty_surface_t lastReadonlySurface = nullptr;
-    bool lastReadonly = false;
-    void SetReadonlyForSurface(ghostty_surface_t s, bool readonly) override {
-        ++setReadonlyCalls;
-        lastReadonlySurface = s;
-        lastReadonly = readonly;
     }
 
     int notifyCommandFinishedCalls = 0;
@@ -275,47 +326,6 @@ struct MockMainWindowView : core::host::IWindow {
         ++setPwdCalls;
         lastPwdSurface = s;
         lastPwd = std::move(pwd);
-    }
-
-    int appendKeySequenceCalls = 0;
-    ghostty_surface_t lastKeySequenceSurface = nullptr;
-    std::wstring lastKeySequenceLabel;
-    void AppendKeySequenceForSurface(ghostty_surface_t s, std::wstring label) override {
-        ++appendKeySequenceCalls;
-        lastKeySequenceSurface = s;
-        lastKeySequenceLabel = std::move(label);
-    }
-
-    int clearKeySequenceCalls = 0;
-    void ClearKeySequenceForSurface(ghostty_surface_t s) override {
-        ++clearKeySequenceCalls;
-        lastKeySequenceSurface = s;
-    }
-
-    int pushKeyTableCalls = 0;
-    ghostty_surface_t lastKeyTableSurface = nullptr;
-    std::wstring lastKeyTableName;
-    void PushKeyTableForSurface(ghostty_surface_t s, std::wstring name) override {
-        ++pushKeyTableCalls;
-        lastKeyTableSurface = s;
-        lastKeyTableName = std::move(name);
-    }
-
-    int popKeyTableCalls = 0;
-    bool lastPopKeyTableAll = false;
-    void PopKeyTableForSurface(ghostty_surface_t s, bool all) override {
-        ++popKeyTableCalls;
-        lastKeyTableSurface = s;
-        lastPopKeyTableAll = all;
-    }
-
-    int setMouseVisibilityCalls = 0;
-    ghostty_surface_t lastMouseVisibilitySurface = nullptr;
-    bool lastMouseVisible = true;
-    void SetMouseVisibilityForSurface(ghostty_surface_t s, bool visible) override {
-        ++setMouseVisibilityCalls;
-        lastMouseVisibilitySurface = s;
-        lastMouseVisible = visible;
     }
 
     int replaceConfigCalls = 0;

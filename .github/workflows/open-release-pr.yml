@@ -1,8 +1,15 @@
 name: Open release PR
 
-# Cuts a "release/vX.Y.Z" branch from `dev` HEAD and opens a PR against
-# `main`. Triggered manually from the Actions tab when ready to ship a
-# production release.
+# Builds a "release/vX.Y.Z" branch as `main` plus one squash commit of
+# `dev` and opens a PR against `main`. Triggered manually from the
+# Actions tab when ready to ship a production release.
+#
+# The branch is deliberately NOT a snapshot of dev HEAD: main only ever
+# receives squash commits, so dev's individual commits are never its
+# ancestors and a snapshot branch drags the whole accumulated dev
+# history into the PR's commit list (every release PR showed 100+
+# commits). Squashing here keeps the PR at main + 1 commit while the
+# tree stays identical to dev HEAD.
 #
 # RC tags (vX.Y.Z-rcN) are intentionally NOT supported here — they're
 # created with `git tag` directly on `dev` per the model in
@@ -69,10 +76,20 @@ jobs:
             exit 1
           fi
 
-          # Push current dev HEAD as the release branch. From this point
-          # the branch is a frozen snapshot — dev can keep moving.
-          git push origin "HEAD:refs/heads/$BRANCH"
-          echo "Pushed branch $BRANCH at $(git rev-parse --short HEAD)"
+          # Build the branch as main + one squash commit of dev (see the
+          # header comment for why). The post-release sync keeps dev a
+          # superset of main, so the squash merge is conflict-free; if
+          # main ever gains a commit dev doesn't have, this step fails
+          # loudly and the operator reconciles first. From this point
+          # the branch is frozen — dev can keep moving.
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git checkout -b "$BRANCH" origin/main
+          git merge --squash origin/dev
+          git commit -m "Release v$VERSION"
+          git push origin "$BRANCH"
+          echo "Pushed branch $BRANCH at $(git rev-parse --short HEAD) (tree of dev $(git rev-parse --short origin/dev))"
 
       - name: Generate change list
         id: changes
@@ -105,9 +122,11 @@ jobs:
           fi
 
           if [[ -n "$prev_head" ]]; then
-            echo "Enumerating PRs in $prev_head..HEAD (since $prev_tag)"
+            # Walk dev, not the release branch: the branch is main + one
+            # squash commit, so the per-PR history only exists on dev.
+            echo "Enumerating PRs in $prev_head..origin/dev (since $prev_tag)"
             notes="## What's Changed"
-            for n in $(git log --first-parent --format='%s' "$prev_head..HEAD" \
+            for n in $(git log --first-parent --format='%s' "$prev_head..origin/dev" \
                 | grep -oE '\(#[0-9]+\)$' | tr -d '(#)' | sort -n || true); do
               notes+=$'\n'"$(gh pr view "$n" --json number,title,author --jq \
                 '"* \(.title) by @\(.author.login) in https://github.com/'"${GITHUB_REPOSITORY}"'/pull/\(.number)"')"
@@ -149,7 +168,7 @@ jobs:
 
           ---
 
-          このブランチは \`dev\` の HEAD をスナップショットしたもの。マージで自動的に
+          このブランチは \`main\` に \`dev\` との差分を 1 commit に畳んで載せたもの (tree は \`dev\` HEAD と同一)。マージで自動的に
           \`v$VERSION\` タグが \`main\` に打たれて \`release.yml\` が走る。
 
           See [.github/RELEASING.md](.github/RELEASING.md) for the full release procedure.
