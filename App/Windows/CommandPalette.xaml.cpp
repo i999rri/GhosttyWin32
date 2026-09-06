@@ -112,7 +112,29 @@ namespace winrt::GhosttyWin32::implementation
                 DEBUG_TRACE(L"Palette: idle pre-warm\n");
                 self->Refilter();
                 self->m_listStale = false;
+                self->WarmUpLayout();
             });
+    }
+
+    void CommandPalette::WarmUpLayout()
+    {
+        // The first time the palette becomes visible, XAML pays for
+        // realizing the ListView's item containers and templates —
+        // a beat of lag the open-time trace cannot see because it
+        // lands in the layout pass after Open returns. Pay it here
+        // instead, still at idle: run one synchronous layout while
+        // fully transparent and hit-test-off, then collapse again.
+        // Focus is untouched (nothing here calls Focus), and the
+        // whole dance is synchronous so no input can interleave.
+        const auto t0 = GetTickCount64();
+        Opacity(0.0);
+        IsHitTestVisible(false);
+        Visibility(mux::Visibility::Visible);
+        UpdateLayout();
+        Visibility(mux::Visibility::Collapsed);
+        IsHitTestVisible(true);
+        Opacity(1.0);
+        DEBUG_TRACE(L"Palette: warm-up layout %llums\n", GetTickCount64() - t0);
     }
 
     void CommandPalette::Open()
