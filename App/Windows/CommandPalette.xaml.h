@@ -30,14 +30,17 @@ namespace winrt::GhosttyWin32::implementation
 
         // Replace the entry set — called when the config (the only
         // source of entries) is loaded or replaced, not per open.
-        // Resets the row cache and pre-materializes the default
-        // list while hidden, so Open is pure show-and-focus.
+        // Stores and resets the row cache only; building the list is
+        // deferred to the next Open. ReplaceConfig runs during
+        // window startup too, and materializing rows there was felt
+        // as startup lag.
         void SetEntries(std::vector<PaletteEntry> entries);
 
         bool HasEntries() const noexcept { return !m_entries.empty(); }
 
-        // Show, clear the query, focus the box. All the building
-        // happened in SetEntries / earlier refilters.
+        // Show, clear the query, focus the box. Builds the list only
+        // when SetEntries left it stale; otherwise it is the one the
+        // previous open ended with.
         void Open();
 
         // Hide. Returns whether it was open, so the caller hands
@@ -82,6 +85,8 @@ namespace winrt::GhosttyWin32::implementation
         std::function<void(std::string const&)> m_onExecute;
         std::function<void()> m_onClosed;
         bool m_open{ false };
+        // Set by SetEntries, cleared by the Open that rebuilds.
+        bool m_listStale{ false };
     };
 }
 
