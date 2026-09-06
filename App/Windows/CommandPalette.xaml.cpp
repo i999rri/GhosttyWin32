@@ -91,6 +91,7 @@ namespace winrt::GhosttyWin32::implementation
     void CommandPalette::Open(std::vector<PaletteEntry> entries)
     {
         m_entries = std::move(entries);
+        m_rows.assign(m_entries.size(), nullptr);
         m_open = true;
         Visibility(mux::Visibility::Visible);
         auto input = Input();
@@ -129,12 +130,16 @@ namespace winrt::GhosttyWin32::implementation
         std::stable_sort(scored.begin(), scored.end(),
                          [](Scored const& a, Scored const& b) { return a.score > b.score; });
 
+        if (scored.size() > kMaxVisibleRows) scored.resize(kMaxVisibleRows);
+
         m_visible.clear();
         auto items = Results().Items();
         items.Clear();
         for (auto const& s : scored) {
             m_visible.push_back(s.index);
-            items.Append(MakeRow(m_entries[s.index]));
+            auto& row = m_rows[s.index];
+            if (!row) row = MakeRow(m_entries[s.index]);
+            items.Append(row);
         }
         if (!m_visible.empty()) Results().SelectedIndex(0);
     }
