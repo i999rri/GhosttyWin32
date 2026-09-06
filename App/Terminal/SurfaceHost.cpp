@@ -7,6 +7,7 @@
 #include "Input/TerminalKeyUp.h"
 #include "Display/PhysicalPixels.h"
 #include "Win32/Clipboard.h"
+#include "Win32/DebugTrace.h"
 #include <microsoft.ui.xaml.media.dxinterop.h>
 #include <dxgi1_3.h>
 
@@ -325,6 +326,11 @@ namespace winrt::GhosttyWin32::implementation
     void SurfaceHost::OnKeyDown(muxi::KeyRoutedEventArgs const& args)
     {
         if (!m_surface) return;
+        if (args.Key() == winrt::Windows::System::VirtualKey::Tab) {
+            DEBUG_TRACE(L"Key: Tab in OnKeyDown owns=%d handled=%d\n",
+                        TerminalOwnsInput() ? 1 : 0,
+                        args.Handled() ? 1 : 0);
+        }
         // While a sibling overlay owns the keyboard (the search box),
         // never forward to the pty — its keystrokes bubble up through
         // the composite to here as well (#171 review). Left unhandled
