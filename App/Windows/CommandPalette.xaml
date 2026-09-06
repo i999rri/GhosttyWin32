@@ -40,7 +40,12 @@
                 <ListView x:Name="Results"
                           MaxHeight="360"
                           SelectionMode="Single"
-                          IsItemClickEnabled="True" />
+                          IsItemClickEnabled="True">
+                    <!-- Empty: the default add/remove transitions replay a staggered fade on every keystroke's refilter. -->
+                    <ListView.ItemContainerTransitions>
+                        <TransitionCollection />
+                    </ListView.ItemContainerTransitions>
+                </ListView>
             </StackPanel>
         </Border>
     </Grid>

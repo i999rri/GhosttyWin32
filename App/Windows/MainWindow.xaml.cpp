@@ -193,6 +193,13 @@ namespace winrt::GhosttyWin32::implementation
                 try {
                     using State = winrt::Microsoft::UI::Xaml::WindowActivationState;
                     if (args.WindowActivationState() == State::Deactivated) {
+                        // Launcher light-dismiss: the scrim only sees
+                        // in-window clicks, so alt-tab would leave the
+                        // palette floating over an unfocused shell.
+                        if (auto* palette = winrt::get_self<implementation::CommandPalette>(
+                                self->PaletteOverlay())) {
+                            palette->Close();
+                        }
                         if (auto* tc = self->ActiveControl()) {
                             tc->NotifyImeFocusLeave();
                             // Window-level activation crosses windows
