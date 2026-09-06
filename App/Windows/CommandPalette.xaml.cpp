@@ -126,13 +126,14 @@ namespace winrt::GhosttyWin32::implementation
         // when it was already empty no event fires, so a stale list
         // (SetEntries since the last build) refilters explicitly.
         const bool hadQuery = !input.Text().empty();
+        const bool wasStale = m_listStale;
         input.Text(L"");
         if (m_listStale && !hadQuery) Refilter();
         m_listStale = false;
         input.Focus(mux::FocusState::Programmatic);
-        DEBUG_TRACE(L"Palette: open %llums (stale-build=%d)
+        DEBUG_TRACE(L"Palette: open %llums (was-stale=%d)
 ",
-                    GetTickCount64() - t0, m_listStale ? 1 : 0);
+                    GetTickCount64() - t0, wasStale ? 1 : 0);
     }
 
     bool CommandPalette::Close()
