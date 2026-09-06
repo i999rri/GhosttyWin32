@@ -30,10 +30,10 @@ namespace winrt::GhosttyWin32::implementation
 
         // Replace the entry set — called when the config (the only
         // source of entries) is loaded or replaced, not per open.
-        // Stores and resets the row cache only; building the list is
-        // deferred to the next Open. ReplaceConfig runs during
-        // window startup too, and materializing rows there was felt
-        // as startup lag.
+        // Stores and resets the row cache, then schedules the list
+        // build at idle priority — off the startup path (ReplaceConfig
+        // runs during window startup) but ahead of the user's first
+        // open, so neither pays for it.
         void SetEntries(std::vector<PaletteEntry> entries);
 
         bool HasEntries() const noexcept { return !m_entries.empty(); }
