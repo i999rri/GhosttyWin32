@@ -95,12 +95,9 @@ namespace winrt::GhosttyWin32::implementation
         m_rows.assign(m_entries.size(), nullptr);
         m_listStale = true;
 
-        // Pre-warm at idle priority. XAML forbids building UI off
-        // the UI thread, so "in parallel" here means "after the
-        // startup path's real work, before the user's first open" —
-        // low priority keeps it out of everything that matters. If
-        // the palette opens before this runs, Open's own stale
-        // check wins and this becomes a no-op.
+        // The idle gap is the only slot that lags neither launch
+        // (SetEntries runs during window startup) nor the first
+        // open; if an open beats this, its stale check builds instead.
         auto weakSelf = get_weak();
         DispatcherQueue().TryEnqueue(
             winrt::Microsoft::UI::Dispatching::DispatcherQueuePriority::Low,
