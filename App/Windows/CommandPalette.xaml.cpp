@@ -128,8 +128,7 @@ namespace winrt::GhosttyWin32::implementation
         IsHitTestVisible(false);
         Visibility(mux::Visibility::Visible);
         UpdateLayout();
-        // Undo the disguise, or every real Open would inherit an
-        // invisible, click-through palette.
+        // Undo the disguise, or every real Open would inherit an invisible, click-through palette.
         Visibility(mux::Visibility::Collapsed);
         IsHitTestVisible(true);
         Opacity(1.0);
