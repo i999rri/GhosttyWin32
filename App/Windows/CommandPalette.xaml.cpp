@@ -215,8 +215,8 @@ namespace winrt::GhosttyWin32::implementation
         const int sel = Results().SelectedIndex();
         if (sel < 0 || static_cast<std::size_t>(sel) >= m_visible.size()) return;
 
-        // Copy out before Close: the execute callback may replace
-        // the entry set (e.g. an action that reloads the config).
+        // A copy, not a reference: the execute callback can replace
+        // m_entries under us (a reload_config action does).
         const std::string action =
             m_entries[m_visible[static_cast<std::size_t>(sel)]].actionUtf8;
         Close();
