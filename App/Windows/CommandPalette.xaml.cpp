@@ -95,9 +95,6 @@ namespace winrt::GhosttyWin32::implementation
         m_rows.assign(m_entries.size(), nullptr);
         m_listStale = true;
 
-        // The idle gap is the only slot that lags neither launch
-        // (SetEntries runs during window startup) nor the first
-        // open; if an open beats this, its stale check builds instead.
         auto weakSelf = get_weak();
         DispatcherQueue().TryEnqueue(
             winrt::Microsoft::UI::Dispatching::DispatcherQueuePriority::Low,
