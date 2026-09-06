@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CommandPalette.g.h"
+#include <ghostty.h>
 #include <functional>
 #include <string>
 #include <vector>
@@ -59,6 +60,14 @@ namespace winrt::GhosttyWin32::implementation
             m_onClosed = std::move(cb);
         }
 
+        // The keybind that toggles the palette. While the box holds
+        // focus no keystroke reaches ghostty, so the box has to
+        // recognize its own chord to close on it. Config-lifetime,
+        // refreshed together with the entries.
+        void SetToggleTrigger(ghostty_input_trigger_s trigger) noexcept {
+            m_toggleTrigger = trigger;
+        }
+
     private:
         // Re-score every entry against the current query and rebuild
         // the list: score descending, config order as the tiebreak,
@@ -70,6 +79,7 @@ namespace winrt::GhosttyWin32::implementation
         void MoveSelection(int delta);
         void ExecuteSelected();
         void RequestClose();
+        bool MatchesToggle(winrt::Windows::System::VirtualKey key) const;
 
         std::vector<PaletteEntry> m_entries;
         // Row elements, built lazily on first appearance and reused
@@ -87,6 +97,7 @@ namespace winrt::GhosttyWin32::implementation
         static constexpr std::size_t kMaxVisibleRows = 64;
         std::function<void(std::string const&)> m_onExecute;
         std::function<void()> m_onClosed;
+        ghostty_input_trigger_s m_toggleTrigger{};
         bool m_open{ false };
         // Set by SetEntries, cleared by the Open that rebuilds.
         bool m_listStale{ false };

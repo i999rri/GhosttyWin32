@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "Windows/CommandPalette.xaml.h"
 #include "Host/FuzzyMatch.h"
+#include "Host/KeyModifiers.h"
 #include "Win32/DebugTrace.h"
 #include <winrt/Windows.System.h>
 #include <algorithm>
@@ -56,6 +57,13 @@ namespace winrt::GhosttyWin32::implementation
         Input().KeyDown([weakSelf](auto&&, muxi::KeyRoutedEventArgs const& args) {
             auto self = weakSelf.get();
             if (!self) return;
+            // The toggle keybind can't reach ghostty while the box
+            // holds focus, so the close half of the toggle runs here.
+            if (self->MatchesToggle(args.Key())) {
+                self->RequestClose();
+                args.Handled(true);
+                return;
+            }
             switch (args.Key()) {
                 case winrt::Windows::System::VirtualKey::Down:
                     self->MoveSelection(+1);
@@ -222,6 +230,25 @@ namespace winrt::GhosttyWin32::implementation
         Close();
         if (m_onExecute) m_onExecute(action);
         if (m_onClosed) m_onClosed();
+    }
+
+    bool CommandPalette::MatchesToggle(winrt::Windows::System::VirtualKey key) const
+    {
+        // Unicode triggers only: resolving a physical trigger needs
+        // the scancode table that lives inside the DLL, and the
+        // chords this binding realistically uses arrive as unicode.
+        if (m_toggleTrigger.tag != GHOSTTY_TRIGGER_UNICODE) return false;
+        if (m_toggleTrigger.key.unicode > 0xFFFF) return false;
+
+        constexpr int kMask = GHOSTTY_MODS_SHIFT | GHOSTTY_MODS_CTRL | GHOSTTY_MODS_ALT;
+        if ((core::host::currentMods() & kMask) != (m_toggleTrigger.mods & kMask)) {
+            return false;
+        }
+
+        // VkKeyScanW maps the codepoint through the live keyboard
+        // layout to the VirtualKey the KeyDown reports.
+        const SHORT scan = VkKeyScanW(static_cast<WCHAR>(m_toggleTrigger.key.unicode));
+        return scan != -1 && (scan & 0xFF) == static_cast<int>(key);
     }
 
     void CommandPalette::RequestClose()

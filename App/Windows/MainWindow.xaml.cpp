@@ -1608,6 +1608,7 @@ namespace winrt::GhosttyWin32::implementation
             });
         }
         palette->SetEntries(std::move(entries));
+        palette->SetToggleTrigger(cfg.CommandPaletteTrigger());
     }
 
     namespace {
