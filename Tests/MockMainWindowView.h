@@ -307,6 +307,13 @@ struct MockMainWindowView : core::host::IWindow {
         lastPromptTitleSurface = s;
     }
 
+    int toggleCommandPaletteCalls = 0;
+    ghostty_surface_t lastCommandPaletteSurface = nullptr;
+    void ToggleCommandPaletteForSurface(ghostty_surface_t s) override {
+        ++toggleCommandPaletteCalls;
+        lastCommandPaletteSurface = s;
+    }
+
     int notifyCommandFinishedCalls = 0;
     ghostty_surface_t lastCommandFinishedSurface = nullptr;
     int lastCommandExitCode = 0;
