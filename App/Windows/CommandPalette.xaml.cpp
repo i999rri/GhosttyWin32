@@ -92,12 +92,7 @@ namespace winrt::GhosttyWin32::implementation
     {
         m_entries = std::move(entries);
         m_rows.assign(m_entries.size(), nullptr);
-        // Clearing the query refilters through TextChanged; when it
-        // was already empty no event fires, so refilter explicitly.
-        auto input = Input();
-        const bool hadQuery = !input.Text().empty();
-        input.Text(L"");
-        if (!hadQuery) Refilter();
+        m_listStale = true;
     }
 
     void CommandPalette::Open()
@@ -105,10 +100,13 @@ namespace winrt::GhosttyWin32::implementation
         m_open = true;
         Visibility(mux::Visibility::Visible);
         auto input = Input();
-        // A leftover query from the previous open clears here (and
-        // refilters through TextChanged); otherwise the list is
-        // already current from SetEntries / the last clear.
+        // Clearing a leftover query refilters through TextChanged;
+        // when it was already empty no event fires, so a stale list
+        // (SetEntries since the last build) refilters explicitly.
+        const bool hadQuery = !input.Text().empty();
         input.Text(L"");
+        if (m_listStale && !hadQuery) Refilter();
+        m_listStale = false;
         input.Focus(mux::FocusState::Programmatic);
     }
 
