@@ -132,9 +132,13 @@ public:
     // not necessarily the shell (that's the ancestor). Used by the
     // tab-title poll to show the running command's name (`vim`,
     // `ssh host`) instead of just the shell name. Returns 0 when
-    // no surface, no PTY yet, or no foreground process.
+    // no surface, no PTY yet, or no foreground process. libghostty
+    // reports the pid as a uint64 for platform-agnosticism; a Windows
+    // pid is a DWORD, so the narrowing is deliberate and lossless.
     uint32_t ForegroundPid() const noexcept {
-        return m_handle ? ghostty_surface_foreground_pid(m_handle) : 0;
+        return m_handle
+            ? static_cast<uint32_t>(ghostty_surface_foreground_pid(m_handle))
+            : 0;
     }
 
     // Ghostty's per-surface prompt-on-quit signal. Reflects the

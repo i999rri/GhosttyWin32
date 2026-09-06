@@ -346,8 +346,8 @@ bool Actions::OnColorChange(ghostty_action_color_change_s cc) {
 bool Actions::OnMouseShape(ghostty_surface_t surface,
                                   ghostty_action_mouse_shape_e shape) {
     if (!surface) return true;
-    DispatchToView([this, surface, shape]() {
-        m_view.SetCursorShapeForSurface(surface, shape);
+    DispatchToSurface(surface, [shape](host::ISurfaceView& v) {
+        v.SetCursorShape(shape);
     });
     return true;
 }
@@ -356,8 +356,8 @@ bool Actions::OnMouseVisibility(ghostty_surface_t surface,
                                 ghostty_action_mouse_visibility_e visibility) {
     if (!surface) return true;
     const bool visible = visibility == GHOSTTY_MOUSE_VISIBLE;
-    DispatchToView([this, surface, visible]() {
-        m_view.SetMouseVisibilityForSurface(surface, visible);
+    DispatchToSurface(surface, [visible](host::ISurfaceView& v) {
+        v.SetMouseVisibility(visible);
     });
     return true;
 }
@@ -367,8 +367,8 @@ bool Actions::OnSecureInput(ghostty_surface_t surface,
     if (!surface) return true;
     // TOGGLE resolution happens in the view: the indicator is
     // per-pane visual state, so the pane owns the current value.
-    DispatchToView([this, surface, mode]() {
-        m_view.SetSecureInputForSurface(surface, mode);
+    DispatchToSurface(surface, [mode](host::ISurfaceView& v) {
+        v.SetSecureInput(mode);
     });
     return true;
 }
@@ -398,8 +398,8 @@ bool Actions::OnReadonly(ghostty_surface_t surface,
                          ghostty_action_readonly_e readonly) {
     if (!surface) return true;
     const bool on = readonly == GHOSTTY_READONLY_ON;
-    DispatchToView([this, surface, on]() {
-        m_view.SetReadonlyForSurface(surface, on);
+    DispatchToSurface(surface, [on](host::ISurfaceView& v) {
+        v.SetReadonly(on);
     });
     return true;
 }
@@ -419,14 +419,14 @@ bool Actions::OnKeySequence(ghostty_surface_t surface,
                             ghostty_action_key_sequence_s seq) {
     if (!surface) return true;
     if (!seq.active) {
-        DispatchToView([this, surface]() {
-            m_view.ClearKeySequenceForSurface(surface);
+        DispatchToSurface(surface, [](host::ISurfaceView& v) {
+            v.ClearKeySequence();
         });
         return true;
     }
     std::wstring label = TriggerLabel(seq.trigger);
-    DispatchToView([this, surface, label = std::move(label)]() mutable {
-        m_view.AppendKeySequenceForSurface(surface, std::move(label));
+    DispatchToSurface(surface, [label = std::move(label)](host::ISurfaceView& v) mutable {
+        v.AppendKeySequence(std::move(label));
     });
     return true;
 }
@@ -443,16 +443,16 @@ bool Actions::OnKeyTable(ghostty_surface_t surface,
                     table.value.activate.name,
                     static_cast<int>(table.value.activate.len));
             }
-            DispatchToView([this, surface, name = std::move(name)]() mutable {
-                m_view.PushKeyTableForSurface(surface, std::move(name));
+            DispatchToSurface(surface, [name = std::move(name)](host::ISurfaceView& v) mutable {
+                v.PushKeyTable(std::move(name));
             });
             return true;
         }
         case GHOSTTY_KEY_TABLE_DEACTIVATE:
         case GHOSTTY_KEY_TABLE_DEACTIVATE_ALL: {
             const bool all = table.tag == GHOSTTY_KEY_TABLE_DEACTIVATE_ALL;
-            DispatchToView([this, surface, all]() {
-                m_view.PopKeyTableForSurface(surface, all);
+            DispatchToSurface(surface, [all](host::ISurfaceView& v) {
+                v.PopKeyTable(all);
             });
             return true;
         }
@@ -469,8 +469,8 @@ bool Actions::OnMouseOverLink(ghostty_surface_t surface,
     std::wstring wide;
     if (link.url && link.len > 0)
         wide = interop::Encoding::toUtf16(link.url, static_cast<int>(link.len));
-    DispatchToView([this, surface, wide = std::move(wide)]() mutable {
-        m_view.SetHoveredLinkForSurface(surface, std::move(wide));
+    DispatchToSurface(surface, [wide = std::move(wide)](host::ISurfaceView& v) mutable {
+        v.SetHoveredLink(std::move(wide));
     });
     return true;
 }
@@ -512,8 +512,8 @@ bool Actions::OnCellSize(ghostty_surface_t surface,
 bool Actions::OnScrollbar(ghostty_surface_t surface,
                           ghostty_action_scrollbar_s bar) {
     if (!surface) return true;
-    DispatchToView([this, surface, bar]() {
-        m_view.SetScrollbarForSurface(surface, bar);
+    DispatchToSurface(surface, [bar](host::ISurfaceView& v) {
+        v.SetScrollbar(bar);
     });
     return true;
 }
@@ -528,16 +528,16 @@ bool Actions::OnStartSearch(ghostty_surface_t surface,
     std::wstring needle;
     if (search.needle && *search.needle)
         needle = interop::Encoding::toUtf16(search.needle);
-    DispatchToView([this, surface, needle = std::move(needle)]() mutable {
-        m_view.StartSearchForSurface(surface, std::move(needle));
+    DispatchToSurface(surface, [needle = std::move(needle)](host::ISurfaceView& v) mutable {
+        v.StartSearch(std::move(needle));
     });
     return true;
 }
 
 bool Actions::OnEndSearch(ghostty_surface_t surface) {
     if (!surface) return true;
-    DispatchToView([this, surface]() {
-        m_view.EndSearchForSurface(surface);
+    DispatchToSurface(surface, [](host::ISurfaceView& v) {
+        v.EndSearch();
     });
     return true;
 }
@@ -545,8 +545,8 @@ bool Actions::OnEndSearch(ghostty_surface_t surface) {
 bool Actions::OnSearchTotal(ghostty_surface_t surface,
                             ghostty_action_search_total_s total) {
     if (!surface) return true;
-    DispatchToView([this, surface, total]() {
-        m_view.SetSearchTotalForSurface(surface, total.total);
+    DispatchToSurface(surface, [total](host::ISurfaceView& v) {
+        v.SetSearchTotal(total.total);
     });
     return true;
 }
@@ -554,8 +554,8 @@ bool Actions::OnSearchTotal(ghostty_surface_t surface,
 bool Actions::OnSearchSelected(ghostty_surface_t surface,
                                ghostty_action_search_selected_s selected) {
     if (!surface) return true;
-    DispatchToView([this, surface, selected]() {
-        m_view.SetSearchSelectedForSurface(surface, selected.selected);
+    DispatchToSurface(surface, [selected](host::ISurfaceView& v) {
+        v.SetSearchSelected(selected.selected);
     });
     return true;
 }

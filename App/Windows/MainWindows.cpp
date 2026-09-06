@@ -1,7 +1,7 @@
 #include "pch.h"
-#include "MainWindows.h"
+#include "Windows/MainWindows.h"
 
-#include "MainWindow.xaml.h"
+#include "Windows/MainWindow.xaml.h"
 
 namespace winrt::GhosttyWin32::implementation {
 

@@ -2,21 +2,19 @@
 
 #include "MainWindow.g.h"
 #include "ghostty.h"
-#include "Ghostty/Actions/Tags/CellSize.h"
-#include "Ghostty/Actions/Tags/Fullscreen.h"
-#include "Ghostty/Actions/Tags/SizeLimit.h"
-#include "Ghostty/Actions/Tags/WindowDecorations.h"
 #include "Ghostty/App.h"
 #include "Ghostty/CallbackDispatcher.h"
 #include "Host/IWindow.h"
 #include "Interop/Encoding.h"
 #include "Win32/Clipboard.h"
+#include "Win32/NativeWindow.h"
 #include "Tabs/Panes/PaneId.h"
 #include "Tabs/ParkedTabs.h"
 #include "Tabs/Tab.h"
 #include "Tabs/TabFactory.h"
 #include "Tabs/Tabs.h"
-#include "WindowCloseGate.h"
+#include "Windows/WindowCloseGate.h"
+#include "Windows/WindowState.h"
 
 namespace winrt::GhosttyWin32::implementation
 {
@@ -45,20 +43,22 @@ namespace winrt::GhosttyWin32::implementation
                           winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
 
         // Called by every TerminalControl when it receives keyboard
-        // focus (wired by TabFactory). Updates m_activeSurface so any
-        // future caller — APP-target action handlers, multi-window
-        // focus delivery, IPC / scripting bridges — can ask "which
-        // surface is the user looking at right now" without a
-        // separate tree walk. Public because TerminalControl needs to
-        // reach in via the host-supplied callback. UI thread only.
+        // focus (wired by TabFactory). Routes the event to the owning
+        // Tab so its active-pane state — and with it the per-tab
+        // dim overlay — follows keyboard focus. The window keeps no
+        // focused-surface cache of its own: "which surface is the
+        // user looking at" is answered by ActiveControl(), which reads
+        // the Tab state this call keeps current. Public because
+        // TerminalControl needs to reach in via the host-supplied
+        // callback. UI thread only.
         void NotifySurfaceFocused(ghostty_surface_t surface) noexcept;
 
-        // Last surface to receive keyboard focus inside this window.
-        // Null until the first focus delivery (typically the very
-        // first tab's TerminalControl GotFocus right after launch).
-        // Stays valid across alt-tab — we only clear it when the
-        // surface itself is torn down.
-        ghostty_surface_t GetActiveSurface() const noexcept { return m_activeSurface; }
+        // Whether `surface` is the one the user is looking at: the
+        // active pane of the active tab. Derived, never cached — a
+        // cache had to be invalidated on every close / tear-out /
+        // pane-close path, and each of those was a chance to let it
+        // outlive the surface (the old m_activeSurface contract).
+        bool IsActiveSurface(ghostty_surface_t surface) noexcept;
 
         // True when any leaf in this window's tab tree owns `surface`.
         // App::FindWindowForSurface iterates its window list and asks
@@ -102,10 +102,9 @@ namespace winrt::GhosttyWin32::implementation
         // dispatcher reaches them through the interface.
         void CreateTab() override;
         void CloseTabBySurface(ghostty_surface_t surface) override;
-        // Shared tab-teardown primitive used by every close path (tab
-        // X, close_tab keybind, gate-approved close). Assumes the
-        // caller already ran confirmation; keeps the tricky detach /
-        // unparent / RemoveAt ordering in one place.
+        // Gate-approved close of a whole tab (tab X, close_tab
+        // keybind). Parks it for undo when allowed, otherwise tears
+        // it down now. Assumes the caller already ran confirmation.
         void CloseTabByItem(winrt::Microsoft::UI::Xaml::Controls::TabViewItem const& item);
         void GoToTab(int requested) override;
         void SetTabTitleForSurface(ghostty_surface_t surface,
@@ -113,21 +112,26 @@ namespace winrt::GhosttyWin32::implementation
         void CopyTabTitleForSurface(ghostty_surface_t surface) override;
         void MoveActiveTabBy(ssize_t amount) override;
 
-        // State-owner delegating overrides. Each is a one-liner;
-        // the actual logic lives in the dedicated value (m_sizeLimit,
-        // m_fullscreen) so MainWindow doesn't accrete fields
-        // that nothing outside one specific handler reads.
+        // State-owner delegating overrides. Each is a couple of
+        // lines: the tag in m_state decides, m_native carries the
+        // decision out on the HWND, so MainWindow doesn't accrete
+        // fields that nothing outside one specific handler reads.
         void ApplySizeLimit(ghostty_action_size_limit_s limit) override;
         void ToggleFullscreen() override;
         void ToggleWindowDecorations() override;
         void SetFloatOnTop(ghostty_action_float_window_e mode) override;
         void ToggleBackgroundOpacity() override;
-        // Push the current background-opacity mode (m_bgOpaque +
-        // config) to the XAML root and every pane. Called from the
-        // toggle, from pane-creation funnels (CreateTab / split /
-        // adopt) so new panes match the window state, and from
+        // Carry out what the BackgroundOpacity tag decides for the
+        // current config: window backdrop, DWM alpha, root brush,
+        // per-pane underlays. Called from the toggle, from
+        // pane-creation funnels (CreateTab / split / adopt) so new
+        // panes match the window state, and from
         // ApplyBackgroundColor when the terminal recolours.
         void ApplyBackgroundOpacityAppearance();
+        // The tag's verdict for the current config; the one place
+        // the config is read for this purpose.
+        ghostty::actions::tags::BackgroundOpacity::Appearance
+        BackgroundOpacityAppearance() const;
         // Apply the current decoration state (config + any override
         // installed by ToggleWindowDecorations) to the XAML caption
         // buttons / drag region. Called once at startup so the config
@@ -149,47 +153,28 @@ namespace winrt::GhosttyWin32::implementation
         // belongs to this window.
         void ApplyCellSizeForSurface(ghostty_surface_t surface,
                                      ghostty_action_cell_size_s cell) override;
-        void SetScrollbarForSurface(ghostty_surface_t surface,
-                                    ghostty_action_scrollbar_s bar) override;
-        void StartSearchForSurface(ghostty_surface_t surface,
-                                   std::wstring needle) override;
-        void EndSearchForSurface(ghostty_surface_t surface) override;
-        void SetSearchTotalForSurface(ghostty_surface_t surface,
-                                      ptrdiff_t total) override;
-        void SetSearchSelectedForSurface(ghostty_surface_t surface,
-                                         ptrdiff_t selected) override;
         // Shared tail of the surface report and the adopt-time
-        // re-arm: update the WM_SIZING snapping tag with the metrics
-        // and re-read the window-step-resize gate. No-op on {0,0}
-        // (nothing reported yet).
+        // re-arm: hand the WM_SIZING snapping tag the metrics and
+        // the current window-step-resize gate.
         void ArmCellSnap(ghostty_action_cell_size_s cell);
+        // `window-step-resize` as the config says right now; false
+        // before ghostty is up. The one place it is read.
+        bool WindowStepResizeByConfig() const;
 
         // Terminal-driven appearance / lifecycle overrides. Bodies
         // are in MainWindow.xaml.cpp; the logic moved verbatim
         // from the old inline action_cb chunks.
+        // Surface directory (IWindow::FindSurfaceView): the one lookup
+        // through which every surface-targeted action reaches its
+        // pane. Replaces fourteen identical relay overrides.
+        host::ISurfaceView* FindSurfaceView(ghostty_surface_t surface) override;
         void ApplyBackgroundColor(uint8_t r, uint8_t g, uint8_t b) override;
-        void SetCursorShapeForSurface(ghostty_surface_t surface,
-                                      ghostty_action_mouse_shape_e shape) override;
-        void SetHoveredLinkForSurface(ghostty_surface_t surface,
-                                      std::wstring url) override;
-        void SetMouseVisibilityForSurface(ghostty_surface_t surface,
-                                          bool visible) override;
-        void SetSecureInputForSurface(ghostty_surface_t surface,
-                                      ghostty_action_secure_input_e mode) override;
         void SetPwdForSurface(ghostty_surface_t surface,
                               std::wstring pwd) override;
         void NotifyCommandFinishedForSurface(ghostty_surface_t surface,
                                              int exitCode,
                                              uint64_t durationNs) override;
-        void SetReadonlyForSurface(ghostty_surface_t surface,
-                                   bool readonly) override;
         void PromptTitleForSurface(ghostty_surface_t surface) override;
-        void AppendKeySequenceForSurface(ghostty_surface_t surface,
-                                         std::wstring triggerLabel) override;
-        void ClearKeySequenceForSurface(ghostty_surface_t surface) override;
-        void PushKeyTableForSurface(ghostty_surface_t surface,
-                                    std::wstring name) override;
-        void PopKeyTableForSurface(ghostty_surface_t surface, bool all) override;
         void ReplaceConfig(ghostty_config_t cloned) override;
         void ReloadConfig(bool soft) override;
         void ShowDesktopNotification(ghostty_surface_t surface,
@@ -226,6 +211,12 @@ namespace winrt::GhosttyWin32::implementation
         // this window's guts, granted access by name rather than by
         // widening the public surface.
         friend struct App;
+        // TearOut runs the tab-moves-to-a-new-window sequence, which
+        // is the window's own protocol (State / TabCount /
+        // ReleaseTornOutTab / AdoptTornOutTab) pulled out of the
+        // constructor so it can be read in one place. Same footing
+        // as App: named access, not a public surface.
+        friend class TearOut;
 
 
         void InitGhostty();
@@ -301,6 +292,21 @@ namespace winrt::GhosttyWin32::implementation
         // has frames to show from the first paint). Called by
         // App::CreateTearOutWindow through the existing friendship.
         void SuppressInitialTab() noexcept { m_suppressInitialTab = true; }
+
+        // The part of this window's state that a window born for one
+        // of its tabs takes along (see WindowState.h).
+        WindowState::Inherited const& State() const noexcept { return m_state.inherited; }
+        // Start from another window's state. Called by App's window
+        // factories before the first Activated, so the startup
+        // appearance passes already see it; for a tear-out host,
+        // AdoptTornOutTab's final re-apply then paints this window
+        // like the source.
+        void InheritState(WindowState::Inherited const& state) noexcept {
+            m_state.inherited = state;
+        }
+
+        // How many tabs the strip holds (parked ones excluded).
+        size_t TabCount() const noexcept { return m_tabs.Size(); }
 
         // Take `item`'s Tab out of this window alive: strip entry
         // removed, panel unparented from AppContent, focused-surface
@@ -381,14 +387,17 @@ namespace winrt::GhosttyWin32::implementation
         // and left every window after the first stuck in the
         // "already set up" branch with no HWND, no tabs, no terminal.
         bool m_activatedOnce = false;
-        // SIZE_LIMIT / TOGGLE_FULLSCREEN state. Default constructed
-        // (no limit set, not in fullscreen). Subclasses installed
-        // by SizeLimit are auto-removed by Win32 when m_hwnd is
-        // destroyed, so no explicit teardown ordering is needed.
-        ghostty::actions::tags::SizeLimit          m_sizeLimit;
-        ghostty::actions::tags::CellSize           m_cellSize;
-        ghostty::actions::tags::Fullscreen         m_fullscreen;
-        ghostty::actions::tags::WindowDecorations  m_windowDecorations;
+        // Every window-scoped action tag, as one value — see
+        // WindowState.h for which of them a window born for one of
+        // this window's tabs takes along. Default constructed (no
+        // overrides, no limit set, nothing measured, not in
+        // fullscreen). Pure; the XAML side and m_native apply them.
+        WindowState m_state;
+        // The HWND side: the subclass that enforces the size rules
+        // and the placement fullscreen comes back to. Bound at the
+        // first Activated; rules set before that (a tear-out host
+        // adopts first) are installed then.
+        win32::NativeWindow m_native;
         Tabs m_tabs;
         // Undo support for tab closes (#151): parked-tab stack,
         // expiry timers, redo bookkeeping — see Tabs/ParkedTabs.h.
@@ -396,6 +405,25 @@ namespace winrt::GhosttyWin32::implementation
         // add/remove, panel visibility, appearance restate, and the
         // expiry teardown callback).
         ParkedTabs m_parkedTabs;
+        // Undo support (#151): park `tab` instead of tearing it down
+        // when another tab remains and undo-timeout is non-zero.
+        // Returns whether it parked; callers add their own extra
+        // conditions before asking.
+        bool TryParkTab(Tab& tab);
+        // The one immediate tab teardown, shared by every close path
+        // once parking is ruled out. Keeps the ordering contract in a
+        // single place: DetachAll while the panel is still parented →
+        // RemoveAt → unparent the panel → destroy the Tab, or
+        // RequestClose when it was the last tab.
+        void TearDownTab(Tab& tab);
+        // Debug-only structural check, run after every operation
+        // that parents or unparents a tab's SplitPanel: the panels
+        // under AppContent must equal the tabs this window owns —
+        // listed in m_tabs plus parked for undo. A miss is an
+        // orphan (the pre-#184 shell-exit leak) or a double
+        // unparent; breaks into the debugger with the offending
+        // path on the stack. No-op in release builds.
+        void DebugAssertPanelInvariant() noexcept;
         // Detach the item from the tab strip and move its Tab into
         // m_parkedTabs. fromRedo keeps the redo history intact (a
         // user-initiated close invalidates it).
@@ -410,21 +438,11 @@ namespace winrt::GhosttyWin32::implementation
         // to let the resulting WM_CLOSE (if any) through without
         // re-prompting. One-shot — the window is about to die.
         bool m_bypassCloseGate = false;
-        // Focus-tracked active surface. Set by NotifySurfaceFocused
-        // when a TerminalControl gains focus, cleared when the
-        // matching surface is torn down through CloseSurfaceByPaneId.
-        ghostty_surface_t m_activeSurface = nullptr;
         // Re-entrancy guard for the rename-title prompt: WinUI allows
         // one ContentDialog per XamlRoot, and a second ShowAsync while
         // one is up throws. Set when the dialog opens, cleared in its
         // Completed handler.
         bool m_renamePromptOpen = false;
-        // TOGGLE_BACKGROUND_OPACITY state (#69). false = the config's
-        // background-opacity applies (translucent when < 1.0, which
-        // is also the launch state, matching macOS); true = the user
-        // toggled to fully opaque. Meaningless while the config
-        // opacity is 1.0 — the toggle no-ops there.
-        bool m_bgOpaque = false;
         // Terminal background colour as last applied (config value at
         // init, updated by COLOR_CHANGE via ApplyBackgroundColor).
         // Feeds the opaque underlays and the root brush.

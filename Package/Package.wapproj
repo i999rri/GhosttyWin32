@@ -51,36 +51,44 @@
     <EntryPointProjectUniqueName>..\App\App.vcxproj</EntryPointProjectUniqueName>
   </PropertyGroup>
   <!--
-    Manifest per configuration.
+    Which manifest, and so which package identity, this build gets.
 
-    Release|* → Package.appxmanifest (the production identity CI signs
-      and ships). Every CI channel — dev-build / RC / production —
-      builds Release, so this is what ends up in every MSIX we publish.
+    ProductionIdentity=true → Package.appxmanifest (the identity CI
+      signs and ships). Only a build that is going to be published
+      should carry it: every CI channel — dev-build / RC / production
+      — passes /p:ProductionIdentity=true through
+      .github/actions/build-signed-msix, and it also defaults on for
+      a Release build under CI=true (set by GitHub Actions) so a
+      workflow that forgets the property still ships the right thing.
 
-    Everything else (Debug, ASan) → Package.Debug.appxmanifest
-      (Identity Name ends in ".Dev", distinct DisplayName + toast
-      CLSID). Lets an F5-registered loose install coexist with an
-      installed production MSIX on the same machine instead of
-      tripping 0x80073cfb every round. Keyed on "not Release" rather
-      than listing dev configurations so a future local-only
-      configuration can't silently pick up the production identity.
+    Everything else → Package.Debug.appxmanifest (Identity Name ends
+      in ".Dev", distinct DisplayName + toast CLSID). That is every
+      local build, Release included: Windows keys installs on the
+      package family, so a local Release deploy carrying the
+      production identity replaces the Ghostty the developer has
+      installed (and an F5 after that trips 0x80073cfb). With the
+      ".Dev" identity the two coexist. A deliberate local production
+      package is still one property away:
+        msbuild Package\Package.wapproj /p:Configuration=Release /p:ProductionIdentity=true
 
     See the comment at the top of Package.Debug.appxmanifest for the
     fuller rationale and the two-file maintenance cost.
   -->
-  <ItemGroup Condition="'$(Configuration)'=='Release'">
+  <PropertyGroup>
+    <ProductionIdentity Condition="'$(ProductionIdentity)'=='' and '$(Configuration)'=='Release' and '$(CI)'=='true'">true</ProductionIdentity>
+    <ProductionIdentity Condition="'$(ProductionIdentity)'==''">false</ProductionIdentity>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(ProductionIdentity)'=='true'">
     <AppxManifest Include="Package.appxmanifest">
       <SubType>Designer</SubType>
     </AppxManifest>
+    <None Include="Package.Debug.appxmanifest" />
   </ItemGroup>
-  <ItemGroup Condition="'$(Configuration)'!='Release'">
+  <ItemGroup Condition="'$(ProductionIdentity)'!='true'">
     <AppxManifest Include="Package.Debug.appxmanifest">
       <SubType>Designer</SubType>
     </AppxManifest>
     <None Include="Package.appxmanifest" />
-  </ItemGroup>
-  <ItemGroup Condition="'$(Configuration)'=='Release'">
-    <None Include="Package.Debug.appxmanifest" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="Images\SplashScreen.scale-200.png" />

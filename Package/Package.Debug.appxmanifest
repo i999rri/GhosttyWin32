@@ -1,19 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 
 <!--
-  Debug-configuration manifest. Selected by Package.wapproj when
-  building the Debug|* configurations; Release builds (including
-  every CI channel — dev-build / RC / production) use the sibling
+  Local-build manifest. Selected by Package.wapproj for every build
+  that is not going to be published — any configuration, Release
+  included — while builds with ProductionIdentity=true (every CI
+  channel: dev-build / RC / production) use the sibling
   Package.appxmanifest instead.
 
-  The only substantive differences from the Release manifest are:
+  The only substantive differences from the production manifest are:
 
-  - Identity/@Name: appended ".Dev" so Windows treats an F5-registered
-    debug loose install as a completely different app from the
-    installed production MSIX. Without this split, installing the
-    production MSIX after an F5 (or vice versa) trips 0x80073cfb
-    ("current user already installed a packaged / unpackaged version
-    of this app") and requires manual uninstall each round.
+  - Identity/@Name: appended ".Dev" so Windows treats a locally
+    deployed build (F5 loose install, or a local Release deploy) as
+    a completely different app from the installed production MSIX.
+    Without this split, deploying a local build replaces the
+    installed one, and installing the production MSIX after an F5
+    (or vice versa) trips 0x80073cfb ("current user already
+    installed a packaged / unpackaged version of this app") and
+    requires manual uninstall each round.
   - DisplayName / VisualElements/@DisplayName: suffixed "(Dev)" so
     the debug entry is visually distinguishable in Start Menu, task
     switcher, and taskbar — you know at a glance which build you're
