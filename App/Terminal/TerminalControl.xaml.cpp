@@ -2,6 +2,7 @@
 #include "Terminal/TerminalControl.xaml.h"
 #include "resource.h"
 #include "Interop/Encoding.h"
+#include "Win32/DebugTrace.h"
 #include <algorithm>
 #if __has_include("TerminalControl.g.cpp")
 #include "TerminalControl.g.cpp"
@@ -102,13 +103,28 @@ namespace winrt::GhosttyWin32::implementation
         // while focus is inside us, so they feed the host directly
         // without an ActiveControl() lookup. The host marks handled
         // keys, which in particular prevents the TabView's built-in
-        // keybindings from also acting on the already-routed key —
-        // and, for Tab, cancels XAML's focus navigation so the key
-        // stays a terminal keystroke (issue #190).
+        // keybindings from also acting on the already-routed key.
         KeyDown([weakSelf](auto&&, muxi::KeyRoutedEventArgs const& args) {
             if (auto self = weakSelf.get()) self->m_host->OnKeyDown(args);
         });
         KeyUp([weakSelf](auto&&, muxi::KeyRoutedEventArgs const& args) {
+            if (auto self = weakSelf.get()) self->m_host->OnKeyUp(args);
+        });
+
+        // Tab alone rides the tunneling Preview events: XAML claims
+        // Tab for focus navigation, so by the bubbling KeyDown above
+        // it can already be gone (issue #190). PreviewKeyDown fires
+        // before that processing; the host marks the key handled,
+        // which cancels the focus move and keeps Tab a terminal
+        // keystroke. Every other key stays on the plain path so the
+        // framework keeps its accelerators and navigation.
+        PreviewKeyDown([weakSelf](auto&&, muxi::KeyRoutedEventArgs const& args) {
+            if (args.Key() != winrt::Windows::System::VirtualKey::Tab) return;
+            DEBUG_TRACE(L"Key: Tab preview down\n");
+            if (auto self = weakSelf.get()) self->m_host->OnKeyDown(args);
+        });
+        PreviewKeyUp([weakSelf](auto&&, muxi::KeyRoutedEventArgs const& args) {
+            if (args.Key() != winrt::Windows::System::VirtualKey::Tab) return;
             if (auto self = weakSelf.get()) self->m_host->OnKeyUp(args);
         });
 

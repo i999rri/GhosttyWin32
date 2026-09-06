@@ -35,8 +35,8 @@ public:
 
     core::input::RawKeyRelease toRawKeyRelease() const noexcept {
         auto scan_code = static_cast<uint32_t>(m_args.KeyStatus().ScanCode);
-        // Same scan-code recovery as TerminalKeyDown::toRawKeyPress
-        // (issue #190).
+        // Tunneling Preview events carry no scan code — same
+        // recovery as TerminalKeyDown::toRawKeyPress (issue #190).
         if (scan_code == 0) {
             scan_code = MapVirtualKeyW(static_cast<uint32_t>(vk()), MAPVK_VK_TO_VSC);
         }

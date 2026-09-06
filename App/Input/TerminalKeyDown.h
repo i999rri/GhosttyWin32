@@ -111,11 +111,11 @@ inline core::input::RawKeyPress TerminalKeyDown::toRawKeyPress(
 {
     auto vk_code   = static_cast<uint32_t>(vk());
     auto scan_code = static_cast<uint32_t>(m_args.KeyStatus().ScanCode);
-    // KeyRoutedEventArgs can arrive with KeyStatus().ScanCode == 0
-    // (observed for Tab, issue #190). ghostty resolves the physical
-    // key from the scan code, so an empty one turns the event into
-    // .unidentified and it encodes nothing — recover the code from
-    // the virtual key instead.
+    // A tunneling PreviewKeyDown delivers its args with
+    // KeyStatus().ScanCode == 0 (observed for Tab, issue #190).
+    // ghostty resolves the physical key from the scan code, so an
+    // empty one turns the event into .unidentified and it encodes
+    // nothing — recover the code from the virtual key instead.
     if (scan_code == 0) {
         scan_code = MapVirtualKeyW(vk_code, MAPVK_VK_TO_VSC);
     }
