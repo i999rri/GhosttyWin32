@@ -115,9 +115,18 @@ namespace winrt::GhosttyWin32::implementation
     bool SearchOverlay::HoldsKeyboardFocus()
     {
         if (!m_open) return false;
-        auto input = Input();
-        if (!input) return false;
-        return input.FocusState() != mux::FocusState::Unfocused;
+
+        // Focus anywhere inside the overlay counts, not just the
+        // input box: Tab navigation moves focus onto the prev /
+        // next / close buttons, and if only the box counted the
+        // terminal would reclaim Tab the moment a button holds
+        // focus — freezing the navigation there (found verifying
+        // #190).
+        auto const holds = [](mux::Controls::Control const& c) {
+            return c && c.FocusState() != mux::FocusState::Unfocused;
+        };
+        return holds(Input()) || holds(PrevButton())
+            || holds(NextButton()) || holds(CloseButton());
     }
 
     bool SearchOverlay::FocusInput()

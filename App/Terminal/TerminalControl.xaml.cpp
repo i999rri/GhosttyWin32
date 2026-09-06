@@ -102,7 +102,9 @@ namespace winrt::GhosttyWin32::implementation
         // while focus is inside us, so they feed the host directly
         // without an ActiveControl() lookup. The host marks handled
         // keys, which in particular prevents the TabView's built-in
-        // keybindings from also acting on the already-routed key.
+        // keybindings from also acting on the already-routed key —
+        // and, for Tab, cancels XAML's focus navigation so the key
+        // stays a terminal keystroke (issue #190).
         KeyDown([weakSelf](auto&&, muxi::KeyRoutedEventArgs const& args) {
             if (auto self = weakSelf.get()) self->m_host->OnKeyDown(args);
         });
