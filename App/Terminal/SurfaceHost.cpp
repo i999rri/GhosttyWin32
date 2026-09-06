@@ -372,7 +372,14 @@ namespace winrt::GhosttyWin32::implementation
         char textBuf[16] = {};
         auto raw = key.toRawKeyPress(textBuf, sizeof(textBuf));
         auto keyEvent = core::input::Translate(raw);
-        m_surface.Key(keyEvent);
+        bool consumed = m_surface.Key(keyEvent);
+        if (args.Key() == winrt::Windows::System::VirtualKey::Tab) {
+            DEBUG_TRACE(L"Key: Tab sent keycode=0x%X mods=0x%X text=%d -> consumed=%d\n",
+                        keyEvent.keycode,
+                        static_cast<unsigned>(keyEvent.mods),
+                        keyEvent.text ? 1 : 0,
+                        consumed ? 1 : 0);
+        }
 
         Tick();
         args.Handled(true);
