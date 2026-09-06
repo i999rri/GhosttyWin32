@@ -64,6 +64,9 @@ namespace winrt::GhosttyWin32::implementation
         // the list: score descending, config order as the tiebreak,
         // first row selected.
         void Refilter();
+        // One invisible layout pass at idle so the first real open
+        // does not pay the ListView's first-realization cost.
+        void WarmUpLayout();
         void MoveSelection(int delta);
         void ExecuteSelected();
         void RequestClose();
