@@ -34,9 +34,15 @@ public:
     {}
 
     core::input::RawKeyRelease toRawKeyRelease() const noexcept {
+        auto scan_code = static_cast<uint32_t>(m_args.KeyStatus().ScanCode);
+        // Tunneling Preview events carry no scan code — same
+        // recovery as TerminalKeyDown::toRawKeyPress (issue #190).
+        if (scan_code == 0) {
+            scan_code = MapVirtualKeyW(static_cast<uint32_t>(vk()), MAPVK_VK_TO_VSC);
+        }
         return core::input::RawKeyRelease{
             .vk_code     = static_cast<uint32_t>(vk()),
-            .scan_code   = static_cast<uint32_t>(m_args.KeyStatus().ScanCode),
+            .scan_code   = scan_code,
             .is_extended = m_args.KeyStatus().IsExtendedKey,
             .shift       = m_shift,
             .ctrl        = m_ctrl,
