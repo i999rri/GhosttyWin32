@@ -59,8 +59,19 @@ namespace winrt::GhosttyWin32::implementation
         void RequestClose();
 
         std::vector<PaletteEntry> m_entries;
+        // Row elements, built lazily on first appearance and reused
+        // across refilters — rebuilding a few hundred TextBlocks on
+        // every keystroke is what made the first cut feel slow.
+        // Reset together with m_entries on Open.
+        std::vector<winrt::Microsoft::UI::Xaml::UIElement> m_rows;
         // Results row -> m_entries index, rebuilt by Refilter.
         std::vector<std::size_t> m_visible;
+
+        // Rows actually placed in the list per refilter. A
+        // launcher's answer lives at the top: rendering more rows
+        // than a screen holds only costs build time, and typing
+        // narrows faster than scrolling ever would.
+        static constexpr std::size_t kMaxVisibleRows = 64;
         std::function<void(std::string const&)> m_onExecute;
         std::function<void()> m_onClosed;
         bool m_open{ false };
