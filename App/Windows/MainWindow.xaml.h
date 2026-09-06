@@ -178,6 +178,9 @@ namespace winrt::GhosttyWin32::implementation
         // TOGGLE_COMMAND_PALETTE: show/hide this window's palette
         // overlay; entries run against the active pane (#205).
         void ToggleCommandPaletteForSurface(ghostty_surface_t surface) override;
+        // Rebuild the palette's cached entries from the current
+        // config — on reload, and lazily before a first open.
+        void RefreshPaletteEntries();
         void ReplaceConfig(ghostty_config_t cloned) override;
         void ReloadConfig(bool soft) override;
         void ShowDesktopNotification(ghostty_surface_t surface,

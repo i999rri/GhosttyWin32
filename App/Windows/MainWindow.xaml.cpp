@@ -1549,25 +1549,11 @@ namespace winrt::GhosttyWin32::implementation
             return;
         }
 
-        // Entries are re-read on every open — a config reload may
-        // have changed them — and copied out of config-owned memory
-        // here, before the handle can be replaced.
-        std::vector<implementation::PaletteEntry> entries;
-        if (m_ghosttyApp) {
-            ghostty::Config cfg(m_ghosttyApp->ConfigHandle());
-            const auto list = cfg.CommandPaletteEntries();
-            entries.reserve(list.len);
-            for (std::size_t i = 0; i < list.len; ++i) {
-                const auto& c = list.commands[i];
-                entries.push_back({
-                    winrt::hstring{ c.title
-                        ? core::interop::Encoding::toUtf16(c.title) : L"" },
-                    winrt::hstring{ c.description
-                        ? core::interop::Encoding::toUtf16(c.description) : L"" },
-                    std::string{ c.action ? c.action : "" },
-                });
-            }
-        }
+        // Entries live as long as the config that defined them:
+        // ReplaceConfig refreshes the cache, so a normal open only
+        // shows what is already built. The refresh here covers the
+        // first open of a window that never saw a reload.
+        if (!palette->HasEntries()) RefreshPaletteEntries();
 
         // (Re)wire before every Open — idempotent, and the weak ref
         // pattern matches every other overlay callback.
@@ -1590,7 +1576,31 @@ namespace winrt::GhosttyWin32::implementation
             if (!self) return;
             if (auto* tab = self->ActiveTab()) tab->Focus();
         });
-        palette->Open(std::move(entries));
+        palette->Open();
+    }
+
+    void MainWindow::RefreshPaletteEntries()
+    {
+        auto* palette = winrt::get_self<implementation::CommandPalette>(PaletteOverlay());
+        if (!palette || !m_ghosttyApp) return;
+
+        // Copied out of config-owned memory before the handle can
+        // be replaced.
+        ghostty::Config cfg(m_ghosttyApp->ConfigHandle());
+        const auto list = cfg.CommandPaletteEntries();
+        std::vector<implementation::PaletteEntry> entries;
+        entries.reserve(list.len);
+        for (std::size_t i = 0; i < list.len; ++i) {
+            const auto& c = list.commands[i];
+            entries.push_back({
+                winrt::hstring{ c.title
+                    ? core::interop::Encoding::toUtf16(c.title) : L"" },
+                winrt::hstring{ c.description
+                    ? core::interop::Encoding::toUtf16(c.description) : L"" },
+                std::string{ c.action ? c.action : "" },
+            });
+        }
+        palette->SetEntries(std::move(entries));
     }
 
     namespace {
@@ -2120,6 +2130,9 @@ namespace winrt::GhosttyWin32::implementation
         // only brings CONFIG_CHANGE (COLOR_CHANGE is the OSC path),
         // so nothing else re-reads them until the next toggle.
         ApplyBackgroundOpacityAppearance();
+        // command-palette-entry: rebuild the palette's cached rows
+        // from the new config while it is hidden.
+        RefreshPaletteEntries();
     }
 
     void MainWindow::ReloadConfig(bool soft)
