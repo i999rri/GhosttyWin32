@@ -118,22 +118,12 @@ namespace winrt::GhosttyWin32::implementation
 
     void CommandPalette::WarmUpLayout()
     {
-        // The first time the palette becomes visible, XAML pays for
-        // realizing the ListView's item containers and templates —
-        // a beat of lag (~125ms measured) the open-time trace cannot
-        // see because it lands in the layout pass after Open
-        // returns. Pay it here instead, still at idle.
         const auto t0 = GetTickCount64();
 
-        // Visible is unavoidable: Collapsed is XAML's contract for
-        // "skip layout entirely", so a collapsed subtree can never
-        // be made to pay the realization cost — the element has to
-        // participate in one layout pass. Opacity 0 and hit-test
-        // off make that pass unobservable, and because the whole
-        // dance is synchronous inside this one dispatcher callback,
-        // no frame with the palette visible ever reaches the
-        // compositor: it is laid out once, never displayed. Focus
-        // is untouched (nothing here calls Focus).
+        // Collapsed skips layout entirely, so paying the ListView's
+        // first-realization cost needs one Visible pass. Opacity 0
+        // plus the synchronous collapse below keep any frame of it
+        // from reaching the compositor — laid out once, never shown.
         Opacity(0.0);
         IsHitTestVisible(false);
         Visibility(mux::Visibility::Visible);
