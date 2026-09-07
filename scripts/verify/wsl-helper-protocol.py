@@ -8,7 +8,9 @@ will: framed stdin (data/resize), raw stdout. Checks that
 3. a resize frame lands as TIOCSWINSZ (child sees the new size),
 4. --term overrides TERM in the child environment,
 5. the helper exits with the child's exit code, and frames split
-   across writes still parse.
+   across writes still parse,
+6. a hangup frame ends the session (SIGHUP to the child), and
+7. killing wsl.exe does not leave a helper behind in the distro.
 """
 
 import re
@@ -98,6 +100,38 @@ check("data frame reaches child", b"24 80" in stdout, repr(stdout[:120]))
 check("resize frame applies", b"50 132" in stdout, repr(stdout[:120]))
 check("split frame parses", (b"24 80" in stdout) and (b"50 132" in stdout))
 check("child exit code propagates", proc.returncode == 42, f"rc={proc.returncode} stderr={stderr!r}")
+
+# 6: hangup frame hangs up an idle shell.
+proc = subprocess.Popen(
+    ["wsl.exe", helper, "--", "/bin/sh"],
+    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+)
+time.sleep(1.0)
+proc.stdin.write(frame(2, b""))
+proc.stdin.flush()
+try:
+    proc.wait(timeout=10)
+    check("hangup frame ends session", proc.returncode == 129,
+          f"rc={proc.returncode}")
+except subprocess.TimeoutExpired:
+    proc.kill()
+    check("hangup frame ends session", False, "helper did not exit")
+
+# 7: killing wsl.exe must not leave the helper lingering in the distro.
+proc = subprocess.Popen(
+    ["wsl.exe", helper, "--", "/bin/sh"],
+    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+)
+time.sleep(1.5)
+proc.kill()
+proc.wait()
+time.sleep(1.5)
+left = subprocess.run(
+    ["wsl.exe", "pgrep", "-f", "ghostty-wsl-helper"],
+    capture_output=True, text=True,
+)
+check("no helper lingers after wsl.exe dies", left.stdout.strip() == "",
+      f"pids={left.stdout.strip()!r}")
 
 print("verdict:", "CLEAN" if failures == 0 else f"{failures} check(s) failed")
 sys.exit(1 if failures else 0)
