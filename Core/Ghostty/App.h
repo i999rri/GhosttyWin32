@@ -84,7 +84,9 @@ public:
         if (m_app) ghostty_app_set_color_scheme(m_app, scheme);
     }
 
-    // Replace the owned config with newConfig and free the old one.
+    // Replace the owned config with newConfig and free the old one
+    // — the freeing half of the ownership taken at the clone in
+    // Actions::OnConfigChange.
     // Used by the reload_config path: the worker thread parses a fresh
     // config off-thread, then the UI thread hands the result here AFTER
     // ghostty_app_update_config has applied it to the app — at which

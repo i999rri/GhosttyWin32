@@ -569,9 +569,11 @@ bool Actions::OnReloadConfig(bool soft) {
 }
 
 bool Actions::OnConfigChange(ghostty_config_t newCfg) {
-    // Clone here because ghostty owns the incoming pointer.
-    // The view takes ownership of the clone and either swaps it
-    // in or frees it on the UI thread.
+    // Take ownership by cloning: ghostty's pointer is only
+    // guaranteed alive during this callback, while the host both
+    // crosses to the UI thread asynchronously and keeps reading
+    // the config until the next reload. The view holds the clone
+    // from here on and frees it when the one after replaces it.
     if (!newCfg) return true;
     auto cloned = ghostty_config_clone(newCfg);
     if (!cloned) return true;
