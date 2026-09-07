@@ -298,6 +298,15 @@
       <DeploymentContent>true</DeploymentContent>
     </None>
   </ItemGroup>
+  <ItemGroup>
+    <!--
+      The WSL bridge helper is a Linux ELF that wsl.exe runs inside the
+      distro; libghostty resolves it next to the host executable.
+    -->
+    <None Include="..\external\ghostty\zig-out\bin\ghostty-wsl-helper">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+  </ItemGroup>
   <ItemGroup Condition="'$(Configuration)'=='ASan'">
     <!--
       The ASan runtime is a DLL and the loader must find it next to
