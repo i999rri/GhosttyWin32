@@ -101,6 +101,9 @@ namespace winrt::GhosttyWin32::implementation
         // tree / TabView live on this class so the body stays here;
         // dispatcher reaches them through the interface.
         void CreateTab() override;
+        // New tab whose shell is `command` (empty = configured default).
+        // The "+" button's menu uses this to open a WSL bridge tab.
+        void CreateTabWithCommand(std::string command);
         void CloseTabBySurface(ghostty_surface_t surface) override;
         // Gate-approved close of a whole tab (tab X, close_tab
         // keybind). Parks it for undo when allowed, otherwise tears
@@ -450,6 +453,9 @@ namespace winrt::GhosttyWin32::implementation
         // Constructed once ghostty is initialized — needs the app handle
         // and HWND, neither available until InitGhostty has run.
         std::unique_ptr<TabFactory> m_tabFactory;
+        // The TabView's built-in "+" button, located in its template
+        // after Loaded; the new-tab menu anchors to it. Null until then.
+        winrt::Microsoft::UI::Xaml::Controls::Button m_addTabButton{ nullptr };
         // ghostty runtime callback dispatcher (today: action_cb;
         // future: clipboard / surface). Built in InitGhostty after
         // the ghostty::App handle is available; the App-scope

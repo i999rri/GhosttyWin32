@@ -15,6 +15,7 @@
 #include <winrt/Microsoft.UI.Xaml.Controls.h>
 #include <functional>
 #include <memory>
+#include <string>
 
 #pragma comment(lib, "dcomp.lib")
 
@@ -90,9 +91,10 @@ public:
         Microsoft::UI::Xaml::Controls::TabViewItem item,
         std::function<void()> onActivated = {},
         uint32_t initialWidth = 0,
-        uint32_t initialHeight = 0)
+        uint32_t initialHeight = 0,
+        std::string command = {})
     {
-        auto branch = MakePane(initialWidth, initialHeight, std::move(onActivated));
+        auto branch = MakePane(initialWidth, initialHeight, std::move(onActivated), std::move(command));
         if (!branch) return nullptr;
 
         // Wrap the pane in a SplitPanel. With one pane the panel
@@ -140,7 +142,8 @@ public:
     std::unique_ptr<Branch> MakePane(
         uint32_t initialWidth,
         uint32_t initialHeight,
-        std::function<void()> onActivated = {})
+        std::function<void()> onActivated = {},
+        std::string command = {})
     {
         constexpr DWORD COMPOSITIONSURFACE_ALL_ACCESS = 0x0003L;
 
@@ -202,6 +205,11 @@ public:
         cfg.platform.windows.swap_chain_changed_cb = &SurfaceHost::OnSwapChainChanged;
         cfg.platform.windows.swap_chain_changed_userdata = swapChainChanged.get();
         cfg.userdata = paneId.ToUserdata();
+        // A per-surface command overrides config.command for this tab
+        // only; libghostty copies it during ghostty_surface_new, so the
+        // local string just needs to outlive that call. Empty means
+        // inherit the configured default (leave the field null).
+        if (!command.empty()) cfg.command = command.c_str();
         // Initial swap chain size: prefer the host's caller-supplied
         // estimate (typically the active tab/pane's panel size, since
         // the new panel will land in the same content area), then
