@@ -141,6 +141,17 @@ public:
             : 0;
     }
 
+    // Foreground process name reported from inside a WSL bridge
+    // session's distro, UTF-8. Empty for ConPTY sessions — their
+    // foreground process is a Windows pid the host resolves itself.
+    std::string ForegroundProcessName() const noexcept {
+        if (!m_handle) return {};
+        char buf[256];
+        const size_t n =
+            ghostty_surface_foreground_process_name(m_handle, buf, sizeof(buf));
+        return std::string(buf, n);
+    }
+
     // Ghostty's per-surface prompt-on-quit signal. Reflects the
     // `confirm-close-surface` config and whether the surface actually
     // has non-shell child processes running — hosts consult this on
