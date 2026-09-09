@@ -1,19 +1,20 @@
-"""Verification for GhosttyWin32#206 step 1: the WSL-side helper.
+"""Verification for GhosttyWin32#206: the WSL-side helper.
 
 Drives ghostty-wsl-helper through `wsl.exe` exactly the way BridgePty
-will: framed stdin (data/resize), raw stdout. Checks that
+will: framed stdin (data/resize/hangup) and framed stdout (data +
+foreground-name reports). Checks that
 
 1. the child runs on a real pty with the initial size from --cols/--rows,
-2. data frames reach the child and its output comes back raw,
+2. data frames reach the child and its output comes back in data frames,
 3. a resize frame lands as TIOCSWINSZ (child sees the new size),
 4. --term overrides TERM in the child environment,
 5. the helper exits with the child's exit code, and frames split
    across writes still parse,
-6. a hangup frame ends the session (SIGHUP to the child), and
-7. killing wsl.exe does not leave a helper behind in the distro.
+6. a hangup frame ends the session (SIGHUP to the child),
+7. killing wsl.exe does not leave a helper behind in the distro, and
+8. the foreground process's comm name arrives as a type-3 frame.
 """
 
-import re
 import struct
 import subprocess
 import sys
@@ -43,6 +44,22 @@ def resize(cols: int, rows: int, xpx: int = 0, ypx: int = 0) -> bytes:
     return frame(1, struct.pack("<4H", cols, rows, xpx, ypx))
 
 
+def deframe(stream: bytes):
+    """Split the helper's stdout into (pty_output, fg_names)."""
+    out = bytearray()
+    names = []
+    i = 0
+    while i + 3 <= len(stream):
+        kind, length = struct.unpack_from("<BH", stream, i)
+        payload = stream[i + 3 : i + 3 + length]
+        if kind == 0:
+            out += payload
+        elif kind == 3:
+            names.append(payload.decode(errors="replace"))
+        i += 3 + length
+    return bytes(out), names
+
+
 failures = 0
 
 
@@ -55,26 +72,28 @@ def check(name: str, ok: bool, detail: str = ""):
 
 helper = wsl_path(HELPER)
 
-# 1+4: pty size and TERM, via a one-shot command.
+# 1: pty size and pts, via a one-shot command.
 out = subprocess.run(
     ["wsl.exe", helper, "--cols", "111", "--rows", "33",
      "--", "/bin/sh", "-c", "stty size; tty"],
     capture_output=True,
 )
-text = out.stdout.decode(errors="replace")
+text, _ = deframe(out.stdout)
+text = text.decode(errors="replace")
 check("initial size via TIOCGWINSZ", "33 111" in text, text.strip())
 check("child is on a real pts", "/dev/pts/" in text, text.strip())
 
-# TERM is checked against env directly: a shell may legitimately rewrite
-# it at startup (NixOS-WSL's wrapped /bin/sh does).
+# 4: TERM is checked against env directly: a shell may legitimately
+# rewrite it at startup (NixOS-WSL's wrapped /bin/sh does).
 out = subprocess.run(
     ["wsl.exe", helper, "--term", "xterm-ghostty", "--", "/usr/bin/env"],
     capture_output=True,
 )
-check("--term overrides TERM", b"TERM=xterm-ghostty" in out.stdout,
-      repr([l for l in out.stdout.splitlines() if b"TERM" in l]))
+env_out, _ = deframe(out.stdout)
+check("--term overrides TERM", b"TERM=xterm-ghostty" in env_out,
+      repr([l for l in env_out.splitlines() if b"TERM" in l]))
 
-# 2+3+5: interactive session over frames.
+# 2+3+5+8: interactive session over frames.
 proc = subprocess.Popen(
     ["wsl.exe", helper, "--cols", "80", "--rows", "24", "--", "/bin/sh"],
     stdin=subprocess.PIPE,
@@ -86,6 +105,10 @@ proc.stdin.write(data(b"stty size\n"))
 proc.stdin.flush()
 time.sleep(1.0)
 proc.stdin.write(resize(132, 50))
+# A foreground change the tracker must catch (poll cadence 500ms).
+proc.stdin.write(data(b"sleep 2\n"))
+proc.stdin.flush()
+time.sleep(1.5)
 # Split one data frame across two writes to exercise the incremental parser.
 second = data(b"stty size\nexit 42\n")
 proc.stdin.write(second[:2])
@@ -94,12 +117,15 @@ time.sleep(0.2)
 proc.stdin.write(second[2:])
 proc.stdin.flush()
 
-stdout, stderr = proc.communicate(timeout=20)
-sizes = re.findall(rb"(\d+) (\d+)", stdout)
-check("data frame reaches child", b"24 80" in stdout, repr(stdout[:120]))
-check("resize frame applies", b"50 132" in stdout, repr(stdout[:120]))
-check("split frame parses", (b"24 80" in stdout) and (b"50 132" in stdout))
-check("child exit code propagates", proc.returncode == 42, f"rc={proc.returncode} stderr={stderr!r}")
+stdout, stderr = proc.communicate(timeout=30)
+text, names = deframe(stdout)
+check("data frame reaches child", b"24 80" in text, repr(text[:120]))
+check("resize frame applies", b"50 132" in text, repr(text[:120]))
+check("split frame parses", (b"24 80" in text) and (b"50 132" in text))
+check("child exit code propagates", proc.returncode == 42,
+      f"rc={proc.returncode} stderr={stderr!r}")
+check("foreground name reported", any("sleep" in n for n in names),
+      f"names={names!r}")
 
 # 6: hangup frame hangs up an idle shell.
 proc = subprocess.Popen(
