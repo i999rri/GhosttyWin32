@@ -1630,12 +1630,23 @@ namespace winrt::GhosttyWin32::implementation
             if (tab->TitleSource().Outranks(core::host::TitleSource::Automatic())) continue;
             auto* tc = tab->ActiveControl();
             if (!tc) continue;
+            winrt::hstring name;
             uint32_t pid = tc->Surface().ForegroundPid();
-            if (!pid) continue;
-            // Same PID as last tick: keep whatever's already on the
-            // header, no per-process work.
-            if (tab->LastForegroundPid() == pid) continue;
-            auto name = PidToBasename(pid);
+            if (pid) {
+                // Same PID as last tick: keep whatever's already on the
+                // header, no per-process work.
+                if (tab->LastForegroundPid() == pid) continue;
+                name = PidToBasename(pid);
+            } else {
+                // No Windows pid: a WSL bridge session. Its foreground
+                // process lives inside the distro, where no Windows-side
+                // lookup can see, so the helper resolves the name there
+                // and reports it through the bridge.
+                auto utf8 = tc->Surface().ForegroundProcessName();
+                if (utf8.empty()) continue;
+                name = winrt::hstring{ interop::Encoding::toUtf16(utf8.c_str()) };
+                if (tab->LastForegroundName() == name) continue;
+            }
             if (name.empty()) continue;
             tab->SetForegroundCache(pid, name);
             DEBUG_TRACE(L"Title: poll applied \"%s\" (pid %u)\n", name.c_str(), pid);
