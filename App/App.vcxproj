@@ -208,10 +208,14 @@
     <ClInclude Include="Terminal\Overlays\SearchOverlay.xaml.h">
       <DependentUpon>Terminal\Overlays\SearchOverlay.xaml</DependentUpon>
     </ClInclude>
+    <ClInclude Include="Windows\CommandPalette.xaml.h">
+      <DependentUpon>Windows\CommandPalette.xaml</DependentUpon>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ApplicationDefinition Include="App.xaml" />
     <Page Include="Windows\MainWindow.xaml" />
+    <Page Include="Windows\CommandPalette.xaml" />
     <Page Include="Terminal\TerminalControl.xaml" />
     <Page Include="Terminal\Overlays\PaneStatusOverlay.xaml" />
     <Page Include="Terminal\Overlays\ScrollbackOverlay.xaml" />
@@ -248,6 +252,9 @@
     <ClCompile Include="Terminal\Overlays\SearchOverlay.xaml.cpp">
       <DependentUpon>Terminal\Overlays\SearchOverlay.xaml</DependentUpon>
     </ClCompile>
+    <ClCompile Include="Windows\CommandPalette.xaml.cpp">
+      <DependentUpon>Windows\CommandPalette.xaml</DependentUpon>
+    </ClCompile>
     <ClCompile Include="$(GeneratedFilesDir)module.g.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -276,6 +283,10 @@
     <Midl Include="Terminal\Overlays\SearchOverlay.idl">
       <SubType>Code</SubType>
       <DependentUpon>Terminal\Overlays\SearchOverlay.xaml</DependentUpon>
+    </Midl>
+    <Midl Include="Windows\CommandPalette.idl">
+      <SubType>Code</SubType>
+      <DependentUpon>Windows\CommandPalette.xaml</DependentUpon>
     </Midl>
   </ItemGroup>
   <ItemGroup>

@@ -129,5 +129,10 @@
              rest are Collapsed but stay parented so their swap chains
              keep their DComp surface binding across tab switches. -->
         <Grid x:Name="AppContent" Grid.Row="1" />
+
+        <!-- Window-level command palette (#205): one per window,
+             overlaid on the content area; entries execute against
+             the active pane. Collapsed except while open. -->
+        <local:CommandPalette x:Name="PaletteOverlay" Grid.Row="1" />
     </Grid>
 </Window>

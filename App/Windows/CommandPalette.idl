@@ -1,0 +1,8 @@
+namespace GhosttyWin32
+{
+    [default_interface]
+    runtimeclass CommandPalette : Microsoft.UI.Xaml.Controls.UserControl
+    {
+        CommandPalette();
+    }
+}

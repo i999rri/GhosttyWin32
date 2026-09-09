@@ -214,6 +214,12 @@ struct IWindow {
     // shows a ContentDialog and applies the result itself.
     virtual void PromptTitleForSurface(ghostty_surface_t surface) = 0;
 
+    // TOGGLE_COMMAND_PALETTE: show or hide the window's command
+    // palette overlay (#205). Window-scoped UI summoned from a
+    // surface-targeted action; executed entries run against the
+    // window's active pane at execution time.
+    virtual void ToggleCommandPaletteForSurface(ghostty_surface_t surface) = 0;
+
     // COMMAND_FINISHED: a shell-integration-tracked command ended.
     // The view owns the whole policy: it reads the notify-on-
     // command-finish config trio (mode / threshold / actions),
