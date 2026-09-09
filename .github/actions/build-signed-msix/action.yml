@@ -79,26 +79,13 @@ runs:
         # with STATUS_ILLEGAL_INSTRUCTION at ghostty_init on any CPU
         # without it. Baseline x86-64 runs everywhere.
         zig build -Doptimize=ReleaseSafe -Drenderer=directx -Dcpu=baseline
-        # The DLL lands in zig-out/lib/ghostty-internal.dll already;
-        # ghostty.h is read directly from external/ghostty/include/
-        # via the vcxprojs' AdditionalIncludeDirectories. The one
-        # missing piece on shared Windows builds is the DLL's import
-        # library (ghostty-internal.lib equivalent) — Zig writes it
-        # into .zig-cache/o/<hash>/ghostty.lib instead of installing
-        # alongside the DLL, so we surface it next to zig-out/lib/
-        # under the name the vcxprojs reference.
-        $searchPaths = @(".")
-        if ($env:ZIG_LOCAL_CACHE_DIR) { $searchPaths += $env:ZIG_LOCAL_CACHE_DIR }
-        if (Test-Path "$env:LOCALAPPDATA\zig") { $searchPaths += "$env:LOCALAPPDATA\zig" }
-        $lib = Get-ChildItem -Path $searchPaths -Recurse -Filter "ghostty.lib" -ErrorAction SilentlyContinue |
-               Where-Object { $_.Length -lt 100KB -and $_.Length -gt 10KB } |
-               Sort-Object LastWriteTime -Descending |
-               Select-Object -First 1
-        if ($lib) {
-          Copy-Item $lib.FullName zig-out/lib/ghostty-internal.lib
-          Write-Host "Found import lib: $($lib.FullName) ($($lib.Length) bytes)"
-        } else {
-          Write-Error "ghostty.lib import library not found"
+        # zig build installs everything the vcxprojs reference:
+        # zig-out/lib/ghostty-internal.dll plus its import library
+        # ghostty-internal.lib (installImplib in the submodule's
+        # build.zig), and ghostty.h is read directly from
+        # external/ghostty/include/ via AdditionalIncludeDirectories.
+        if (-not (Test-Path "zig-out/lib/ghostty-internal.lib")) {
+          Write-Error "ghostty-internal.lib not installed by zig build"
           exit 1
         }
 
