@@ -1282,14 +1282,10 @@ namespace winrt::GhosttyWin32::implementation
             std::unique_ptr<Tab> result;
         };
         CreateCtx ctx{ &item, m_tabFactory.get(), std::move(onActivated), initial.width, initial.height, std::move(command), nullptr };
-        const auto makeStart = std::chrono::steady_clock::now();
         int ok = RunSEHGuarded([](void* arg) noexcept {
             auto* c = static_cast<CreateCtx*>(arg);
             c->result = c->factory->Make(*c->item, std::move(c->onActivated), c->initialWidth, c->initialHeight, std::move(c->command));
         }, &ctx);
-        DEBUG_TRACE(L"TabCreate: Make took %lld ms\n",
-                    static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(
-                        std::chrono::steady_clock::now() - makeStart).count()));
 
         std::unique_ptr<Tab> tab = std::move(ctx.result);
         if (!ok) {
