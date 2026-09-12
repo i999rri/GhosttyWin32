@@ -547,14 +547,31 @@ namespace winrt::GhosttyWin32::implementation
 
                 muxc::MenuFlyout flyout{};
 
+                // Creating a tab is synchronous UI-thread work (XAML
+                // control, libghostty surface, thread spawns). Run it
+                // after the flyout has dismissed, at low priority so the
+                // dismissal renders first, instead of inside the click.
+                auto weak = get_weak();
+                auto deferred = [weak](std::string command) {
+                    return [weak, command = std::move(command)](auto&&, auto&&) {
+                        auto self = weak.get();
+                        if (!self) return;
+                        self->DispatcherQueue().TryEnqueue(
+                            winrt::Microsoft::UI::Dispatching::DispatcherQueuePriority::Low,
+                            [weak, command]() {
+                                if (auto self = weak.get()) self->CreateTabWithCommand(command);
+                            });
+                    };
+                };
+
                 muxc::MenuFlyoutItem newTab{};
                 newTab.Text(L"New Tab");
-                newTab.Click([this](auto&&, auto&&) { CreateTab(); });
+                newTab.Click(deferred({}));
                 flyout.Items().Append(newTab);
 
                 muxc::MenuFlyoutItem newWslTab{};
                 newWslTab.Text(L"New WSL Tab");
-                newWslTab.Click([this](auto&&, auto&&) { CreateTabWithCommand("wsl"); });
+                newWslTab.Click(deferred("wsl"));
                 flyout.Items().Append(newWslTab);
 
                 flyout.ShowAt(m_addTabButton);
@@ -1265,10 +1282,14 @@ namespace winrt::GhosttyWin32::implementation
             std::unique_ptr<Tab> result;
         };
         CreateCtx ctx{ &item, m_tabFactory.get(), std::move(onActivated), initial.width, initial.height, std::move(command), nullptr };
+        const auto makeStart = std::chrono::steady_clock::now();
         int ok = RunSEHGuarded([](void* arg) noexcept {
             auto* c = static_cast<CreateCtx*>(arg);
             c->result = c->factory->Make(*c->item, std::move(c->onActivated), c->initialWidth, c->initialHeight, std::move(c->command));
         }, &ctx);
+        DEBUG_TRACE(L"TabCreate: Make took %lld ms\n",
+                    static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::steady_clock::now() - makeStart).count()));
 
         std::unique_ptr<Tab> tab = std::move(ctx.result);
         if (!ok) {
