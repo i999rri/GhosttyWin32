@@ -534,7 +534,47 @@ namespace winrt::GhosttyWin32::implementation
             });
 
             tv.AddTabButtonClick([this](muxc::TabView const&, auto&&) {
-                CreateTab();
+                // The "+" opens a small menu so a WSL bridge tab can be
+                // started alongside plain shell tabs; keyboard new_tab
+                // stays a direct, menu-less new tab. If the AddButton
+                // hasn't been located yet (the TabView template realises
+                // only after Loaded) there's no anchor for the menu, so
+                // fall back to a plain new tab.
+                if (!m_addTabButton) {
+                    CreateTab();
+                    return;
+                }
+
+                muxc::MenuFlyout flyout{};
+
+                // Creating a tab is synchronous UI-thread work (XAML
+                // control, libghostty surface, thread spawns). Run it
+                // after the flyout has dismissed, at low priority so the
+                // dismissal renders first, instead of inside the click.
+                auto weak = get_weak();
+                auto deferred = [weak](std::string command) {
+                    return [weak, command = std::move(command)](auto&&, auto&&) {
+                        auto self = weak.get();
+                        if (!self) return;
+                        self->DispatcherQueue().TryEnqueue(
+                            winrt::Microsoft::UI::Dispatching::DispatcherQueuePriority::Low,
+                            [weak, command]() {
+                                if (auto self = weak.get()) self->CreateTabWithCommand(command);
+                            });
+                    };
+                };
+
+                muxc::MenuFlyoutItem newTab{};
+                newTab.Text(L"New Tab");
+                newTab.Click(deferred({}));
+                flyout.Items().Append(newTab);
+
+                muxc::MenuFlyoutItem newWslTab{};
+                newWslTab.Text(L"New WSL Tab");
+                newWslTab.Click(deferred("wsl"));
+                flyout.Items().Append(newWslTab);
+
+                flyout.ShowAt(m_addTabButton);
             });
 
             // TabView's built-in AddTabButton (the "+") is focusable by
@@ -548,12 +588,12 @@ namespace winrt::GhosttyWin32::implementation
             //
             // The template only materialises after Loaded, so we hook
             // TabView.Loaded and walk its visual tree once.
-            tv.Loaded([](winrt::Windows::Foundation::IInspectable const& sender, auto&&) {
+            tv.Loaded([weak = get_weak()](winrt::Windows::Foundation::IInspectable const& sender, auto&&) {
                 auto tv = sender.try_as<muxc::TabView>();
                 if (!tv) return;
                 namespace mux = winrt::Microsoft::UI::Xaml;
                 std::function<bool(mux::DependencyObject const&)> walk =
-                    [&walk](mux::DependencyObject const& parent) -> bool {
+                    [&walk, &weak](mux::DependencyObject const& parent) -> bool {
                         int count = mux::Media::VisualTreeHelper::GetChildrenCount(parent);
                         for (int i = 0; i < count; ++i) {
                             auto child = mux::Media::VisualTreeHelper::GetChild(parent, i);
@@ -562,6 +602,9 @@ namespace winrt::GhosttyWin32::implementation
                                     if (auto button = child.try_as<muxc::Button>()) {
                                         button.IsTabStop(false);
                                         button.AllowFocusOnInteraction(false);
+                                        // Anchor the "+" menu (see
+                                        // AddTabButtonClick) to this button.
+                                        if (auto self = weak.get()) self->m_addTabButton = button;
                                     }
                                     return true;
                                 }
@@ -1095,6 +1138,11 @@ namespace winrt::GhosttyWin32::implementation
 
     void MainWindow::CreateTab()
     {
+        CreateTabWithCommand({});
+    }
+
+    void MainWindow::CreateTabWithCommand(std::string command)
+    {
         if (!m_hwnd) return;
 
         // Redirect new-tab requests to a new window when the chrome is
@@ -1230,13 +1278,18 @@ namespace winrt::GhosttyWin32::implementation
             std::function<void()> onActivated;
             uint32_t initialWidth;
             uint32_t initialHeight;
+            std::string command;
             std::unique_ptr<Tab> result;
         };
-        CreateCtx ctx{ &item, m_tabFactory.get(), std::move(onActivated), initial.width, initial.height, nullptr };
+        CreateCtx ctx{ &item, m_tabFactory.get(), std::move(onActivated), initial.width, initial.height, std::move(command), nullptr };
+        const auto makeStart = std::chrono::steady_clock::now();
         int ok = RunSEHGuarded([](void* arg) noexcept {
             auto* c = static_cast<CreateCtx*>(arg);
-            c->result = c->factory->Make(*c->item, std::move(c->onActivated), c->initialWidth, c->initialHeight);
+            c->result = c->factory->Make(*c->item, std::move(c->onActivated), c->initialWidth, c->initialHeight, std::move(c->command));
         }, &ctx);
+        DEBUG_TRACE(L"TabCreate: Make took %lld ms\n",
+                    static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::steady_clock::now() - makeStart).count()));
 
         std::unique_ptr<Tab> tab = std::move(ctx.result);
         if (!ok) {
@@ -1598,12 +1651,23 @@ namespace winrt::GhosttyWin32::implementation
             if (tab->TitleSource().Outranks(core::host::TitleSource::Automatic())) continue;
             auto* tc = tab->ActiveControl();
             if (!tc) continue;
+            winrt::hstring name;
             uint32_t pid = tc->Surface().ForegroundPid();
-            if (!pid) continue;
-            // Same PID as last tick: keep whatever's already on the
-            // header, no per-process work.
-            if (tab->LastForegroundPid() == pid) continue;
-            auto name = PidToBasename(pid);
+            if (pid) {
+                // Same PID as last tick: keep whatever's already on the
+                // header, no per-process work.
+                if (tab->LastForegroundPid() == pid) continue;
+                name = PidToBasename(pid);
+            } else {
+                // No Windows pid: a WSL bridge session. Its foreground
+                // process lives inside the distro, where no Windows-side
+                // lookup can see, so the helper resolves the name there
+                // and reports it through the bridge.
+                auto utf8 = tc->Surface().ForegroundProcessName();
+                if (utf8.empty()) continue;
+                name = winrt::hstring{ interop::Encoding::toUtf16(utf8.c_str()) };
+                if (tab->LastForegroundName() == name) continue;
+            }
             if (name.empty()) continue;
             tab->SetForegroundCache(pid, name);
             DEBUG_TRACE(L"Title: poll applied \"%s\" (pid %u)\n", name.c_str(), pid);
