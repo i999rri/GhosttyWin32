@@ -42,6 +42,14 @@
         </Grid.RowDefinitions>
 
         <Grid x:Name="AppTitleBar" Grid.Row="0">
+            <!-- Styles and brushes for the title bar's own buttons. Merged
+                 here rather than app-wide: the dictionary shadows the
+                 default Button template's hover / pressed fills for every
+                 Button in scope, and only these buttons want the flat
+                 look. TabView's internal buttons use their own keys. -->
+            <Grid.Resources>
+                <ResourceDictionary Source="ms-appx:///Styles/TitleBarButtons.xaml" />
+            </Grid.Resources>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
@@ -92,68 +100,30 @@
                 </TabView.TabStripFooter>
             </TabView>
 
+            <!-- Caption buttons (Styles/TitleBarButtons.xaml). Glyphs are
+                 Segoe icon code points as Content; the style sets the
+                 icon font. -->
             <StackPanel x:Name="CaptionButtons" Grid.Column="1"
                         Orientation="Horizontal"
                         VerticalAlignment="Top">
-            <!-- Local Button.Resources overrides let the default
-                 ControlTemplate paint flat caption-style backgrounds
-                 without us retemplating the whole control.
-                 SubtleFillColorSecondary/Tertiary follow OS light/dark. -->
-            <Button x:Name="MinimizeButton" Width="46" Height="40"
-                    Padding="0" BorderThickness="0" CornerRadius="0"
-                    IsTabStop="False" AllowFocusOnInteraction="False"
-                    Click="OnMinimizeClick">
-                <Button.Resources>
-                    <SolidColorBrush x:Key="ButtonBackground" Color="Transparent" />
-                    <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="{ThemeResource SubtleFillColorSecondary}" />
-                    <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="{ThemeResource SubtleFillColorTertiary}" />
-                    <SolidColorBrush x:Key="ButtonBackgroundDisabled" Color="Transparent" />
-                    <SolidColorBrush x:Key="ButtonBorderBrush" Color="Transparent" />
-                    <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="Transparent" />
-                    <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="Transparent" />
-                </Button.Resources>
-                <FontIcon FontFamily="Segoe Fluent Icons,Segoe MDL2 Assets"
-                          Glyph="&#xE921;" FontSize="10" />
-            </Button>
-            <Button x:Name="MaximizeButton" Width="46" Height="40"
-                    Padding="0" BorderThickness="0" CornerRadius="0"
-                    IsTabStop="False" AllowFocusOnInteraction="False"
-                    Click="OnMaximizeClick">
-                <Button.Resources>
-                    <SolidColorBrush x:Key="ButtonBackground" Color="Transparent" />
-                    <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="{ThemeResource SubtleFillColorSecondary}" />
-                    <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="{ThemeResource SubtleFillColorTertiary}" />
-                    <SolidColorBrush x:Key="ButtonBackgroundDisabled" Color="Transparent" />
-                    <SolidColorBrush x:Key="ButtonBorderBrush" Color="Transparent" />
-                    <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="Transparent" />
-                    <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="Transparent" />
-                </Button.Resources>
-                <FontIcon x:Name="MaximizeGlyph"
-                          FontFamily="Segoe Fluent Icons,Segoe MDL2 Assets"
-                          Glyph="&#xE922;" FontSize="10" />
-            </Button>
-            <!-- Close button uses Windows' canonical red hover (#E81123)
-                 with white foreground; the rest of the theme tokens stay
-                 transparent. -->
-            <Button x:Name="CloseButton" Width="46" Height="40"
-                    Padding="0" BorderThickness="0" CornerRadius="0"
-                    IsTabStop="False" AllowFocusOnInteraction="False"
-                    Click="OnCloseClick">
-                <Button.Resources>
-                    <SolidColorBrush x:Key="ButtonBackground" Color="Transparent" />
-                    <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#E81123" />
-                    <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#F1707A" />
-                    <SolidColorBrush x:Key="ButtonBackgroundDisabled" Color="Transparent" />
-                    <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="White" />
-                    <SolidColorBrush x:Key="ButtonForegroundPressed" Color="White" />
-                    <SolidColorBrush x:Key="ButtonBorderBrush" Color="Transparent" />
-                    <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="Transparent" />
-                    <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="Transparent" />
-                </Button.Resources>
-                <FontIcon FontFamily="Segoe Fluent Icons,Segoe MDL2 Assets"
-                          Glyph="&#xE8BB;" FontSize="10" />
-            </Button>
-        </StackPanel>
+                <Button x:Name="MinimizeButton" Style="{StaticResource CaptionButtonStyle}"
+                        Content="&#xE921;" Click="OnMinimizeClick" />
+                <!-- Content swaps between Maximize (E922) and Restore
+                     (E923) in UpdateMaximizeGlyph. -->
+                <Button x:Name="MaximizeButton" Style="{StaticResource CaptionButtonStyle}"
+                        Content="&#xE922;" Click="OnMaximizeClick" />
+                <!-- Close takes Windows' red hover: the dictionary's
+                     CaptionClose* brushes aliased onto the template's keys. -->
+                <Button x:Name="CloseButton" Style="{StaticResource CaptionButtonStyle}"
+                        Content="&#xE8BB;" Click="OnCloseClick">
+                    <Button.Resources>
+                        <StaticResource x:Key="ButtonBackgroundPointerOver" ResourceKey="CaptionCloseBackgroundPointerOver" />
+                        <StaticResource x:Key="ButtonBackgroundPressed" ResourceKey="CaptionCloseBackgroundPressed" />
+                        <StaticResource x:Key="ButtonForegroundPointerOver" ResourceKey="CaptionCloseForeground" />
+                        <StaticResource x:Key="ButtonForegroundPressed" ResourceKey="CaptionCloseForeground" />
+                    </Button.Resources>
+                </Button>
+            </StackPanel>
         </Grid>
 
         <!-- AppContent: every Tab's SplitPanel is appended here as a

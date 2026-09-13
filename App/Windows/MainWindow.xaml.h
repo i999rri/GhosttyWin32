@@ -254,7 +254,7 @@ namespace winrt::GhosttyWin32::implementation
         // input/IME paths only care about the focused TerminalControl,
         // not the surrounding Tab — this skips the double deref.
         TerminalControl* ActiveControl();
-        // Swaps MaximizeGlyph between Maximize (E922) and Restore (E923)
+        // Swaps the maximize button's glyph between Maximize (E922) and Restore (E923)
         // depending on the current OverlappedPresenter state.
         void UpdateMaximizeGlyph();
 

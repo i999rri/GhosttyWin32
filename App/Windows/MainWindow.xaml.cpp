@@ -2793,7 +2793,7 @@ namespace winrt::GhosttyWin32::implementation
         // E922 = ChromeMaximize (□), E923 = ChromeRestore (❐).
         wchar_t const* glyph = IsZoomed(m_hwnd) ? L"\xE923" : L"\xE922";
         try {
-            MaximizeGlyph().Glyph(glyph);
+            MaximizeButton().Content(winrt::box_value(winrt::hstring{ glyph }));
         } catch (winrt::hresult_error const&) {
             // XAML may not have finished loading the named element yet;
             // the next Changed/SizeChanged tick will retry.
