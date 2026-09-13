@@ -224,7 +224,6 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
         case GHOSTTY_ACTION_SHOW_GTK_INSPECTOR:
         case GHOSTTY_ACTION_TOGGLE_TAB_OVERVIEW:
         case GHOSTTY_ACTION_TOGGLE_QUICK_TERMINAL:
-        case GHOSTTY_ACTION_TOGGLE_COMMAND_PALETTE:
         // macOS-only quit countdown — Windows already quits on
         // last-HWND-gone via CLOSE_WINDOW:
         case GHOSTTY_ACTION_QUIT_TIMER:
@@ -236,6 +235,13 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
             if (target.tag == GHOSTTY_TARGET_SURFACE)
                 return m_actions.OnScrollbar(target.target.surface,
                                              action.action.scrollbar);
+            return true;
+
+        // TOGGLE_COMMAND_PALETTE: window-scoped UI summoned from a
+        // surface action (#205) — same shape as PROMPT_TITLE.
+        case GHOSTTY_ACTION_TOGGLE_COMMAND_PALETTE:
+            if (target.tag == GHOSTTY_TARGET_SURFACE)
+                return m_actions.OnToggleCommandPalette(target.target.surface);
             return true;
 
         // ----- search bar (surface-targeted) -----

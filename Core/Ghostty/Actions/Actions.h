@@ -140,6 +140,10 @@ public:
     bool OnPwd(ghostty_surface_t surface, const char* utf8Pwd);
     // PROMPT_TITLE: SURFACE/TAB variants collapse (one title per tab).
     bool OnPromptTitle(ghostty_surface_t surface);
+
+    // TOGGLE_COMMAND_PALETTE: the window that owns `surface` shows
+    // or hides its palette overlay (#205).
+    bool OnToggleCommandPalette(ghostty_surface_t surface);
     // READONLY: indicator only — the write blocking is in core.
     bool OnReadonly(ghostty_surface_t surface,
                     ghostty_action_readonly_e readonly);

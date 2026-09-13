@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="GhosttyWin32.CommandPalette"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    IsTabStop="False"
+    Visibility="Collapsed"
+    HorizontalAlignment="Stretch"
+    VerticalAlignment="Stretch">
+    <!--
+      Command palette (TOGGLE_COMMAND_PALETTE, #205): window-level
+      overlay, one per window — the palette's vocabulary is the whole
+      window's, and executed entries run against the active pane
+      (matching upstream: GTK's window-owned dialog, macOS's
+      controller-owned overlay). Filtering is core::host::FuzzyMatch;
+      execution leaves through a callback the window wires to the
+      active surface's binding-action route. The scrim closes on a
+      click-away, like every launcher.
+    -->
+    <Grid>
+        <Border x:Name="Scrim" Background="Transparent" />
+        <Border x:Name="Panel"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Top"
+                Margin="0,48,0,0"
+                Width="560"
+                CornerRadius="8"
+                BorderThickness="1"
+                BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}"
+                Background="{ThemeResource SolidBackgroundFillColorSecondaryBrush}"
+                Padding="8">
+            <StackPanel Spacing="8">
+                <TextBox x:Name="Input"
+                         PlaceholderText="Type a command"
+                         IsSpellCheckEnabled="False"
+                         IsTextPredictionEnabled="False" />
+                <ListView x:Name="Results"
+                          MaxHeight="360"
+                          SelectionMode="Single"
+                          IsItemClickEnabled="True">
+                    <!-- Empty: the default add/remove transitions replay a staggered fade on every keystroke's refilter. -->
+                    <ListView.ItemContainerTransitions>
+                        <TransitionCollection />
+                    </ListView.ItemContainerTransitions>
+                </ListView>
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>
