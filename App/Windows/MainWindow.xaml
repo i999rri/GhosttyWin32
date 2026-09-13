@@ -28,11 +28,13 @@
            Col 1  CaptionButtons (Auto ≈ 138px) — anchored right in the
                   outer Grid so they don't shift when the TabStripFooter
                   width changes; drawn on top of the strip via Z-order.
-         The TabStripFooter still hosts a DragRegion border (MinWidth=200
-         leaves ~62px of empty draggable area to the left of the caption
-         buttons). The window's title-bar drag region is the whole
-         AppTitleBar via SetTitleBar — DragRegion's only job is to give
-         the OS a visible-but-transparent surface inside the strip. -->
+         The TabStripFooter hosts the new-tab menu button (the template
+         places the footer right after the built-in "+", so it sits
+         beside it like Windows Terminal's dropdown) followed by a
+         DragRegion border (MinWidth=200 leaves ~62px of empty draggable
+         area to the left of the caption buttons). The drag rect handed
+         to the OS is DragRegion's bounds only (SetDragRectangles), so
+         the button takes clicks like the caption buttons do. -->
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -52,10 +54,41 @@
                      VerticalAlignment="Top"
                      HorizontalAlignment="Stretch">
                 <TabView.TabStripFooter>
-                    <Border x:Name="DragRegion"
-                            Background="Transparent"
-                            HorizontalAlignment="Stretch"
-                            MinWidth="200" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <!-- Opens the menu of tab kinds below itself. The
+                             "+" next to it duplicates the active tab's kind
+                             instead. Focus is kept off it for the same
+                             reason as the caption buttons and the "+".
+                             Style and geometry are copied from the
+                             template's AddButton once it exists (see
+                             MatchNewTabMenuButtonTo) so the two read as
+                             siblings; the values here only cover the
+                             frames before that. -->
+                        <Button x:Name="NewTabMenuButton" Grid.Column="0"
+                                Width="32" Height="24" Padding="0"
+                                BorderThickness="0" CornerRadius="4"
+                                Background="Transparent"
+                                VerticalAlignment="Bottom"
+                                IsTabStop="False" AllowFocusOnInteraction="False"
+                                ToolTipService.ToolTip="New tab...">
+                            <FontIcon FontFamily="Segoe Fluent Icons,Segoe MDL2 Assets"
+                                      Glyph="&#xE70D;" FontSize="12" />
+                            <Button.Flyout>
+                                <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                                    <MenuFlyoutItem Text="New Tab" Click="OnNewTabMenuDefaultClick" />
+                                    <MenuFlyoutItem Text="New WSL Tab" Click="OnNewTabMenuWslClick" />
+                                </MenuFlyout>
+                            </Button.Flyout>
+                        </Button>
+                        <Border x:Name="DragRegion" Grid.Column="1"
+                                Background="Transparent"
+                                HorizontalAlignment="Stretch"
+                                MinWidth="200" />
+                    </Grid>
                 </TabView.TabStripFooter>
             </TabView>
 

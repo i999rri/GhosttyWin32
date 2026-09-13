@@ -534,47 +534,10 @@ namespace winrt::GhosttyWin32::implementation
             });
 
             tv.AddTabButtonClick([this](muxc::TabView const&, auto&&) {
-                // The "+" opens a small menu so a WSL bridge tab can be
-                // started alongside plain shell tabs; keyboard new_tab
-                // stays a direct, menu-less new tab. If the AddButton
-                // hasn't been located yet (the TabView template realises
-                // only after Loaded) there's no anchor for the menu, so
-                // fall back to a plain new tab.
-                if (!m_addTabButton) {
-                    CreateTab();
-                    return;
-                }
-
-                muxc::MenuFlyout flyout{};
-
-                // Creating a tab is synchronous UI-thread work (XAML
-                // control, libghostty surface, thread spawns). Run it
-                // after the flyout has dismissed, at low priority so the
-                // dismissal renders first, instead of inside the click.
-                auto weak = get_weak();
-                auto deferred = [weak](std::string command) {
-                    return [weak, command = std::move(command)](auto&&, auto&&) {
-                        auto self = weak.get();
-                        if (!self) return;
-                        self->DispatcherQueue().TryEnqueue(
-                            winrt::Microsoft::UI::Dispatching::DispatcherQueuePriority::Low,
-                            [weak, command]() {
-                                if (auto self = weak.get()) self->CreateTabWithCommand(command);
-                            });
-                    };
-                };
-
-                muxc::MenuFlyoutItem newTab{};
-                newTab.Text(L"New Tab");
-                newTab.Click(deferred({}));
-                flyout.Items().Append(newTab);
-
-                muxc::MenuFlyoutItem newWslTab{};
-                newWslTab.Text(L"New WSL Tab");
-                newWslTab.Click(deferred("wsl"));
-                flyout.Items().Append(newWslTab);
-
-                flyout.ShowAt(m_addTabButton);
+                // "+" behaves like keyboard new_tab: another tab of the
+                // active tab's kind. Picking a different kind is the
+                // dropdown's job (see MainWindow.xaml).
+                CreateTab();
             });
 
             // TabView's built-in AddTabButton (the "+") is focusable by
@@ -602,9 +565,7 @@ namespace winrt::GhosttyWin32::implementation
                                     if (auto button = child.try_as<muxc::Button>()) {
                                         button.IsTabStop(false);
                                         button.AllowFocusOnInteraction(false);
-                                        // Anchor the "+" menu (see
-                                        // AddTabButtonClick) to this button.
-                                        if (auto self = weak.get()) self->m_addTabButton = button;
+                                        if (auto self = weak.get()) self->MatchNewTabMenuButtonTo(button);
                                     }
                                     return true;
                                 }
@@ -1142,6 +1103,75 @@ namespace winrt::GhosttyWin32::implementation
         // tab. With no tab yet (startup) this is the configured default.
         auto* active = ActiveTab();
         CreateTabWithCommand(active ? active->Command() : std::string{});
+    }
+
+    void MainWindow::MatchNewTabMenuButtonTo(muxc::Button const& addButton)
+    {
+        // The dropdown sits beside TabView's "+" and should read as its
+        // sibling. The "+" gets its look from the template (Style plus
+        // theme-resource size and strip alignment set on the element),
+        // so copy those rather than restate them: theme, DPI and
+        // WinUI updates then move both buttons together.
+        auto menu = NewTabMenuButton();
+        if (!menu) return;
+        if (auto style = addButton.Style()) menu.Style(style);
+        const double width = addButton.Width();
+        const double height = addButton.Height();
+        menu.Width(std::isnan(width) ? addButton.ActualWidth() : width);
+        menu.Height(std::isnan(height) ? addButton.ActualHeight() : height);
+        menu.Padding(addButton.Padding());
+
+        // Vertical placement is measured, not mirrored: the "+" and the
+        // footer occupy different cells of the strip grid, so the "+"'s
+        // alignment and margin mean something else in the footer. Pin
+        // the dropdown's top edge to wherever the "+" actually lands,
+        // once layout has run and again whenever the "+" resizes (DPI,
+        // theme).
+        menu.VerticalAlignment(winrt::Microsoft::UI::Xaml::VerticalAlignment::Top);
+        auto align = [weak = get_weak(), addButton]() {
+            auto self = weak.get();
+            if (!self) return;
+            auto menu = self->NewTabMenuButton();
+            if (!menu) return;
+            auto parent = menu.Parent().try_as<winrt::Microsoft::UI::Xaml::UIElement>();
+            if (!parent || addButton.ActualHeight() <= 0) return;
+            const auto origin = addButton.TransformToVisual(parent)
+                .TransformPoint(winrt::Windows::Foundation::Point{ 0.0f, 0.0f });
+            auto margin = addButton.Margin();
+            margin.Top = origin.Y;
+            margin.Bottom = 0;
+            menu.Margin(margin);
+        };
+        addButton.SizeChanged([align](auto&&, auto&&) { align(); });
+        DispatcherQueue().TryEnqueue(
+            winrt::Microsoft::UI::Dispatching::DispatcherQueuePriority::Low,
+            [align]() { align(); });
+    }
+
+    void MainWindow::CreateTabAfterFlyout(std::string command)
+    {
+        // Creating a tab is synchronous UI-thread work (XAML control,
+        // libghostty surface, thread spawns). Run it after the flyout
+        // has dismissed, at low priority so the dismissal renders
+        // first, instead of inside the click.
+        auto weak = get_weak();
+        DispatcherQueue().TryEnqueue(
+            winrt::Microsoft::UI::Dispatching::DispatcherQueuePriority::Low,
+            [weak, command = std::move(command)]() {
+                if (auto self = weak.get()) self->CreateTabWithCommand(command);
+            });
+    }
+
+    void MainWindow::OnNewTabMenuDefaultClick(winrt::Windows::Foundation::IInspectable const&,
+                                              winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
+    {
+        CreateTabAfterFlyout({});
+    }
+
+    void MainWindow::OnNewTabMenuWslClick(winrt::Windows::Foundation::IInspectable const&,
+                                          winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
+    {
+        CreateTabAfterFlyout("wsl");
     }
 
     void MainWindow::CreateTabWithCommand(std::string command)
