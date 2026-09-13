@@ -1,8 +1,8 @@
-"""Verification for GhosttyWin32#206: the WSL-side helper.
+"""Verification for GhosttyWin32#206: the bridge's in-distro half.
 
-Drives ghostty-wsl-helper through `wsl.exe` exactly the way BridgePty
-will: framed stdin (data/resize/hangup) and framed stdout (data +
-foreground-name reports). Checks that
+Drives ghostty-wsl-bridge through `wsl.exe` exactly the way the
+Windows-side Pty does: framed stdin (data/resize/hangup) and framed
+stdout (data + foreground-name reports). Checks that
 
 1. the child runs on a real pty with the initial size from --cols/--rows,
 2. data frames reach the child and its output comes back in data frames,
@@ -20,7 +20,7 @@ import subprocess
 import sys
 import time
 
-HELPER = r"external/ghostty/zig-out/bin/ghostty-wsl-helper"
+HELPER = r"external/ghostty/zig-out/bin/ghostty-wsl-bridge"
 
 
 def wsl_path(win_path: str) -> str:
@@ -153,7 +153,7 @@ proc.kill()
 proc.wait()
 time.sleep(1.5)
 left = subprocess.run(
-    ["wsl.exe", "pgrep", "-f", "ghostty-wsl-helper"],
+    ["wsl.exe", "pgrep", "-f", "ghostty-wsl-bridge"],
     capture_output=True, text=True,
 )
 check("no helper lingers after wsl.exe dies", left.stdout.strip() == "",

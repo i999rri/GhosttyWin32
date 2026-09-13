@@ -300,10 +300,11 @@
   </ItemGroup>
   <ItemGroup>
     <!--
-      The WSL bridge helper is a Linux ELF that wsl.exe runs inside the
-      distro; libghostty resolves it next to the host executable.
+      The WSL bridge's in-distro half is a Linux ELF that wsl.exe runs
+      inside the distro; libghostty resolves it next to the host
+      executable.
     -->
-    <None Include="..\external\ghostty\zig-out\bin\ghostty-wsl-helper">
+    <None Include="..\external\ghostty\zig-out\bin\ghostty-wsl-bridge">
       <DeploymentContent>true</DeploymentContent>
     </None>
   </ItemGroup>
