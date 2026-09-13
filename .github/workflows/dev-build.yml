@@ -83,9 +83,12 @@ jobs:
         run: |
           # This step intentionally swallows errors: on the very first run
           # there's no `dev-build` release to delete, so gh exits non-zero.
-          # We use try/catch (with strict preferences set) instead of the
-          # old `$LASTEXITCODE = 0` reset trick which is brittle once
-          # PSNativeCommandUseErrorActionPreference is on globally.
+          # With PSNativeCommandUseErrorActionPreference on, that exit
+          # surfaces as an exception, which the try/catch absorbs — but
+          # $LASTEXITCODE still holds the failing code, and the Actions
+          # pwsh wrapper ends every step with `exit $LASTEXITCODE`. Reset
+          # it too, or the step fails right after printing the catch
+          # message.
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $true
           try {
@@ -94,6 +97,7 @@ jobs:
           } catch {
             Write-Host "No previous dev-build release to delete (first run or already gone)."
           }
+          $global:LASTEXITCODE = 0
 
       - name: Create dev-build release
         shell: pwsh
