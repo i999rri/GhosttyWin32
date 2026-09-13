@@ -7,6 +7,7 @@
 #include <winrt/Microsoft.UI.Xaml.h>
 #include <winrt/Microsoft.UI.Xaml.Controls.h>
 #include <memory>
+#include <string>
 
 namespace winrt::GhosttyWin32::implementation {
 
@@ -40,9 +41,11 @@ namespace winrt::GhosttyWin32::implementation {
 class Tab {
 public:
     Tab(winrt::GhosttyWin32::SplitPanel panel,
-        Microsoft::UI::Xaml::Controls::TabViewItem item)
+        Microsoft::UI::Xaml::Controls::TabViewItem item,
+        std::string command = {})
         : m_panel(std::move(panel))
         , m_item(std::move(item))
+        , m_command(std::move(command))
     {
         if (!m_panel || !m_item) {
             throw winrt::hresult_error(E_INVALIDARG, L"Tab: missing resource");
@@ -89,6 +92,11 @@ public:
     }
 
     Microsoft::UI::Xaml::Controls::TabViewItem const& Item() const noexcept { return m_item; }
+
+    // The shell command this tab was created with (empty = the
+    // configured default). A tab opened from this one inherits it, so
+    // a WSL tab begets WSL tabs.
+    std::string const& Command() const noexcept { return m_command; }
 
     // Who last named this tab. Every header write site asks this
     // before touching Item().Header() — see Host/TitleSource.h for
@@ -193,6 +201,8 @@ private:
     // Detach plumbing.
     winrt::GhosttyWin32::SplitPanel m_panel{ nullptr };
     Microsoft::UI::Xaml::Controls::TabViewItem m_item{ nullptr };
+    // See Command().
+    std::string m_command;
     // Borrowed pointer into the SplitPanel's tree — never owning.
     // Reset to nullptr or another pane on tree mutations before any
     // pane is destroyed.

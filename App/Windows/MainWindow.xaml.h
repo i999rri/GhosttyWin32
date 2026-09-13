@@ -42,6 +42,14 @@ namespace winrt::GhosttyWin32::implementation
         void OnCloseClick(winrt::Windows::Foundation::IInspectable const&,
                           winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
 
+        // New-tab menu (the dropdown beside the "+"), referenced from
+        // MainWindow.xaml: the configured default shell, or a WSL
+        // bridge session.
+        void OnNewTabMenuDefaultClick(winrt::Windows::Foundation::IInspectable const&,
+                                      winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+        void OnNewTabMenuWslClick(winrt::Windows::Foundation::IInspectable const&,
+                                  winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+
         // Called by every TerminalControl when it receives keyboard
         // focus (wired by TabFactory). Routes the event to the owning
         // Tab so its active-pane state — and with it the per-tab
@@ -101,6 +109,17 @@ namespace winrt::GhosttyWin32::implementation
         // tree / TabView live on this class so the body stays here;
         // dispatcher reaches them through the interface.
         void CreateTab() override;
+        // New tab whose shell is `command` (empty = configured default).
+        // CreateTab derives the command from the active tab; the
+        // new-tab menu passes an explicit one.
+        void CreateTabWithCommand(std::string command);
+        // CreateTabWithCommand, run after the invoking flyout has
+        // dismissed rather than inside its click.
+        void CreateTabAfterFlyout(std::string command);
+        // Give the new-tab menu button the "+"'s style and geometry so
+        // the pair lines up; called once TabView's template has
+        // realised its AddButton.
+        void MatchNewTabMenuButtonTo(winrt::Microsoft::UI::Xaml::Controls::Button const& addButton);
         void CloseTabBySurface(ghostty_surface_t surface) override;
         // Gate-approved close of a whole tab (tab X, close_tab
         // keybind). Parks it for undo when allowed, otherwise tears
