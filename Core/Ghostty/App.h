@@ -39,7 +39,10 @@ public:
         HANDLE hThread = CreateThread(nullptr, 4 * 1024 * 1024,
             [](LPVOID param) -> DWORD {
                 auto* c = static_cast<Ctx*>(param);
-                ghostty_init(0, nullptr);
+                // A failed init leaves libghostty's global state unset;
+                // every later call would dereference it. Stop here and
+                // let Create report the failure through a null App.
+                if (ghostty_init(0, nullptr) != 0) return 0;
                 c->config = ghostty_config_new();
                 if (c->config) {
                     ghostty_config_load_default_files(c->config);
