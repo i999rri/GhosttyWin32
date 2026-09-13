@@ -322,7 +322,7 @@ git push origin dev
 
 挙動:
 1. 自動的に `windows-port` の最新 ghostty.dll をビルド
-2. MSIX manifest version は `0.3.0.<run_number>` (例: `0.3.0.42`)
+2. MSIX manifest version は「最新の正式 release の patch + 1」`.<run_number>` (例: 最新が `v0.8.1` なら `0.8.2.42`)。`gh release view` で正式 release を取るので手動 bump は不要。正式版 `0.8.1.65535` より上、次の rc `0.8.2.65001` / 正式版 `0.8.2.65535` より下に並び、どれも上書きインストールで行ける
 3. 自動承認、即ビルド
 4. **`dev-build` という固定タグの Release を上書き作成**（前回の dev-build は削除される）
 5. URL は固定: `https://github.com/i999rri/GhosttyWin32/releases/tag/dev-build`

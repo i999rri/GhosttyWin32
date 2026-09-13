@@ -32,16 +32,45 @@ jobs:
       - name: Compute dev version
         id: version
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $true
-          # MSIX manifest Version is X.Y.Z.W (each part is UInt16, max 65535).
-          # We use 0.3.0.<run_number> so each CI build is monotonically
-          # increasing within a base version. Bump $base manually before
-          # cutting a real v0.3.0 production tag so dev-builds for the next
-          # cycle (0.4.x) don't collide.
-          $base = "0.3.0"
-          $runNumber = "${{ github.run_number }}"
+          # MSIX manifest Version is X.Y.Z.W (each part UInt16, max 65535),
+          # and an installed package only upgrades in place to a higher
+          # one. A lower version is refused and forces an uninstall, which
+          # drops taskbar pins and Start entries. Dev builds therefore sort
+          # above the latest production release and below the next one:
+          #
+          #   v0.8.1 (latest release) -> 0.8.1.65535
+          #   dev build               -> 0.8.2.<run_number>
+          #   v0.8.2-rcN              -> 0.8.2.65000+N   (release.yml)
+          #   v0.8.2                  -> 0.8.2.65535
+          #
+          # The base comes from the latest release rather than a constant
+          # bumped by hand: the constant had stayed at 0.3.0 while
+          # releases moved on, so no dev build could upgrade a release.
+          # `gh release view` without a tag resolves GitHub's "latest",
+          # which excludes pre-releases (rc tags, the dev-build release).
+          $latest = $null
+          try {
+            $latest = gh release view --json tagName -q .tagName 2>$null
+          } catch {
+            Write-Host "No production release yet; starting from v0.0.0."
+          }
+          $global:LASTEXITCODE = 0
+          if (-not $latest) { $latest = 'v0.0.0' }
+          if ($latest -notmatch '^v(\d+)\.(\d+)\.(\d+)$') {
+            Write-Error "Latest release tag '$latest' is not v<major>.<minor>.<patch>."
+            exit 1
+          }
+          $base = "$($Matches[1]).$($Matches[2]).$([int]$Matches[3] + 1)"
+          $runNumber = [int]"${{ github.run_number }}"
+          if ($runNumber -ge 65000) {
+            Write-Error "Run number $runNumber has reached the rc range (65000+); the Revision encoding here and in release.yml needs a new split."
+            exit 1
+          }
           $msixVersion = "$base.$runNumber"
           $shortSha = "${{ github.sha }}".Substring(0, 7)
           $today = (Get-Date).ToString("yyyy-MM-dd")
