@@ -35,7 +35,7 @@ inputs:
   zig-version:
     description: 'Zig toolchain version to install via mlugg/setup-zig.'
     required: false
-    default: '0.15.2'
+    default: '0.16.0'
 
 outputs:
   msix-path:
