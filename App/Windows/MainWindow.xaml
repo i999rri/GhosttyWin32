@@ -69,22 +69,17 @@
                         </Grid.ColumnDefinitions>
                         <!-- Opens the menu of tab kinds below itself. The
                              "+" next to it duplicates the active tab's kind
-                             instead. Focus is kept off it for the same
-                             reason as the caption buttons and the "+".
-                             Style and geometry are copied from the
-                             template's AddButton once it exists (see
-                             MatchNewTabMenuButtonTo) so the two read as
-                             siblings; the values here only cover the
-                             frames before that. -->
+                             instead. Its style (Styles/TitleBarButtons.xaml)
+                             restates the "+"'s from the same theme
+                             resources so the two read as siblings; the
+                             vertical placement is measured against the "+"
+                             at runtime (AlignNewTabMenuButtonTo) because
+                             the two sit in different cells of the strip
+                             grid. -->
                         <Button x:Name="NewTabMenuButton" Grid.Column="0"
-                                Width="32" Height="24" Padding="0"
-                                BorderThickness="0" CornerRadius="4"
-                                Background="Transparent"
-                                VerticalAlignment="Bottom"
-                                IsTabStop="False" AllowFocusOnInteraction="False"
+                                Style="{StaticResource NewTabMenuButtonStyle}"
+                                Content="&#xE70D;"
                                 ToolTipService.ToolTip="New tab...">
-                            <FontIcon FontFamily="Segoe Fluent Icons,Segoe MDL2 Assets"
-                                      Glyph="&#xE70D;" FontSize="12" />
                             <Button.Flyout>
                                 <MenuFlyout Placement="BottomEdgeAlignedLeft">
                                     <MenuFlyoutItem Text="New Tab" Click="OnNewTabMenuDefaultClick" />

@@ -44,4 +44,23 @@
         <Setter Property="IsTabStop" Value="False" />
         <Setter Property="AllowFocusOnInteraction" Value="False" />
     </Style>
+
+    <!-- The new-tab menu button next to TabView's "+". WinUI's own
+         TabViewButtonStyle lives in generic.xaml, which app markup
+         cannot reference, so this restates its geometry and glyph font
+         from the theme resources it is built on; theme, DPI and WinUI
+         updates still move both buttons together. Its top edge is
+         pinned to the "+" at runtime (AlignNewTabMenuButtonTo). -->
+    <Style x:Key="NewTabMenuButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+        <Setter Property="Width" Value="{ThemeResource TabViewItemAddButtonWidth}" />
+        <Setter Property="Height" Value="{ThemeResource TabViewItemAddButtonHeight}" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="CornerRadius" Value="{ThemeResource ControlCornerRadius}" />
+        <Setter Property="FontFamily" Value="{ThemeResource SymbolThemeFontFamily}" />
+        <Setter Property="FontSize" Value="{ThemeResource TabViewItemAddButtonFontSize}" />
+        <Setter Property="VerticalAlignment" Value="Top" />
+        <Setter Property="IsTabStop" Value="False" />
+        <Setter Property="AllowFocusOnInteraction" Value="False" />
+    </Style>
 </ResourceDictionary>
