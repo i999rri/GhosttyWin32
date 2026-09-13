@@ -275,7 +275,7 @@ git push origin v0.3.0
 
 挙動:
 1. ghostty fork の `windows-port` から `ghostty.dll` をビルド
-2. `Package.appxmanifest` の `Version` をタグから動的書き換え (`v0.3.0` → `0.3.0.0`)
+2. `Package.appxmanifest` の `Version` をタグから動的書き換え (`v0.3.0` → `0.3.0.65535`。Revision 最大値 = その X.Y.Z の最終形)
 3. **`release` Environment が承認待ち** → Actions タブ → "Review pending deployments" で承認
 4. 承認後: PFX を Secrets から復元 → MSIX 署名 → PFX 削除 → Releases にアップロード
 5. 成果物: `Ghostty-0.3.0-x64.msix` + `Ghostty.cer`
@@ -292,7 +292,7 @@ git push origin v0.3.0-rc1
 ```
 
 挙動: Production と同じビルドパスだが、自動承認 + GitHub Releases で **Pre-release マーク** 付き。
-タグ名 / バージョン番号は同じ仕組み (`v0.3.0-rc1` → MSIX manifest は `0.3.0.0`、リリース名は `v0.3.0-rc1`)。
+タグ名 / バージョン番号は同じ仕組み (`v0.3.0-rc1` → MSIX manifest は `0.3.0.65001`、リリース名は `v0.3.0-rc1`)。rc 番号は Revision の `65000 + N` に入る (N は 1〜534) ので、同じ X.Y.Z の中で dev build (`< 65000`) < rc1 < rc2 < 正式版 (`65535`) の順に上書きインストールできる。MSIX は低いバージョンへの上書きを拒否し、その場合アンインストールが必要になってタスクバー固定が消えるので、この順序は崩さないこと。
 
 **MSIX 成果物のファイル名は production と RC で異なる** (assets 一覧で見分けられるように):
 
