@@ -94,7 +94,9 @@ public:
         uint32_t initialHeight = 0,
         std::string command = {})
     {
-        auto branch = MakePane(initialWidth, initialHeight, std::move(onActivated), std::move(command));
+        // The pane gets its own copy; the Tab remembers the command so
+        // tabs opened from it can inherit the kind.
+        auto branch = MakePane(initialWidth, initialHeight, std::move(onActivated), command);
         if (!branch) return nullptr;
 
         // Wrap the pane in a SplitPanel. With one pane the panel
@@ -119,7 +121,7 @@ public:
         splitPanelImpl->SetRoot(std::move(branch));
 
         try {
-            return std::make_unique<Tab>(std::move(splitPanel), std::move(item));
+            return std::make_unique<Tab>(std::move(splitPanel), std::move(item), std::move(command));
         } catch (winrt::hresult_error const&) {
             // Tab construction validation failed. Detach synchronously
             // so the surface/handle don't leak. The splitPanel / tree

@@ -94,9 +94,10 @@ struct IWindow {
     // ----- tab lifecycle / navigation / title -----
     // UI thread only.
 
-    // Create a new tab and select it. Used by both NEW_TAB and
-    // NEW_WINDOW (the single-window build collapses NEW_WINDOW to
-    // NEW_TAB; multi-window #55 will give them distinct entries).
+    // Create a new tab of the active tab's kind (same shell command)
+    // and select it. Used by both NEW_TAB and NEW_WINDOW (the
+    // single-window build collapses NEW_WINDOW to NEW_TAB; multi-window
+    // #55 will give them distinct entries).
     virtual void CreateTab() = 0;
 
     // Close the tab containing `surface`. Mirrors the

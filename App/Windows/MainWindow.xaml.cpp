@@ -1138,7 +1138,10 @@ namespace winrt::GhosttyWin32::implementation
 
     void MainWindow::CreateTab()
     {
-        CreateTabWithCommand({});
+        // Another tab of the active tab's kind: a WSL tab begets a WSL
+        // tab. With no tab yet (startup) this is the configured default.
+        auto* active = ActiveTab();
+        CreateTabWithCommand(active ? active->Command() : std::string{});
     }
 
     void MainWindow::CreateTabWithCommand(std::string command)
