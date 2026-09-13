@@ -56,27 +56,37 @@ public:
     // the completion must go back to exactly that surface, which
     // matters as soon as more than one window exists. `state` is
     // opaque ghostty bookkeeping the impl hands back to
-    // `ghostty_surface_complete_clipboard_request` once the OS
-    // clipboard has been read. Returns true when the host completed
-    // the request (false leaves the request unresolved).
-    virtual bool OnReadClipboard(void* paneIdUserdata, void* state) = 0;
+    // `ghostty_surface_complete_clipboard_request` (or the deny
+    // counterpart) once the OS clipboard has been read. `mimes` lists
+    // the representations ghostty wants; `list` asks for the listing
+    // of available types as well. Returns STARTED when the request
+    // was completed (or will be), UNAVAILABLE when nothing requested
+    // is on the clipboard, UNSUPPORTED when the host cannot serve it.
+    virtual ghostty_clipboard_read_result_e OnReadClipboard(
+        void* paneIdUserdata,
+        void* state,
+        char const* const* mimes,
+        size_t mimesLen,
+        bool list) = 0;
 
     // Confirmation step for a previously-issued read. Ghostty issues
     // this when the read could be unsafe (bracketed paste with
-    // newlines etc.); the impl decides whether to accept and then
-    // completes the request. Same per-surface userdata as
-    // OnReadClipboard.
+    // newlines etc.); `confirm` carries the would-be contents plus
+    // prompt information, borrowed for the duration of the call. The
+    // impl decides whether to accept and then completes or denies the
+    // request. Same per-surface userdata as OnReadClipboard.
     virtual void OnConfirmReadClipboard(void* paneIdUserdata,
-                                        char const* content,
+                                        ghostty_clipboard_confirm_s const* confirm,
                                         void* state) = 0;
 
     // Terminal-initiated clipboard write — typically an OSC 52 from a
-    // tmux / shell helper. The UTF-8 payload is non-null and non-empty
-    // by the time the factory invokes this. Same per-surface userdata
-    // as OnReadClipboard (the write's clipboard owner should be the
-    // window that hosts the emitting surface).
+    // tmux / shell helper. `contents` holds `count` representations
+    // (at least one), each binary-safe with an explicit length. Same
+    // per-surface userdata as OnReadClipboard (the write's clipboard
+    // owner should be the window that hosts the emitting surface).
     virtual void OnWriteClipboard(void* paneIdUserdata,
-                                  char const* utf8) = 0;
+                                  ghostty_clipboard_content_s const* contents,
+                                  size_t count) = 0;
 
     // Shell exited or ghostty otherwise asks the host to close the
     // surface. `paneIdUserdata` is the per-surface userdata the host

@@ -238,14 +238,22 @@ public:
 
     // ---- clipboard callback completion ----
     // Called from the read-clipboard / confirm-read-clipboard runtime
-    // callbacks to hand the clipboard content back to ghostty for
-    // whichever surface requested it.
-    void CompleteClipboardRequest(char const* content, void* state,
-                                  bool confirmed) noexcept {
+    // callbacks to hand the clipboard contents back to ghostty for
+    // whichever surface requested it. `complete` is borrowed for the
+    // duration of the call; `state` is ghostty's request token and is
+    // invalid afterwards.
+    void CompleteClipboardRequest(ghostty_clipboard_complete_s const& complete,
+                                  void* state) noexcept {
         if (m_handle) {
-            ghostty_surface_complete_clipboard_request(
-                m_handle, content, state, confirmed);
+            ghostty_surface_complete_clipboard_request(m_handle, &complete, state);
         }
+    }
+
+    // Refuse a pending read request (e.g. a declined confirmation).
+    // Protocols that expect an answer get their denial reply written
+    // to the pty; `state` is invalid afterwards.
+    void DenyClipboardRequest(void* state) noexcept {
+        if (m_handle) ghostty_surface_deny_clipboard_request(m_handle, state);
     }
 
 private:
