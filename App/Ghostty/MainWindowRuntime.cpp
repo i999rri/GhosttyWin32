@@ -113,13 +113,14 @@ ghostty_clipboard_read_result_e MainWindowRuntime::OnReadClipboard(
     // for: there is nothing to complete the read with.
     if (contents.empty() && !list) return GHOSTTY_CLIPBOARD_READ_UNAVAILABLE;
 
-    ghostty_clipboard_complete_s complete{};
-    complete.contents      = contents.empty() ? nullptr : contents.data();
-    complete.contents_len  = contents.size();
-    complete.available     = available.empty() ? nullptr : available.data();
-    complete.available_len = available.size();
-    complete.confirmed     = false;
-    complete.remember      = false;
+    ghostty_clipboard_complete_s const complete{
+        .contents      = contents.empty() ? nullptr : contents.data(),
+        .contents_len  = contents.size(),
+        .available     = available.empty() ? nullptr : available.data(),
+        .available_len = available.size(),
+        .confirmed     = false,
+        .remember      = false,
+    };
     ref.control->Surface().CompleteClipboardRequest(complete, state);
     return GHOSTTY_CLIPBOARD_READ_STARTED;
 }
@@ -139,13 +140,14 @@ void MainWindowRuntime::OnConfirmReadClipboard(void* paneIdUserdata,
         return;
     }
 
-    ghostty_clipboard_complete_s complete{};
-    complete.contents      = confirm->contents;
-    complete.contents_len  = confirm->contents_len;
-    complete.available     = confirm->available;
-    complete.available_len = confirm->available_len;
-    complete.confirmed     = true;
-    complete.remember      = false;
+    ghostty_clipboard_complete_s const complete{
+        .contents      = confirm->contents,
+        .contents_len  = confirm->contents_len,
+        .available     = confirm->available,
+        .available_len = confirm->available_len,
+        .confirmed     = true,
+        .remember      = false,
+    };
     ref.control->Surface().CompleteClipboardRequest(complete, state);
 }
 
