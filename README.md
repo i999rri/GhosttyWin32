@@ -145,7 +145,7 @@ troubleshooting: [docs/INSTALL.md](docs/INSTALL.md).
 - Visual Studio 2022 (17.10+) with the "Desktop development with C++" and
   "Universal Windows Platform development" workloads
 - Windows App SDK 1.6+ (installed via the project's NuGet packages)
-- Zig 0.15.2+
+- Zig 0.16.0
 - Windows SDK 10.0.22621.0+
 
 ### Build ghostty.dll

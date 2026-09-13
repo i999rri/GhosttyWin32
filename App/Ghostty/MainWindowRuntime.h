@@ -83,11 +83,17 @@ public:
     void OnWakeup() override;
     bool OnAction(ghostty_target_s target,
                   ghostty_action_s action) override;
-    bool OnReadClipboard(void* paneIdUserdata, void* state) override;
+    ghostty_clipboard_read_result_e OnReadClipboard(void* paneIdUserdata,
+                                                    void* state,
+                                                    char const* const* mimes,
+                                                    size_t mimesLen,
+                                                    bool list) override;
     void OnConfirmReadClipboard(void* paneIdUserdata,
-                                char const* content,
+                                ghostty_clipboard_confirm_s const* confirm,
                                 void* state) override;
-    void OnWriteClipboard(void* paneIdUserdata, char const* utf8) override;
+    void OnWriteClipboard(void* paneIdUserdata,
+                          ghostty_clipboard_content_s const* contents,
+                          size_t count) override;
     void OnCloseSurface(void* paneIdUserdata) override;
 
 private:
