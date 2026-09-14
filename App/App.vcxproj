@@ -215,6 +215,7 @@
   <ItemGroup>
     <ApplicationDefinition Include="App.xaml" />
     <Page Include="Windows\MainWindow.xaml" />
+    <Page Include="Styles\TitleBarButtons.xaml" />
     <Page Include="Windows\CommandPalette.xaml" />
     <Page Include="Terminal\TerminalControl.xaml" />
     <Page Include="Terminal\Overlays\PaneStatusOverlay.xaml" />

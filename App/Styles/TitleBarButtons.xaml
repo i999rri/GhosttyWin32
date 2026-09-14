@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Title-bar buttons: the caption buttons, the new-tab menu button
+     beside TabView's "+", and the brushes that give the default Button
+     template their flat look.
+
+     Merged on the AppTitleBar grid in MainWindow.xaml, not app-wide: the
+     Button* keys below shadow the default template's hover / pressed
+     fills for every Button in scope, and only the title bar's own
+     buttons want that. -->
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Flat fills; SubtleFillColor* follow the OS light / dark theme.
+         These are also the fills WinUI's TabViewButtonStyle gives the
+         "+", so the new-tab menu button matches it under the same
+         keys. -->
+    <SolidColorBrush x:Key="ButtonBackground" Color="Transparent" />
+    <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="{ThemeResource SubtleFillColorSecondary}" />
+    <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="{ThemeResource SubtleFillColorTertiary}" />
+    <SolidColorBrush x:Key="ButtonBackgroundDisabled" Color="Transparent" />
+    <SolidColorBrush x:Key="ButtonBorderBrush" Color="Transparent" />
+    <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="Transparent" />
+    <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="Transparent" />
+
+    <!-- Close: Windows' canonical red hover with a white glyph. The close
+         button aliases these onto the template's Button* keys. -->
+    <SolidColorBrush x:Key="CaptionCloseBackgroundPointerOver" Color="#E81123" />
+    <SolidColorBrush x:Key="CaptionCloseBackgroundPressed" Color="#F1707A" />
+    <SolidColorBrush x:Key="CaptionCloseForeground" Color="White" />
+
+    <!-- Caption button geometry plus the glyph font, so the buttons take
+         a Segoe icon code point as Content. Focus stays off them: a
+         focused caption button would swallow the Enter that belongs to
+         the terminal. -->
+    <Style x:Key="CaptionButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+        <Setter Property="Width" Value="46" />
+        <Setter Property="Height" Value="40" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="CornerRadius" Value="0" />
+        <Setter Property="FontFamily" Value="Segoe Fluent Icons,Segoe MDL2 Assets" />
+        <Setter Property="FontSize" Value="10" />
+        <Setter Property="IsTabStop" Value="False" />
+        <Setter Property="AllowFocusOnInteraction" Value="False" />
+    </Style>
+
+    <!-- The new-tab menu button next to TabView's "+". WinUI's own
+         TabViewButtonStyle lives in generic.xaml, which app markup
+         cannot reference, so this restates its geometry and glyph font
+         from the theme resources it is built on; theme, DPI and WinUI
+         updates still move both buttons together. Its top edge is
+         pinned to the "+" at runtime (AlignNewTabMenuButtonTo). -->
+    <Style x:Key="NewTabMenuButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+        <Setter Property="Width" Value="{ThemeResource TabViewItemAddButtonWidth}" />
+        <Setter Property="Height" Value="{ThemeResource TabViewItemAddButtonHeight}" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="CornerRadius" Value="{ThemeResource ControlCornerRadius}" />
+        <Setter Property="FontFamily" Value="{ThemeResource SymbolThemeFontFamily}" />
+        <Setter Property="FontSize" Value="{ThemeResource TabViewItemAddButtonFontSize}" />
+        <Setter Property="VerticalAlignment" Value="Top" />
+        <Setter Property="IsTabStop" Value="False" />
+        <Setter Property="AllowFocusOnInteraction" Value="False" />
+    </Style>
+</ResourceDictionary>

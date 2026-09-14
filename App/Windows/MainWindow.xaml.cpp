@@ -28,7 +28,6 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
-#include <cmath>
 #include <cwctype>
 #include <filesystem>
 #include <fstream>
@@ -573,7 +572,7 @@ namespace winrt::GhosttyWin32::implementation
                                     if (auto button = child.try_as<muxc::Button>()) {
                                         button.IsTabStop(false);
                                         button.AllowFocusOnInteraction(false);
-                                        if (auto self = weak.get()) self->MatchNewTabMenuButtonTo(button);
+                                        if (auto self = weak.get()) self->AlignNewTabMenuButtonTo(button);
                                     }
                                     return true;
                                 }
@@ -1113,29 +1112,15 @@ namespace winrt::GhosttyWin32::implementation
         CreateTabWithCommand(active ? active->Command() : std::string{});
     }
 
-    void MainWindow::MatchNewTabMenuButtonTo(muxc::Button const& addButton)
+    void MainWindow::AlignNewTabMenuButtonTo(muxc::Button const& addButton)
     {
-        // The dropdown sits beside TabView's "+" and should read as its
-        // sibling. The "+" gets its look from the template (Style plus
-        // theme-resource size and strip alignment set on the element),
-        // so copy those rather than restate them: theme, DPI and
-        // WinUI updates then move both buttons together.
-        auto menu = NewTabMenuButton();
-        if (!menu) return;
-        if (auto style = addButton.Style()) menu.Style(style);
-        const double width = addButton.Width();
-        const double height = addButton.Height();
-        menu.Width(std::isnan(width) ? addButton.ActualWidth() : width);
-        menu.Height(std::isnan(height) ? addButton.ActualHeight() : height);
-        menu.Padding(addButton.Padding());
-
-        // Vertical placement is measured, not mirrored: the "+" and the
-        // footer occupy different cells of the strip grid, so the "+"'s
-        // alignment and margin mean something else in the footer. Pin
-        // the dropdown's top edge to wherever the "+" actually lands,
-        // once layout has run and again whenever the "+" resizes (DPI,
-        // theme).
-        menu.VerticalAlignment(winrt::Microsoft::UI::Xaml::VerticalAlignment::Top);
+        // The dropdown already wears the "+"'s style (MainWindow.xaml), so
+        // only its vertical placement is left, and that is measured, not
+        // mirrored: the "+" and the footer occupy different cells of the
+        // strip grid, so the "+"'s alignment and margin mean something
+        // else in the footer. Pin the dropdown's top edge to wherever the
+        // "+" actually lands, once layout has run and again whenever the
+        // "+" resizes (DPI, theme).
         auto align = [weak = get_weak(), addButton]() {
             auto self = weak.get();
             if (!self) return;
@@ -2793,7 +2778,7 @@ namespace winrt::GhosttyWin32::implementation
         // E922 = ChromeMaximize (□), E923 = ChromeRestore (❐).
         wchar_t const* glyph = IsZoomed(m_hwnd) ? L"\xE923" : L"\xE922";
         try {
-            MaximizeGlyph().Glyph(glyph);
+            MaximizeButton().Content(winrt::box_value(winrt::hstring{ glyph }));
         } catch (winrt::hresult_error const&) {
             // XAML may not have finished loading the named element yet;
             // the next Changed/SizeChanged tick will retry.

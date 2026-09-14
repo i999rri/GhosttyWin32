@@ -116,10 +116,10 @@ namespace winrt::GhosttyWin32::implementation
         // CreateTabWithCommand, run after the invoking flyout has
         // dismissed rather than inside its click.
         void CreateTabAfterFlyout(std::string command);
-        // Give the new-tab menu button the "+"'s style and geometry so
-        // the pair lines up; called once TabView's template has
-        // realised its AddButton.
-        void MatchNewTabMenuButtonTo(winrt::Microsoft::UI::Xaml::Controls::Button const& addButton);
+        // Pin the new-tab menu button's top edge to the "+"'s so the
+        // pair lines up; called once TabView's template has realised
+        // its AddButton.
+        void AlignNewTabMenuButtonTo(winrt::Microsoft::UI::Xaml::Controls::Button const& addButton);
         void CloseTabBySurface(ghostty_surface_t surface) override;
         // Gate-approved close of a whole tab (tab X, close_tab
         // keybind). Parks it for undo when allowed, otherwise tears
@@ -254,7 +254,7 @@ namespace winrt::GhosttyWin32::implementation
         // input/IME paths only care about the focused TerminalControl,
         // not the surrounding Tab — this skips the double deref.
         TerminalControl* ActiveControl();
-        // Swaps MaximizeGlyph between Maximize (E922) and Restore (E923)
+        // Swaps the maximize button's glyph between Maximize (E922) and Restore (E923)
         // depending on the current OverlappedPresenter state.
         void UpdateMaximizeGlyph();
 
