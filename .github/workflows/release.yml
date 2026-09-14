@@ -42,28 +42,31 @@ jobs:
           # The appxmanifest Version is a fixed 4-part numeric
           # (Major.Minor.Build.Revision, each 0-65535), so the -rcN
           # suffix can't ride along as text. Encode the channel in
-          # Revision instead, keeping upgrade order rc1 < rc2 < ... <
-          # production within one X.Y.Z:
+          # Revision instead, keeping upgrade order dev build < rc1 <
+          # rc2 < ... < production within one X.Y.Z:
           #
-          #   v0.7.0-rc1 -> 0.7.0.1
-          #   v0.7.0-rc2 -> 0.7.0.2
+          #   dev build  -> 0.7.0.<commits on dev>   (dev-build.yml, < 65000)
+          #   v0.7.0-rc1 -> 0.7.0.65001
+          #   v0.7.0-rc2 -> 0.7.0.65002
           #   v0.7.0     -> 0.7.0.65535   (max Revision = "final")
           #
-          # This lets an rc install upgrade in place to the next rc
-          # and to production, instead of colliding on an identical
-          # version number. Sideload-only: the Store would require
-          # Revision 0, which we don't target.
+          # MSIX only upgrades in place to a higher version, so this
+          # order is what lets a machine on dev builds take an rc, and
+          # an rc take production, without an uninstall in between (an
+          # uninstall drops taskbar pins). Sideload-only: the Store would
+          # require Revision 0, which we don't target.
           $tag = "${{ github.ref_name }}"
           if ($tag -match '^v(\d+\.\d+\.\d+)$') {
             $version = $Matches[1]
             $revision = 65535
           } elseif ($tag -match '^v(\d+\.\d+\.\d+)-rc(\d+)$') {
             $version = $Matches[1]
-            $revision = [int]$Matches[2]
-            if ($revision -lt 1 -or $revision -ge 65535) {
-              Write-Error "Tag '$tag' has rc number $revision, outside the encodable range 1-65534."
+            $rc = [int]$Matches[2]
+            if ($rc -lt 1 -or $rc -gt 534) {
+              Write-Error "Tag '$tag' has rc number $rc, outside the encodable range 1-534."
               exit 1
             }
+            $revision = 65000 + $rc
           } else {
             Write-Error "Tag '$tag' is not v<major>.<minor>.<patch> or v<major>.<minor>.<patch>-rc<N>."
             exit 1
