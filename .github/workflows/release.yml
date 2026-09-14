@@ -45,7 +45,7 @@ jobs:
           # Revision instead, keeping upgrade order dev build < rc1 <
           # rc2 < ... < production within one X.Y.Z:
           #
-          #   dev build  -> 0.7.0.<run_number>   (dev-build.yml, < 65000)
+          #   dev build  -> 0.7.0.<commits on dev>   (dev-build.yml, < 65000)
           #   v0.7.0-rc1 -> 0.7.0.65001
           #   v0.7.0-rc2 -> 0.7.0.65002
           #   v0.7.0     -> 0.7.0.65535   (max Revision = "final")

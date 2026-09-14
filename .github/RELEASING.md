@@ -322,7 +322,7 @@ git push origin dev
 
 挙動:
 1. 自動的に `windows-port` の最新 ghostty.dll をビルド
-2. MSIX manifest version は「最新の正式 release の patch + 1」に、dev-build workflow の通番 (GitHub Actions の `run_number`) を Revision として付けたもの。例: 最新が `v0.8.1` で、その run が dev-build workflow の 123 回目なら `0.8.2.123`。`gh release view` で正式 release を取るので手動 bump は不要。正式版 `0.8.1.65535` より上、次の rc `0.8.2.65001` / 正式版 `0.8.2.65535` より下に並び、どれも上書きインストールで行ける
+2. MSIX manifest version は「最新の正式 release の patch + 1」に、dev ブランチのコミット数 (`git rev-list --count HEAD`) を Revision として付けたもの。例: 最新が `v0.8.1` で dev が 404 コミットなら `0.8.2.404`。`gh release view` で正式 release を取るので手動 bump は不要。正式版 `0.8.1.65535` より上、次の rc `0.8.2.65001` / 正式版 `0.8.2.65535` より下に並び、どれも上書きインストールで行ける。コミット数は dev を force-push しない限り減らないので、workflow のリネームなどで番号が戻ることもない
 3. 自動承認、即ビルド
 4. **`dev-build` という固定タグの Release を上書き作成**（前回の dev-build は削除される）
 5. URL は固定: `https://github.com/i999rri/GhosttyWin32/releases/tag/dev-build`
