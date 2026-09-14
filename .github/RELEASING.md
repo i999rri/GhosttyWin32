@@ -275,7 +275,7 @@ git push origin v0.3.0
 
 挙動:
 1. ghostty fork の `windows-port` から `ghostty.dll` をビルド
-2. `Package.appxmanifest` の `Version` をタグから動的書き換え (`v0.3.0` → `0.3.0.65535`。Revision 最大値 = その X.Y.Z の最終形)
+2. `Package.appxmanifest` の `Version` をタグから動的書き換え (`v0.3.0` → `0.3.0.65535`。正式版は Revision を最大値の 65535 にして、同じ 0.3.0 系の rc や dev build より必ず上に来るようにしている)
 3. **`release` Environment が承認待ち** → Actions タブ → "Review pending deployments" で承認
 4. 承認後: PFX を Secrets から復元 → MSIX 署名 → PFX 削除 → Releases にアップロード
 5. 成果物: `Ghostty-0.3.0-x64.msix` + `Ghostty.cer`
