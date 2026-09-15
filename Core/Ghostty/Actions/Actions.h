@@ -67,7 +67,10 @@ public:
 
     // ----- terminal events -----
     bool OnRingBell();
-    bool OnShowChildExited(ghostty_surface_message_childexited_s child);
+    // `surface` is the exited shell's surface, or null for an
+    // app-scoped report.
+    bool OnShowChildExited(ghostty_surface_t surface,
+                           ghostty_surface_message_childexited_s child);
     bool OnRendererHealth(ghostty_action_renderer_health_e health);
     bool OnRender();
 

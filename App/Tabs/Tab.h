@@ -6,8 +6,12 @@
 #include "Terminal/TerminalControl.xaml.h"
 #include <winrt/Microsoft.UI.Xaml.h>
 #include <winrt/Microsoft.UI.Xaml.Controls.h>
+#include <algorithm>
+#include <functional>
 #include <memory>
+#include <optional>
 #include <string>
+#include <vector>
 
 namespace winrt::GhosttyWin32::implementation {
 
@@ -133,9 +137,85 @@ public:
     bool NeedsConfirmClose() const {
         auto* panelImpl = winrt::get_self<implementation::SplitPanel>(m_panel);
         if (!panelImpl) return false;
-        return panelImpl->Tree().AnyPaneMatches([](Pane const& p) {
+        auto needs = [](Pane const& p) {
             return p.view && p.view->Surface().NeedsConfirmQuit();
-        });
+        };
+        if (panelImpl->Tree().AnyPaneMatches(needs)) return true;
+        return std::any_of(m_inPlace.begin(), m_inPlace.end(),
+                           [&](InPlaceSession const& s) { return s.parked && needs(*s.parked); });
+    }
+
+    // ----- in-place WSL sessions (#217) -----
+    // A shell in this tab asked for WSL in its own pane: the WSL pane
+    // now sits in the tree where the shell's pane was, and the shell's
+    // pane waits here, alive and unparented, to go back when WSL ends.
+    // `onFinished` answers the shim that is holding the shell's
+    // prompt; it gets WSL's exit code. A dropped session (tab closed
+    // mid-way) destroys the callable, which closes the shim's pipe
+    // instead of answering.
+    struct InPlaceSession {
+        PaneId overlay;
+        std::optional<Pane> parked;
+        std::function<void(uint32_t exitCode)> onFinished;
+    };
+
+    void BeginInPlace(InPlaceSession session) {
+        m_inPlace.push_back(std::move(session));
+    }
+
+    // The session whose WSL pane is `overlay`, taken out of the tab.
+    std::optional<InPlaceSession> TakeInPlaceByOverlay(PaneId overlay) {
+        auto it = std::find_if(m_inPlace.begin(), m_inPlace.end(),
+                               [overlay](InPlaceSession const& s) { return s.overlay == overlay; });
+        if (it == m_inPlace.end()) return std::nullopt;
+        InPlaceSession session = std::move(*it);
+        m_inPlace.erase(it);
+        return session;
+    }
+
+    // Whether `pane` is the WSL half of a session. A shim request
+    // from inside one is refused rather than stacked.
+    bool IsInPlaceOverlay(PaneId pane) const noexcept {
+        return std::any_of(m_inPlace.begin(), m_inPlace.end(),
+                           [pane](InPlaceSession const& s) { return s.overlay == pane; });
+    }
+
+    // A parked shell that died while waiting: hand it out for detach.
+    // Its session stays, and closes like a plain pane when the WSL
+    // side ends, since there is nothing left to put back.
+    std::optional<Pane> TakeParkedById(PaneId id) {
+        for (auto& s : m_inPlace) {
+            if (s.parked && s.parked->id == id) {
+                Pane pane = *s.parked;
+                s.parked.reset();
+                return pane;
+            }
+        }
+        return std::nullopt;
+    }
+
+    // The parked shell whose surface is `surface`, or null. A parked
+    // pane's surface stays live and keeps talking to its control
+    // (mouse visibility after the focus change, title, shape), so the
+    // window's surface directory has to find it here, or the pane
+    // comes back with stale state.
+    Pane* FindParkedBySurface(ghostty_surface_t surface) noexcept {
+        for (auto& s : m_inPlace) {
+            if (s.parked && s.parked->view && s.parked->view->Surface().Owns(surface)) {
+                return &*s.parked;
+            }
+        }
+        return nullptr;
+    }
+
+    // Parked panes are outside the tree, so every tree-wide walk that
+    // must reach every control (rehost on tear-out, appearance
+    // restate) covers them through this.
+    template <class F>
+    void ForEachParkedPane(F&& visit) {
+        for (auto& s : m_inPlace) {
+            if (s.parked) visit(*s.parked);
+        }
     }
 
     // Retarget the active pane — used by NEW_SPLIT (focus shifts to
@@ -170,20 +250,30 @@ public:
                 if (p.view) p.view->SetOpaqueBackground(opaque, bg);
             });
         }
+        ForEachParkedPane([&](Pane& p) {
+            if (p.view) p.view->SetOpaqueBackground(opaque, bg);
+        });
     }
 
     // Detach every TerminalControl in the tree (surface free, swap
-    // chain release, composition handle close, SizeChanged unhook).
-    // Must run while the SplitPanel is still in the live visual tree
-    // — see MainWindow close handlers for the AV that happens if a
-    // SwapChainPanel is unparented before its swap chain handle is
-    // cleared.
+    // chain release, composition handle close, SizeChanged unhook),
+    // and every parked one. Must run while the SplitPanel is still in
+    // the live visual tree — see MainWindow close handlers for the AV
+    // that happens if a SwapChainPanel is unparented before its swap
+    // chain handle is cleared.
     void DetachAll() {
         if (auto* panelImpl = winrt::get_self<implementation::SplitPanel>(m_panel)) {
             panelImpl->Tree().ForEachPane([](Pane& p) {
                 if (p.view) p.view->Detach();
             });
         }
+        ForEachParkedPane([](Pane& p) {
+            if (p.view) p.view->Detach();
+        });
+        // The shims of dropped sessions read end-of-file, not an
+        // exit code, so their shells (gone with the surfaces above)
+        // never see a false success.
+        m_inPlace.clear();
     }
 
     // Whether XAML accepted the focus request. The active pane's
@@ -215,6 +305,10 @@ private:
     // Foreground-pid poll cache. Zero means "not yet resolved".
     uint32_t         m_lastForegroundPid{ 0 };
     winrt::hstring   m_lastForegroundName{};
+
+    // See InPlaceSession. One entry per pane currently showing WSL in
+    // place of its shell; a split tab can hold several.
+    std::vector<InPlaceSession> m_inPlace;
 };
 
 }  // namespace winrt::GhosttyWin32::implementation

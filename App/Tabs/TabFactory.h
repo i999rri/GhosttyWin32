@@ -16,6 +16,8 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #pragma comment(lib, "dcomp.lib")
 
@@ -48,13 +50,27 @@ namespace ghostty = core::ghostty;
 // borrows it.
 class TabFactory {
 public:
+    // One extra environment variable for a new surface's shell.
+    struct EnvVar {
+        std::string key;
+        std::string value;
+    };
+    // Extra environment for the shell of the pane being made, given
+    // its id and command (empty = the configured default). The host
+    // uses it to tell a ConPTY shell where the in-place WSL shim can
+    // reach its pane (#217); the factory only passes it on.
+    using SurfaceEnvironment =
+        std::function<std::vector<EnvVar>(PaneId id, std::string const& command)>;
+
     TabFactory(ghostty::App const& app, HWND hwnd,
                PaneIdAllocator& idAllocator,
                std::function<void(ghostty_surface_t)> onLeafFocused = {},
-               std::function<void(implementation::TerminalControl&)> onLeafCreated = {}) noexcept
+               std::function<void(implementation::TerminalControl&)> onLeafCreated = {},
+               SurfaceEnvironment surfaceEnvironment = {}) noexcept
         : m_ghostty(app), m_hwnd(hwnd), m_idAllocator(idAllocator),
           m_onLeafFocused(std::move(onLeafFocused)),
-          m_onLeafCreated(std::move(onLeafCreated)) {}
+          m_onLeafCreated(std::move(onLeafCreated)),
+          m_surfaceEnvironment(std::move(surfaceEnvironment)) {}
 
     TabFactory(const TabFactory&) = delete;
     TabFactory& operator=(const TabFactory&) = delete;
@@ -141,11 +157,14 @@ public:
     // Returns nullptr on any failure. Resources acquired before the
     // failure point are released before the return — caller doesn't
     // need to clean up after a null result.
+    // `workingDirectory` starts the shell there instead of the
+    // configured directory; empty leaves the config in charge.
     std::unique_ptr<Branch> MakePane(
         uint32_t initialWidth,
         uint32_t initialHeight,
         std::function<void()> onActivated = {},
-        std::string command = {})
+        std::string command = {},
+        std::string workingDirectory = {})
     {
         constexpr DWORD COMPOSITIONSURFACE_ALL_ACCESS = 0x0003L;
 
@@ -212,6 +231,17 @@ public:
         // local string just needs to outlive that call. Empty means
         // inherit the configured default (leave the field null).
         if (!command.empty()) cfg.command = command.c_str();
+        if (!workingDirectory.empty()) cfg.working_directory = workingDirectory.c_str();
+        // Same lifetime rule as the command: libghostty copies the
+        // variables during ghostty_surface_new, so the vectors only
+        // have to outlive that call.
+        std::vector<EnvVar> env;
+        if (m_surfaceEnvironment) env = m_surfaceEnvironment(paneId, command);
+        std::vector<ghostty_env_var_s> envC;
+        envC.reserve(env.size());
+        for (auto const& var : env) envC.push_back({ var.key.c_str(), var.value.c_str() });
+        cfg.env_vars = envC.empty() ? nullptr : envC.data();
+        cfg.env_var_count = envC.size();
         // Initial swap chain size: prefer the host's caller-supplied
         // estimate (typically the active tab/pane's panel size, since
         // the new panel will land in the same content area), then
@@ -325,6 +355,8 @@ private:
     // See the call site in MakePane: window-state-dependent per-leaf
     // initialization supplied by the host.
     std::function<void(implementation::TerminalControl&)> m_onLeafCreated;
+    // See SurfaceEnvironment.
+    SurfaceEnvironment m_surfaceEnvironment;
 };
 
 }  // namespace winrt::GhosttyWin32::implementation

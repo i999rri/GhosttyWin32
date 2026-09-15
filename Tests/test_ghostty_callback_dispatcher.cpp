@@ -387,3 +387,34 @@ TEST(GhosttyCallbackDispatcherTest, UnknownTagReturnsFalse) {
 
     EXPECT_FALSE(DispatchTag(*d, static_cast<ghostty_action_tag_e>(9999)));
 }
+
+// ----- child exit -----
+
+TEST(GhosttyCallbackDispatcherTest, ShowChildExitedReachesTheViewWithItsSurface) {
+    // A surface-targeted SHOW_CHILD_EXITED hands the view the surface
+    // and the exit code, which is what ends an in-place WSL session
+    // (#217).
+    MockMainWindowView view;
+    auto d = CallbackDispatcher::Create(view);
+
+    auto surface = reinterpret_cast<ghostty_surface_t>(0x5150);
+    ghostty_target_s target{};
+    target.tag = GHOSTTY_TARGET_SURFACE;
+    target.target.surface = surface;
+    ghostty_action_s action{};
+    action.tag = GHOSTTY_ACTION_SHOW_CHILD_EXITED;
+    action.action.child_exited = { 130u, 2500u };
+
+    EXPECT_TRUE(d->DispatchAction(target, action));
+    EXPECT_EQ(view.childExitedCalls, 1);
+    EXPECT_EQ(view.lastChildExitedSurface, surface);
+    EXPECT_EQ(view.lastChildExitCode, 130u);
+}
+
+TEST(GhosttyCallbackDispatcherTest, ShowChildExitedWithAppTargetReachesNoView) {
+    MockMainWindowView view;
+    auto d = CallbackDispatcher::Create(view);
+
+    EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_SHOW_CHILD_EXITED));
+    EXPECT_EQ(view.childExitedCalls, 0);
+}

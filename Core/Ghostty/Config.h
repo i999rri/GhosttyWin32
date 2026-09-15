@@ -127,6 +127,15 @@ public:
         return v;
     }
 
+    // `wsl-bridge` (this port's option): tabs started as `wsl` run
+    // through the direct pty bridge instead of ConPTY. The in-place
+    // WSL shim (#217) is only put on PATH while this is on.
+    bool WslBridge() const noexcept {
+        bool v = false;
+        GetRaw("wsl-bridge", &v);
+        return v;
+    }
+
     // ----- notify-on-command-finish (v1.3.0+, default: never) -----
     // The whole feature is opt-in; every getter falls back to the
     // documented default when the key is unreadable.
