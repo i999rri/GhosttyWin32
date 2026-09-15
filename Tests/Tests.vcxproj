@@ -180,6 +180,7 @@
     <ClCompile Include="test_tab_drag.cpp" />
     <ClCompile Include="test_pressed_tab.cpp" />
     <ClCompile Include="test_trigger_label.cpp" />
+    <ClCompile Include="test_shim_protocol.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="MockMainWindowView.h" />
