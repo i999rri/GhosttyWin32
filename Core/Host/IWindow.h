@@ -266,6 +266,15 @@ struct IWindow {
     // taskbar surface is window-global, not per-pane, so no
     // surface argument is needed.
     virtual void ReportProgress(ghostty_action_progress_report_s pr) = 0;
+
+    // SHOW_CHILD_EXITED for a surface this window owns: the process
+    // in `surface` ended with `exitCode`. Arrives on the UI thread
+    // outside the surface's own call stack, so the window may free
+    // the surface from here. An in-place WSL session (#217) ends on
+    // this: libghostty keeps a surface started with an explicit
+    // command open after its process exits (wait-after-command is
+    // forced on for it), so no close would follow on its own.
+    virtual void ChildExited(ghostty_surface_t surface, uint32_t exitCode) = 0;
 };
 
 }  // namespace core::host

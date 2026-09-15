@@ -17,7 +17,9 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
         case GHOSTTY_ACTION_RING_BELL:
             return m_actions.OnRingBell();
         case GHOSTTY_ACTION_SHOW_CHILD_EXITED:
-            return m_actions.OnShowChildExited(action.action.child_exited);
+            return m_actions.OnShowChildExited(
+                target.tag == GHOSTTY_TARGET_SURFACE ? target.target.surface : nullptr,
+                action.action.child_exited);
         case GHOSTTY_ACTION_RENDERER_HEALTH:
             return m_actions.OnRendererHealth(action.action.renderer_health);
         case GHOSTTY_ACTION_RENDER:

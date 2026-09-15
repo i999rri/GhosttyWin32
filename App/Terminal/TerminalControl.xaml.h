@@ -98,6 +98,13 @@ namespace winrt::GhosttyWin32::implementation
         // the window crosses the activation boundary.
         void NotifyImeFocusEnter() { m_host->NotifyImeFocusEnter(); }
         void NotifyImeFocusLeave() { m_host->NotifyImeFocusLeave(); }
+        // Focus left this control without XAML saying so: an element
+        // that leaves the visual tree while focused gets no LostFocus.
+        // A pane parked for an in-place WSL session (#217) is told
+        // here, or its surface still counts as focused and the refocus
+        // on return changes nothing for ghostty, which then never
+        // shows the mouse pointer it hid while the user typed.
+        void NotifyFocusLost() { m_host->OnFocusLost(); }
         void SetOnFocused(std::function<void(ghostty_surface_t)> cb) noexcept {
             m_host->SetOnFocused(std::move(cb));
         }
