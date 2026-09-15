@@ -122,6 +122,7 @@
     <ClInclude Include="Win32\DebugTrace.h" />
     <ClInclude Include="Win32\NativeWindow.h" />
     <ClInclude Include="Win32\SEHGuard.h" />
+    <ClInclude Include="Wsl\ShimProtocol.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Ghostty\Actions\Actions.cpp" />
