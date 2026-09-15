@@ -303,7 +303,38 @@ namespace winrt::GhosttyWin32::implementation
             return;
         }
 
+        // In-place WSL (#217): the shim `wsl.exe` ships under shim\
+        // next to the host, and the pipe server that answers it runs
+        // for the life of the process. Requests land on the UI thread
+        // and go to the window that owns the pane.
+        {
+            wchar_t exe[MAX_PATH];
+            DWORD len = GetModuleFileNameW(nullptr, exe, MAX_PATH);
+            if (len > 0 && len < MAX_PATH) {
+                m_shimDir = (std::filesystem::path(exe).parent_path() / L"shim").wstring();
+            }
+        }
+        m_shimServer = std::make_unique<wsl::ShimServer>(
+            Microsoft::UI::Dispatching::DispatcherQueue::GetForCurrentThread(),
+            [](core::wsl::OpenRequest request, std::shared_ptr<wsl::ShimReply> reply) {
+                PaneId id{ request.paneId };
+                MainWindow* window =
+                    App::g_app ? App::g_app->Windows().FindForPaneId(id) : nullptr;
+                if (!window) {
+                    reply->Refuse();
+                    return;
+                }
+                window->OpenWslInPane(id, std::move(request.cwd), std::move(request.distro),
+                                      std::move(reply));
+            });
+        m_shimServer->Start();
+
         CreateNewWindow();
+    }
+
+    std::wstring App::ShimPipeName() const noexcept
+    {
+        return m_shimServer ? m_shimServer->PipeName() : std::wstring{};
     }
 
     void App::CreateNewWindow()

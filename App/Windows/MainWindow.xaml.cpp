@@ -14,6 +14,7 @@
 #include "Win32/Clipboard.h"
 #include "Win32/DebugTrace.h"
 #include "Win32/SEHGuard.h"
+#include "Wsl/ShimProtocol.h"
 #if __has_include("MainWindow.g.cpp")
 #include "MainWindow.g.cpp"
 #endif
@@ -41,6 +42,26 @@ namespace {
 // the host side rather than finished by WSL (#217). Nonzero so the
 // shell does not take a session it never completed for a success.
 constexpr uint32_t kCutSessionExitCode = 1;
+
+// Whether a tab command starts WSL itself (`wsl`, `wsl.exe`, any
+// case), in which case the in-place shim has no work there (#217).
+bool IsWslCommand(std::string const& command) {
+    auto end = command.find_first_of(" \t");
+    std::string first = command.substr(0, end);
+    std::transform(first.begin(), first.end(), first.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return first == "wsl" || first == "wsl.exe";
+}
+
+// The host process's PATH, the base a shell's PATH is built from.
+std::wstring HostPath() {
+    DWORD len = GetEnvironmentVariableW(L"PATH", nullptr, 0);
+    if (len == 0) return {};
+    std::wstring path(len, L'\0');
+    DWORD got = GetEnvironmentVariableW(L"PATH", path.data(), len);
+    path.resize(got);
+    return path;
+}
 
 }  // namespace
 #pragma comment(lib, "dwmapi.lib")
@@ -1106,12 +1127,31 @@ namespace winrt::GhosttyWin32::implementation
             // the config handle is freed and swapped on every config
             // change (reload, theme follow), so the factory must
             // re-resolve it per Make/MakePane call.
+            // In-place WSL (#217): a ConPTY shell gets the shim `wsl.exe`
+            // first on its PATH and the two variables the shim needs to
+            // find this pane. Only while wsl-bridge is on, and never for
+            // a pane that is WSL itself. Raw `this` capture: the factory
+            // is a member and dies with this window.
+            auto surfaceEnvironment = [this](PaneId id, std::string const& command) {
+                std::vector<TabFactory::EnvVar> env;
+                if (!App::g_app || !m_ghosttyApp) return env;
+                if (!ghostty::Config(m_ghosttyApp->ConfigHandle()).WslBridge()) return env;
+                if (IsWslCommand(command)) return env;
+                std::wstring pipe = App::g_app->ShimPipeName();
+                std::wstring const& shimDir = App::g_app->ShimDirectory();
+                if (pipe.empty() || shimDir.empty()) return env;
+                env.push_back({ "PATH", interop::Encoding::toUtf8(shimDir + L";" + HostPath()) });
+                env.push_back({ core::wsl::kPipeEnvVar, interop::Encoding::toUtf8(pipe) });
+                env.push_back({ core::wsl::kPaneEnvVar, std::to_string(id.value) });
+                return env;
+            };
             m_tabFactory = std::make_unique<TabFactory>(
                 *m_ghosttyApp,
                 m_hwnd,
                 App::g_app->PaneIds(),
                 std::move(onLeafFocused),
-                std::move(onLeafCreated));
+                std::move(onLeafCreated),
+                std::move(surfaceEnvironment));
             // Seed the tracked background colour from config so the
             // opaque underlay has a real colour before the first
             // COLOR_CHANGE arrives, then apply the opacity mode once
