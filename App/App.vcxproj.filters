@@ -42,6 +42,9 @@
     <Filter Include="Ghostty">
       <UniqueIdentifier>{C7F2A1D5-4B6E-49A3-B8C2-3D5E7A8F1C9B}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Wsl">
+      <UniqueIdentifier>{2A7E9C41-6D3B-4F58-9E1A-7C5D2B8F4A63}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Tabs\Tab.h">
@@ -94,6 +97,12 @@
     </ClInclude>
     <ClInclude Include="Ghostty\MainWindowRuntime.h">
       <Filter>Ghostty</Filter>
+    </ClInclude>
+    <ClInclude Include="Wsl\ShimReply.h">
+      <Filter>Wsl</Filter>
+    </ClInclude>
+    <ClInclude Include="Wsl\ShimServer.h">
+      <Filter>Wsl</Filter>
     </ClInclude>
     <ClInclude Include="Windows\MainWindow.xaml.h">
       <Filter>Windows</Filter>
@@ -150,6 +159,9 @@
   <ItemGroup>
     <ClCompile Include="Ghostty\MainWindowRuntime.cpp">
       <Filter>Ghostty</Filter>
+    </ClCompile>
+    <ClCompile Include="Wsl\ShimServer.cpp">
+      <Filter>Wsl</Filter>
     </ClCompile>
     <ClCompile Include="Windows\MainWindow.xaml.cpp">
       <Filter>Windows</Filter>
