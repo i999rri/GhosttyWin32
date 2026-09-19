@@ -98,6 +98,9 @@
     <ClInclude Include="Ghostty\MainWindowRuntime.h">
       <Filter>Ghostty</Filter>
     </ClInclude>
+    <ClInclude Include="Wsl\PipeIo.h">
+      <Filter>Wsl</Filter>
+    </ClInclude>
     <ClInclude Include="Wsl\ShimReply.h">
       <Filter>Wsl</Filter>
     </ClInclude>

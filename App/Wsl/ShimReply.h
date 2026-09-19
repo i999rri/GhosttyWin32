@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Wsl/PipeIo.h"
 #include "Wsl/ShimProtocol.h"
 #include <windows.h>
 #include <cstdint>
@@ -13,6 +14,13 @@ namespace winrt::GhosttyWin32::implementation::wsl {
 // here means a session that is dropped without an answer (tab closed
 // mid-session, window torn down) closes the pipe, and the shim reads
 // end-of-file instead of hanging on a shell that is already gone.
+//
+// Answers run on the UI thread as well as the server thread, and the
+// peer is any process that opened the pipe, so an answer never waits
+// for the peer to read it: the write is bounded, and the handle is
+// closed without FlushFileBuffers (which waits for the peer) or
+// DisconnectNamedPipe (which discards what the peer has not read yet).
+// The client can still read the answer once the server end is closed.
 class ShimReply {
 public:
     explicit ShimReply(HANDLE pipe) noexcept : m_pipe(pipe) {}
@@ -34,16 +42,17 @@ public:
     }
 
 private:
+    // Long enough for a live shim, whose read is already posted, and
+    // short enough that a peer that stopped reading costs one hiccup.
+    static constexpr DWORD kWriteTimeoutMs = 1000;
+
     void Send(std::string const& line) noexcept {
         if (m_pipe == INVALID_HANDLE_VALUE) return;
-        DWORD written = 0;
-        WriteFile(m_pipe, line.data(), static_cast<DWORD>(line.size()), &written, nullptr);
-        FlushFileBuffers(m_pipe);
+        WritePipe(m_pipe, line, kWriteTimeoutMs);
     }
 
     void Close() noexcept {
         if (m_pipe == INVALID_HANDLE_VALUE) return;
-        DisconnectNamedPipe(m_pipe);
         CloseHandle(m_pipe);
         m_pipe = INVALID_HANDLE_VALUE;
     }

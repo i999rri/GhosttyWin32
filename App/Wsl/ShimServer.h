@@ -3,7 +3,6 @@
 #include "Wsl/ShimProtocol.h"
 #include "Wsl/ShimReply.h"
 #include <winrt/Microsoft.UI.Dispatching.h>
-#include <atomic>
 #include <functional>
 #include <memory>
 #include <string>
@@ -20,6 +19,17 @@ namespace winrt::GhosttyWin32::implementation::wsl {
 // object, because opening the session is a tree mutation the window
 // must do there; the reply is answered later, when the session ends,
 // from whichever window took it.
+//
+// Any local process can try the pipe, so the server:
+//   - owns the name from Start on and never lets it go while running:
+//     the first instance refuses to exist if the name is already taken,
+//     and the next instance is created before a connected one is
+//     handled, so there is no window in which another process could
+//     create the name and receive the shims;
+//   - lets only this user (and SYSTEM) open it, at no lower integrity
+//     than the host, so an unelevated process cannot drive an elevated
+//     terminal;
+//   - never waits on a client without a bound (see PipeIo.h).
 class ShimServer {
 public:
     // Runs on the UI thread. Refuses the reply itself when it cannot
@@ -34,20 +44,26 @@ public:
 
     std::wstring const& PipeName() const noexcept { return m_pipeName; }
 
-    void Start();
-    // Unblocks the accept, joins the thread. Idempotent.
+    // Create the first pipe instance on the calling thread and start
+    // accepting. False, with nothing running, when the name is already
+    // taken or the pipe cannot be secured; the caller must then not
+    // advertise the name to shells.
+    bool Start();
+    // Wake the thread and join it. Idempotent. Connections already
+    // handed to a window keep their own handles.
     void Stop() noexcept;
 
 private:
-    void Run();
+    void Run(winrt::handle pending);
+    void Serve(winrt::handle client);
+    winrt::handle CreateInstance(bool first) const noexcept;
 
     std::wstring m_pipeName;
     Microsoft::UI::Dispatching::DispatcherQueue m_ui{ nullptr };
     OnOpen m_onOpen;
-    std::atomic<bool> m_stopping{ false };
-    // True from Start until Run leaves its loop; Stop knocks on the
-    // pipe until this drops.
-    std::atomic<bool> m_running{ false };
+    // Self-relative security descriptor for every instance; LocalFree.
+    std::unique_ptr<void, decltype(&LocalFree)> m_security{ nullptr, &LocalFree };
+    winrt::handle m_stop;
     std::thread m_thread;
 };
 
