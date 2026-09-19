@@ -92,6 +92,14 @@ bool ShimServer::Start()
     if (!m_stop) return false;
 
     winrt::handle first = CreateInstance(true);
+    if (!first && GetLastError() == ERROR_ACCESS_DENIED && ShimReply::OpenCount() > 0) {
+        // The name is taken, most likely by sessions a previous server
+        // of this process handed out (wsl-bridge turned off and on while
+        // WSL ran in place). Join those instances. If another process
+        // holds the name after all, the shim's server-pid check turns
+        // it away, so the worst case is that shims fall back.
+        first = CreateInstance(false);
+    }
     if (!first) {
         // ERROR_ACCESS_DENIED here means another process holds the name.
         DEBUG_TRACE(L"ShimServer: first instance failed err=%lu\n", GetLastError());

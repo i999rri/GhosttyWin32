@@ -3,6 +3,7 @@
 #include "Wsl/PipeIo.h"
 #include "Wsl/ShimProtocol.h"
 #include <windows.h>
+#include <atomic>
 #include <cstdint>
 #include <string>
 
@@ -23,8 +24,14 @@ namespace winrt::GhosttyWin32::implementation::wsl {
 // The client can still read the answer once the server end is closed.
 class ShimReply {
 public:
-    explicit ShimReply(HANDLE pipe) noexcept : m_pipe(pipe) {}
+    explicit ShimReply(HANDLE pipe) noexcept : m_pipe(pipe) {
+        s_open.fetch_add(1, std::memory_order_relaxed);
+    }
     ~ShimReply() { Close(); }
+
+    // Connections still open across the process. Each one keeps an
+    // instance of the pipe name alive after its server has stopped.
+    static int OpenCount() noexcept { return s_open.load(std::memory_order_relaxed); }
 
     ShimReply(ShimReply const&) = delete;
     ShimReply& operator=(ShimReply const&) = delete;
@@ -55,9 +62,11 @@ private:
         if (m_pipe == INVALID_HANDLE_VALUE) return;
         CloseHandle(m_pipe);
         m_pipe = INVALID_HANDLE_VALUE;
+        s_open.fetch_sub(1, std::memory_order_relaxed);
     }
 
     HANDLE m_pipe;
+    inline static std::atomic<int> s_open{ 0 };
 };
 
 }  // namespace winrt::GhosttyWin32::implementation::wsl
