@@ -208,10 +208,15 @@
     <ClInclude Include="Terminal\Overlays\SearchOverlay.xaml.h">
       <DependentUpon>Terminal\Overlays\SearchOverlay.xaml</DependentUpon>
     </ClInclude>
+    <ClInclude Include="Windows\CommandPalette.xaml.h">
+      <DependentUpon>Windows\CommandPalette.xaml</DependentUpon>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ApplicationDefinition Include="App.xaml" />
     <Page Include="Windows\MainWindow.xaml" />
+    <Page Include="Styles\TitleBarButtons.xaml" />
+    <Page Include="Windows\CommandPalette.xaml" />
     <Page Include="Terminal\TerminalControl.xaml" />
     <Page Include="Terminal\Overlays\PaneStatusOverlay.xaml" />
     <Page Include="Terminal\Overlays\ScrollbackOverlay.xaml" />
@@ -248,6 +253,9 @@
     <ClCompile Include="Terminal\Overlays\SearchOverlay.xaml.cpp">
       <DependentUpon>Terminal\Overlays\SearchOverlay.xaml</DependentUpon>
     </ClCompile>
+    <ClCompile Include="Windows\CommandPalette.xaml.cpp">
+      <DependentUpon>Windows\CommandPalette.xaml</DependentUpon>
+    </ClCompile>
     <ClCompile Include="$(GeneratedFilesDir)module.g.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -277,6 +285,10 @@
       <SubType>Code</SubType>
       <DependentUpon>Terminal\Overlays\SearchOverlay.xaml</DependentUpon>
     </Midl>
+    <Midl Include="Windows\CommandPalette.idl">
+      <SubType>Code</SubType>
+      <DependentUpon>Windows\CommandPalette.xaml</DependentUpon>
+    </Midl>
   </ItemGroup>
   <ItemGroup>
     <Text Include="readme.txt">
@@ -295,6 +307,16 @@
     -->
     <None Include="..\external\ghostty\zig-out\lib\ghostty-internal.dll">
       <Link>ghostty.dll</Link>
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <!--
+      The WSL bridge's in-distro half is a Linux ELF that wsl.exe runs
+      inside the distro; libghostty resolves it next to the host
+      executable.
+    -->
+    <None Include="..\external\ghostty\zig-out\bin\ghostty-wsl-bridge">
       <DeploymentContent>true</DeploymentContent>
     </None>
   </ItemGroup>

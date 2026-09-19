@@ -7,7 +7,21 @@
 #include "Tabs/Panes/PaneId.h"
 #include "Win32/Clipboard.h"
 
+#include <cstring>
+#include <string>
+#include <vector>
+
 namespace winrt::GhosttyWin32::implementation {
+
+namespace {
+// The Win32 clipboard is served as text only; this is the MIME type
+// ghostty asks for and receives for it.
+constexpr char kTextPlain[] = "text/plain";
+
+bool IsTextPlain(char const* mime) {
+    return mime && std::strcmp(mime, kTextPlain) == 0;
+}
+}  // namespace
 
 namespace interop = core::interop;
 namespace win32   = core::win32;
@@ -63,37 +77,98 @@ MainWindowRuntime::ResolvePane(void* paneIdUserdata) const
     return ref;
 }
 
-bool MainWindowRuntime::OnReadClipboard(void* paneIdUserdata, void* state)
+ghostty_clipboard_read_result_e MainWindowRuntime::OnReadClipboard(
+    void* paneIdUserdata,
+    void* state,
+    char const* const* mimes,
+    size_t mimesLen,
+    bool list)
 {
-    if (!m_host.isReady()) return false;
+    if (!m_host.isReady()) return GHOSTTY_CLIPBOARD_READ_UNSUPPORTED;
     auto ref = ResolvePane(paneIdUserdata);
-    if (!ref.control || !ref.control->Surface()) return false;
-    auto utf8 = interop::Encoding::toUtf8(
-        win32::Clipboard::read(ref.window->m_hwnd));
-    if (utf8.empty()) return false;
-    ref.control->Surface().CompleteClipboardRequest(utf8.c_str(), state, false);
-    return true;
+    if (!ref.control || !ref.control->Surface()) return GHOSTTY_CLIPBOARD_READ_UNSUPPORTED;
+
+    // Only a text/plain representation exists here, so the clipboard
+    // is read when that type is requested or when the listing of
+    // available types is wanted; other requested types simply have no
+    // representation in the completion.
+    bool wantsText = false;
+    for (size_t i = 0; i < mimesLen; ++i) {
+        if (IsTextPlain(mimes[i])) { wantsText = true; break; }
+    }
+
+    std::string utf8;
+    if (wantsText || list) {
+        utf8 = interop::Encoding::toUtf8(win32::Clipboard::read(ref.window->m_hwnd));
+    }
+
+    std::vector<ghostty_clipboard_content_s> contents;
+    if (wantsText && !utf8.empty()) {
+        contents.push_back({ kTextPlain, utf8.data(), utf8.size() });
+    }
+    std::vector<char const*> available;
+    if (list && !utf8.empty()) available.push_back(kTextPlain);
+
+    // Nothing requested is on the clipboard and no listing was asked
+    // for: there is nothing to complete the read with.
+    if (contents.empty() && !list) return GHOSTTY_CLIPBOARD_READ_UNAVAILABLE;
+
+    ghostty_clipboard_complete_s const complete{
+        .contents      = contents.empty() ? nullptr : contents.data(),
+        .contents_len  = contents.size(),
+        .available     = available.empty() ? nullptr : available.data(),
+        .available_len = available.size(),
+        .confirmed     = false,
+        .remember      = false,
+    };
+    ref.control->Surface().CompleteClipboardRequest(complete, state);
+    return GHOSTTY_CLIPBOARD_READ_STARTED;
 }
 
 void MainWindowRuntime::OnConfirmReadClipboard(void* paneIdUserdata,
-                                               char const* content,
+                                               ghostty_clipboard_confirm_s const* confirm,
                                                void* state)
 {
-    // Auto-confirm clipboard reads.
+    // No permission prompt on this host yet: the read is confirmed
+    // with exactly the contents ghostty offered, so the clipboard is
+    // never re-read between the request and its completion.
     if (!m_host.isReady()) return;
     auto ref = ResolvePane(paneIdUserdata);
-    if (ref.control && ref.control->Surface()) {
-        ref.control->Surface().CompleteClipboardRequest(content, state, true);
+    if (!ref.control || !ref.control->Surface()) return;
+    if (!confirm) {
+        ref.control->Surface().DenyClipboardRequest(state);
+        return;
     }
+
+    ghostty_clipboard_complete_s const complete{
+        .contents      = confirm->contents,
+        .contents_len  = confirm->contents_len,
+        .available     = confirm->available,
+        .available_len = confirm->available_len,
+        .confirmed     = true,
+        .remember      = false,
+    };
+    ref.control->Surface().CompleteClipboardRequest(complete, state);
 }
 
-void MainWindowRuntime::OnWriteClipboard(void* paneIdUserdata, char const* utf8)
+void MainWindowRuntime::OnWriteClipboard(void* paneIdUserdata,
+                                         ghostty_clipboard_content_s const* contents,
+                                         size_t count)
 {
     if (!m_host.isReady()) return;
     auto ref = ResolvePane(paneIdUserdata);
     if (!ref.window) return;
-    win32::Clipboard::write(
-        ref.window->m_hwnd, interop::Encoding::toUtf16(utf8));
+
+    // The first text/plain representation goes to the Win32 clipboard.
+    // The data carries an explicit length and is not null-terminated.
+    for (size_t i = 0; i < count; ++i) {
+        auto const& content = contents[i];
+        if (!IsTextPlain(content.mime) || !content.data) continue;
+        win32::Clipboard::write(
+            ref.window->m_hwnd,
+            interop::Encoding::toUtf16(content.data, static_cast<int>(content.len)));
+        return;
+    }
 }
 
 void MainWindowRuntime::OnCloseSurface(void* paneIdUserdata)

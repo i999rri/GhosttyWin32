@@ -98,6 +98,25 @@ public:
         return static_cast<uint64_t>(ms);
     }
 
+    // The command palette's entry list (`command-palette-entry`;
+    // upstream ships a default set and users append their own).
+    // The strings inside the returned structs point into memory the
+    // config handle owns — consume or copy them before the handle
+    // is replaced (CONFIG_CHANGE / reload).
+    ghostty_config_command_list_s CommandPaletteEntries() const noexcept {
+        ghostty_config_command_list_s list{};
+        if (!GetRaw("command-palette-entry", &list)) return {};
+        return list;
+    }
+
+    // The trigger bound to toggle_command_palette, so the palette
+    // can recognize its own keybind while it holds focus.
+    ghostty_input_trigger_s CommandPaletteTrigger() const noexcept {
+        static constexpr char kAction[] = "toggle_command_palette";
+        if (!m_config) return {};
+        return ghostty_config_trigger(m_config, kAction, sizeof(kAction) - 1);
+    }
+
     // `window-step-resize` — snap interactive window resizing to
     // the cell grid (#155). Upstream default is false (smooth
     // pixel resizing) with snapping as an opt-in, and this port

@@ -56,38 +56,44 @@ bool RuntimeConfigFactory::Action(ghostty_app_t app,
 // the latched runtime instead and forward the pane userdata so the
 // impl can complete the request on the exact surface that issued it.
 
-bool RuntimeConfigFactory::ReadClipboard(void* paneIdUserdata,
-                                          ghostty_clipboard_e,
-                                          void* state)
+ghostty_clipboard_read_result_e RuntimeConfigFactory::ReadClipboard(
+    void* paneIdUserdata,
+    ghostty_clipboard_e,
+    void* state,
+    char const* const* mimes,
+    size_t mimesLen,
+    bool list)
 {
     auto* runtime =
         g_runtimeForSurfaceCallbacks.load(std::memory_order_acquire);
-    if (!runtime) return false;
-    return runtime->OnReadClipboard(paneIdUserdata, state);
+    if (!runtime) return GHOSTTY_CLIPBOARD_READ_UNSUPPORTED;
+    return runtime->OnReadClipboard(paneIdUserdata, state, mimes, mimesLen, list);
 }
 
 void RuntimeConfigFactory::ConfirmReadClipboard(void* paneIdUserdata,
-                                                 char const* content,
+                                                 ghostty_clipboard_confirm_s const* confirm,
                                                  void* state,
                                                  ghostty_clipboard_request_e)
 {
     auto* runtime =
         g_runtimeForSurfaceCallbacks.load(std::memory_order_acquire);
     if (!runtime) return;
-    runtime->OnConfirmReadClipboard(paneIdUserdata, content, state);
+    runtime->OnConfirmReadClipboard(paneIdUserdata, confirm, state);
 }
 
+// The trailing bool asks for a confirmation prompt before writing;
+// this host has none and applies the write as it always has.
 void RuntimeConfigFactory::WriteClipboard(void* paneIdUserdata,
                                            ghostty_clipboard_e,
-                                           ghostty_clipboard_content_s const* content,
+                                           ghostty_clipboard_content_s const* contents,
                                            size_t count,
                                            bool)
 {
-    if (!content || count == 0 || !content[0].data) return;
+    if (!contents || count == 0) return;
     auto* runtime =
         g_runtimeForSurfaceCallbacks.load(std::memory_order_acquire);
     if (!runtime) return;
-    runtime->OnWriteClipboard(paneIdUserdata, content[0].data);
+    runtime->OnWriteClipboard(paneIdUserdata, contents, count);
 }
 
 void RuntimeConfigFactory::CloseSurface(void* paneIdUserdata, bool /*process_alive*/)
