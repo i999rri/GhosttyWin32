@@ -26,9 +26,15 @@ inline winrt::handle MakePipeIoEvent() noexcept {
 // success.
 inline bool FinishPipeIo(HANDLE pipe, OVERLAPPED& ov, HANDLE stop, DWORD timeoutMs,
                          DWORD& bytes) noexcept {
-    HANDLE waits[2] = { ov.hEvent, stop };
-    DWORD count = stop ? 2 : 1;
-    if (WaitForMultipleObjects(count, waits, FALSE, timeoutMs) != WAIT_OBJECT_0) {
+    // `stop` goes first: WaitForMultipleObjects reports the lowest
+    // signalled index, so a peer that completes I/O as fast as it can
+    // must not be able to hide a stop request behind it.
+    HANDLE waits[2];
+    DWORD count = 0;
+    if (stop) waits[count++] = stop;
+    waits[count++] = ov.hEvent;
+    const DWORD completed = WAIT_OBJECT_0 + count - 1;
+    if (WaitForMultipleObjects(count, waits, FALSE, timeoutMs) != completed) {
         CancelIoEx(pipe, &ov);
         GetOverlappedResult(pipe, &ov, &bytes, TRUE);
         return false;
