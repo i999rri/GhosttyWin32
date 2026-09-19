@@ -999,7 +999,12 @@ namespace winrt::GhosttyWin32::implementation
 
     bool MainWindow::OwnsPane(PaneId id) const noexcept
     {
-        return static_cast<bool>(id) && m_tabs.FindByPaneId(id).tab != nullptr;
+        if (!id) return false;
+        if (m_tabs.FindByPaneId(id).tab) return true;
+        // A shell parked for an in-place WSL session (#217) is in no
+        // tree but still ours; its close is routed here by this check.
+        return std::any_of(m_tabs.begin(), m_tabs.end(),
+                           [id](auto const& tab) { return tab && tab->HasParked(id); });
     }
 
     bool MainWindow::IsActiveSurface(ghostty_surface_t surface) noexcept
