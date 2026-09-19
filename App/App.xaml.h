@@ -156,11 +156,16 @@ namespace winrt::GhosttyWin32::implementation
         PressedTab() noexcept { return m_pressedTab; }
 
         // In-place WSL (#217). The pipe the `wsl` shim talks to, or
-        // empty before the server is up; and the directory holding the
-        // shim, which ConPTY shells get first on their PATH while
+        // empty while the server is down; and the directory holding
+        // the shim, which ConPTY shells get first on their PATH while
         // wsl-bridge is on.
         std::wstring ShimPipeName() const noexcept;
         std::wstring const& ShimDirectory() const noexcept { return m_shimDir; }
+        // Run the shim's pipe server exactly while the current config
+        // has wsl-bridge on. Called at launch and on every config
+        // replacement; idempotent. With the option off nothing listens,
+        // so the pipe is no attack surface for users who never opted in.
+        void SyncShimServer();
 
     private:
         // Shared tail of CreateNewWindow / CreateTearOutWindow:

@@ -2279,6 +2279,10 @@ namespace winrt::GhosttyWin32::implementation
         // command-palette-entry: rebuild the palette's cached rows
         // from the new config while it is hidden.
         RefreshPaletteEntries();
+        // wsl-bridge decides whether the in-place WSL shim's pipe
+        // server runs at all (#217). App-wide, so every window asks and
+        // the call is idempotent.
+        if (App::g_app) App::g_app->SyncShimServer();
     }
 
     void MainWindow::ReloadConfig(bool soft)
