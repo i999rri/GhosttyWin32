@@ -202,6 +202,7 @@
     <ClInclude Include="Display\PhysicalPixels.h" />
     <ClInclude Include="Display\PhysicalSizeFactory.h" />
     <ClInclude Include="Ghostty\MainWindowRuntime.h" />
+    <ClInclude Include="Wsl\PipeIo.h" />
     <ClInclude Include="Wsl\ShimReply.h" />
     <ClInclude Include="Wsl\ShimServer.h" />
     <ClInclude Include="Input\TerminalKeyDown.h" />

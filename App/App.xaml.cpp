@@ -355,7 +355,9 @@ namespace winrt::GhosttyWin32::implementation
                 window->OpenWslInPane(id, std::move(request.cwd), std::move(request.distro),
                                       std::move(reply));
             });
-        m_shimServer->Start();
+        // A name another process already holds is never advertised:
+        // with no server, ShimPipeName is empty and shells get no shim.
+        if (!m_shimServer->Start()) m_shimServer.reset();
     }
 
     void App::CreateNewWindow()
