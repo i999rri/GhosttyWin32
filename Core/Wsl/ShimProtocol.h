@@ -88,6 +88,24 @@ inline std::wstring ToUtf16(std::string_view text) {
     return out;
 }
 
+// Whether `distro` may be forwarded: empty (the default distribution),
+// or letters, digits, '.', '_' and '-' starting with a letter or digit.
+// The host puts it on a command line that is split on whitespace with
+// no quoting, so anything else could smuggle arguments to wsl.exe or a
+// command into the distribution. A distribution outside this set can
+// still be opened by running the real wsl.exe.
+inline bool IsForwardableDistro(std::wstring_view distro) noexcept {
+    auto alnum = [](wchar_t c) {
+        return (c >= L'a' && c <= L'z') || (c >= L'A' && c <= L'Z') || (c >= L'0' && c <= L'9');
+    };
+    if (distro.empty()) return true;
+    if (!alnum(distro.front())) return false;
+    for (wchar_t c : distro) {
+        if (!alnum(c) && c != L'.' && c != L'_' && c != L'-') return false;
+    }
+    return true;
+}
+
 inline std::string EncodeOpen(uint64_t paneId, std::wstring_view cwd, std::wstring_view distro) {
     return "open\t" + std::to_string(paneId) + "\t" + ToUtf8(cwd) + "\t" + ToUtf8(distro) + "\n";
 }
@@ -142,7 +160,12 @@ inline std::optional<OpenRequest> ParseOpen(std::string_view text) {
     auto id = detail::Number<uint64_t>(fields[1]);
     if (!id || *id == 0) return std::nullopt;
 
-    return OpenRequest{ *id, ToUtf16(fields[2]), ToUtf16(fields[3]) };
+    // Checked here rather than where the command is built, so no path
+    // from the pipe to a command line can skip it.
+    std::wstring distro = ToUtf16(fields[3]);
+    if (!IsForwardableDistro(distro)) return std::nullopt;
+
+    return OpenRequest{ *id, ToUtf16(fields[2]), std::move(distro) };
 }
 
 inline std::optional<Reply> ParseReply(std::string_view text) {

@@ -30,6 +30,28 @@ TEST(ShimProtocolTest, OpenRejectsMalformedLines) {
     EXPECT_FALSE(ParseOpen("\n").has_value());
 }
 
+TEST(ShimProtocolTest, OpenAcceptsOrdinaryDistroNames) {
+    for (auto name : { L"Ubuntu", L"Ubuntu-22.04", L"my_distro", L"NixOS", L"a" }) {
+        auto req = ParseOpen(EncodeOpen(1, L"C:\\", name));
+        ASSERT_TRUE(req.has_value()) << name;
+        EXPECT_EQ(req->distro, name);
+    }
+}
+
+TEST(ShimProtocolTest, OpenRejectsDistroNamesThatCouldCarryArguments) {
+    // The host splits its command line on whitespace, so a space would
+    // turn the rest into wsl.exe or in-distro arguments.
+    EXPECT_FALSE(ParseOpen(EncodeOpen(1, L"C:\\", L"Ubuntu --exec calc")).has_value());
+    EXPECT_FALSE(ParseOpen(EncodeOpen(1, L"C:\\", L"Ubuntu sh -c x")).has_value());
+    // A leading dash would read as an option.
+    EXPECT_FALSE(ParseOpen(EncodeOpen(1, L"C:\\", L"-e")).has_value());
+    EXPECT_FALSE(ParseOpen(EncodeOpen(1, L"C:\\", L"--cd")).has_value());
+    // Quotes, separators and non-ASCII are not forwarded either.
+    EXPECT_FALSE(ParseOpen(EncodeOpen(1, L"C:\\", L"\"Ubuntu\"")).has_value());
+    EXPECT_FALSE(ParseOpen(EncodeOpen(1, L"C:\\", L"Ubuntu;calc")).has_value());
+    EXPECT_FALSE(ParseOpen(EncodeOpen(1, L"C:\\", L"Ubuntu\u3000x")).has_value());
+}
+
 TEST(ShimProtocolTest, OpenAcceptsCrLf) {
     auto req = ParseOpen("open\t3\tC:\\\t\r\n");
     ASSERT_TRUE(req.has_value());

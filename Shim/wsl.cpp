@@ -40,6 +40,9 @@ std::optional<InteractiveShell> Classify(int argc, wchar_t** argv) {
         }
         return std::nullopt;
     }
+    // The host refuses a name it cannot forward safely; asking would
+    // only delay the real wsl.exe, which handles any name itself.
+    if (!IsForwardableDistro(shell.distro)) return std::nullopt;
     return shell;
 }
 
