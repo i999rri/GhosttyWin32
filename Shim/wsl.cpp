@@ -160,18 +160,17 @@ std::wstring ArgumentsAfterProgram() {
 }
 
 // Ctrl+C and Ctrl+Break go to every process on the console, this one
-// included. Left to the default handler the shim would exit while
-// wsl.exe keeps running, and the shell would take its prompt back and
-// fight wsl.exe for the console. Handled here, the shim keeps waiting
-// and wsl.exe decides. A handler function, unlike the NULL "ignore"
-// form, is not inherited by wsl.exe.
+// included. Left to the default handler the shim would exit while the
+// session it started goes on: wsl.exe keeps running, or the host has
+// already been asked to swap the pane. Either way the shell would take
+// its prompt back mid-session. Handled here, the shim keeps waiting
+// and the session decides. A handler function, unlike the NULL
+// "ignore" form, is not inherited by wsl.exe.
 BOOL WINAPI OutlastConsoleBreak(DWORD event) {
     return event == CTRL_C_EVENT || event == CTRL_BREAK_EVENT;
 }
 
 int RunRealWsl() {
-    SetConsoleCtrlHandler(OutlastConsoleBreak, TRUE);
-
     wchar_t system32[MAX_PATH];
     UINT len = GetSystemDirectoryW(system32, MAX_PATH);
     if (len == 0 || len >= MAX_PATH) return 1;
@@ -199,6 +198,10 @@ int RunRealWsl() {
 }  // namespace
 
 int wmain(int argc, wchar_t** argv) {
+    // Before anything that starts a session, so no break can separate
+    // the shim from the session it is waiting on.
+    SetConsoleCtrlHandler(OutlastConsoleBreak, TRUE);
+
     auto shell = Classify(argc, argv);
     // Redirected stdio means a script is driving wsl, not a person.
     if (shell && IsConsole(STD_INPUT_HANDLE) && IsConsole(STD_OUTPUT_HANDLE)) {
