@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "App.xaml.h"
 #include "Windows/MainWindow.xaml.h"
+#include "Ghostty/Config.h"
 #include "Ghostty/MainWindowRuntime.h"
 #include "Ghostty/RuntimeConfigFactory.h"
 #include <algorithm>
@@ -304,9 +305,8 @@ namespace winrt::GhosttyWin32::implementation
         }
 
         // In-place WSL (#217): the shim `wsl.exe` ships under shim\
-        // next to the host, and the pipe server that answers it runs
-        // for the life of the process. Requests land on the UI thread
-        // and go to the window that owns the pane.
+        // next to the host. The pipe server that answers it runs only
+        // while wsl-bridge is on; see SyncShimServer.
         {
             wchar_t exe[MAX_PATH];
             DWORD len = GetModuleFileNameW(nullptr, exe, MAX_PATH);
@@ -314,12 +314,40 @@ namespace winrt::GhosttyWin32::implementation
                 m_shimDir = (std::filesystem::path(exe).parent_path() / L"shim").wstring();
             }
         }
+        SyncShimServer();
+
+        CreateNewWindow();
+    }
+
+    std::wstring App::ShimPipeName() const noexcept
+    {
+        return m_shimServer ? m_shimServer->PipeName() : std::wstring{};
+    }
+
+    void App::SyncShimServer()
+    {
+        const bool wanted = m_ghostty
+            && core::ghostty::Config(m_ghostty->ConfigHandle()).WslBridge();
+        if (wanted == static_cast<bool>(m_shimServer)) return;
+
+        if (!wanted) {
+            // Stopping only ends the accept loop. Sessions already open
+            // keep their own pipe handles and finish normally.
+            m_shimServer.reset();
+            return;
+        }
+
+        // Requests land on the UI thread and go to the window that owns
+        // the pane. The option is checked again there: a request can be
+        // queued just before a reload turns it off.
         m_shimServer = std::make_unique<wsl::ShimServer>(
             Microsoft::UI::Dispatching::DispatcherQueue::GetForCurrentThread(),
             [](core::wsl::OpenRequest request, std::shared_ptr<wsl::ShimReply> reply) {
+                auto* app = App::g_app;
+                const bool enabled = app && app->Ghostty()
+                    && core::ghostty::Config(app->Ghostty()->ConfigHandle()).WslBridge();
                 PaneId id{ request.paneId };
-                MainWindow* window =
-                    App::g_app ? App::g_app->Windows().FindForPaneId(id) : nullptr;
+                MainWindow* window = enabled ? app->Windows().FindForPaneId(id) : nullptr;
                 if (!window) {
                     reply->Refuse();
                     return;
@@ -328,13 +356,6 @@ namespace winrt::GhosttyWin32::implementation
                                       std::move(reply));
             });
         m_shimServer->Start();
-
-        CreateNewWindow();
-    }
-
-    std::wstring App::ShimPipeName() const noexcept
-    {
-        return m_shimServer ? m_shimServer->PipeName() : std::wstring{};
     }
 
     void App::CreateNewWindow()
