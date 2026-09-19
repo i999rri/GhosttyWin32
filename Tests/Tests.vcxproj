@@ -168,7 +168,7 @@
     <ClCompile Include="test_ghostty_config.cpp" />
     <ClCompile Include="test_ghostty_actions.cpp" />
     <ClCompile Include="test_ghostty_callback_dispatcher.cpp" />
-    <ClCompile Include="test_clipboard_confirm_policy.cpp" />
+    <ClCompile Include="test_clipboard_request.cpp" />
     <ClCompile Include="test_size_limit.cpp" />
     <ClCompile Include="test_fullscreen.cpp" />
     <ClCompile Include="test_cell_size.cpp" />

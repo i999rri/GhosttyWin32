@@ -78,7 +78,8 @@ void RuntimeConfigFactory::ConfirmReadClipboard(void* paneIdUserdata,
     auto* runtime =
         g_runtimeForSurfaceCallbacks.load(std::memory_order_acquire);
     if (!runtime) return;
-    runtime->OnConfirmReadClipboard(paneIdUserdata, confirm, state, request);
+    runtime->OnConfirmReadClipboard(paneIdUserdata, confirm, state,
+                                    ClipboardRequest(request));
 }
 
 // The trailing bool asks for a confirmation prompt before writing;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ghostty.h"
+#include "Ghostty/ClipboardRequest.h"
 
 namespace core::ghostty {
 
@@ -72,15 +73,15 @@ public:
     // Confirmation step for a previously-issued request. Ghostty issues
     // this when the config says `ask` for the request's kind (the
     // default for terminal clipboard reads) or when a paste looks
-    // unsafe; `request` says which. `confirm` carries the would-be
-    // contents plus prompt information, borrowed for the duration of
-    // the call. The impl decides whether to accept and then completes
-    // or denies the request. Same per-surface userdata as
-    // OnReadClipboard.
+    // unsafe; `request` says which (see ClipboardRequest).
+    // `confirm` carries the would-be contents plus prompt information,
+    // borrowed for the duration of the call. The impl decides whether
+    // to accept and then completes or denies the request. Same
+    // per-surface userdata as OnReadClipboard.
     virtual void OnConfirmReadClipboard(void* paneIdUserdata,
                                         ghostty_clipboard_confirm_s const* confirm,
                                         void* state,
-                                        ghostty_clipboard_request_e request) = 0;
+                                        ClipboardRequest request) = 0;
 
     // Terminal-initiated clipboard write — typically an OSC 52 from a
     // tmux / shell helper. `contents` holds `count` representations

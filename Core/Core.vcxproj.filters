@@ -45,7 +45,7 @@
     <ClInclude Include="Ghostty\App.h">
       <Filter>Ghostty</Filter>
     </ClInclude>
-    <ClInclude Include="Ghostty\ClipboardConfirmPolicy.h">
+    <ClInclude Include="Ghostty\ClipboardRequest.h">
       <Filter>Ghostty</Filter>
     </ClInclude>
     <ClInclude Include="Ghostty\CallbackDispatcher.h">
