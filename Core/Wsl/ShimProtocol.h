@@ -29,9 +29,30 @@ inline constexpr char    kPaneEnvVar[]  = "GHOSTTY_WIN32_PANE";
 inline constexpr wchar_t kPipeEnvVarW[] = L"GHOSTTY_WIN32_PIPE";
 inline constexpr wchar_t kPaneEnvVarW[] = L"GHOSTTY_WIN32_PANE";
 
+inline constexpr std::wstring_view kPipePrefixW = L"\\\\.\\pipe\\GhosttyWin32.";
+
 // One pipe per host process. The pid keeps two running hosts apart.
 inline std::wstring PipeNameFor(unsigned long pid) {
-    return L"\\\\.\\pipe\\GhosttyWin32." + std::to_wstring(pid);
+    return std::wstring(kPipePrefixW) + std::to_wstring(pid);
+}
+
+// The host pid a name made by PipeNameFor carries, or nullopt for any
+// other string. The shim reads the name from its environment, which
+// anything in the shell's startup can set; accepting only this exact
+// shape keeps it to a local pipe (a UNC name would make it authenticate
+// to a remote host), and the pid lets it check who answers.
+inline std::optional<unsigned long> PidFromPipeName(std::wstring_view name) {
+    if (!name.starts_with(kPipePrefixW)) return std::nullopt;
+    std::wstring_view digits = name.substr(kPipePrefixW.size());
+    // A DWORD has at most 10 decimal digits.
+    if (digits.empty() || digits.size() > 10) return std::nullopt;
+    unsigned long long pid = 0;
+    for (wchar_t c : digits) {
+        if (c < L'0' || c > L'9') return std::nullopt;
+        pid = pid * 10 + static_cast<unsigned long long>(c - L'0');
+    }
+    if (pid == 0 || pid > 0xFFFFFFFFull) return std::nullopt;
+    return static_cast<unsigned long>(pid);
 }
 
 // Shim -> host: open WSL in place of pane `paneId`.
