@@ -200,22 +200,23 @@ jobs:
           echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
           echo "Release-PR head SHA: ${head_sha:-<none>}"
 
-      # Generate the changelog body. Two regimes:
+      # Generate the changelog body. A production tag cannot reach dev's
+      # per-PR history (releases are squashed onto main), so neither it
+      # nor the release branch can anchor GitHub's generate-notes: that
+      # lists every PR ever merged (#139). Three regimes:
       #
-      # Production tags: enumerate the PRs ourselves. generate-notes
-      # anchored at the previous production tag is structurally wrong
-      # under squash releases — that tag points at a squash commit on
-      # main which cannot reach dev's per-PR merge commits, so the API
-      # lists every PR since squash releases began (issue #139; the
-      # #140 ancestor rule fixed only the RC chain, whose anchor tags
-      # live on dev). The correct baseline is the PREVIOUS release
-      # PR's dev-side head: walk first-parent between the two release
-      # snapshots and collect the squash subjects' (#N) suffixes.
+      # Production tags: the merged release PR's body, up to its `---`
+      # footer. open-release-pr.yml lists the PRs there from dev, and
+      # any summary written into the PR before merging carries over.
       #
-      # RC tags: generate-notes with previous_tag_name from the
-      # ancestor rule above — anchor and target share the dev lineage,
-      # so the API range is right. Also the fallback for a production
-      # bootstrap without a previous release PR.
+      # The first RC after a production release: list the PRs since the
+      # dev commit that release was cut from
+      # (.github/scripts/prs-since-release.sh). v0.8.2-rc1, anchored at
+      # v0.8.1 through generate-notes, listed every PR back to #41.
+      #
+      # Later RCs: generate-notes from the previous RC, which lives on
+      # dev like the target, so the API range is right. Also the
+      # fallback when neither of the above finds its baseline.
       - name: Generate release notes body
         id: notes
         shell: bash
@@ -227,22 +228,21 @@ jobs:
         run: |
           set -euo pipefail
           body=""
-          if [[ -n "$RELPR_HEAD_SHA" && -n "$PREV_TAG" ]]; then
-            prev_head=$(gh pr list --state closed \
-              --search "head:release/${PREV_TAG} base:main" \
-              --json headRefOid --jq '.[0].headRefOid // empty')
-            if [[ -n "$prev_head" ]]; then
-              # Release branches persist after merge; fetching them
-              # brings the dev-lineage commits that the tag checkout
-              # of main doesn't have.
-              git fetch --quiet origin 'refs/heads/release/*:refs/remotes/origin/release/*'
-              body="## What's Changed"
-              for n in $(git log --first-parent --format='%s' "$prev_head..$RELPR_HEAD_SHA" \
-                  | grep -oE '\(#[0-9]+\)$' | tr -d '(#)' | sort -n || true); do
-                body+=$'\n'"$(gh pr view "$n" --json number,title,author --jq \
-                  '"* \(.title) by @\(.author.login) in https://github.com/'"${GITHUB_REPOSITORY}"'/pull/\(.number)"')"
-              done
+          if [[ -n "$RELPR_HEAD_SHA" ]]; then
+            pr_body=$(gh pr list --state closed \
+              --search "head:release/${REF_NAME} base:main" \
+              --json body --jq '.[0].body // empty')
+            # Everything above the footer rule; awk reads to the end so
+            # the producer never dies of SIGPIPE under pipefail.
+            body=$(printf '%s\n' "$pr_body" \
+              | awk '{ sub(/\r$/, "") } /^---[[:space:]]*$/ { done = 1 } !done { print }')
+            [[ -n "$body" ]] || echo "::warning::Release PR body for ${REF_NAME} is empty; falling back to generate-notes."
+          elif [[ -n "$PREV_TAG" && "$PREV_TAG" != *-* ]]; then
+            if list=$(bash .github/scripts/prs-since-release.sh "$PREV_TAG" HEAD); then
+              body="## What's Changed"$'\n'"$list"
               body+=$'\n\n'"**Full Changelog**: https://github.com/${GITHUB_REPOSITORY}/compare/${PREV_TAG}...${REF_NAME}"
+            else
+              echo "::warning::No dev-side baseline for ${PREV_TAG}; falling back to generate-notes."
             fi
           fi
           if [[ -z "$body" ]]; then
