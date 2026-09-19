@@ -54,10 +54,12 @@
     <!--
       The binary has to be named wsl.exe to shadow System32\wsl.exe on
       PATH. App.vcxproj deploys it from this OutDir into the package
-      under shim\.
+      under shim\. The path is rooted at the repository, not at
+      $(SolutionDir): CI builds Package.wapproj directly, where no
+      solution defines that property.
     -->
     <TargetName>wsl</TargetName>
-    <OutDir>$(SolutionDir)x64\$(Configuration)\WslShim\</OutDir>
+    <OutDir>$(MSBuildProjectDirectory)\..\x64\$(Configuration)\WslShim\</OutDir>
     <IntDir>$(Platform)\$(Configuration)\$(ProjectName)\</IntDir>
   </PropertyGroup>
   <ItemDefinitionGroup>
