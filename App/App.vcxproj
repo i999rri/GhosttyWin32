@@ -336,9 +336,11 @@
     <!--
       The in-place WSL shim (#217): a wsl.exe that ConPTY shells find
       first on PATH. Deployed under shim\ so the package root keeps
-      its own layout and PATH can point at exactly one file.
+      its own layout and PATH can point at exactly one file. The path
+      matches WslShim.vcxproj's OutDir; see there for why it is not
+      built on $(SolutionDir).
     -->
-    <None Include="$(SolutionDir)x64\$(Configuration)\WslShim\wsl.exe">
+    <None Include="$(MSBuildProjectDirectory)\..\x64\$(Configuration)\WslShim\wsl.exe">
       <Link>shim\wsl.exe</Link>
       <DeploymentContent>true</DeploymentContent>
     </None>
