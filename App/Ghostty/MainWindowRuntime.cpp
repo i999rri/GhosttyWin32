@@ -3,6 +3,7 @@
 
 #include "Windows/MainWindow.xaml.h"
 #include "Ghostty/CallbackDispatcher.h"
+#include "Ghostty/ClipboardConfirmPolicy.h"
 #include "Interop/Encoding.h"
 #include "Tabs/Panes/PaneId.h"
 #include "Win32/Clipboard.h"
@@ -127,15 +128,17 @@ ghostty_clipboard_read_result_e MainWindowRuntime::OnReadClipboard(
 
 void MainWindowRuntime::OnConfirmReadClipboard(void* paneIdUserdata,
                                                ghostty_clipboard_confirm_s const* confirm,
-                                               void* state)
+                                               void* state,
+                                               ghostty_clipboard_request_e request)
 {
-    // No permission prompt on this host yet: the read is confirmed
-    // with exactly the contents ghostty offered, so the clipboard is
-    // never re-read between the request and its completion.
+    // No permission prompt on this host yet, so the answer is fixed
+    // per kind of request (see ClipboardConfirmPolicy.h). A confirmed
+    // request completes with exactly the contents ghostty offered, so
+    // the clipboard is never re-read between request and completion.
     if (!m_host.isReady()) return;
     auto ref = ResolvePane(paneIdUserdata);
     if (!ref.control || !ref.control->Surface()) return;
-    if (!confirm) {
+    if (!confirm || !core::ghostty::ConfirmsWithoutPrompt(request)) {
         ref.control->Surface().DenyClipboardRequest(state);
         return;
     }

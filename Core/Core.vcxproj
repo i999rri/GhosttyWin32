@@ -92,6 +92,7 @@
     <ClInclude Include="Ghostty\Actions\Tags\TriggerLabel.h" />
     <ClInclude Include="Ghostty\Actions\Tags\WindowDecorations.h" />
     <ClInclude Include="Ghostty\App.h" />
+    <ClInclude Include="Ghostty\ClipboardConfirmPolicy.h" />
     <ClInclude Include="Ghostty\CallbackDispatcher.h" />
     <ClInclude Include="Ghostty\Config.h" />
     <ClInclude Include="Ghostty\IGhosttyRuntime.h" />
