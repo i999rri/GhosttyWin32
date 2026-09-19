@@ -58,4 +58,20 @@ TEST(ShimProtocolTest, ReplyRejectsMalformedLines) {
 
 TEST(ShimProtocolTest, PipeNameCarriesThePid) {
     EXPECT_EQ(PipeNameFor(4242), L"\\\\.\\pipe\\GhosttyWin32.4242");
+    EXPECT_EQ(PidFromPipeName(PipeNameFor(4242)), 4242ul);
+    EXPECT_EQ(PidFromPipeName(PipeNameFor(4294967295ul)), 4294967295ul);
+}
+
+TEST(ShimProtocolTest, PipeNameRejectsAnythingButALocalHostPipe) {
+    // Remote and other-namespace forms: the shim must never open them.
+    EXPECT_FALSE(PidFromPipeName(L"\\\\evil\\pipe\\GhosttyWin32.4242").has_value());
+    EXPECT_FALSE(PidFromPipeName(L"\\\\?\\pipe\\GhosttyWin32.4242").has_value());
+    EXPECT_FALSE(PidFromPipeName(L"\\\\.\\pipe\\Other.4242").has_value());
+    // Malformed pid parts.
+    EXPECT_FALSE(PidFromPipeName(L"\\\\.\\pipe\\GhosttyWin32.").has_value());
+    EXPECT_FALSE(PidFromPipeName(L"\\\\.\\pipe\\GhosttyWin32.0").has_value());
+    EXPECT_FALSE(PidFromPipeName(L"\\\\.\\pipe\\GhosttyWin32.12a").has_value());
+    EXPECT_FALSE(PidFromPipeName(L"\\\\.\\pipe\\GhosttyWin32.12\\..\\x").has_value());
+    EXPECT_FALSE(PidFromPipeName(L"\\\\.\\pipe\\GhosttyWin32.4294967296").has_value());
+    EXPECT_FALSE(PidFromPipeName(L"").has_value());
 }

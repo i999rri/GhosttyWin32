@@ -43,9 +43,12 @@ std::optional<InteractiveShell> Classify(int argc, wchar_t** argv) {
     return shell;
 }
 
+// A console, not merely a character device: NUL also reports
+// FILE_TYPE_CHAR, and `wsl <NUL >NUL` is a script, not a person.
 bool IsConsole(DWORD stdHandle) {
     HANDLE h = GetStdHandle(stdHandle);
-    return h != nullptr && h != INVALID_HANDLE_VALUE && GetFileType(h) == FILE_TYPE_CHAR;
+    DWORD mode = 0;
+    return h != nullptr && h != INVALID_HANDLE_VALUE && GetConsoleMode(h, &mode);
 }
 
 std::wstring Env(wchar_t const* name) {
@@ -66,43 +69,65 @@ std::wstring CurrentDirectory() {
     return dir;
 }
 
-HANDLE ConnectToHost(std::wstring const& pipe) {
-    // The server accepts one connection at a time; a busy pipe means
-    // another shim is being read right now, which takes a moment.
+// Open the host's pipe, or INVALID_HANDLE_VALUE. `hostPid` is the pid
+// the pipe name carries; a server that is not that process is some
+// other program holding the name, and is not talked to.
+HANDLE ConnectToHost(std::wstring const& pipe, unsigned long hostPid) {
+    // Identification only: without SECURITY_SQOS_PRESENT the server may
+    // impersonate this process, which in an elevated shell would hand
+    // an elevated token to whoever answers.
+    constexpr DWORD kFlags = SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION;
     for (int attempt = 0; attempt < 5; ++attempt) {
         HANDLE h = CreateFileW(pipe.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr,
-                               OPEN_EXISTING, 0, nullptr);
-        if (h != INVALID_HANDLE_VALUE) return h;
+                               OPEN_EXISTING, kFlags, nullptr);
+        if (h != INVALID_HANDLE_VALUE) {
+            ULONG serverPid = 0;
+            if (GetNamedPipeServerProcessId(h, &serverPid) && serverPid == hostPid) return h;
+            CloseHandle(h);
+            return INVALID_HANDLE_VALUE;
+        }
+        // Every instance busy: the host is answering another shim.
         if (GetLastError() != ERROR_PIPE_BUSY) return INVALID_HANDLE_VALUE;
         if (!WaitNamedPipeW(pipe.c_str(), 1000)) return INVALID_HANDLE_VALUE;
     }
     return INVALID_HANDLE_VALUE;
 }
 
-// WSL's exit code once the host has run the session, or nullopt when
-// there is no host to ask or it declined. Blocks for the whole
-// session: the reply only comes when WSL ends.
+// The exit code when the host took the request but gave no answer (it
+// exited, or the session was dropped with its tab). The session may
+// have run, so starting a second WSL here would be wrong; nonzero so
+// the shell does not take it for success.
+constexpr uint32_t kNoAnswerExitCode = 1;
+// A reply is one short line.
+constexpr size_t kMaxReplyBytes = 64;
+
+// WSL's exit code once the host has taken the request, or nullopt when
+// there is no host to ask or it declined; only then is the real wsl.exe
+// run instead. Blocks for the whole session: the reply only comes when
+// WSL ends.
 std::optional<uint32_t> AskHost(InteractiveShell const& shell) {
     std::wstring pipe = Env(kPipeEnvVarW);
     std::wstring pane = Env(kPaneEnvVarW);
-    if (pipe.empty() || pane.empty()) return std::nullopt;
+    auto hostPid = PidFromPipeName(pipe);
+    if (!hostPid || pane.empty()) return std::nullopt;
 
     uint64_t paneId = std::wcstoull(pane.c_str(), nullptr, 10);
     if (paneId == 0) return std::nullopt;
 
-    HANDLE h = ConnectToHost(pipe);
+    HANDLE h = ConnectToHost(pipe, *hostPid);
     if (h == INVALID_HANDLE_VALUE) return std::nullopt;
 
     std::string request = EncodeOpen(paneId, CurrentDirectory(), shell.distro);
     DWORD written = 0;
-    if (!WriteFile(h, request.data(), static_cast<DWORD>(request.size()), &written, nullptr)) {
+    if (!WriteFile(h, request.data(), static_cast<DWORD>(request.size()), &written, nullptr)
+        || written != request.size()) {
         CloseHandle(h);
         return std::nullopt;
     }
 
     std::string reply;
-    char buf[256];
-    while (reply.find('\n') == std::string::npos) {
+    char buf[kMaxReplyBytes];
+    while (reply.find('\n') == std::string::npos && reply.size() < kMaxReplyBytes) {
         DWORD n = 0;
         if (!ReadFile(h, buf, sizeof(buf), &n, nullptr) || n == 0) break;
         reply.append(buf, n);
@@ -110,7 +135,8 @@ std::optional<uint32_t> AskHost(InteractiveShell const& shell) {
     CloseHandle(h);
 
     auto parsed = ParseReply(reply);
-    if (!parsed || !parsed->opened) return std::nullopt;
+    if (!parsed) return kNoAnswerExitCode;
+    if (!parsed->opened) return std::nullopt;
     return parsed->exitCode;
 }
 
@@ -130,7 +156,19 @@ std::wstring ArgumentsAfterProgram() {
     return std::wstring(cmd.substr(i));
 }
 
+// Ctrl+C and Ctrl+Break go to every process on the console, this one
+// included. Left to the default handler the shim would exit while
+// wsl.exe keeps running, and the shell would take its prompt back and
+// fight wsl.exe for the console. Handled here, the shim keeps waiting
+// and wsl.exe decides. A handler function, unlike the NULL "ignore"
+// form, is not inherited by wsl.exe.
+BOOL WINAPI OutlastConsoleBreak(DWORD event) {
+    return event == CTRL_C_EVENT || event == CTRL_BREAK_EVENT;
+}
+
 int RunRealWsl() {
+    SetConsoleCtrlHandler(OutlastConsoleBreak, TRUE);
+
     wchar_t system32[MAX_PATH];
     UINT len = GetSystemDirectoryW(system32, MAX_PATH);
     if (len == 0 || len >= MAX_PATH) return 1;
