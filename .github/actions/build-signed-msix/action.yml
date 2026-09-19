@@ -224,3 +224,30 @@ runs:
         }
         Write-Host "MSIX: $($msix.FullName)"
         "msix_path=$($msix.FullName)" >> $env:GITHUB_OUTPUT
+
+    # Payload that arrives as deployed content rather than as a build
+    # output of the app project. A missing file here does not fail the
+    # build, and a developer machine rarely notices (Visual Studio fills
+    # in paths a CI build of the wapproj leaves empty), so check the
+    # package itself.
+    - name: Check MSIX payload
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $zip = [System.IO.Compression.ZipFile]::OpenRead("${{ steps.locate.outputs.msix_path }}")
+        try {
+          $entries = $zip.Entries | ForEach-Object { $_.FullName }
+        } finally {
+          $zip.Dispose()
+        }
+        $required = @('ghostty.dll', 'ghostty-wsl-bridge', 'shim/wsl.exe')
+        $missing = $required | Where-Object {
+          $name = $_
+          -not ($entries | Where-Object { $_ -eq $name -or $_ -like "*/$name" })
+        }
+        if ($missing) {
+          Write-Error "MSIX is missing: $($missing -join ', ')"
+          exit 1
+        }
+        Write-Host "MSIX payload present: $($required -join ', ')"
