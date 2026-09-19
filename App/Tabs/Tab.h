@@ -194,6 +194,14 @@ public:
         return std::nullopt;
     }
 
+    // Whether a parked shell carries `id`. The app routes a surface's
+    // close by pane id to the window that owns the pane, and a shell
+    // that dies while parked must still reach this tab to be released.
+    bool HasParked(PaneId id) const noexcept {
+        return std::any_of(m_inPlace.begin(), m_inPlace.end(),
+                           [id](InPlaceSession const& s) { return s.parked && s.parked->id == id; });
+    }
+
     // The parked shell whose surface is `surface`, or null. A parked
     // pane's surface stays live and keeps talking to its control
     // (mouse visibility after the focus change, title, shape), so the
