@@ -42,16 +42,21 @@ std::wstring TokenSidString(TOKEN_INFORMATION_CLASS cls) {
     return out;
 }
 
-// Full access for SYSTEM and this user only, with a mandatory label at
-// this process's integrity so lower-integrity processes cannot write.
-// The default DACL would also let Everyone open the pipe for reading.
+// Owned by this user, full access for SYSTEM and this user only, and a
+// mandatory label at this process's integrity that denies both writing
+// and reading up. The default DACL would let Everyone open the pipe for
+// reading; a no-write-up label alone would still let a lower-integrity
+// process open it for reading, and every such connection holds the
+// serial server for its read budget. The explicit owner keeps an
+// elevated host's pipe from being owned by the Administrators group.
 PSECURITY_DESCRIPTOR BuildSecurityDescriptor() {
     const std::wstring user = TokenSidString(TokenUser);
     const std::wstring integrity = TokenSidString(TokenIntegrityLevel);
     if (user.empty() || integrity.empty()) return nullptr;
 
-    const std::wstring sddl =
-        L"D:P(A;;GA;;;SY)(A;;GA;;;" + user + L")S:(ML;;NW;;;" + integrity + L")";
+    const std::wstring sddl = L"O:" + user
+        + L"D:P(A;;GA;;;SY)(A;;GA;;;" + user + L")"
+        + L"S:(ML;;NWNR;;;" + integrity + L")";
     PSECURITY_DESCRIPTOR sd = nullptr;
     if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(
             sddl.c_str(), SDDL_REVISION_1, &sd, nullptr)) {
