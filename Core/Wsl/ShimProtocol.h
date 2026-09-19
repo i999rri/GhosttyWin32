@@ -106,6 +106,17 @@ inline bool IsForwardableDistro(std::wstring_view distro) noexcept {
     return true;
 }
 
+// Whether `path` is a drive-letter absolute path (`C:\...` or `C:/...`).
+// The host opens a requested directory on its UI thread; a UNC or
+// device path could make that wait on the network. A mapped network
+// drive also passes this check, so the host still asks the drive type.
+inline bool IsDriveAbsolutePath(std::wstring_view path) noexcept {
+    if (path.size() < 3) return false;
+    wchar_t letter = path[0];
+    bool isLetter = (letter >= L'a' && letter <= L'z') || (letter >= L'A' && letter <= L'Z');
+    return isLetter && path[1] == L':' && (path[2] == L'\\' || path[2] == L'/');
+}
+
 inline std::string EncodeOpen(uint64_t paneId, std::wstring_view cwd, std::wstring_view distro) {
     return "open\t" + std::to_string(paneId) + "\t" + ToUtf8(cwd) + "\t" + ToUtf8(distro) + "\n";
 }

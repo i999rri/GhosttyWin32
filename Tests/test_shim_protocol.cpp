@@ -52,6 +52,22 @@ TEST(ShimProtocolTest, OpenRejectsDistroNamesThatCouldCarryArguments) {
     EXPECT_FALSE(ParseOpen(EncodeOpen(1, L"C:\\", L"Ubuntu\u3000x")).has_value());
 }
 
+TEST(ShimProtocolTest, DriveAbsolutePathsOnly) {
+    EXPECT_TRUE(IsDriveAbsolutePath(L"C:\\"));
+    EXPECT_TRUE(IsDriveAbsolutePath(L"d:\\src\\ghostty"));
+    EXPECT_TRUE(IsDriveAbsolutePath(L"C:/Users"));
+    // Paths that could reach the network or a device namespace.
+    EXPECT_FALSE(IsDriveAbsolutePath(L"\\\\server\\share"));
+    EXPECT_FALSE(IsDriveAbsolutePath(L"\\\\wsl.localhost\\Ubuntu\\home"));
+    EXPECT_FALSE(IsDriveAbsolutePath(L"\\\\?\\C:\\Users"));
+    EXPECT_FALSE(IsDriveAbsolutePath(L"\\\\.\\pipe\\x"));
+    // Relative and truncated forms.
+    EXPECT_FALSE(IsDriveAbsolutePath(L"C:"));
+    EXPECT_FALSE(IsDriveAbsolutePath(L"C:relative"));
+    EXPECT_FALSE(IsDriveAbsolutePath(L"relative\\dir"));
+    EXPECT_FALSE(IsDriveAbsolutePath(L""));
+}
+
 TEST(ShimProtocolTest, OpenAcceptsCrLf) {
     auto req = ParseOpen("open\t3\tC:\\\t\r\n");
     ASSERT_TRUE(req.has_value());

@@ -2548,7 +2548,17 @@ namespace winrt::GhosttyWin32::implementation
         }
         std::string command = "wsl";
         if (!distro.empty()) command += " -d " + interop::Encoding::toUtf8(distro);
-        std::string workingDirectory = interop::Encoding::toUtf8(cwd);
+        // ghostty opens the requested directory synchronously, here on
+        // the UI thread; a UNC path or a mapped network drive could
+        // stall every window on the network. Those start in the
+        // configured directory instead.
+        std::string workingDirectory;
+        if (core::wsl::IsDriveAbsolutePath(cwd)) {
+            const wchar_t root[] = { cwd[0], L':', L'\\', L'\0' };
+            if (GetDriveTypeW(root) != DRIVE_REMOTE) {
+                workingDirectory = interop::Encoding::toUtf8(cwd);
+            }
+        }
 
         // Same SEH guard as SplitActivePane: ghostty_surface_new runs
         // driver code that has thrown hardware exceptions before.
