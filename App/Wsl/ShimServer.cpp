@@ -126,7 +126,11 @@ void ShimServer::Run(winrt::handle pending)
     winrt::handle connectEvent{ CreateEventW(nullptr, TRUE, FALSE, nullptr) };
     if (!connectEvent) return;
 
-    while (true) {
+    // Checked between clients as well as while waiting: a client that
+    // is always ready would otherwise keep the loop busy past a stop.
+    auto stopping = [this]() { return WaitForSingleObject(m_stop.get(), 0) == WAIT_OBJECT_0; };
+
+    while (!stopping()) {
         if (!pending) {
             pending = CreateInstance(false);
             if (!pending) {
@@ -161,6 +165,7 @@ void ShimServer::Run(winrt::handle pending)
         // the name stays ours even while this one is being answered.
         winrt::handle client = std::move(pending);
         pending = CreateInstance(false);
+        if (stopping()) return;
         Serve(std::move(client));
     }
 }
