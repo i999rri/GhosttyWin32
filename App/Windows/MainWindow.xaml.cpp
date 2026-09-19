@@ -2604,9 +2604,13 @@ namespace winrt::GhosttyWin32::implementation
                             [reply](uint32_t exitCode) { reply->Done(exitCode); } });
         bool wasActive = tab->ActivePane() == sourcePane;
         if (wasActive) tab->SetActivePane(nullptr);
+        // `created` lives in `fresh`, which a failed swap destroys, so
+        // the failure path works from this copy; its handle keeps the
+        // WSL control alive until it is detached.
+        Pane made = *created;
         if (!panelImpl->ReplacePane(*sourcePane, std::move(fresh))) {
-            tab->TakeInPlaceByOverlay(created->id);
-            if (newView) newView->Detach();
+            tab->TakeInPlaceByOverlay(made.id);
+            if (made.view) made.view->Detach();
             if (wasActive) tab->SetActivePane(sourcePane);
             reply->Refuse();
             return;
