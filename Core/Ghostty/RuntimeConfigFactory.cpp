@@ -73,12 +73,13 @@ ghostty_clipboard_read_result_e RuntimeConfigFactory::ReadClipboard(
 void RuntimeConfigFactory::ConfirmReadClipboard(void* paneIdUserdata,
                                                  ghostty_clipboard_confirm_s const* confirm,
                                                  void* state,
-                                                 ghostty_clipboard_request_e)
+                                                 ghostty_clipboard_request_e request)
 {
     auto* runtime =
         g_runtimeForSurfaceCallbacks.load(std::memory_order_acquire);
     if (!runtime) return;
-    runtime->OnConfirmReadClipboard(paneIdUserdata, confirm, state);
+    runtime->OnConfirmReadClipboard(paneIdUserdata, confirm, state,
+                                    ClipboardRequest(request));
 }
 
 // The trailing bool asks for a confirmation prompt before writing;

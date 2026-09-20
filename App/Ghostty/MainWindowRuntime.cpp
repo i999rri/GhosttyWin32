@@ -127,15 +127,17 @@ ghostty_clipboard_read_result_e MainWindowRuntime::OnReadClipboard(
 
 void MainWindowRuntime::OnConfirmReadClipboard(void* paneIdUserdata,
                                                ghostty_clipboard_confirm_s const* confirm,
-                                               void* state)
+                                               void* state,
+                                               core::ghostty::ClipboardRequest request)
 {
-    // No permission prompt on this host yet: the read is confirmed
-    // with exactly the contents ghostty offered, so the clipboard is
-    // never re-read between the request and its completion.
+    // No permission prompt on this host yet, so the answer is fixed
+    // per kind of request (see ClipboardRequest). A confirmed
+    // request completes with exactly the contents ghostty offered, so
+    // the clipboard is never re-read between request and completion.
     if (!m_host.isReady()) return;
     auto ref = ResolvePane(paneIdUserdata);
     if (!ref.control || !ref.control->Surface()) return;
-    if (!confirm) {
+    if (!confirm || !request.ConfirmsWithoutPrompt()) {
         ref.control->Surface().DenyClipboardRequest(state);
         return;
     }

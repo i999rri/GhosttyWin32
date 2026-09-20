@@ -90,7 +90,8 @@ public:
                                                     bool list) override;
     void OnConfirmReadClipboard(void* paneIdUserdata,
                                 ghostty_clipboard_confirm_s const* confirm,
-                                void* state) override;
+                                void* state,
+                                core::ghostty::ClipboardRequest request) override;
     void OnWriteClipboard(void* paneIdUserdata,
                           ghostty_clipboard_content_s const* contents,
                           size_t count) override;
