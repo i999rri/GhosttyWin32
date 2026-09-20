@@ -5,9 +5,10 @@
 # Run this INSIDE a pane whose pty is not ConPTY's — a WSL pane, or a
 # shell reached over ssh. A pwsh pane cannot answer the question:
 # conhost parses OSC 52 on the way out and, for a query, drops it
-# without replying or forwarding it (microsoft/terminal,
-# OutputStateMachineEngine.cpp, OscActionCodes::SetClipboard), so the
-# terminal never sees the request.
+# without replying or forwarding it, so the terminal never sees the
+# request. See microsoft/terminal, in
+# src/terminal/parser/OutputStateMachineEngine.cpp, the
+# OscActionCodes::SetClipboard case.
 #
 #   bash clipboard-osc52.sh ask     # the default config: expect no data
 #   bash clipboard-osc52.sh allow   # clipboard-read = allow: expect the marker
