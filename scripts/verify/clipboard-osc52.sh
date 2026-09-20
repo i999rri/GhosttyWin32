@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
-# Check for GhosttyWin32#224: does an OSC 52 read hand the Windows clipboard
-# to a program running in the terminal?
+# Check for GhosttyWin32#224: can a program running in the terminal
+# get the Windows clipboard with an OSC 52 read?
 #
-# Run this inside a pane whose pty is not ConPTY's — a WSL pane, or a shell
-# reached over ssh. A pwsh pane cannot answer the question: conhost parses
-# OSC 52 on the way out and, for a query, drops it without replying or
-# forwarding it, so the terminal never sees the request. The case is in
-# microsoft/terminal, src/terminal/parser/OutputStateMachineEngine.cpp,
-# under OscActionCodes::SetClipboard.
+# Run this inside a pane whose pty is not ConPTY's — a WSL pane,
+# or a shell reached over ssh.
+#
+# A pwsh pane cannot answer the question: conhost parses OSC 52 on the way out
+# and, for a query, drops it without replying or forwarding it,
+# so the terminal never sees the request. The case is in microsoft/terminal,
+# src/terminal/parser/OutputStateMachineEngine.cpp, under OscActionCodes::SetClipboard.
 #
 #   bash clipboard-osc52.sh ask     # the default config: expect no data
 #   bash clipboard-osc52.sh allow   # clipboard-read = allow: expect the marker
@@ -32,9 +33,9 @@ printf '\033]52;c;%s\a' "$(printf '%s' "$marker" | base64 | tr -d '\n')"
 # the query below must not overtake it.
 sleep 0.5
 
-# The reply arrives on stdin, so the line discipline must not eat it: raw,
-# no echo, and a read that gives up after a second of silence instead of
-# waiting for a newline that never comes.
+# The reply arrives on stdin, so the line discipline must not eat it:
+# raw, no echo, and a read that gives up after a second of silence
+# instead of waiting for a newline that never comes.
 saved_tty=$(stty -g)
 stty raw -echo min 0 time 10
 printf '\033]52;c;?\a'
