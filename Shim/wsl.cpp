@@ -11,11 +11,15 @@
 
 #include "Wsl/ShimProtocol.h"
 #include <windows.h>
+#include <aclapi.h>
 #include <cstdint>
 #include <cwchar>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
+
+#pragma comment(lib, "advapi32.lib")
 
 namespace {
 
@@ -72,9 +76,46 @@ std::wstring CurrentDirectory() {
     return dir;
 }
 
-// Open the host's pipe, or INVALID_HANDLE_VALUE. `hostPid` is the pid
-// the pipe name carries; a server that is not that process is some
-// other program holding the name, and is not talked to.
+// Whether `sid` is the user this process runs as.
+bool IsCurrentUser(PSID sid) {
+    HANDLE token = nullptr;
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token)) return false;
+
+    DWORD size = 0;
+    GetTokenInformation(token, TokenUser, nullptr, 0, &size);
+    std::vector<BYTE> buf(size);
+    bool ours = size != 0
+        && GetTokenInformation(token, TokenUser, buf.data(), size, &size)
+        && EqualSid(reinterpret_cast<TOKEN_USER*>(buf.data())->User.Sid, sid);
+    CloseHandle(token);
+    return ours;
+}
+
+// Whether the server on the other end is the host that put this pipe
+// in the environment: the instance was created by the pid the name
+// carries, and by this user. The pid alone is not enough, since pids
+// are reused and any account may create a name in the pipe namespace.
+// Once a host has exited, another user's process holding its old pid
+// can take the name over, be handed the working directory, and report
+// a session that never ran.
+bool IsTheHost(HANDLE pipe, unsigned long hostPid) {
+    ULONG serverPid = 0;
+    if (!GetNamedPipeServerProcessId(pipe, &serverPid) || serverPid != hostPid) return false;
+
+    PSID owner = nullptr;
+    PSECURITY_DESCRIPTOR sd = nullptr;
+    if (GetSecurityInfo(pipe, SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION,
+                        &owner, nullptr, nullptr, nullptr, &sd) != ERROR_SUCCESS) {
+        return false;
+    }
+
+    bool ours = IsCurrentUser(owner);
+    LocalFree(sd);
+    return ours;
+}
+
+// Open the host's pipe, or INVALID_HANDLE_VALUE. Anyone else answering
+// the name is some other program holding it, and is not talked to.
 HANDLE ConnectToHost(std::wstring const& pipe, unsigned long hostPid) {
     // Identification only: without SECURITY_SQOS_PRESENT the server may
     // impersonate this process, which in an elevated shell would hand
@@ -84,8 +125,7 @@ HANDLE ConnectToHost(std::wstring const& pipe, unsigned long hostPid) {
         HANDLE h = CreateFileW(pipe.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr,
                                OPEN_EXISTING, kFlags, nullptr);
         if (h != INVALID_HANDLE_VALUE) {
-            ULONG serverPid = 0;
-            if (GetNamedPipeServerProcessId(h, &serverPid) && serverPid == hostPid) return h;
+            if (IsTheHost(h, hostPid)) return h;
             CloseHandle(h);
             return INVALID_HANDLE_VALUE;
         }
