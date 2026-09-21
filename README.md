@@ -222,6 +222,10 @@ Theme files go in `%LOCALAPPDATA%\ghostty\themes\`. See the upstream
 [Ghostty documentation](https://ghostty.org/docs/config) for the full
 option list.
 
+The clipboard options behave differently per pane on Windows, and a
+terminal-initiated read is refused for now:
+[docs/CLIPBOARD.md](docs/CLIPBOARD.md).
+
 ## Known Issues
 
 - Windows-specific config options (`windows-tab-bar`, `windows-drag-region`)
