@@ -21,4 +21,5 @@
   </Project>
   <Project Path="App/App.vcxproj" Id="c94e582b-f837-42cc-93d6-8409c4d5a0c7" />
   <Project Path="Core/Core.vcxproj" Id="1ef672e9-812a-4f4b-ab42-02b2f655febe" />
+  <Project Path="Shim/WslShim.vcxproj" Id="7d3c2b1a-5e4f-4a6b-9c8d-1f2e3d4c5b6a" />
 </Solution>

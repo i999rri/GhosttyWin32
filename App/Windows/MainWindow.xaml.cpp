@@ -14,6 +14,7 @@
 #include "Win32/Clipboard.h"
 #include "Win32/DebugTrace.h"
 #include "Win32/SEHGuard.h"
+#include "Wsl/ShimProtocol.h"
 #if __has_include("MainWindow.g.cpp")
 #include "MainWindow.g.cpp"
 #endif
@@ -34,6 +35,35 @@
 #include <limits>
 #include <string_view>
 #include <vector>
+
+namespace {
+
+// What the shim reports when its in-place session was closed from
+// the host side rather than finished by WSL (#217). Nonzero so the
+// shell does not take a session it never completed for a success.
+constexpr uint32_t kCutSessionExitCode = 1;
+
+// Whether a tab command starts WSL itself (`wsl`, `wsl.exe`, any
+// case), in which case the in-place shim has no work there (#217).
+bool IsWslCommand(std::string const& command) {
+    auto end = command.find_first_of(" \t");
+    std::string first = command.substr(0, end);
+    std::transform(first.begin(), first.end(), first.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return first == "wsl" || first == "wsl.exe";
+}
+
+// The host process's PATH, the base a shell's PATH is built from.
+std::wstring HostPath() {
+    DWORD len = GetEnvironmentVariableW(L"PATH", nullptr, 0);
+    if (len == 0) return {};
+    std::wstring path(len, L'\0');
+    DWORD got = GetEnvironmentVariableW(L"PATH", path.data(), len);
+    path.resize(got);
+    return path;
+}
+
+}  // namespace
 #pragma comment(lib, "dwmapi.lib")
 #pragma comment(lib, "shell32.lib")
 #pragma comment(lib, "comctl32.lib")
@@ -954,12 +984,27 @@ namespace winrt::GhosttyWin32::implementation
 
     bool MainWindow::OwnsSurface(ghostty_surface_t surface) const noexcept
     {
-        return surface != nullptr && m_tabs.FindBySurface(surface) != nullptr;
+        if (!surface) return false;
+        return m_tabs.FindBySurface(surface) != nullptr || FindParkedPane(surface) != nullptr;
+    }
+
+    Pane* MainWindow::FindParkedPane(ghostty_surface_t surface) const noexcept
+    {
+        for (auto& tab : m_tabs) {
+            if (!tab) continue;
+            if (auto* parked = tab->FindParkedBySurface(surface)) return parked;
+        }
+        return nullptr;
     }
 
     bool MainWindow::OwnsPane(PaneId id) const noexcept
     {
-        return static_cast<bool>(id) && m_tabs.FindByPaneId(id).tab != nullptr;
+        if (!id) return false;
+        if (m_tabs.FindByPaneId(id).tab) return true;
+        // A shell parked for an in-place WSL session (#217) is in no
+        // tree but still ours; its close is routed here by this check.
+        return std::any_of(m_tabs.begin(), m_tabs.end(),
+                           [id](auto const& tab) { return tab && tab->HasParked(id); });
     }
 
     bool MainWindow::IsActiveSurface(ghostty_surface_t surface) noexcept
@@ -1087,12 +1132,31 @@ namespace winrt::GhosttyWin32::implementation
             // the config handle is freed and swapped on every config
             // change (reload, theme follow), so the factory must
             // re-resolve it per Make/MakePane call.
+            // In-place WSL (#217): a ConPTY shell gets the shim `wsl.exe`
+            // first on its PATH and the two variables the shim needs to
+            // find this pane. Only while wsl-bridge is on, and never for
+            // a pane that is WSL itself. Raw `this` capture: the factory
+            // is a member and dies with this window.
+            auto surfaceEnvironment = [this](PaneId id, std::string const& command) {
+                std::vector<TabFactory::EnvVar> env;
+                if (!App::g_app || !m_ghosttyApp) return env;
+                if (!ghostty::Config(m_ghosttyApp->ConfigHandle()).WslBridge()) return env;
+                if (IsWslCommand(command)) return env;
+                std::wstring pipe = App::g_app->ShimPipeName();
+                std::wstring const& shimDir = App::g_app->ShimDirectory();
+                if (pipe.empty() || shimDir.empty()) return env;
+                env.push_back({ "PATH", interop::Encoding::toUtf8(shimDir + L";" + HostPath()) });
+                env.push_back({ core::wsl::kPipeEnvVar, interop::Encoding::toUtf8(pipe) });
+                env.push_back({ core::wsl::kPaneEnvVar, std::to_string(id.value) });
+                return env;
+            };
             m_tabFactory = std::make_unique<TabFactory>(
                 *m_ghosttyApp,
                 m_hwnd,
                 App::g_app->PaneIds(),
                 std::move(onLeafFocused),
-                std::move(onLeafCreated));
+                std::move(onLeafCreated),
+                std::move(surfaceEnvironment));
             // Seed the tracked background colour from config so the
             // opaque underlay has a real colour before the first
             // COLOR_CHANGE arrives, then apply the opacity mode once
@@ -1947,8 +2011,9 @@ namespace winrt::GhosttyWin32::implementation
         // window before the dispatched call landed — the caller
         // drops the action, as the old per-action relays did.
         auto lookup = m_tabs.FindPaneBySurface(surface);
-        if (!lookup.pane) return nullptr;
-        return ControlOf(*lookup.pane);
+        if (lookup.pane) return ControlOf(*lookup.pane);
+        if (auto* parked = FindParkedPane(surface)) return ControlOf(*parked);
+        return nullptr;
     }
 
     void MainWindow::ApplyBackgroundColor(uint8_t r, uint8_t g, uint8_t b)
@@ -2219,6 +2284,10 @@ namespace winrt::GhosttyWin32::implementation
         // command-palette-entry: rebuild the palette's cached rows
         // from the new config while it is hidden.
         RefreshPaletteEntries();
+        // wsl-bridge decides whether the in-place WSL shim's pipe
+        // server runs at all (#217). App-wide, so every window asks and
+        // the call is idempotent.
+        if (App::g_app) App::g_app->SyncShimServer();
     }
 
     void MainWindow::ReloadConfig(bool soft)
@@ -2450,6 +2519,185 @@ namespace winrt::GhosttyWin32::implementation
         if (newView) newView->TakeFocus();
     }
 
+    void MainWindow::OpenWslInPane(PaneId id, std::wstring cwd, std::wstring distro,
+                                   std::shared_ptr<wsl::ShimReply> reply)
+    {
+        auto lookup = m_tabs.FindByPaneId(id);
+        if (!lookup.tab || !lookup.pane || !m_tabFactory) {
+            reply->Refuse();
+            return;
+        }
+        auto* tab = lookup.tab;
+        Pane* sourcePane = lookup.pane;
+        // A request from inside an in-place WSL pane is not stacked.
+        if (tab->IsInPlaceOverlay(id)) {
+            reply->Refuse();
+            return;
+        }
+        auto* panelImpl = winrt::get_self<implementation::SplitPanel>(tab->Panel());
+        if (!panelImpl) {
+            reply->Refuse();
+            return;
+        }
+
+        // The WSL pane takes the shell pane's slot, so it starts at
+        // that pane's size.
+        display::PhysicalSize hint{};
+        if (auto* srcTc = ControlOf(*sourcePane)) {
+            hint = display::PhysicalSizeFactory::ForNewTab(srcTc->InnerPanel(), AppContent());
+        }
+        std::string command = "wsl";
+        if (!distro.empty()) command += " -d " + interop::Encoding::toUtf8(distro);
+        // ghostty opens the requested directory synchronously, here on
+        // the UI thread; a UNC path or a mapped network drive could
+        // stall every window on the network. Those start in the
+        // configured directory instead.
+        std::string workingDirectory;
+        if (core::wsl::IsDriveAbsolutePath(cwd)) {
+            const wchar_t root[] = { cwd[0], L':', L'\\', L'\0' };
+            if (GetDriveTypeW(root) != DRIVE_REMOTE) {
+                workingDirectory = interop::Encoding::toUtf8(cwd);
+            }
+        }
+
+        // Same SEH guard as SplitActivePane: ghostty_surface_new runs
+        // driver code that has thrown hardware exceptions before.
+        struct OpenCtx {
+            TabFactory* factory;
+            uint32_t initialWidth;
+            uint32_t initialHeight;
+            std::string const* command;
+            std::string const* workingDirectory;
+            std::unique_ptr<Branch> result;
+        };
+        OpenCtx ctx{ m_tabFactory.get(), hint.width, hint.height, &command, &workingDirectory, nullptr };
+        int ok = RunSEHGuarded([](void* arg) noexcept {
+            auto* c = static_cast<OpenCtx*>(arg);
+            c->result = c->factory->MakePane(c->initialWidth, c->initialHeight, {},
+                                             *c->command, *c->workingDirectory);
+        }, &ctx);
+        if (!ok) {
+            reply->Refuse();
+            if (m_hwnd) ShowWindow(m_hwnd, SW_HIDE);
+            MessageBoxW(nullptr,
+                L"A graphics driver error occurred while opening WSL.\n"
+                L"GhosttyWin32 will exit safely.\n\n"
+                L"Restarting the app usually recovers — the next launch\n"
+                L"will automatically wait 2 seconds for the driver.",
+                L"GhosttyWin32",
+                MB_OK | MB_ICONERROR | MB_TASKMODAL);
+            if (m_hwnd) PostMessageW(m_hwnd, WM_CLOSE, 0, 0);
+            return;
+        }
+        auto fresh = std::move(ctx.result);
+        Pane* created = fresh ? fresh->TryGet<Pane>() : nullptr;
+        if (!created) {
+            reply->Refuse();
+            return;
+        }
+        host::IPaneView* newView = created->view;
+
+        // Copy the shell's pane out before ReplacePane destroys the
+        // Branch wrapping it; the copied handle keeps the control
+        // alive while it waits. Its control leaves the visual tree
+        // with the swap chain still bound and comes back the same
+        // way, the round trip tear-out already makes.
+        Pane parked = *sourcePane;
+        TerminalControl* parkedTc = ControlOf(parked);
+        // Registered before the swap: from here on the shell's surface
+        // must resolve to this window. Taking its focus away makes
+        // ghostty show the pointer it hid while the user typed, and
+        // ghostty marks the pointer shown before the action lands, so
+        // an action dropped for want of an owner leaves the control
+        // blank for good.
+        tab->BeginInPlace({ created->id, parked,
+                            [reply](uint32_t exitCode) { reply->Done(exitCode); } });
+        bool wasActive = tab->ActivePane() == sourcePane;
+        if (wasActive) tab->SetActivePane(nullptr);
+        // `created` lives in `fresh`, which a failed swap destroys, so
+        // the failure path works from this copy; its handle keeps the
+        // WSL control alive until it is detached.
+        Pane made = *created;
+        if (!panelImpl->ReplacePane(*sourcePane, std::move(fresh))) {
+            tab->TakeInPlaceByOverlay(made.id);
+            if (made.view) made.view->Detach();
+            if (wasActive) tab->SetActivePane(sourcePane);
+            reply->Refuse();
+            return;
+        }
+        // The shell's control just left the tree, focused or not;
+        // see TerminalControl::NotifyFocusLost for why XAML will not
+        // report that itself.
+        if (parkedTc) parkedTc->NotifyFocusLost();
+
+        tab->SetActivePane(created);
+        if (newView) newView->TakeFocus();
+        ApplyBackgroundOpacityAppearance();
+        DEBUG_TRACE(L"InPlaceWsl: opened overlay=%llu for pane=%llu\n",
+                    static_cast<unsigned long long>(created->id.value),
+                    static_cast<unsigned long long>(id.value));
+    }
+
+    void MainWindow::RestoreParkedPane(Tab& tab, Pane& overlay, Pane parked)
+    {
+        auto* panelImpl = winrt::get_self<implementation::SplitPanel>(tab.Panel());
+        if (!panelImpl) return;
+
+        // Same order as the plain pane close: free the WSL surface
+        // while its control is still parented, then mutate the tree.
+        Pane* active = tab.ActivePane();
+        bool wasActive = active == &overlay;
+        tab.SetActivePane(nullptr);
+        if (overlay.view) overlay.view->Detach();
+
+        auto branch = MakePaneBranch(parked);
+        Pane* restored = branch->TryGet<Pane>();
+        if (!panelImpl->ReplacePane(overlay, std::move(branch))) {
+            // The overlay was not in the tree after all; nothing holds
+            // the parked control now, so release its surface too.
+            if (parked.view) parked.view->Detach();
+            return;
+        }
+        DEBUG_TRACE(L"InPlaceWsl[%llu]: restored pane=%llu\n",
+                    GetTickCount64() % 100'000,
+                    static_cast<unsigned long long>(parked.id.value));
+
+        if (wasActive) {
+            tab.SetActivePane(restored);
+            if (restored->view) restored->view->TakeFocus();
+        } else {
+            tab.SetActivePane(active);
+        }
+        ApplyBackgroundOpacityAppearance();
+    }
+
+    void MainWindow::ChildExited(ghostty_surface_t surface, uint32_t exitCode)
+    {
+        // Only an in-place WSL session (#217) acts on this: its WSL
+        // pane is one libghostty keeps open after the process ends,
+        // so this is where the session ends. Every other surface
+        // closes itself through close_surface_cb.
+        auto lookup = m_tabs.FindPaneBySurface(surface);
+        if (!lookup.tab || !lookup.pane) return;
+        auto session = lookup.tab->TakeInPlaceByOverlay(lookup.pane->id);
+        if (!session) return;
+
+        // Tick-stamped like UndoPark: the gap to the restored line
+        // is the host-side cost of ending a session.
+        DEBUG_TRACE(L"InPlaceWsl[%llu]: overlay=%llu exited code=%u\n",
+                    GetTickCount64() % 100'000,
+                    static_cast<unsigned long long>(lookup.pane->id.value), exitCode);
+        if (session->onFinished) session->onFinished(exitCode);
+        if (session->parked) {
+            RestoreParkedPane(*lookup.tab, *lookup.pane, *session->parked);
+            return;
+        }
+        // The shell died while parked, so there is nothing to put
+        // back; the WSL pane goes the way of a plain pane whose
+        // process ended.
+        RemovePaneByIdApproved(lookup.pane->id);
+    }
+
     void MainWindow::EqualizeSplitsForSurface(ghostty_surface_t surface)
     {
         if (!surface) return;
@@ -2564,16 +2812,20 @@ namespace winrt::GhosttyWin32::implementation
         // callback must feed THIS window's active-surface cache. Raw
         // `this` capture is safe by the same argument as InitGhostty's
         // onLeafFocused — MainWindow outlives every control it hosts.
+        auto rehost = [this](Pane& p) {
+            if (auto* tc = p.view) {
+                tc->Rehost(m_hwnd, [this](ghostty_surface_t s) noexcept {
+                    NotifySurfaceFocused(s);
+                });
+            }
+        };
         if (auto* panelImpl =
                 winrt::get_self<implementation::SplitPanel>(tab->Panel())) {
-            panelImpl->Tree().ForEachPane([this](Pane& p) {
-                if (auto* tc = p.view) {
-                    tc->Rehost(m_hwnd, [this](ghostty_surface_t s) noexcept {
-                        NotifySurfaceFocused(s);
-                    });
-                }
-            });
+            panelImpl->Tree().ForEachPane(rehost);
         }
+        // A shell parked for an in-place WSL session travels with the
+        // tab and must point at this window too (#217).
+        tab->ForEachParkedPane(rehost);
 
         // Same shape as CreateTab's post-Make sequence: parent the
         // panel collapsed, register ownership, then select — the
@@ -2631,7 +2883,21 @@ namespace winrt::GhosttyWin32::implementation
     void MainWindow::CloseSurfaceByPaneId(PaneId id)
     {
         auto lookup = m_tabs.FindByPaneId(id);
-        if (!lookup.tab || !lookup.pane) return;
+        if (!lookup.tab || !lookup.pane) {
+            // A shell parked for an in-place WSL session (#217) is in
+            // no tree. If it died while waiting there is nothing to
+            // put back later, so release its surface now.
+            for (auto& tab : m_tabs) {
+                if (!tab) continue;
+                if (auto parked = tab->TakeParkedById(id)) {
+                    if (parked->view) parked->view->Detach();
+                    DEBUG_TRACE(L"InPlaceWsl: parked pane=%llu died\n",
+                                static_cast<unsigned long long>(id.value));
+                    return;
+                }
+            }
+            return;
+        }
         auto* tc = ControlOf(*lookup.pane);
         auto content = Content();
         auto xamlRoot = content ? content.XamlRoot() : nullptr;
@@ -2655,6 +2921,20 @@ namespace winrt::GhosttyWin32::implementation
         if (!lookup.tab || !lookup.pane) return;
         auto* tab = lookup.tab;
         auto* pane = lookup.pane;
+
+        // In-place WSL (#217): the WSL pane was closed from the host
+        // side (close_surface keybind) while WSL was still running,
+        // since a finished WSL ends its session in ChildExited before
+        // any close. Answer the shim as a cut-short session, then put
+        // the shell back. With no shell left to restore (it died
+        // while parked) the WSL pane closes like any other pane below.
+        if (auto session = tab->TakeInPlaceByOverlay(id)) {
+            if (session->onFinished) session->onFinished(kCutSessionExitCode);
+            if (session->parked) {
+                RestoreParkedPane(*tab, *pane, *session->parked);
+                return;
+            }
+        }
 
         // Undo support (#151): when this pane is the tab's only one,
         // the close is a whole-tab close (close_surface via

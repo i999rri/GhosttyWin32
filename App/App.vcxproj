@@ -159,6 +159,15 @@
     <ProjectReference Include="..\Core\Core.vcxproj">
       <Project>{1EF672E9-812A-4F4B-AB42-02B2F655FEBE}</Project>
     </ProjectReference>
+    <!--
+      Build order only: the shim exe is deployed as content (see the
+      wsl.exe item below), not linked.
+    -->
+    <ProjectReference Include="..\Shim\WslShim.vcxproj">
+      <Project>{7D3C2B1A-5E4F-4A6B-9C8D-1F2E3D4C5B6A}</Project>
+      <LinkLibraryDependencies>false</LinkLibraryDependencies>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />
@@ -193,6 +202,9 @@
     <ClInclude Include="Display\PhysicalPixels.h" />
     <ClInclude Include="Display\PhysicalSizeFactory.h" />
     <ClInclude Include="Ghostty\MainWindowRuntime.h" />
+    <ClInclude Include="Wsl\PipeIo.h" />
+    <ClInclude Include="Wsl\ShimReply.h" />
+    <ClInclude Include="Wsl\ShimServer.h" />
     <ClInclude Include="Input\TerminalKeyDown.h" />
     <ClInclude Include="Input\TerminalKeyUp.h" />
     <ClInclude Include="Terminal\TerminalControl.xaml.h">
@@ -235,6 +247,7 @@
     </ClCompile>
     <ClCompile Include="Windows\MainWindows.cpp" />
     <ClCompile Include="Ghostty\MainWindowRuntime.cpp" />
+    <ClCompile Include="Wsl\ShimServer.cpp" />
     <ClCompile Include="Tabs\SplitPanel.cpp" />
     <ClCompile Include="Terminal\EditContext.cpp" />
     <ClCompile Include="Terminal\SurfaceHost.cpp" />
@@ -317,6 +330,19 @@
       executable.
     -->
     <None Include="..\external\ghostty\zig-out\bin\ghostty-wsl-bridge">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <!--
+      The in-place WSL shim (#217): a wsl.exe that ConPTY shells find
+      first on PATH. Deployed under shim\ so the package root keeps
+      its own layout and PATH can point at exactly one file. The path
+      matches WslShim.vcxproj's OutDir; see there for why it is not
+      built on $(SolutionDir).
+    -->
+    <None Include="$(MSBuildProjectDirectory)\..\x64\$(Configuration)\WslShim\wsl.exe">
+      <Link>shim\wsl.exe</Link>
       <DeploymentContent>true</DeploymentContent>
     </None>
   </ItemGroup>
