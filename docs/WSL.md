@@ -110,11 +110,23 @@ It lives in one distribution, so a second distribution needs its own copy. The t
 
 On v0.8.2 a tab reaches the bridge only when the tab's own command is `wsl`, which means `command = wsl` in the config. A `wsl` typed inside a pwsh tab runs under that tab's ConPTY and is unaffected.
 
+Because the app starts `wsl.exe` itself, no shell is involved, and a `function wsl` or `Set-Alias wsl` in a PowerShell profile has no say — nothing reads the profile here. Write the same arguments on the config line, which takes `wsl.exe`'s own:
+
+```ini
+command = wsl --cd ~ -d Ubuntu
+```
+
+`--cd` is where the session starts: `~` the Linux home, a leading `/` an absolute Linux path, anything else an absolute Windows path. Without it a session starts wherever the Windows working directory translates to, under `/mnt/c`. A lone `~`, as in `wsl ~`, means the same as `--cd ~`.
+
 <details>
 <summary>日本語</summary>
 
 バイナリは 1 つの distro の中にあるので、別の distro を使うならそちらにも要る。2 つの半分が話すフレーム protocol には版が入っていない。知らない種類のフレームは読み飛ばす作りなので多少の差は耐えるが、アプリを更新したら新しい release のバイナリに置き換えておくのがよい。
 
 v0.8.2 では、タブ自身のコマンドが `wsl` のときだけ bridge に入る。つまり config の `command = wsl` だ。pwsh のタブの中で `wsl` と打った場合は、そのタブの ConPTY の下で動くので関係ない。
+
+アプリが `wsl.exe` を自分で起動するため、シェルは関与しない。PowerShell の profile に `function wsl` や `Set-Alias wsl` を書いていても効かない。ここでは profile を誰も読まないからだ。同じ引数は config の行に書く。そちらは `wsl.exe` 自身のオプションを取れる (上の例)。
+
+`--cd` はセッションの開始位置で、`~` なら Linux のホーム、先頭が `/` なら Linux の絶対パス、それ以外は Windows の絶対パス。指定しなければ、Windows の作業ディレクトリを変換した先、つまり `/mnt/c` の下で始まる。`wsl ~` のような単独の `~` も `--cd ~` と同じ意味になる。
 
 </details>
