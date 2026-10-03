@@ -285,14 +285,3 @@ jobs:
 
             📖 Detailed steps + troubleshooting: [docs/INSTALL.md](https://github.com/${{ github.repository }}/blob/main/docs/INSTALL.md)
 
-            ## WSL bridge (optional)
-
-            `ghostty-wsl-bridge` above runs a WSL tab on a real Linux pty instead of on Windows' pseudo console, so the bytes a program writes reach the terminal unchanged. It is not part of the package: a file inside one is read-only for you, and WSL gives such a file no execute bit.
-
-            Put it somewhere you own — `%LOCALAPPDATA%\ghostty\` will do — and name it in a user environment variable:
-
-            ```
-            GHOSTTY_WSL_BRIDGE=C:\Users\<you>\AppData\Local\ghostty\ghostty-wsl-bridge
-            ```
-
-            A tab reaches the bridge only when its own command is `wsl`, which means `command = wsl` in the config. Without any of this a WSL tab still works, through the pseudo console.
