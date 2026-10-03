@@ -241,7 +241,10 @@ runs:
         } finally {
           $zip.Dispose()
         }
-        $required = @('ghostty.dll', 'ghostty-wsl-bridge', 'shim/wsl.exe')
+        # ghostty-wsl-bridge is not here: it runs inside the distribution,
+        # where a file shipped in the package has no execute bit (#229),
+        # so it is a release asset the user installs.
+        $required = @('ghostty.dll', 'shim/wsl.exe')
         $missing = $required | Where-Object {
           $name = $_
           -not ($entries | Where-Object { $_ -eq $name -or $_ -like "*/$name" })
