@@ -145,7 +145,7 @@ troubleshooting: [docs/INSTALL.md](docs/INSTALL.md).
 - Visual Studio 2022 (17.10+) with the "Desktop development with C++" and
   "Universal Windows Platform development" workloads
 - Windows App SDK 1.6+ (installed via the project's NuGet packages)
-- Zig 0.15.2+
+- Zig 0.16.0
 - Windows SDK 10.0.22621.0+
 
 ### Build ghostty.dll
@@ -221,6 +221,10 @@ background-image-fit=cover
 Theme files go in `%LOCALAPPDATA%\ghostty\themes\`. See the upstream
 [Ghostty documentation](https://ghostty.org/docs/config) for the full
 option list.
+
+The clipboard options behave differently per pane on Windows, and a
+terminal-initiated read is refused for now:
+[docs/CLIPBOARD.md](docs/CLIPBOARD.md).
 
 ## Known Issues
 

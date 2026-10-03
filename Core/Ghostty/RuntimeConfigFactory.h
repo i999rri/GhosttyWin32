@@ -41,11 +41,14 @@ private:
     // valid as long as the runtime outlives ghostty_app_free's
     // surface-thread join — the standard member ordering on App
     // guarantees that.
-    static bool ReadClipboard(void* paneIdUserdata,
-                              ghostty_clipboard_e kind,
-                              void* state);
+    static ghostty_clipboard_read_result_e ReadClipboard(void* paneIdUserdata,
+                                                         ghostty_clipboard_e kind,
+                                                         void* state,
+                                                         char const* const* mimes,
+                                                         size_t mimesLen,
+                                                         bool list);
     static void ConfirmReadClipboard(void* paneIdUserdata,
-                                     char const* content,
+                                     ghostty_clipboard_confirm_s const* confirm,
                                      void* state,
                                      ghostty_clipboard_request_e request);
     static void WriteClipboard(void* paneIdUserdata,

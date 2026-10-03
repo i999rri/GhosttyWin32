@@ -39,7 +39,10 @@ public:
         HANDLE hThread = CreateThread(nullptr, 4 * 1024 * 1024,
             [](LPVOID param) -> DWORD {
                 auto* c = static_cast<Ctx*>(param);
-                ghostty_init(0, nullptr);
+                // A failed init leaves libghostty's global state unset;
+                // every later call would dereference it. Stop here and
+                // let Create report the failure through a null App.
+                if (ghostty_init(0, nullptr) != 0) return 0;
                 c->config = ghostty_config_new();
                 if (c->config) {
                     ghostty_config_load_default_files(c->config);
@@ -84,7 +87,9 @@ public:
         if (m_app) ghostty_app_set_color_scheme(m_app, scheme);
     }
 
-    // Replace the owned config with newConfig and free the old one.
+    // Replace the owned config with newConfig and free the old one
+    // — the freeing half of the ownership taken at the clone in
+    // Actions::OnConfigChange.
     // Used by the reload_config path: the worker thread parses a fresh
     // config off-thread, then the UI thread hands the result here AFTER
     // ghostty_app_update_config has applied it to the app — at which
