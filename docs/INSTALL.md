@@ -80,6 +80,42 @@ If you previously installed Ghostty (stable or dev), the new MSIX upgrades it in
 
 </details>
 
+## Step 4: WSL bridge (optional) / WSL bridge (任意)
+
+Skip this unless you want WSL tabs to run on a real Linux pty instead of on Windows' pseudo console. [docs/WSL.md](WSL.md) explains what that buys and why the binary is not in the package.
+
+Download `ghostty-wsl-bridge` from the same release, put it anywhere on the distribution's `PATH`, and make it executable. `/usr/local/bin` is on `PATH` and is not managed by a package manager, so it suits a copy placed by hand:
+
+```sh
+# in the distribution
+sudo install -Dm755 /mnt/c/Users/<you>/Downloads/ghostty-wsl-bridge /usr/local/bin/ghostty-wsl-bridge
+command -v ghostty-wsl-bridge
+```
+
+The `PATH` that matters is the one a session gets from `wsl.exe --exec`, not a login shell's, so a directory added by `.profile` or `.zshrc` — `~/.local/bin`, typically — will not do. On NixOS, `environment.systemPackages` lands in `/run/current-system/sw/bin`, which is on it.
+
+Then turn it on in `%LOCALAPPDATA%\ghostty\config` and restart the app:
+
+```ini
+wsl-bridge = true
+```
+
+With the setting on and the binary missing, a WSL tab ends with `ghostty-wsl-bridge: not found` rather than falling back — see [docs/WSL.md](WSL.md#why-the-binary-is-yours-to-install).
+
+<details><summary>日本語</summary>
+
+WSL のタブを Windows の擬似コンソールではなく本物の Linux pty で動かしたい場合だけ必要。何が得られるのか、なぜバイナリがパッケージに入っていないのかは [docs/WSL.md](WSL.md) に書いた。
+
+同じ release から `ghostty-wsl-bridge` をダウンロードし、distro の `PATH` のどこかに置いて実行権限を付ける。`/usr/local/bin` は `PATH` に入っていて、かつパッケージマネージャの管理下にないので、手で置くコピーに向いている (上のコマンド)。
+
+ここで効く `PATH` は、`wsl.exe --exec` がセッションに与えるものであって、ログインシェルのものではない。`.profile` や `.zshrc` で足したディレクトリ (たいていは `~/.local/bin`) は使えない。NixOS なら `environment.systemPackages` が `/run/current-system/sw/bin` に入れてくれて、そこは `PATH` に乗っている。
+
+そのうえで `%LOCALAPPDATA%\ghostty\config` で有効にし、アプリを再起動する。
+
+設定を on にしたままバイナリが無い場合、WSL のタブはフォールバックせずに `ghostty-wsl-bridge: not found` で終わる。理由は [docs/WSL.md](WSL.md#why-the-binary-is-yours-to-install) に書いた。
+
+</details>
+
 ## Troubleshooting / トラブルシューティング
 
 ### Error 0x800B0109 — root certificate not trusted

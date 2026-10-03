@@ -226,6 +226,10 @@ The clipboard options behave differently per pane on Windows, and a
 terminal-initiated read is refused for now:
 [docs/CLIPBOARD.md](docs/CLIPBOARD.md).
 
+`wsl-bridge` runs a WSL tab on a real Linux pty instead of on Windows'
+pseudo console. It is off by default and needs a binary installed inside
+the distribution: [docs/WSL.md](docs/WSL.md).
+
 ## Known Issues
 
 - Windows-specific config options (`windows-tab-bar`, `windows-drag-region`)
