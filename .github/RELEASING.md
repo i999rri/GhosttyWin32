@@ -275,7 +275,7 @@ git push origin v0.3.0
 
 挙動:
 1. ghostty fork の `windows-port` から `ghostty.dll` をビルド
-2. `Package.appxmanifest` の `Version` をタグから動的書き換え (`v0.3.0` → `0.3.0.0`)
+2. `Package.appxmanifest` の `Version` をタグから動的書き換え (`v0.3.0` → `0.3.0.65535`。正式版は Revision を最大値の 65535 にして、同じ 0.3.0 系の rc や dev build より必ず上に来るようにしている)
 3. **`release` Environment が承認待ち** → Actions タブ → "Review pending deployments" で承認
 4. 承認後: PFX を Secrets から復元 → MSIX 署名 → PFX 削除 → Releases にアップロード
 5. 成果物: `Ghostty-0.3.0-x64.msix` + `Ghostty.cer`
@@ -292,7 +292,7 @@ git push origin v0.3.0-rc1
 ```
 
 挙動: Production と同じビルドパスだが、自動承認 + GitHub Releases で **Pre-release マーク** 付き。
-タグ名 / バージョン番号は同じ仕組み (`v0.3.0-rc1` → MSIX manifest は `0.3.0.0`、リリース名は `v0.3.0-rc1`)。
+タグ名 / バージョン番号は同じ仕組み (`v0.3.0-rc1` → MSIX manifest は `0.3.0.65001`、リリース名は `v0.3.0-rc1`)。rc 番号は Revision の `65000 + N` に入る (N は 1〜534) ので、同じ X.Y.Z の中で dev build (`< 65000`) < rc1 < rc2 < 正式版 (`65535`) の順に上書きインストールできる。
 
 **MSIX 成果物のファイル名は production と RC で異なる** (assets 一覧で見分けられるように):
 
@@ -322,7 +322,7 @@ git push origin dev
 
 挙動:
 1. 自動的に `windows-port` の最新 ghostty.dll をビルド
-2. MSIX manifest version は `0.3.0.<run_number>` (例: `0.3.0.42`)
+2. MSIX manifest version は「最新の正式 release の patch + 1」に、dev ブランチのコミット数 (`git rev-list --count HEAD`) を Revision として付けたもの。例: 最新が `v0.8.1` で dev が 404 コミットなら `0.8.2.404`。`gh release view` で正式 release を取るので手動 bump は不要。正式版 `0.8.1.65535` より上、次の rc `0.8.2.65001` / 正式版 `0.8.2.65535` より下に並び、どれも上書きインストールで行ける。コミット数は dev を force-push しない限り減らないので、workflow のリネームなどで番号が戻ることもない
 3. 自動承認、即ビルド
 4. **`dev-build` という固定タグの Release を上書き作成**（前回の dev-build は削除される）
 5. URL は固定: `https://github.com/i999rri/GhosttyWin32/releases/tag/dev-build`

@@ -141,6 +141,17 @@ public:
             : 0;
     }
 
+    // Foreground process name reported from inside a WSL bridge
+    // session's distro, UTF-8. Empty for ConPTY sessions — their
+    // foreground process is a Windows pid the host resolves itself.
+    std::string ForegroundProcessName() const noexcept {
+        if (!m_handle) return {};
+        char buf[256];
+        const size_t n =
+            ghostty_surface_foreground_process_name(m_handle, buf, sizeof(buf));
+        return std::string(buf, n);
+    }
+
     // Ghostty's per-surface prompt-on-quit signal. Reflects the
     // `confirm-close-surface` config and whether the surface actually
     // has non-shell child processes running — hosts consult this on
@@ -209,6 +220,17 @@ public:
             m_handle, kEnd, static_cast<uintptr_t>(std::strlen(kEnd)));
     }
 
+    // Run an arbitrary keybind-action string against this surface —
+    // the command palette's execution route. Same parser the search
+    // and scrollbar paths above go through; returns false when
+    // ghostty rejects the action string.
+    bool BindingAction(std::string const& actionUtf8) noexcept {
+        if (!m_handle || actionUtf8.empty()) return false;
+        return ghostty_surface_binding_action(
+            m_handle, actionUtf8.c_str(),
+            static_cast<uintptr_t>(actionUtf8.size()));
+    }
+
     // ---- selection ----
     bool HasSelection() const noexcept {
         return m_handle && ghostty_surface_has_selection(m_handle);
@@ -227,14 +249,22 @@ public:
 
     // ---- clipboard callback completion ----
     // Called from the read-clipboard / confirm-read-clipboard runtime
-    // callbacks to hand the clipboard content back to ghostty for
-    // whichever surface requested it.
-    void CompleteClipboardRequest(char const* content, void* state,
-                                  bool confirmed) noexcept {
+    // callbacks to hand the clipboard contents back to ghostty for
+    // whichever surface requested it. `complete` is borrowed for the
+    // duration of the call; `state` is ghostty's request token and is
+    // invalid afterwards.
+    void CompleteClipboardRequest(ghostty_clipboard_complete_s const& complete,
+                                  void* state) noexcept {
         if (m_handle) {
-            ghostty_surface_complete_clipboard_request(
-                m_handle, content, state, confirmed);
+            ghostty_surface_complete_clipboard_request(m_handle, &complete, state);
         }
+    }
+
+    // Refuse a pending read request (e.g. a declined confirmation).
+    // Protocols that expect an answer get their denial reply written
+    // to the pty; `state` is invalid afterwards.
+    void DenyClipboardRequest(void* state) noexcept {
+        if (m_handle) ghostty_surface_deny_clipboard_request(m_handle, state);
     }
 
 private:

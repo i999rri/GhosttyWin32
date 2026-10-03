@@ -94,9 +94,10 @@ struct IWindow {
     // ----- tab lifecycle / navigation / title -----
     // UI thread only.
 
-    // Create a new tab and select it. Used by both NEW_TAB and
-    // NEW_WINDOW (the single-window build collapses NEW_WINDOW to
-    // NEW_TAB; multi-window #55 will give them distinct entries).
+    // Create a new tab of the active tab's kind (same shell command)
+    // and select it. Used by both NEW_TAB and NEW_WINDOW (the
+    // single-window build collapses NEW_WINDOW to NEW_TAB; multi-window
+    // #55 will give them distinct entries).
     virtual void CreateTab() = 0;
 
     // Close the tab containing `surface`. Mirrors the
@@ -213,6 +214,12 @@ struct IWindow {
     // already use. UI thread hop happens in the handler; the view
     // shows a ContentDialog and applies the result itself.
     virtual void PromptTitleForSurface(ghostty_surface_t surface) = 0;
+
+    // TOGGLE_COMMAND_PALETTE: show or hide the window's command
+    // palette overlay (#205). Window-scoped UI summoned from a
+    // surface-targeted action; executed entries run against the
+    // window's active pane at execution time.
+    virtual void ToggleCommandPaletteForSurface(ghostty_surface_t surface) = 0;
 
     // COMMAND_FINISHED: a shell-integration-tracked command ended.
     // The view owns the whole policy: it reads the notify-on-

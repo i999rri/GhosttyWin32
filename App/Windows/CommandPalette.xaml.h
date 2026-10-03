@@ -1,0 +1,112 @@
+#pragma once
+
+#include "CommandPalette.g.h"
+#include <ghostty.h>
+#include <functional>
+#include <string>
+#include <vector>
+
+namespace winrt::GhosttyWin32::implementation
+{
+    // One palette entry as the host consumes it: display strings
+    // already UTF-16, the action string kept UTF-8 because that is
+    // what ghostty_surface_binding_action takes back.
+    struct PaletteEntry
+    {
+        winrt::hstring title;
+        winrt::hstring description;
+        std::string actionUtf8;
+    };
+
+    // The window's command palette (TOGGLE_COMMAND_PALETTE, #205).
+    // Owns the input box, the filtered list and the open state;
+    // knows nothing about ghostty. Filtering is FuzzyMatch over
+    // "title description"; user intent leaves through two
+    // callbacks: an entry to execute (its action string) and
+    // "closed" (the window returns focus to the terminal).
+    // UI thread only.
+    struct CommandPalette : CommandPaletteT<CommandPalette>
+    {
+        CommandPalette();
+
+        // Replace the entry set — called when the config (the only
+        // source of entries) is loaded or replaced, not per open.
+        // Stores and resets the row cache, then schedules the list
+        // build at idle priority — off the startup path (ReplaceConfig
+        // runs during window startup) but ahead of the user's first
+        // open, so neither pays for it.
+        void SetEntries(std::vector<PaletteEntry> entries);
+
+        bool HasEntries() const noexcept { return !m_entries.empty(); }
+
+        // Show, clear the query, focus the box. Builds the list only
+        // when SetEntries left it stale; otherwise it is the one the
+        // previous open ended with.
+        void Open();
+
+        // Hide. Returns whether it was open, so the caller hands
+        // focus back to the terminal only in that case.
+        bool Close();
+
+        bool IsOpen() const noexcept { return m_open; }
+
+        // The selected entry's action string, fired before the
+        // palette closes itself.
+        void SetOnExecute(std::function<void(std::string const&)> cb) noexcept {
+            m_onExecute = std::move(cb);
+        }
+        // Fired after any close (execute, Esc, click-away).
+        void SetOnClosed(std::function<void()> cb) noexcept {
+            m_onClosed = std::move(cb);
+        }
+
+        // The keybind that toggles the palette. While the box holds
+        // focus no keystroke reaches ghostty, so the box has to
+        // recognize its own chord to close on it. Config-lifetime,
+        // refreshed together with the entries.
+        void SetToggleTrigger(ghostty_input_trigger_s trigger) noexcept {
+            m_toggleTrigger = trigger;
+        }
+
+    private:
+        // Re-score every entry against the current query and rebuild
+        // the list: score descending, config order as the tiebreak,
+        // first row selected.
+        void Refilter();
+        // One invisible layout pass at idle so the first real open
+        // does not pay the ListView's first-realization cost.
+        void WarmUpLayout();
+        void MoveSelection(int delta);
+        void ExecuteSelected();
+        void RequestClose();
+        bool MatchesToggle(winrt::Windows::System::VirtualKey key) const;
+
+        std::vector<PaletteEntry> m_entries;
+        // Row elements, built lazily on first appearance and reused
+        // across refilters and opens — rebuilding a few hundred
+        // TextBlocks per keystroke is what made the first cut feel
+        // slow. Reset together with m_entries in SetEntries.
+        std::vector<winrt::Microsoft::UI::Xaml::UIElement> m_rows;
+        // Results row -> m_entries index, rebuilt by Refilter.
+        std::vector<std::size_t> m_visible;
+
+        // Rows actually placed in the list per refilter. A
+        // launcher's answer lives at the top: rendering more rows
+        // than a screen holds only costs build time, and typing
+        // narrows faster than scrolling ever would.
+        static constexpr std::size_t kMaxVisibleRows = 64;
+        std::function<void(std::string const&)> m_onExecute;
+        std::function<void()> m_onClosed;
+        ghostty_input_trigger_s m_toggleTrigger{};
+        bool m_open{ false };
+        // Set by SetEntries, cleared by the Open that rebuilds.
+        bool m_listStale{ false };
+    };
+}
+
+namespace winrt::GhosttyWin32::factory_implementation
+{
+    struct CommandPalette : CommandPaletteT<CommandPalette, implementation::CommandPalette>
+    {
+    };
+}

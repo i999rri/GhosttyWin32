@@ -143,6 +143,9 @@
     <ClInclude Include="Terminal\Overlays\SearchOverlay.xaml.h">
       <Filter>Terminal\Overlays</Filter>
     </ClInclude>
+    <ClInclude Include="Windows\CommandPalette.xaml.h">
+      <Filter>Windows</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Ghostty\MainWindowRuntime.cpp">
@@ -184,6 +187,9 @@
     <ClCompile Include="Terminal\Overlays\SearchOverlay.xaml.cpp">
       <Filter>Terminal\Overlays</Filter>
     </ClCompile>
+    <ClCompile Include="Windows\CommandPalette.xaml.cpp">
+      <Filter>Windows</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Page Include="Windows\MainWindow.xaml">
@@ -200,6 +206,9 @@
     </Page>
     <Page Include="Terminal\Overlays\SearchOverlay.xaml">
       <Filter>Terminal\Overlays</Filter>
+    </Page>
+    <Page Include="Windows\CommandPalette.xaml">
+      <Filter>Windows</Filter>
     </Page>
   </ItemGroup>
   <ItemGroup>
@@ -223,6 +232,9 @@
     </Midl>
     <Midl Include="Terminal\Overlays\SearchOverlay.idl">
       <Filter>Terminal\Overlays</Filter>
+    </Midl>
+    <Midl Include="Windows\CommandPalette.idl">
+      <Filter>Windows</Filter>
     </Midl>
   </ItemGroup>
   <ItemGroup>
