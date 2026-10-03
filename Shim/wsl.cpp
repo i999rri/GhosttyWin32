@@ -210,12 +210,63 @@ BOOL WINAPI OutlastConsoleBreak(DWORD event) {
     return event == CTRL_C_EVENT || event == CTRL_BREAK_EVENT;
 }
 
-int RunRealWsl() {
+// The real one, by absolute path. This program is also called wsl.exe
+// and comes first on PATH, so anything resolved by name would be itself.
+std::wstring RealWslPath() {
     wchar_t system32[MAX_PATH];
     UINT len = GetSystemDirectoryW(system32, MAX_PATH);
-    if (len == 0 || len >= MAX_PATH) return 1;
+    if (len == 0 || len >= MAX_PATH) return {};
+    return std::wstring(system32, len) + L"\\wsl.exe";
+}
 
-    std::wstring exe = std::wstring(system32, len) + L"\\wsl.exe";
+// Whether `distro` has the bridge's in-distro half on its PATH, asked of
+// the distribution because nothing on this side can see it (#229). A
+// session started without it swaps the pane, dies on the shell's "not
+// found", and swaps back before the message can be read, so it is worth
+// one wsl.exe here: this runs when a person types `wsl`, where the wait
+// does not show.
+bool HelperInstalled(std::wstring const& distro) {
+    const std::wstring exe = RealWslPath();
+    if (exe.empty()) return false;
+
+    std::wstring commandLine = L"\"" + exe + L"\"";
+    if (!distro.empty()) commandLine += L" --distribution \"" + distro + L"\"";
+    commandLine += L" --exec /bin/sh -c \"command -v ghostty-wsl-bridge >/dev/null\"";
+
+    // No console and no inherited handles: the answer is the exit code,
+    // and anything it printed would land in the user's shell.
+    STARTUPINFOW si{ .cb = sizeof(STARTUPINFOW) };
+    PROCESS_INFORMATION pi{};
+    if (!CreateProcessW(exe.c_str(), commandLine.data(), nullptr, nullptr, FALSE,
+                        CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
+        return false;
+    }
+    CloseHandle(pi.hThread);
+    WaitForSingleObject(pi.hProcess, INFINITE);
+    DWORD code = 1;
+    GetExitCodeProcess(pi.hProcess, &code);
+    CloseHandle(pi.hProcess);
+    return code == 0;
+}
+
+// Said once per `wsl`, on stderr, so it stays out of anything the user
+// pipes. The distribution is named because the binary is installed per
+// distribution, and having it in one is easy to mistake for having it.
+void ReportMissingHelper(std::wstring const& distro) {
+    std::wstring message = L"wsl: ghostty-wsl-bridge is not installed in ";
+    message += distro.empty() ? L"the default distribution" : distro;
+    message += L"; running wsl.exe instead. See docs/WSL.md.\n";
+
+    HANDLE err = GetStdHandle(STD_ERROR_HANDLE);
+    if (err == nullptr || err == INVALID_HANDLE_VALUE) return;
+    DWORD written = 0;
+    WriteConsoleW(err, message.c_str(), static_cast<DWORD>(message.size()), &written, nullptr);
+}
+
+int RunRealWsl() {
+    const std::wstring exe = RealWslPath();
+    if (exe.empty()) return 1;
+
     std::wstring commandLine = L"\"" + exe + L"\"";
     std::wstring args = ArgumentsAfterProgram();
     if (!args.empty()) commandLine += L" " + args;
@@ -245,7 +296,15 @@ int wmain(int argc, wchar_t** argv) {
     auto shell = Classify(argc, argv);
     // Redirected stdio means a script is driving wsl, not a person.
     if (shell && IsConsole(STD_INPUT_HANDLE) && IsConsole(STD_OUTPUT_HANDLE)) {
-        if (auto exitCode = AskHost(*shell)) return static_cast<int>(*exitCode);
+        if (HelperInstalled(shell->distro)) {
+            if (auto exitCode = AskHost(*shell)) return static_cast<int>(*exitCode);
+        } else {
+            // Only someone who set wsl-bridge gets here: the shim is on
+            // PATH while it is on. Having asked for the bridge and not
+            // installed its half, they are owed the reason the pane
+            // stays where it is.
+            ReportMissingHelper(shell->distro);
+        }
     }
     return RunRealWsl();
 }
