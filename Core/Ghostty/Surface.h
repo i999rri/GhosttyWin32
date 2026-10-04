@@ -142,7 +142,7 @@ public:
     }
 
     // Foreground process name reported from inside a WSL bridge
-    // session's distro, UTF-8. Empty for ConPTY sessions — their
+    // session's distribution, UTF-8. Empty for ConPTY sessions — their
     // foreground process is a Windows pid the host resolves itself.
     std::string ForegroundProcessName() const noexcept {
         if (!m_handle) return {};

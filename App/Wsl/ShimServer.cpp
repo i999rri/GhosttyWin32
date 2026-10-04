@@ -185,7 +185,7 @@ void ShimServer::Run(winrt::handle pending)
     }
 }
 
-// Whether `distro` has the bridge's in-distro half on its PATH, asked
+// Whether `distro` has the bridge's in-distribution half on its PATH, asked
 // of the distribution because nothing on this side can see it (#229).
 // A session started without it would swap the pane, die on the shell's
 // "not found", and swap back before the message could be read, so it is

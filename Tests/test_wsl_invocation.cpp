@@ -48,7 +48,7 @@ TEST(WslInvocationTest, ALoneTildeMeansTheLinuxHome) {
 
 TEST(WslInvocationTest, LeavesATildeThatIsNotFirstToWslExe) {
     // Only the first argument reads as `--cd ~`. Further along, wsl.exe
-    // starts the in-distro command with it: `wsl --cd /tmp ~` has the
+    // starts the in-distribution command with it: `wsl --cd /tmp ~` has the
     // login shell try to run /home/<me>, which is not a pane this host
     // opens.
     EXPECT_FALSE(Parse({ L"wsl", L"--cd", L"/tmp", L"~" }).TakesOver());

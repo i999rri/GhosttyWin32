@@ -1817,7 +1817,7 @@ namespace winrt::GhosttyWin32::implementation
                 name = PidToBasename(pid);
             } else {
                 // No Windows pid: a WSL bridge session. Its foreground
-                // process lives inside the distro, where no Windows-side
+                // process lives inside the distribution, where no Windows-side
                 // lookup can see, so the helper resolves the name there
                 // and reports it through the bridge.
                 auto utf8 = tc->Surface().ForegroundProcessName();

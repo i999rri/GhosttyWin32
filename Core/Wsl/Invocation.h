@@ -200,7 +200,7 @@ inline Invocation Invocation::Parse(int argc, wchar_t const* const* argv) noexce
         std::wstring_view arg = argv[i];
 
         // wsl.exe reads a leading `~` as `--cd ~`. Further along the
-        // line it is the start of the in-distro command instead, which
+        // line it is the start of the in-distribution command instead, which
         // this host does not open a pane for.
         if (arg == L"~") {
             if (i != 1) return result;

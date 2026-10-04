@@ -105,7 +105,7 @@ With the setting on and the binary missing, a WSL tab ends with `ghostty-wsl-bri
 
 WSL のタブを Windows の擬似コンソールではなく本物の Linux pty で動かしたい場合だけ必要。何が得られるのか、なぜバイナリがパッケージに入っていないのかは [docs/WSL.md](WSL.md) に書いた。
 
-distro の中で、`<tag>` はインストールした release (上のコマンド)。
+distribution の中で、`<tag>` はインストールした release (上のコマンド)。
 
 `/usr/local/bin` なのは、ここで効く `PATH` が `wsl.exe --exec` がセッションに与えるもので、ログインシェルのものではないから。`.profile` や `.zshrc` で足したディレクトリ (たいていは `~/.local/bin`) は使えない。その `PATH` 上ならどこに置いてもよい。アプリはバイナリを名前で起動する。
 

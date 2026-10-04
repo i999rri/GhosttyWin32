@@ -20,7 +20,7 @@ A WSL pane goes through the bridge, which owns a real pty inside the distributio
 
 Windows のコンソールプログラム (pwsh、cmd、コンソール API を使うもの全般) が動くペインは、ConPTY が裏にいる。ConPTY の正体は、画面を持たないモードで動く conhost。conhost は出力を自分で解析して OSC 52 に自分で応答し、その先へは渡さない。そのため下記の設定はターミナルまで届かない。書き込みはウィンドウにフォーカスがあれば Windows のクリップボードに入り、読み取りは応答なしで捨てられる。`clipboard-write = deny` にしても書き込みは止まらないし、`clipboard-read` も効かない。
 
-WSL のペインは bridge を通り、distro 内の本物の pty につながる。そのペインから ssh で入った先も同じ。あいだに conhost がいないので、どちらの設定もドキュメントどおりに効く。
+WSL のペインは bridge を通り、distribution 内の本物の pty につながる。そのペインから ssh で入った先も同じ。あいだに conhost がいないので、どちらの設定もドキュメントどおりに効く。
 
 </details>
 
