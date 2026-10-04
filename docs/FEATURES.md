@@ -11,7 +11,7 @@ Everything below works today. What does not is in [Not yet](#not-yet) at the end
 
 ## Terminal
 
-| | |
+| Feature | Notes |
 | --- | --- |
 | Terminal emulation | libghostty's own: the VT parser, screen and scrollback are upstream's code, not a reimplementation |
 | Any shell | `command` — pwsh, cmd.exe, or anything else. Without it, the Windows default shell |
@@ -22,7 +22,7 @@ Everything below works today. What does not is in [Not yet](#not-yet) at the end
 <details>
 <summary>日本語</summary>
 
-| | |
+| 機能 | 補足 |
 | --- | --- |
 | 端末エミュレーション | libghostty そのもの。VT パーサ、画面、スクロールバックは upstream のコードで、作り直してはいない |
 | 任意のシェル | `command` で pwsh、cmd.exe、その他なんでも。指定しなければ Windows の既定シェル |
@@ -34,7 +34,7 @@ Everything below works today. What does not is in [Not yet](#not-yet) at the end
 
 ## Windows, tabs and splits
 
-| | |
+| Feature | Notes |
 | --- | --- |
 | Multiple windows | `Ctrl+Shift+N`. Each window has its own tab strip and pane tree |
 | Tabs | WinUI 3 `TabView`: new, close, reorder, go-to, from both gestures and keybinds |
@@ -47,7 +47,7 @@ Everything below works today. What does not is in [Not yet](#not-yet) at the end
 <details>
 <summary>日本語</summary>
 
-| | |
+| 機能 | 補足 |
 | --- | --- |
 | 複数ウインドウ | `Ctrl+Shift+N`。ウインドウごとにタブ列とペインの木を持つ |
 | タブ | WinUI 3 の `TabView`。新規・閉じる・並べ替え・移動を、操作とキーバインドの両方から |
@@ -61,7 +61,7 @@ Everything below works today. What does not is in [Not yet](#not-yet) at the end
 
 ## Input
 
-| | |
+| Feature | Notes |
 | --- | --- |
 | Keyboard | Scan code and text are forwarded separately, so keybinds hold across non-Latin layouts, dead keys and AltGr |
 | Mouse | Left, middle and right click, drag, and the wheel |
@@ -73,7 +73,7 @@ Everything below works today. What does not is in [Not yet](#not-yet) at the end
 <details>
 <summary>日本語</summary>
 
-| | |
+| 機能 | 補足 |
 | --- | --- |
 | キーボード | スキャンコードと文字を別々に渡すので、ラテン以外の配列、デッドキー、AltGr でもキーバインドが崩れない |
 | マウス | 左・中・右クリック、ドラッグ、ホイール |
@@ -86,7 +86,7 @@ Everything below works today. What does not is in [Not yet](#not-yet) at the end
 
 ## Appearance
 
-| | |
+| Feature | Config and notes |
 | --- | --- |
 | Title bar | Custom, with the terminal's background colour carried into it on Windows 11 |
 | Window decorations | `window-decoration`, plus a per-window override from the `toggle_window_decorations` keybind |
@@ -100,7 +100,7 @@ Everything below works today. What does not is in [Not yet](#not-yet) at the end
 <details>
 <summary>日本語</summary>
 
-| | |
+| 機能 | config と補足 |
 | --- | --- |
 | タイトルバー | 独自のもの。Windows 11 では端末の背景色がタイトルバーにも反映される |
 | ウインドウ装飾 | `window-decoration`。加えて `toggle_window_decorations` のキーバインドでウインドウごとに上書きできる |
@@ -115,7 +115,7 @@ Everything below works today. What does not is in [Not yet](#not-yet) at the end
 
 ## Rendering
 
-| | |
+| Feature | Notes |
 | --- | --- |
 | DirectX 11 | libghostty's own DirectX renderer, with no external dependency. The swap chain lives in a `SwapChainPanel` |
 | Cadence | The focused pane polls every 4 ms; the rest are event-driven, woken by output, a blink, a mailbox message or a 1 s safety net |
@@ -123,7 +123,7 @@ Everything below works today. What does not is in [Not yet](#not-yet) at the end
 <details>
 <summary>日本語</summary>
 
-| | |
+| 機能 | 補足 |
 | --- | --- |
 | DirectX 11 | libghostty の DirectX レンダラをそのまま使う。外部依存はなし。swap chain は `SwapChainPanel` の中にある |
 | 描画の間隔 | 焦点のあるペインは 4 ms ごとに見る。それ以外は出力・点滅・mailbox・1 秒の保険で起こされるイベント駆動 |
@@ -134,7 +134,7 @@ Everything below works today. What does not is in [Not yet](#not-yet) at the end
 
 A WSL pane can run on a real Linux pty instead of on Windows' pseudo console, which is what makes the bytes a program writes arrive as it wrote them. It is off by default and needs a binary installed inside the distribution. See [docs/WSL.md](WSL.md).
 
-| | |
+| Feature | Notes |
 | --- | --- |
 | `wsl-bridge` | Fork-only config key, `false` by default. With it on, a WSL tab gets a real Linux pty |
 | `wsl` in a pane | Typing `wsl` at a pwsh or cmd prompt opens WSL in the same pane, and `exit` brings the shell back with WSL's exit code |
@@ -146,7 +146,7 @@ A WSL pane can run on a real Linux pty instead of on Windows' pseudo console, wh
 
 WSL のペインは、Windows の擬似コンソールではなく本物の Linux pty の上で動かせる。プログラムが書いたバイト列がそのまま届くのはそのため。既定では無効で、distro の中にバイナリを置く必要がある。[docs/WSL.md](WSL.md) を参照。
 
-| | |
+| 機能 | 補足 |
 | --- | --- |
 | `wsl-bridge` | fork だけの config キー。既定は `false`。有効にすると WSL のタブが本物の Linux pty を得る |
 | ペインの中の `wsl` | pwsh や cmd のプロンプトで `wsl` と打つと同じペインで WSL が開き、`exit` で WSL の終了コードと一緒にシェルが戻る |
@@ -157,7 +157,7 @@ WSL のペインは、Windows の擬似コンソールではなく本物の Linu
 
 ## Notifications
 
-| | |
+| Feature | Notes |
 | --- | --- |
 | Desktop notifications | From the terminal (OSC 9 / OSC 777) and from ghostty itself, as Windows toasts. Clicking one selects the pane it came from |
 | Command finished | `notify-on-command-finish`, for a command that ran longer than `notify-on-command-finish-after`. Needs the OSC 133 marks, which nothing writes here yet: [docs/NOTIFICATIONS.md](NOTIFICATIONS.md) |
@@ -166,7 +166,7 @@ WSL のペインは、Windows の擬似コンソールではなく本物の Linu
 <details>
 <summary>日本語</summary>
 
-| | |
+| 機能 | 補足 |
 | --- | --- |
 | デスクトップ通知 | 端末から (OSC 9 / OSC 777) と ghostty 自身から、Windows のトーストとして出る。クリックすると出どころのペインが選ばれる |
 | コマンドの終了 | `notify-on-command-finish`。`notify-on-command-finish-after` より長く走ったコマンドが対象。OSC 133 の mark が必要で、ここではまだ誰も書かない: [docs/NOTIFICATIONS.md](NOTIFICATIONS.md) |
@@ -178,7 +178,7 @@ WSL のペインは、Windows の擬似コンソールではなく本物の Linu
 
 libghostty asks the host to do things through actions. 65 of the 69 it defines are wired up. The four that are not:
 
-| | |
+| Action | What it would do |
 | --- | --- |
 | `SET_WINDOW_TITLE` | The window's own title, as distinct from a surface's. `SET_TITLE` is wired, so tab titles follow the terminal |
 | `MOVE_TAB_TO_NEW_WINDOW` | Tearing a tab out works from the mouse; the action is not routed to it |
@@ -190,7 +190,7 @@ libghostty asks the host to do things through actions. 65 of the 69 it defines a
 
 libghostty は action という形で host に仕事を頼む。定義されている 69 個のうち 65 個が繋がっている。繋がっていない 4 個:
 
-| | |
+| action | 何をするものか |
 | --- | --- |
 | `SET_WINDOW_TITLE` | surface のものとは別の、ウインドウ自体のタイトル。`SET_TITLE` は繋がっているので、タブのタイトルは端末に追従する |
 | `MOVE_TAB_TO_NEW_WINDOW` | タブの引き剥がしはマウスからはできるが、この action からは繋がっていない |
@@ -201,7 +201,7 @@ libghostty は action という形で host に仕事を頼む。定義されて�
 
 ## Not yet
 
-| | |
+| Missing | Where it stands |
 | --- | --- |
 | Command palette, tab overview, quick terminal | The overlay UIs have no host side yet ([#205](https://github.com/i999rri/GhosttyWin32/issues/205), [#153](https://github.com/i999rri/GhosttyWin32/issues/153)) |
 | Terminal inspector | Not on the DirectX renderer ([#152](https://github.com/i999rri/GhosttyWin32/issues/152)) |
@@ -214,7 +214,7 @@ libghostty は action という形で host に仕事を頼む。定義されて�
 <details>
 <summary>日本語</summary>
 
-| | |
+| まだ無いもの | 状況 |
 | --- | --- |
 | コマンドパレット、タブ一覧、クイックターミナル | overlay の UI はまだ host 側が無い ([#205](https://github.com/i999rri/GhosttyWin32/issues/205)、[#153](https://github.com/i999rri/GhosttyWin32/issues/153)) |
 | ターミナルインスペクタ | DirectX レンダラ側に無い ([#152](https://github.com/i999rri/GhosttyWin32/issues/152)) |

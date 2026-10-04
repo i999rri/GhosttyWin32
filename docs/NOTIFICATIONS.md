@@ -13,7 +13,7 @@ ghostty can tell you when a long command ends, which is what you want while a bu
 
 Three upstream keys decide whether a notification happens. `notify-on-command-finish` is `never` by default, so nothing happens until it is set.
 
-| | |
+| Key | What it decides |
 | --- | --- |
 | `notify-on-command-finish` | `never` (default), `unfocused` or `always`. `unfocused` skips a command that ends in the pane you are looking at. |
 | `notify-on-command-finish-action` | What to do: `bell`, `notify`, or both. |
@@ -24,7 +24,7 @@ Three upstream keys decide whether a notification happens. `notify-on-command-fi
 
 通知するかどうかは upstream の 3 つのキーが決める。`notify-on-command-finish` の既定は `never` なので、設定するまで何も起きない。
 
-| | |
+| キー | 決めること |
 | --- | --- |
 | `notify-on-command-finish` | `never` (既定)、`unfocused`、`always`。`unfocused` は、いま見ているペインで終わったコマンドを飛ばす。 |
 | `notify-on-command-finish-action` | 何をするか。`bell`、`notify`、または両方。 |

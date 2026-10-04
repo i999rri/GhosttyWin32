@@ -31,7 +31,7 @@ Three of them behave in ways that reference cannot tell you about on Windows, an
 
 ## Documentation
 
-| | |
+| Page | What is on it |
 | --- | --- |
 | [FEATURES.md](docs/FEATURES.md) | What works, and what does not yet |
 | [INSTALL.md](docs/INSTALL.md) | Trusting the certificate, and what the failures mean |
