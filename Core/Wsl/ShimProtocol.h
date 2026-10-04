@@ -7,7 +7,7 @@
 //
 // Wire format is one UTF-8 line per message, fields separated by tabs.
 //
-//   shim -> host   open\t<pane id>\t<cwd>\t<command line>\n
+//   shim -> host   open\t<version>\t<pane id>\t<cwd>\t<command line>\n
 //   host -> shim   done\t<exit code>\n        the session ended
 //                  refused\n                  no session; say nothing
 //                  refused\t<text>\n          no session; print this first
@@ -17,6 +17,14 @@
 // host, which has the option table and the tests for it. It is the last
 // field, so a tab inside it needs no escaping, and a newline cannot be
 // in it at all -- the line ends at the first one.
+//
+// The version says which of these the shim speaks. It is there because
+// the shim is installed by hand and a host can meet one from another
+// build (docs/WSL.md says why it is installed that way): the host can
+// then say so, in the pane, instead of refusing a line for reasons the
+// person cannot see. It is the first field and never leaves, so even a
+// shim too old to send one is read as unparseable rather than
+// misunderstood.
 
 #include <windows.h>
 #include <charconv>
@@ -26,6 +34,11 @@
 #include <string_view>
 
 namespace core::wsl {
+
+// Which wire format this build speaks. Bumped when a message changes
+// shape, so a shim and a host from different builds can say so rather
+// than misread each other.
+inline constexpr uint32_t kProtocolVersion = 1;
 
 // Set on every ConPTY surface the host spawns while wsl-bridge is on,
 // so a shim started from that shell can find its way back to the pane.
@@ -62,6 +75,10 @@ inline std::optional<unsigned long> PidFromPipeName(std::wstring_view name) {
 
 // Shim -> host: open WSL in place of pane `paneId`.
 struct OpenRequest {
+    // Which wire format the shim was built against. Carried, not
+    // judged: what to do about a version this host does not know is the
+    // host's to decide, and it has a pane to explain it in.
+    uint32_t     version{ 0 };
     uint64_t     paneId{ 0 };
     std::wstring cwd;
     // The arguments as typed, for the host to read. Empty is a bare
@@ -113,8 +130,8 @@ inline bool IsDriveAbsolutePath(std::wstring_view path) noexcept {
 inline std::string EncodeOpen(uint64_t paneId,
                               std::wstring_view cwd,
                               std::wstring_view commandLine) {
-    return "open\t" + std::to_string(paneId) + "\t" + ToUtf8(cwd) + "\t" +
-           ToUtf8(commandLine) + "\n";
+    return "open\t" + std::to_string(kProtocolVersion) + "\t" + std::to_string(paneId) +
+           "\t" + ToUtf8(cwd) + "\t" + ToUtf8(commandLine) + "\n";
 }
 
 inline std::string EncodeDone(uint32_t exitCode) {
@@ -157,12 +174,12 @@ inline std::optional<OpenRequest> ParseOpen(std::string_view text) {
     auto line = detail::Line(text);
     if (!line) return std::nullopt;
 
-    // open \t id \t cwd \t command line. The first three are read out
-    // one tab at a time and the fourth is the remainder, whatever it
-    // holds -- a quoted argument with a tab in it is the shell's
-    // business, not this format's.
+    // open \t version \t id \t cwd \t command line. The first four are
+    // read out one tab at a time and the fifth is the remainder,
+    // whatever it holds -- a quoted argument with a tab in it is the
+    // shell's business, not this format's.
     std::string_view rest = *line;
-    std::string_view head[3];
+    std::string_view head[4];
     for (auto& field : head) {
         auto tab = rest.find('\t');
         if (tab == std::string_view::npos) return std::nullopt;
@@ -171,13 +188,16 @@ inline std::optional<OpenRequest> ParseOpen(std::string_view text) {
     }
     if (head[0] != "open") return std::nullopt;
 
-    auto id = detail::Number<uint64_t>(head[1]);
+    auto version = detail::Number<uint32_t>(head[1]);
+    if (!version) return std::nullopt;
+
+    auto id = detail::Number<uint64_t>(head[2]);
     if (!id || *id == 0) return std::nullopt;
 
-    // Nothing here reads the command line. What it is allowed to ask
-    // for is Invocation's to say, on the host, where the rules live
-    // with the tests that hold them.
-    return OpenRequest{ *id, ToUtf16(head[2]), ToUtf16(rest) };
+    // Nothing here reads the command line, and nothing here judges the
+    // version. What the line may ask for is Invocation's to say, on the
+    // host, where the rules live with the tests that hold them.
+    return OpenRequest{ *version, *id, ToUtf16(head[3]), ToUtf16(rest) };
 }
 
 inline std::optional<Reply> ParseReply(std::string_view text) {

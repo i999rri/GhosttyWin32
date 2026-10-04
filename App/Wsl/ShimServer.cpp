@@ -227,6 +227,16 @@ void ShimServer::Serve(winrt::handle client)
         return;
     }
 
+    if (request->version != core::wsl::kProtocolVersion) {
+        // A shim from another build. It is installed by hand, so this
+        // is what an upgrade leaves behind, and saying so in the pane
+        // beats refusing the line for a reason nobody can see.
+        reply->Refuse(L"wsl: the shim in %LOCALAPPDATA%\\ghostty\\bin is from another "
+                      L"build of Ghostty; running wsl.exe instead. Replace it with the "
+                      L"one from this release. See docs/WSL.md.");
+        return;
+    }
+
     // What the line asks for is read here and nowhere else. The shim
     // sends it as the shell wrote it and holds no opinion about it, so
     // the option table and the rules about what may be carried stay in

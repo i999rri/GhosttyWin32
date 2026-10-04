@@ -7,9 +7,28 @@ TEST(ShimProtocolTest, OpenRoundTripsEveryField) {
     auto line = EncodeOpen(42, L"C:\\Users\\日本語\\src", L"-d NixOS --cd ~");
     auto req = ParseOpen(line);
     ASSERT_TRUE(req.has_value());
+    EXPECT_EQ(req->version, kProtocolVersion);
     EXPECT_EQ(req->paneId, 42u);
     EXPECT_EQ(req->cwd, L"C:\\Users\\日本語\\src");
     EXPECT_EQ(req->commandLine, L"-d NixOS --cd ~");
+}
+
+TEST(ShimProtocolTest, OpenCarriesAVersionItDoesNotJudge) {
+    // A shim installed by hand can be from another build, so the
+    // version comes through whatever it says and the host decides what
+    // to do about it -- it has a pane to explain itself in.
+    auto req = ParseOpen("open\t99\t1\tC:\\\t-d NixOS\n");
+    ASSERT_TRUE(req.has_value());
+    EXPECT_EQ(req->version, 99u);
+    EXPECT_EQ(req->commandLine, L"-d NixOS");
+}
+
+TEST(ShimProtocolTest, OpenRejectsALineFromBeforeTheVersion) {
+    // The field went in at the front, so a shim too old to send one
+    // reads as unparseable rather than as a line about something else:
+    // what would be the pane id lands where the version is read, and
+    // the cwd where the pane id is.
+    EXPECT_FALSE(ParseOpen("open\t1\tC:\\\t-d NixOS\n").has_value());
 }
 
 TEST(ShimProtocolTest, OpenCarriesABareWslAsAnEmptyLine) {
@@ -31,11 +50,12 @@ TEST(ShimProtocolTest, OpenKeepsTheCommandLineWhole) {
 
 TEST(ShimProtocolTest, OpenRejectsMalformedLines) {
     // Each of these is a well-formed line but for the one thing named.
-    EXPECT_FALSE(ParseOpen("open\t1\tC:\\\t").has_value());        // no newline
-    EXPECT_FALSE(ParseOpen("open\t1\tC:\\\n").has_value());        // three fields
-    EXPECT_FALSE(ParseOpen("close\t1\tC:\\\t\n").has_value());     // wrong verb
-    EXPECT_FALSE(ParseOpen("open\t0\tC:\\\t\n").has_value());      // sentinel id
-    EXPECT_FALSE(ParseOpen("open\tabc\tC:\\\t\n").has_value());    // non-numeric id
+    EXPECT_FALSE(ParseOpen("open\t1\t1\tC:\\\t").has_value());      // no newline
+    EXPECT_FALSE(ParseOpen("open\t1\t1\tC:\\\n").has_value());      // four fields
+    EXPECT_FALSE(ParseOpen("close\t1\t1\tC:\\\t\n").has_value());   // wrong verb
+    EXPECT_FALSE(ParseOpen("open\t1\t0\tC:\\\t\n").has_value());    // sentinel id
+    EXPECT_FALSE(ParseOpen("open\t1\tabc\tC:\\\t\n").has_value());  // non-numeric id
+    EXPECT_FALSE(ParseOpen("open\tx\t1\tC:\\\t\n").has_value());    // non-numeric version
     EXPECT_FALSE(ParseOpen("\n").has_value());
 }
 
@@ -56,7 +76,7 @@ TEST(ShimProtocolTest, DriveAbsolutePathsOnly) {
 }
 
 TEST(ShimProtocolTest, OpenAcceptsCrLf) {
-    auto req = ParseOpen("open\t3\tC:\\\t\r\n");
+    auto req = ParseOpen("open\t1\t3\tC:\\\t\r\n");
     ASSERT_TRUE(req.has_value());
     EXPECT_EQ(req->paneId, 3u);
 }

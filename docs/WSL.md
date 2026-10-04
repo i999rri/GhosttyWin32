@@ -57,7 +57,7 @@ The `wsl` shim runs on Windows, as a child of your shell, and fares no better. `
 
 So both are downloaded from the release and put where they are wanted. Neither is named by a path: the bridge is started by name on the distribution's `PATH`, and the shim is looked for in one place, `%LOCALAPPDATA%\ghostty\bin\`, beside the config.
 
-What the host does instead of installing is check. It compares the shim you installed against the one it ships and uses it only if they are the same file, so a shim left behind by an older version is not quietly talked to -- without it, `wsl` in a pane runs the real `wsl.exe` and says why. For the bridge it can only ask the distribution, which it does before offering to swap a pane.
+Nor does the host check what is there. With nothing installed, the shell finds System32's `wsl.exe` and that is the right answer, so there is nothing to detect. A shim from another build says which wire format it speaks when it asks for a pane, and the host answers that in the pane rather than refusing a line for a reason you cannot see. So the only thing that makes a reinstall necessary is that format changing -- not a release, and not a rebuild. For the bridge's helper the host can only ask the distribution, which it does before offering to swap a pane.
 
 <details>
 <summary>日本語</summary>
@@ -70,7 +70,7 @@ What the host does instead of installing is check. It compares the shim you inst
 
 そこで両方とも release からダウンロードして、必要な場所に置く。どちらもパスで指定はしない。bridge は distro の `PATH` から名前で起動し、shim は config の隣の `%LOCALAPPDATA%\ghostty\bin\` という 1 箇所だけを見る。
 
-host が代わりにやるのは確認だ。置かれた shim を自分が同梱しているものと比べ、同じファイルのときだけ使う。古いバージョンが残した shim に黙って話しかけることはない。使えないときは、ペインで `wsl` と打つと本物の `wsl.exe` が動き、その理由が 1 行出る。bridge については distro に尋ねることしかできないので、ペインの差し替えを申し出る前に尋ねる。
+置かれているものを host が点検することもしない。何も置かれていなければシェルは System32 の `wsl.exe` を見つけ、それが正しい答えなので、検出するものがない。別のビルドの shim は、ペインを頼むときに自分が話す形式を名乗る。host はそれにペインの中で答える。見えない理由で行を断るのではなく。つまり置き直しが必要になる唯一の条件はその形式が変わったときで、リリースごとでも、ビルドし直すごとでもない。bridge の helper については distro に尋ねることしかできないので、ペインの差し替えを申し出る前に尋ねる。
 
 </details>
 

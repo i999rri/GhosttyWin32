@@ -10,7 +10,8 @@
 // line may ask for. Those live with the host and change as options are
 // added; this does not change at all, which is what makes it safe for
 // both to hold -- a shim and a host from different builds still agree
-// about it. See Core/Wsl/InstalledShim.h for why that matters.
+// about it, which matters because the shim is installed by hand and
+// one build's can meet another's.
 
 #include <windows.h>
 #include <string>

@@ -127,7 +127,7 @@ Move-Item "$env:USERPROFILE\Downloads\wsl.exe" "$env:LOCALAPPDATA\ghostty\bin\ws
 
 The name has to stay `wsl.exe` -- that is the whole mechanism: the host puts that directory first on the `PATH` of the shells it starts, so the shell finds this one before System32's. Nothing outside those panes is affected.
 
-The app compares it against the copy it ships and uses it only if they match, so after an upgrade it has to be replaced. Until then, and if it is missing, `wsl` in a pane runs the real `wsl.exe` and the reason appears in the debug output.
+It needs replacing only when the way it talks to the app changes, not on every release: it says which wire format it speaks when it asks for a pane, and a mismatch is answered in that pane. With nothing installed, `wsl` in a pane is simply the real `wsl.exe`.
 
 <details><summary>日本語</summary>
 
@@ -135,7 +135,7 @@ The app compares it against the copy it ships and uses it only if they match, so
 
 名前は `wsl.exe` のままでないといけない。それが仕組みそのもので、host は起動するシェルの `PATH` の先頭にこのディレクトリを置くので、シェルは System32 のものより先にこちらを見つける。そのペインの外には影響しない。
 
-アプリは同梱しているコピーと比べ、一致したときだけ使う。だから更新したら置き換える必要がある。それまでのあいだ、また置いていない場合は、ペインの `wsl` は本物の `wsl.exe` を動かし、理由はデバッグ出力に出る。
+置き換えが必要になるのは、アプリとの会話の形式が変わったときだけで、リリースごとではない。shim はペインを頼むときに自分が話す形式を名乗り、合わなければそのペインの中で答えが返る。何も置いていない場合、ペインの `wsl` は単に本物の `wsl.exe` になる。
 
 </details>
 

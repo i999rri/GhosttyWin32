@@ -4,7 +4,6 @@
 #include "Ghostty/Config.h"
 #include "Ghostty/MainWindowRuntime.h"
 #include "Ghostty/RuntimeConfigFactory.h"
-#include "Wsl/InstalledShim.h"
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
@@ -316,40 +315,16 @@ namespace winrt::GhosttyWin32::implementation
             return;
         }
 
-        // In-place WSL (#217): the shim a shell runs has to be one the
-        // person installed, since the copy under shim\ in the package
-        // cannot be started from there at all. This checks what is
-        // installed against what is shipped and takes it or leaves the
-        // PATH alone; see Core/Wsl/InstalledShim.h for why it compares
-        // bytes and why the host does not install it itself. Decided
-        // before the first window, so the first pane's PATH is already
-        // right. The pipe server that answers the shim runs only while
-        // wsl-bridge is on and only when the shim is usable; see
+        // In-place WSL (#217): the shim a shell runs is one the person
+        // installed, since the copy under shim\ in the package cannot
+        // be started from there at all -- see docs/WSL.md. The host
+        // names the directory and looks no further: with nothing in it
+        // the shell finds System32's wsl.exe, which is the right
+        // answer, and a shim from another build says so over the pipe
+        // and gets told in the pane (ShimServer::Serve). The pipe
+        // server that answers it runs only while wsl-bridge is on; see
         // SyncShimServer.
-        {
-            wchar_t exe[MAX_PATH];
-            DWORD len = GetModuleFileNameW(nullptr, exe, MAX_PATH);
-            const auto installedDir = userShimDirectory();
-            if (len > 0 && len < MAX_PATH && !installedDir.empty()) {
-                const auto shipped =
-                    std::filesystem::path(exe).parent_path() / L"shim" / L"wsl.exe";
-                switch (core::wsl::CheckInstalledShim(shipped, installedDir / L"wsl.exe")) {
-                case core::wsl::ShimState::Shipped:
-                    m_shimDir = installedDir.wstring();
-                    break;
-                // Said rather than left silent: the alternative is a
-                // setting that reads as on and does nothing.
-                case core::wsl::ShimState::Different:
-                    OutputDebugStringW(L"[App] the installed wsl shim is from another "
-                                       L"build; in-place WSL is off until it is replaced\n");
-                    break;
-                case core::wsl::ShimState::Missing:
-                    OutputDebugStringW(L"[App] no wsl shim installed; in-place WSL is off. "
-                                       L"See docs/WSL.md\n");
-                    break;
-                }
-            }
-        }
+        m_shimDir = userShimDirectory().wstring();
         SyncShimServer();
 
         CreateNewWindow();
@@ -362,11 +337,12 @@ namespace winrt::GhosttyWin32::implementation
 
     void App::SyncShimServer()
     {
-        // The shim has to be somewhere a shell can run it, or nothing
-        // can ever reach this server and the setting is on in name
-        // only. Without it the feature is off whole rather than half:
-        // no directory on the PATH and no pipe listening for a caller
-        // that cannot exist.
+        // A shell needs somewhere to find the shim, and that is the one
+        // directory this host names. With no name for it -- no
+        // LOCALAPPDATA to build one from -- nothing can reach this
+        // server, so the feature is off whole rather than half: no
+        // directory on the PATH and no pipe listening for a caller that
+        // cannot exist.
         const bool wanted = m_ghostty && !m_shimDir.empty()
             && core::ghostty::Config(m_ghostty->ConfigHandle()).WslBridge();
         if (wanted == static_cast<bool>(m_shimServer)) return;
