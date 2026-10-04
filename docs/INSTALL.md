@@ -82,7 +82,7 @@ If you previously installed Ghostty (stable or dev), the new MSIX upgrades it in
 
 ## Step 4: WSL bridge (optional) / WSL bridge (任意)
 
-Skip this unless you want WSL tabs to run on a real Linux pty instead of on Windows' pseudo console. [docs/WSL.md](WSL.md) explains what that buys and why the binary is not in the package.
+Skip this unless you want WSL tabs to run on a Linux pty instead of on Windows' pseudo console. [docs/WSL.md](WSL.md) explains what that buys and why the binary is not in the package.
 
 Inside the distribution, with `<tag>` the release you installed:
 
@@ -103,7 +103,7 @@ With the setting on and the binary missing, a WSL tab ends with `ghostty-wsl-bri
 
 <details><summary>日本語</summary>
 
-WSL のタブを Windows の擬似コンソールではなく本物の Linux pty で動かしたい場合だけ必要。何が得られるのか、なぜバイナリがパッケージに入っていないのかは [docs/WSL.md](WSL.md) に書いた。
+WSL のタブを Windows の擬似コンソールではなく Linux の pty で動かしたい場合だけ必要。何が得られるのか、なぜバイナリがパッケージに入っていないのかは [docs/WSL.md](WSL.md) に書いた。
 
 distribution の中で、`<tag>` はインストールした release (上のコマンド)。
 

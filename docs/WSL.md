@@ -1,11 +1,11 @@
 # The WSL bridge
 
-A WSL tab can run on a real Linux pty instead of on Windows' pseudo console, so the bytes a program writes reach the terminal unchanged. It is off by default and needs one binary installed inside the distribution. For the steps alone see Step 4 of [the install guide](INSTALL.md); this page is why it exists and how to tell whether it is working.
+A WSL tab can run on a Linux pty instead of on Windows' pseudo console, so the bytes a program writes reach the terminal unchanged. It is off by default and needs one binary installed inside the distribution. For the steps alone see Step 4 of [the install guide](INSTALL.md); this page is why it exists and how to tell whether it is working.
 
 <details>
 <summary>日本語</summary>
 
-WSL のタブは、Windows の擬似コンソールではなく本物の Linux pty の上で動かせる。そうすると、プログラムが書いたバイト列がそのままターミナルに届く。既定では無効で、distribution の中にバイナリを 1 つ入れる必要がある。手順だけなら[インストール手順](INSTALL.md)の Step 4 を見てほしい。このページは、なぜそれが要るのかと、効いているかの確かめ方。
+WSL のタブは、Windows の擬似コンソールではなく Linux の pty の上で動かせる。そうすると、プログラムが書いたバイト列がそのままターミナルに届く。既定では無効で、distribution の中にバイナリを 1 つ入れる必要がある。手順だけなら[インストール手順](INSTALL.md)の Step 4 を見てほしい。このページは、なぜそれが要るのかと、効いているかの確かめ方。
 
 </details>
 
@@ -30,7 +30,7 @@ A pty can only be created by the Linux kernel, so the terminal has to be built i
 
 - **The app** creates no ConPTY for this surface at all. It starts `wsl.exe` with plain redirected pipes.
 - **`wsl.exe`**, with its stdio redirected, relays bytes between those pipes and the process it runs in the distribution. It emulates nothing.
-- **`ghostty-wsl-bridge`** runs inside the distribution. It opens a real Linux pty, starts your shell on the slave side, and relays between the pty and its own stdio.
+- **`ghostty-wsl-bridge`** runs inside the distribution. It opens a Linux pty, which has two ends: it starts your shell with one of them as the shell's terminal, and relays bytes between the other and its own stdio.
 
 The terminal the shell sees is a Linux pty, and Windows only carries bytes. Both directions are framed, because the pipes have no out-of-band channel and a window resize has to travel somehow.
 
@@ -41,7 +41,7 @@ pty を作れるのは Linux カーネルだけなので、端末は distributio
 
 - **アプリ**は、この surface については ConPTY を作らない。リダイレクトしたただのパイプを渡して `wsl.exe` を起動する。
 - **`wsl.exe`** は stdio がリダイレクトされているので、そのパイプと distribution 内のプロセスの間でバイト列を中継するだけになる。何もエミュレートしない。
-- **`ghostty-wsl-bridge`** は distribution の中で動く。本物の Linux pty を開き、その slave 側にシェルを起動し、pty と自分の stdio の間でバイト列を中継する。
+- **`ghostty-wsl-bridge`** は distribution の中で動く。Linux の pty を開く。pty には端が 2 つあり、その一方をシェルの端末として渡してシェルを起動し、もう一方と自分の stdio の間でバイト列を中継する。
 
 シェルから見える端末は Linux の pty で、Windows 側はバイト列を運ぶだけになる。パイプには帯域外のチャンネルがなく、ウインドウのサイズ変更も伝える必要があるため、どちらの向きもフレームに包んである。
 
