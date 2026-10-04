@@ -5,7 +5,7 @@ ghostty can tell you when a long command ends, which is what you want while a bu
 <details>
 <summary>日本語</summary>
 
-長く走ったコマンドが終わったとき、ghostty はそれを知らせられる。見ていないペインでビルドを回しているときに欲しいのがこれ。設定は上流のもので、通知の見え方はこのアプリのもの。ただし今のところ、どちらも自分からは発火しない。バグを探し始める前に知っておく価値のある理由がある。
+長く走ったコマンドが終わったことを、ghostty は知らせてくれる。見ていないペインでビルドを回しているときに欲しいのがこれ。設定は upstream のもので、通知の見た目はこのアプリが決めている。ただし今のところ、設定を入れただけでは発火しない。理由があるので、バグを疑う前にそこを読んでほしい。
 
 </details>
 
@@ -22,7 +22,7 @@ Three upstream keys decide whether a notification happens. `notify-on-command-fi
 <details>
 <summary>日本語</summary>
 
-通知するかどうかは上流の 3 つのキーが決める。`notify-on-command-finish` の既定は `never` なので、設定するまで何も起きない。
+通知するかどうかは upstream の 3 つのキーが決める。`notify-on-command-finish` の既定は `never` なので、設定するまで何も起きない。
 
 | | |
 | --- | --- |
@@ -34,7 +34,7 @@ Three upstream keys decide whether a notification happens. `notify-on-command-fi
 
 ## What you get
 
-`bell` beeps. `notify` raises a Windows toast, and clicking it selects the tab and pane the command ran in.
+`bell` plays Windows' default notification sound. `notify` raises a Windows toast, and clicking it selects the tab and pane the command ran in.
 
 The toast's title comes from the exit code: `Command Succeeded` for zero, `Command Failed` for anything else, and `Command Finished` when the shell reported no code at all. Its body reads like `Finished in 6s (exit 2)`.
 
@@ -43,11 +43,11 @@ The toast's title comes from the exit code: `Command Succeeded` for zero, `Comma
 <details>
 <summary>日本語</summary>
 
-`bell` は鳴る。`notify` は Windows のトーストを出し、クリックするとそのコマンドが走っていたタブとペインが選ばれる。
+`bell` は Windows の既定の通知音を鳴らす。`notify` は Windows のトーストを出し、クリックするとそのコマンドが走っていたタブとペインが選ばれる。
 
 トーストのタイトルは終了コードで決まる。0 なら `Command Succeeded`、それ以外なら `Command Failed`、シェルがコードを報告しなかった場合は `Command Finished`。本文は `Finished in 6s (exit 2)` のような形。
 
-`unfocused` でいう「焦点がある」は 2 つ同時に満たす場合を指す。そのペインがこのウインドウのアクティブなペインであり、かつこのウインドウが前面にあること。見えているペインで終わったコマンドは知らせる必要がなく、背面のウインドウのものは必要になる。
+`unfocused` でいう「焦点がある」は、2 つを同時に満たすこと。そのペインがこのウインドウのアクティブなペインで、かつこのウインドウが前面にある状態だ。見えているペインで終わったコマンドをわざわざ知らせる必要はないが、背面のウインドウで終わったものは知りたい。
 
 </details>
 
@@ -62,11 +62,11 @@ The marks themselves are ordinary terminal output. Any program can write them, w
 <details>
 <summary>日本語</summary>
 
-ghostty がコマンドの開始と終了を知る手段は、シェルが書く `OSC 133` の mark だけ。開始が `OSC 133;C`、終了が `OSC 133;D;<exit>`。これ以外に伝える経路はない。この mark は shell integration が出すもので、この port では shell integration が動いていない (差し込む元になる resources ディレクトリがない)。つまりここではどのシェルも mark を書かず、ghostty はコマンドの存在を知らない。
+ghostty がコマンドの開始と終了を知る手段は、シェルが書く `OSC 133` の mark だけだ。開始が `OSC 133;C`、終了が `OSC 133;D;<exit>` で、ほかに伝える経路はない。この mark を出すのは shell integration だが、この port では動いていない。差し込む元になる resources ディレクトリがないからだ。つまりここではどのシェルも mark を書かないので、ghostty から見るとコマンドは存在しない。
 
-だから上の設定を入れても何も起きない。通知が壊れているのではなく、誰も頼んでいない。素の `sleep 6` では試せず、それで通ったことになっていたチェックを読んで [#175](https://github.com/i999rri/GhosttyWin32/pull/175) を間違えた。
+だから上の設定を入れても何も起きない。通知が壊れているのではなく、誰も頼んでいないだけだ。素の `sleep 6` では試せないので、それで検証したつもりになっていたのが [#175](https://github.com/i999rri/GhosttyWin32/pull/175) のときの間違いだった。
 
-mark そのものは普通の端末出力にすぎない。どのプログラムでも書けるので、下のスクリプトがそれをやる。
+mark そのものは普通の端末出力にすぎず、どのプログラムからでも書ける。下のスクリプトがやっているのはそれだ。
 
 </details>
 
@@ -94,7 +94,7 @@ Staying focused the whole time also gets nothing, and that too is a pass with `u
 <details>
 <summary>日本語</summary>
 
-`scripts/verify/command-finished.ps1` は mark を手で書くので、shell integration なしで host 側を試せる。config にこれを入れて `ctrl+shift+,` で reload する。
+`scripts/verify/command-finished.ps1` が mark を自分で書くので、shell integration がなくても host 側を試せる。config にこれを入れて `ctrl+shift+,` で reload する。
 
 ```
 notify-on-command-finish = unfocused
@@ -111,6 +111,6 @@ notify-on-command-finish-action = bell,notify
 .\scripts\verify\command-finished.ps1 -Seconds 3    # しきい値 5s 未満 → 何も出ないのが正解
 ```
 
-ずっと焦点を当てたままにした場合も何も出ない。`unfocused` ではそれも正解。同じ内容はスクリプトの先頭にも書いてあり、`Get-Help` で読める。
+最後まで焦点を当てたままにした場合も何も出ないが、`unfocused` ではそれも正解だ。同じ内容はスクリプトの先頭にも書いてあるので、`Get-Help` で読める。
 
 </details>
