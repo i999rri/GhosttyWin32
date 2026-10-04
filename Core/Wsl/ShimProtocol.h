@@ -9,7 +9,7 @@
 // Windows paths and distribution names cannot contain tabs or
 // newlines, so no escaping is needed.
 //
-//   shim -> host   open\t<pane id>\t<cwd>\t<distro>\n
+//   shim -> host   open\t<pane id>\t<cwd>\t<distro>\t<directory>\t<user>\n
 //   host -> shim   done\t<exit code>\n        the session ended
 //                  refused\n                  the host will not open one
 
@@ -59,7 +59,9 @@ inline std::optional<unsigned long> PidFromPipeName(std::wstring_view name) {
 struct OpenRequest {
     uint64_t     paneId{ 0 };
     std::wstring cwd;
-    std::wstring distro;   // empty = the default distribution
+    std::wstring distro;      // empty = the default distribution
+    std::wstring directory;   // empty = wherever cwd lands
+    std::wstring user;        // empty = the distribution's default
 };
 
 // Host -> shim.
@@ -106,6 +108,39 @@ inline bool IsForwardableDistro(std::wstring_view distro) noexcept {
     return true;
 }
 
+// Whether `directory` may be forwarded as `--cd`: `~`, or an absolute
+// Linux path of letters, digits, '.', '_', '-' and '/'. Same reason as
+// the distribution, with the separator added. A Windows path is left
+// out: the host already carries the working directory of the shell that
+// asked, and a drive letter brings a backslash and often a space.
+inline bool IsForwardableDirectory(std::wstring_view directory) noexcept {
+    auto alnum = [](wchar_t c) {
+        return (c >= L'a' && c <= L'z') || (c >= L'A' && c <= L'Z') || (c >= L'0' && c <= L'9');
+    };
+    if (directory == L"~") return true;
+    if (directory.size() < 2 || directory.front() != L'/') return false;
+    for (wchar_t c : directory) {
+        if (!alnum(c) && c != L'.' && c != L'_' && c != L'-' && c != L'/') return false;
+    }
+    return true;
+}
+
+// Whether `user` may be forwarded as `--user`: letters, digits, '.',
+// '_' and '-', starting with a letter or '_' as a Linux name does.
+// Same reason as the distribution.
+inline bool IsForwardableUser(std::wstring_view user) noexcept {
+    auto alpha = [](wchar_t c) {
+        return (c >= L'a' && c <= L'z') || (c >= L'A' && c <= L'Z');
+    };
+    auto alnum = [&](wchar_t c) { return alpha(c) || (c >= L'0' && c <= L'9'); };
+    if (user.empty()) return false;
+    if (!alpha(user.front()) && user.front() != L'_') return false;
+    for (wchar_t c : user) {
+        if (!alnum(c) && c != L'.' && c != L'_' && c != L'-') return false;
+    }
+    return true;
+}
+
 // Whether `path` is a drive-letter absolute path (`C:\...` or `C:/...`).
 // The host opens a requested directory on its UI thread; a UNC or
 // device path could make that wait on the network. A mapped network
@@ -117,8 +152,13 @@ inline bool IsDriveAbsolutePath(std::wstring_view path) noexcept {
     return isLetter && path[1] == L':' && (path[2] == L'\\' || path[2] == L'/');
 }
 
-inline std::string EncodeOpen(uint64_t paneId, std::wstring_view cwd, std::wstring_view distro) {
-    return "open\t" + std::to_string(paneId) + "\t" + ToUtf8(cwd) + "\t" + ToUtf8(distro) + "\n";
+inline std::string EncodeOpen(uint64_t paneId,
+                              std::wstring_view cwd,
+                              std::wstring_view distro,
+                              std::wstring_view directory,
+                              std::wstring_view user) {
+    return "open\t" + std::to_string(paneId) + "\t" + ToUtf8(cwd) + "\t" + ToUtf8(distro) +
+           "\t" + ToUtf8(directory) + "\t" + ToUtf8(user) + "\n";
 }
 
 inline std::string EncodeDone(uint32_t exitCode) {
@@ -155,28 +195,35 @@ inline std::optional<OpenRequest> ParseOpen(std::string_view text) {
     auto line = detail::Line(text);
     if (!line) return std::nullopt;
 
-    // open \t id \t cwd \t distro: exactly four fields.
-    std::string_view fields[4];
+    // open \t id \t cwd \t distro \t directory \t user: six.
+    std::string_view fields[6];
     size_t count = 0;
     std::string_view rest = *line;
     while (true) {
         auto tab = rest.find('\t');
-        if (count == 4) return std::nullopt;
+        if (count == 6) return std::nullopt;
         fields[count++] = rest.substr(0, tab);
         if (tab == std::string_view::npos) break;
         rest.remove_prefix(tab + 1);
     }
-    if (count != 4 || fields[0] != "open") return std::nullopt;
+    if (count != 6 || fields[0] != "open") return std::nullopt;
 
     auto id = detail::Number<uint64_t>(fields[1]);
     if (!id || *id == 0) return std::nullopt;
 
     // Checked here rather than where the command is built, so no path
-    // from the pipe to a command line can skip it.
+    // from the pipe to a command line can skip it. Empty is how each of
+    // these says "not given"; whether that is allowed is its own rule's
+    // business.
     std::wstring distro = ToUtf16(fields[3]);
+    std::wstring directory = ToUtf16(fields[4]);
+    std::wstring user = ToUtf16(fields[5]);
     if (!IsForwardableDistro(distro)) return std::nullopt;
+    if (!directory.empty() && !IsForwardableDirectory(directory)) return std::nullopt;
+    if (!user.empty() && !IsForwardableUser(user)) return std::nullopt;
 
-    return OpenRequest{ *id, ToUtf16(fields[2]), std::move(distro) };
+    return OpenRequest{ *id, ToUtf16(fields[2]), std::move(distro),
+                        std::move(directory), std::move(user) };
 }
 
 inline std::optional<Reply> ParseReply(std::string_view text) {
