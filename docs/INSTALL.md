@@ -84,7 +84,15 @@ If you previously installed Ghostty (stable or dev), the new MSIX upgrades it in
 
 Skip this unless you want WSL tabs to run on a real Linux pty instead of on Windows' pseudo console. [docs/WSL.md](WSL.md) explains what that buys and why the binary is not in the package.
 
-Download `ghostty-wsl-bridge` from the same release, put it anywhere on the distribution's `PATH`, and make it executable. `/usr/local/bin` is on `PATH` and is not managed by a package manager, so it suits a copy placed by hand:
+Both binaries come from the release assets, and one script fetches and places them:
+
+```powershell
+.\scripts\install-wsl.ps1
+```
+
+It takes the release from the version you have installed, puts the shim in `%LOCALAPPDATA%\ghostty\bin`, installs the helper into the distribution, and says whether each landed. `-Tag v0.9.0` picks a release by hand, which is also how to run it before installing anything; `-Distro Ubuntu` picks the distribution.
+
+By hand instead, for the helper: download `ghostty-wsl-bridge` from the release, put it anywhere on the distribution's `PATH`, and make it executable. `/usr/local/bin` is on `PATH` and is not managed by a package manager, so it suits a copy placed by hand:
 
 ```sh
 # in the distribution
@@ -106,7 +114,15 @@ With the setting on and the binary missing, a WSL tab ends with `ghostty-wsl-bri
 
 WSL のタブを Windows の擬似コンソールではなく本物の Linux pty で動かしたい場合だけ必要。何が得られるのか、なぜバイナリがパッケージに入っていないのかは [docs/WSL.md](WSL.md) に書いた。
 
-同じ release から `ghostty-wsl-bridge` をダウンロードし、distro の `PATH` のどこかに置いて実行権限を付ける。`/usr/local/bin` は `PATH` に入っていて、かつパッケージマネージャの管理下にないので、手で置くコピーに向いている (上のコマンド)。
+2 つのバイナリはどちらも release の asset から来る。取得と設置はスクリプト 1 本で済む。
+
+```powershell
+.\scripts\install-wsl.ps1
+```
+
+インストール済みのバージョンから release を決め、shim を `%LOCALAPPDATA%\ghostty\bin` に置き、helper を distro に入れ、それぞれ届いたかを報告する。`-Tag v0.9.0` で release を手で選べる (何もインストールしていない状態で走らせるときもこれ)。`-Distro Ubuntu` で distro を選ぶ。
+
+手でやる場合、helper はこう。release から `ghostty-wsl-bridge` をダウンロードし、distro の `PATH` のどこかに置いて実行権限を付ける。`/usr/local/bin` は `PATH` に入っていて、かつパッケージマネージャの管理下にないので、手で置くコピーに向いている (上のコマンド)。
 
 ここで効く `PATH` は、`wsl.exe --exec` がセッションに与えるものであって、ログインシェルのものではない。`.profile` や `.zshrc` で足したディレクトリ (たいていは `~/.local/bin`) は使えない。NixOS なら `environment.systemPackages` が `/run/current-system/sw/bin` に入れてくれて、そこは `PATH` に乗っている。
 
