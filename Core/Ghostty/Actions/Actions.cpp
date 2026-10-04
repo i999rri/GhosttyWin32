@@ -21,13 +21,13 @@ bool Actions::OnRingBell() {
     return true;
 }
 
-bool Actions::OnShowChildExited(ghostty_surface_message_childexited_s ce) {
-    // Shell process for a surface exited. With confirm-close-
-    // surface=false (our default) the surface tears itself down
-    // via close_surface_cb almost immediately, so this is a
-    // breadcrumb. A proper in-terminal overlay is design work;
-    // log and move on. Mirror to OutputDebugString so the line
-    // survives stderr buffering through surface teardown.
+bool Actions::OnShowChildExited(ghostty_surface_t surface,
+                                ghostty_surface_message_childexited_s ce) {
+    // Shell process for a surface exited. A surface without an
+    // explicit command tears itself down via close_surface_cb right
+    // after this, so the log line is a breadcrumb; mirrored to
+    // OutputDebugString so it survives stderr buffering through the
+    // teardown. A proper in-terminal overlay is design work.
     char buf[128];
     std::snprintf(buf, sizeof(buf),
                   "[child_exited] exit_code=%u after_ms=%llu\n",
@@ -36,6 +36,16 @@ bool Actions::OnShowChildExited(ghostty_surface_message_childexited_s ce) {
     std::fputs(buf, stderr);
     std::fflush(stderr);
     OutputDebugStringA(buf);
+
+    // A surface started with a command stays open after its process
+    // ends, so the window has to act on the exit itself: an in-place
+    // WSL session answers its shim with the code and swaps the shell
+    // back (#217). See IWindow::ChildExited.
+    if (surface) {
+        DispatchToView([this, surface, code = ce.exit_code]() {
+            m_view.ChildExited(surface, code);
+        });
+    }
     return true;
 }
 
