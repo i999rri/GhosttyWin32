@@ -167,6 +167,18 @@ public:
         return static_cast<uint64_t>(ms) * 1'000'000ull;
     }
 
+    // How soon after starting a non-zero exit means the command never
+    // got going. ghostty keeps such a surface open instead of closing
+    // it, so the host reads the same setting to know which exits leave
+    // a pane behind (#237).
+    uint32_t AbnormalCommandExitRuntimeMs() const noexcept {
+        uint32_t ms = 0;
+        if (!GetRaw("abnormal-command-exit-runtime", &ms)) {
+            return 250;  // documented default
+        }
+        return ms;
+    }
+
     // How to notify. The packed struct crosses the C API as its bit
     // representation in a c_uint: bit 0 = bell (field order in
     // ghostty's NotifyOnCommandFinishAction), bit 1 = notify.

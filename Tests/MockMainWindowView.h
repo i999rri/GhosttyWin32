@@ -374,10 +374,14 @@ struct MockMainWindowView : core::host::IWindow {
 
     int childExitedCalls = 0;
     ghostty_surface_t lastChildExitedSurface = nullptr;
+    uint64_t lastChildExitRuntimeMs = 0;
     uint32_t lastChildExitCode = 0;
-    void ChildExited(ghostty_surface_t surface, uint32_t exitCode) override {
+    void ChildExited(ghostty_surface_t surface,
+                     uint32_t exitCode,
+                     uint64_t runtimeMs) override {
         ++childExitedCalls;
         lastChildExitedSurface = surface;
+        lastChildExitRuntimeMs = runtimeMs;
         lastChildExitCode = exitCode;
     }
 };

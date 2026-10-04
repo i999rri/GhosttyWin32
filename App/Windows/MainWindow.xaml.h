@@ -216,7 +216,9 @@ namespace winrt::GhosttyWin32::implementation
         // to a plain foreground if `id` is the zero sentinel.
         void PresentNotification(PaneId id);
         void ReportProgress(ghostty_action_progress_report_s pr) override;
-        void ChildExited(ghostty_surface_t surface, uint32_t exitCode) override;
+        void ChildExited(ghostty_surface_t surface,
+                         uint32_t exitCode,
+                         uint64_t runtimeMs) override;
 
         // In-place WSL (#217): put a WSL pane, started through the
         // bridge in `cwd`, where the pane carrying `id` is, and park

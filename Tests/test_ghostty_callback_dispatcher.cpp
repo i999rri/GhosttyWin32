@@ -411,6 +411,9 @@ TEST(GhosttyCallbackDispatcherTest, ShowChildExitedReachesTheViewWithItsSurface)
     EXPECT_EQ(view.childExitedCalls, 1);
     EXPECT_EQ(view.lastChildExitedSurface, surface);
     EXPECT_EQ(view.lastChildExitCode, 130u);
+    // The runtime comes with it: the window needs both to tell a
+    // session that failed to start from one that was used (#237).
+    EXPECT_EQ(view.lastChildExitRuntimeMs, 2500u);
 }
 
 TEST(GhosttyCallbackDispatcherTest, ShowChildExitedWithAppTargetReachesNoView) {

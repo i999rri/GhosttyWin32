@@ -15,6 +15,7 @@
 #include "Win32/DebugTrace.h"
 #include "Win32/SEHGuard.h"
 #include "Wsl/Invocation.h"
+#include "Wsl/SessionExit.h"
 #if __has_include("MainWindow.g.cpp")
 #include "MainWindow.g.cpp"
 #endif
@@ -2676,7 +2677,9 @@ namespace winrt::GhosttyWin32::implementation
         ApplyBackgroundOpacityAppearance();
     }
 
-    void MainWindow::ChildExited(ghostty_surface_t surface, uint32_t exitCode)
+    void MainWindow::ChildExited(ghostty_surface_t surface,
+                                 uint32_t exitCode,
+                                 uint64_t runtimeMs)
     {
         // Only an in-place WSL session (#217) acts on this: its WSL
         // pane is one libghostty keeps open after the process ends,
@@ -2693,30 +2696,31 @@ namespace winrt::GhosttyWin32::implementation
                     GetTickCount64() % 100'000,
                     static_cast<unsigned long long>(lookup.pane->id.value), exitCode);
 
+        const core::wsl::SessionExit ended{ exitCode, runtimeMs };
+
         // Answered first and once: the shell is blocked on the shim, and
         // whether the pane stays is no business of a shell waiting for
         // its prompt back.
         if (pending->onFinished) {
-            pending->onFinished(exitCode);
+            pending->onFinished(ended.Code());
             pending->onFinished = nullptr;
         }
 
-        // A session that ended badly has its reason on the pane, and
-        // ghostty may be keeping that pane for exactly that: a surface
-        // whose process exited non-zero almost as soon as it started is
-        // left open (Surface.childExited, with the window to count as
-        // "at once" being abnormal-command-exit-runtime). Later than
-        // that, or on a clean exit, ghostty closes the surface itself.
+        // A session that failed before it could be used has its reason
+        // on the pane, and ghostty keeps that pane for exactly that, so
+        // the shell waits instead of being restored over it. Closing
+        // the pane puts it back, through the close this window already
+        // handles -- and with nothing left to answer there, the shim
+        // having been answered above.
         //
-        // So the host does not decide how soon is soon enough, which
-        // would be a second answer to the same question and a wrong one
-        // whenever the setting changed. It leaves the session in the tab
-        // and lets the close it already handles put the shell back
-        // (RemovePaneByIdApproved), with nothing left to answer there.
-        if (exitCode != 0 && pending->parked) {
-            DEBUG_TRACE(L"InPlaceWsl[%llu]: overlay=%llu left up after code=%u\n",
+        // Read fresh so a reload is in effect, as the notification
+        // policy does it.
+        core::ghostty::Config cfg{ m_ghosttyApp->ConfigHandle() };
+        if (pending->parked && ended.FailedBeforeUse(cfg.AbnormalCommandExitRuntimeMs())) {
+            DEBUG_TRACE(L"InPlaceWsl[%llu]: overlay=%llu left up, code=%u after %llu ms\n",
                         GetTickCount64() % 100'000,
-                        static_cast<unsigned long long>(lookup.pane->id.value), exitCode);
+                        static_cast<unsigned long long>(lookup.pane->id.value), exitCode,
+                        static_cast<unsigned long long>(runtimeMs));
             return;
         }
 

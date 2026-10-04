@@ -272,9 +272,13 @@ struct IWindow {
     // outside the surface's own call stack, so the window may free
     // the surface from here. An in-place WSL session (#217) ends on
     // this: libghostty keeps a surface started with an explicit
-    // command open after its process exits (wait-after-command is
-    // forced on for it), so no close would follow on its own.
-    virtual void ChildExited(ghostty_surface_t surface, uint32_t exitCode) = 0;
+    // command open after its process exits, so no close would follow
+    // on its own. `runtimeMs` is how long the process lived, which is
+    // what tells a session that failed to start from one that was used
+    // (#237).
+    virtual void ChildExited(ghostty_surface_t surface,
+                             uint32_t exitCode,
+                             uint64_t runtimeMs) = 0;
 };
 
 }  // namespace core::host
