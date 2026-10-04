@@ -41,7 +41,7 @@ cd external/ghostty
 zig build -Doptimize=ReleaseSafe -Drenderer=directx
 ```
 
-Leave `-Drenderer=directx` off and you get the OpenGL backend, which is what the fork defaults to on Windows and not what this app links against. The Zig version comes from the fork's `build.zig.zon`, which declares 0.16.0 as its minimum. The result is `external/ghostty/zig-out/lib/ghostty-internal.dll`, which `App/App.vcxproj` deploys as `ghostty.dll`, together with the import library beside it. Both the app and the tests read the C API from `external/ghostty/include`, so the submodule pin is the single source of truth for the header and the binary at once.
+`-Drenderer=directx` has to be there, because without it you get the OpenGL backend: that is what the fork defaults to on Windows, and not what this app links against. Zig has to be 0.16.0 or newer, which the fork's `build.zig.zon` declares as its minimum. The result is `external/ghostty/zig-out/lib/ghostty-internal.dll`, which `App/App.vcxproj` deploys as `ghostty.dll`, together with the import library beside it. Both the app and the tests read the C API from `external/ghostty/include`, so the submodule pin is the single source of truth for the header and the binary at once.
 
 **After the pin moves**, this step is required and `git submodule update --init` is not the way to take it: it re-clones and leaves a tree that rebuilds from scratch. Check the recorded commit out instead, then build.
 
@@ -66,7 +66,7 @@ cd external/ghostty
 zig build -Doptimize=ReleaseSafe -Drenderer=directx
 ```
 
-`-Drenderer=directx` を省くと OpenGL のバックエンドができる。fork が Windows で既定にしているのがそれで、このアプリがリンクする相手ではない。Zig のバージョンは fork の `build.zig.zon` が決めていて、0.16.0 を最小として宣言している。できるのは `external/ghostty/zig-out/lib/ghostty-internal.dll` で、`App/App.vcxproj` がこれを `ghostty.dll` としてデプロイする。import ライブラリも隣に出る。アプリとテストはどちらも C API を `external/ghostty/include` から読むので、ヘッダとバイナリの出どころが submodule の pin 1 つに揃う。
+`-Drenderer=directx` は省略できない。なぜなら省くと OpenGL のバックエンドができるからで、それは fork が Windows で既定にしているものであって、このアプリがリンクする相手ではない。Zig は 0.16.0 以上でなければならない。fork の `build.zig.zon` がそれを最小として宣言している。できるのは `external/ghostty/zig-out/lib/ghostty-internal.dll` で、`App/App.vcxproj` がこれを `ghostty.dll` としてデプロイする。import ライブラリも隣に出る。アプリとテストはどちらも C API を `external/ghostty/include` から読むので、ヘッダとバイナリの出どころが submodule の pin 1 つに揃う。
 
 **pin が動いたあと**はこの step が必須で、そのときに `git submodule update --init` を使ってはいけない。再 clone になり、ゼロからビルドし直す tree が残る。記録されているコミットを checkout してからビルドする。
 
