@@ -9,7 +9,7 @@
 // it runs as a child of the user's shell, outside the package, where
 // neither the VC runtime framework nor the ASan runtime is on hand.
 
-#include "Wsl/ShimProtocol.h"
+#include "Wsl/Invocation.h"
 #include <windows.h>
 #include <aclapi.h>
 #include <cstdint>
@@ -24,31 +24,6 @@
 namespace {
 
 using namespace core::wsl;
-
-struct InteractiveShell {
-    std::wstring distro;   // empty = the default distribution
-};
-
-// Only `wsl` and `wsl -d NAME` / `wsl --distribution NAME` are taken
-// over. Any other argument (a command to run, --cd, -l, --exec, ...)
-// keeps wsl.exe's own behaviour, so scripts and one-off commands are
-// untouched.
-std::optional<InteractiveShell> Classify(int argc, wchar_t** argv) {
-    InteractiveShell shell;
-    for (int i = 1; i < argc; ++i) {
-        std::wstring_view arg = argv[i];
-        bool selectsDistro = arg == L"-d" || arg == L"--distribution";
-        if (selectsDistro && i + 1 < argc && shell.distro.empty()) {
-            shell.distro = argv[++i];
-            continue;
-        }
-        return std::nullopt;
-    }
-    // The host refuses a name it cannot forward safely; asking would
-    // only delay the real wsl.exe, which handles any name itself.
-    if (!IsForwardableDistro(shell.distro)) return std::nullopt;
-    return shell;
-}
 
 // A console, not merely a character device: NUL also reports
 // FILE_TYPE_CHAR, and `wsl <NUL >NUL` is a script, not a person.
@@ -148,7 +123,7 @@ constexpr size_t kMaxReplyBytes = 64;
 // there is no host to ask or it declined; only then is the real wsl.exe
 // run instead. Blocks for the whole session: the reply only comes when
 // WSL ends.
-std::optional<uint32_t> AskHost(InteractiveShell const& shell) {
+std::optional<uint32_t> AskHost(Invocation const& invocation) {
     std::wstring pipe = Env(kPipeEnvVarW);
     std::wstring pane = Env(kPaneEnvVarW);
     auto hostPid = PidFromPipeName(pipe);
@@ -160,7 +135,8 @@ std::optional<uint32_t> AskHost(InteractiveShell const& shell) {
     HANDLE h = ConnectToHost(pipe, *hostPid);
     if (h == INVALID_HANDLE_VALUE) return std::nullopt;
 
-    std::string request = EncodeOpen(paneId, CurrentDirectory(), shell.distro);
+    std::string request = EncodeOpen(paneId, CurrentDirectory(), invocation.Distribution(),
+                                     invocation.Directory(), invocation.User());
     DWORD written = 0;
     if (!WriteFile(h, request.data(), static_cast<DWORD>(request.size()), &written, nullptr)
         || written != request.size()) {
@@ -293,17 +269,17 @@ int wmain(int argc, wchar_t** argv) {
     // the shim from the session it is waiting on.
     SetConsoleCtrlHandler(OutlastConsoleBreak, TRUE);
 
-    auto shell = Classify(argc, argv);
+    const Invocation invocation = Invocation::Parse(argc, argv);
     // Redirected stdio means a script is driving wsl, not a person.
-    if (shell && IsConsole(STD_INPUT_HANDLE) && IsConsole(STD_OUTPUT_HANDLE)) {
-        if (HelperInstalled(shell->distro)) {
-            if (auto exitCode = AskHost(*shell)) return static_cast<int>(*exitCode);
+    if (invocation.TakesOver() && IsConsole(STD_INPUT_HANDLE) && IsConsole(STD_OUTPUT_HANDLE)) {
+        if (HelperInstalled(invocation.Distribution())) {
+            if (auto exitCode = AskHost(invocation)) return static_cast<int>(*exitCode);
         } else {
             // Only someone who set wsl-bridge gets here: the shim is on
             // PATH while it is on. Having asked for the bridge and not
             // installed its half, they are owed the reason the pane
             // stays where it is.
-            ReportMissingHelper(shell->distro);
+            ReportMissingHelper(invocation.Distribution());
         }
     }
     return RunRealWsl();

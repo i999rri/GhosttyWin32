@@ -14,7 +14,7 @@
 #include "Win32/Clipboard.h"
 #include "Win32/DebugTrace.h"
 #include "Win32/SEHGuard.h"
-#include "Wsl/ShimProtocol.h"
+#include "Wsl/Invocation.h"
 #if __has_include("MainWindow.g.cpp")
 #include "MainWindow.g.cpp"
 #endif
@@ -2519,7 +2519,7 @@ namespace winrt::GhosttyWin32::implementation
         if (newView) newView->TakeFocus();
     }
 
-    void MainWindow::OpenWslInPane(PaneId id, std::wstring cwd, std::wstring distro,
+    void MainWindow::OpenWslInPane(PaneId id, core::wsl::OpenRequest request,
                                    std::shared_ptr<wsl::ShimReply> reply)
     {
         auto lookup = m_tabs.FindByPaneId(id);
@@ -2546,17 +2546,22 @@ namespace winrt::GhosttyWin32::implementation
         if (auto* srcTc = ControlOf(*sourcePane)) {
             hint = display::PhysicalSizeFactory::ForNewTab(srcTc->InnerPanel(), AppContent());
         }
-        std::string command = "wsl";
-        if (!distro.empty()) command += " -d " + interop::Encoding::toUtf8(distro);
+        // Built from the same table that read the line, so an option
+        // this host understands is emitted the way wsl.exe reads it.
+        const auto invocation = core::wsl::Invocation::FromRequest(
+            request.distro, request.directory, request.user);
+        const std::string command = invocation.ToCommandLine();
+
         // ghostty opens the requested directory synchronously, here on
         // the UI thread; a UNC path or a mapped network drive could
         // stall every window on the network. Those start in the
-        // configured directory instead.
+        // configured directory instead. An explicit --cd outranks it,
+        // as it does for wsl.exe, so there is nothing to pass.
         std::string workingDirectory;
-        if (core::wsl::IsDriveAbsolutePath(cwd)) {
-            const wchar_t root[] = { cwd[0], L':', L'\\', L'\0' };
+        if (invocation.Directory().empty() && core::wsl::IsDriveAbsolutePath(request.cwd)) {
+            const wchar_t root[] = { request.cwd[0], L':', L'\\', L'\0' };
             if (GetDriveTypeW(root) != DRIVE_REMOTE) {
-                workingDirectory = interop::Encoding::toUtf8(cwd);
+                workingDirectory = interop::Encoding::toUtf8(request.cwd);
             }
         }
 
