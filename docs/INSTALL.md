@@ -91,7 +91,7 @@ curl -fsSLo /tmp/gwb https://github.com/i999rri/GhosttyWin32/releases/download/<
   && sudo install -Dm755 /tmp/gwb /usr/local/bin/ghostty-wsl-bridge
 ```
 
-`/usr/local/bin` because the `PATH` that matters is the one a session gets from `wsl.exe --exec`, not a login shell's, so a directory added by `.profile` or `.zshrc` — `~/.local/bin`, typically — will not do. On NixOS, `environment.systemPackages` lands in `/run/current-system/sw/bin`, which is on it. Anywhere else on that `PATH` is fine; the app starts the binary by name.
+`/usr/local/bin` because the `PATH` that matters is the one a session gets from `wsl.exe --exec`, not a login shell's: a directory added by `.profile` or `.zshrc` — `~/.local/bin`, typically — will not do. Anywhere on that `PATH` works, since the app starts the binary by name.
 
 Then turn it on in `%LOCALAPPDATA%\ghostty\config` and restart the app:
 
@@ -107,7 +107,7 @@ WSL のタブを Windows の擬似コンソールではなく本物の Linux pty
 
 distro の中で、`<tag>` はインストールした release (上のコマンド)。
 
-`/usr/local/bin` なのは、ここで効く `PATH` が `wsl.exe --exec` がセッションに与えるものであって、ログインシェルのものではないから。`.profile` や `.zshrc` で足したディレクトリ (たいていは `~/.local/bin`) は使えない。NixOS なら `environment.systemPackages` が `/run/current-system/sw/bin` に入れてくれて、そこは `PATH` に乗っている。その `PATH` 上ならどこでもよく、アプリは名前で起動する。
+`/usr/local/bin` なのは、ここで効く `PATH` が `wsl.exe --exec` がセッションに与えるもので、ログインシェルのものではないから。`.profile` や `.zshrc` で足したディレクトリ (たいていは `~/.local/bin`) は使えない。その `PATH` 上ならどこに置いてもよい。アプリはバイナリを名前で起動する。
 
 そのうえで `%LOCALAPPDATA%\ghostty\config` で有効にし、アプリを再起動する。
 
