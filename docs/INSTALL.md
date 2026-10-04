@@ -117,7 +117,7 @@ distribution の中で、`<tag>` はインストールした release (上のコ�
 
 ### The `wsl` shim / `wsl` の shim
 
-Only needed for typing `wsl` in a pane and having that pane become WSL. One line, with `<tag>` the release you installed:
+Only needed to get the bridge for a `wsl` typed at a prompt: without the shim that session runs under ConPTY, like any other program a shell starts. A WSL *tab* goes through the bridge with `wsl-bridge` alone — this is for the other way in. One line, with `<tag>` the release you installed:
 
 ```powershell
 curl.exe -fsSL --create-dirs -o "$env:LOCALAPPDATA\ghostty\bin\wsl.exe" https://github.com/i999rri/GhosttyWin32/releases/download/<tag>/wsl.exe
@@ -129,7 +129,7 @@ It needs replacing only when the way it talks to the app changes, not on every r
 
 <details><summary>日本語</summary>
 
-ペインで `wsl` と打ってそのペインを WSL にしたい場合だけ必要。1 行で済む。`<tag>` はインストールした release (上のコマンド)。
+プロンプトで打った `wsl` のセッションを bridge で動かしたい場合だけ必要。shim が無いと、そのセッションはシェルが起動する他のプログラムと同じく ConPTY の下で動く。最初から WSL で開いたタブは `wsl-bridge` だけで bridge を通るので、これはもう一方の入り口のためのもの。1 行で済む。`<tag>` はインストールした release (上のコマンド)。
 
 名前は `wsl.exe` でなければならない。host は自分が起動するシェルの `PATH` の先頭に `%LOCALAPPDATA%\ghostty\bin` を置くので、そのシェルは System32 より先にここの `wsl.exe` を 見つける。名前が違えば見つからないし、ここを見るのはそのペインのシェルだけで、ほかのシェルの `wsl` は変わらない。
 
