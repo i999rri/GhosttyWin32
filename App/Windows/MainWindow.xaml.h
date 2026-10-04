@@ -105,6 +105,7 @@ namespace winrt::GhosttyWin32::implementation
         void GotoSplitFromAction(ghostty_surface_t surface,
                                  ghostty_action_goto_split_e direction) override;
         void EqualizeSplitsForSurface(ghostty_surface_t surface) override;
+        void MoveTabToNewWindow(ghostty_surface_t surface) override;
         void ToggleSplitZoomForSurface(ghostty_surface_t surface) override;
 
         // Tab lifecycle / navigation / title operations from

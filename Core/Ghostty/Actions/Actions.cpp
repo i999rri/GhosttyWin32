@@ -703,6 +703,15 @@ bool Actions::OnGotoSplit(ghostty_surface_t surface,
     return true;
 }
 
+// The tab the surface is in becomes its own window. The host has
+// the machinery already -- this is what a tab dragged off the strip
+// does -- so what was missing was the route from the action.
+bool Actions::OnMoveTabToNewWindow(ghostty_surface_t surface) {
+    if (!surface) return false;
+    DispatchToView([this, surface]() { m_view.MoveTabToNewWindow(surface); });
+    return true;
+}
+
 bool Actions::OnEqualizeSplits(ghostty_surface_t surface) {
     if (!surface) return true;
     DispatchToView([this, surface]() {

@@ -2733,6 +2733,26 @@ namespace winrt::GhosttyWin32::implementation
         RemovePaneByIdApproved(lookup.pane->id);
     }
 
+    void MainWindow::MoveTabToNewWindow(ghostty_surface_t surface)
+    {
+        if (!surface) return;
+
+        auto* tab = m_tabs.FindBySurface(surface);
+        if (!tab) return;
+        // The last tab is already a window of its own; moving it
+        // would leave an empty one behind and close this window from
+        // under the move.
+        if (m_tabs.Size() <= 1) return;
+
+        // No drop point: the mouse had nothing to do with this, so
+        // the new window takes its default position rather than
+        // appearing wherever the pointer happens to rest.
+        TearOut::ToNewWindow(*this, tab->Item(), std::nullopt,
+            [](WindowState::Inherited const& inherited) {
+                return App::g_app->CreateTearOutWindow(inherited);
+            });
+    }
+
     void MainWindow::EqualizeSplitsForSurface(ghostty_surface_t surface)
     {
         if (!surface) return;
