@@ -208,7 +208,6 @@ libghostty は action という形で host に仕事を頼む。定義されて�
 | Automatic tab titles from the running program | Needs Windows foreground-process info ([#199](https://github.com/i999rri/GhosttyWin32/issues/199)) |
 | Clipboard settings in a ConPTY pane | conhost answers OSC 52 itself, so the settings never reach the terminal ([#226](https://github.com/i999rri/GhosttyWin32/issues/226), [docs/CLIPBOARD.md](CLIPBOARD.md)) |
 | Paste protection | Confirmed without asking, for want of a dialog ([#225](https://github.com/i999rri/GhosttyWin32/issues/225)) |
-| Windows-specific config options | `windows-tab-bar`, `windows-drag-region` ([#17](https://github.com/i999rri/GhosttyWin32/issues/17)) |
 | Split or new tab from an in-place WSL pane | Opens the default shell rather than WSL ([#220](https://github.com/i999rri/GhosttyWin32/issues/220)) |
 
 <details>
@@ -221,7 +220,6 @@ libghostty は action という形で host に仕事を頼む。定義されて�
 | 動いているプログラムからタブ名を決める | Windows の前景プロセス情報が必要 ([#199](https://github.com/i999rri/GhosttyWin32/issues/199)) |
 | ConPTY のペインでのクリップボード設定 | conhost が OSC 52 に自分で応答するので、設定が端末まで届かない ([#226](https://github.com/i999rri/GhosttyWin32/issues/226)、[docs/CLIPBOARD.md](CLIPBOARD.md)) |
 | paste protection | 確認ダイアログが無いため、聞かずに承認している ([#225](https://github.com/i999rri/GhosttyWin32/issues/225)) |
-| Windows 固有の config オプション | `windows-tab-bar`、`windows-drag-region` ([#17](https://github.com/i999rri/GhosttyWin32/issues/17)) |
 | in-place の WSL ペインからの split と新規タブ | WSL ではなく既定のシェルで開く ([#220](https://github.com/i999rri/GhosttyWin32/issues/220)) |
 
 </details>
