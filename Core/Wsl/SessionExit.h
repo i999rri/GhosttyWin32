@@ -23,6 +23,7 @@ public:
         : m_code(code), m_livedMs(livedMs) {}
 
     uint32_t Code() const noexcept { return m_code; }
+    uint64_t LivedMs() const noexcept { return m_livedMs; }
 
     // Whether the session never got as far as being usable. Such a pane
     // has its reason written on it and ghostty keeps it open rather than

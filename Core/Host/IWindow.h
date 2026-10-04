@@ -2,6 +2,7 @@
 
 #include "ghostty.h"
 #include "Host/ISurfaceView.h"
+#include "Wsl/SessionExit.h"
 #include <windows.h>
 #include <cstdint>
 #include <functional>
@@ -268,17 +269,13 @@ struct IWindow {
     virtual void ReportProgress(ghostty_action_progress_report_s pr) = 0;
 
     // SHOW_CHILD_EXITED for a surface this window owns: the process
-    // in `surface` ended with `exitCode`. Arrives on the UI thread
-    // outside the surface's own call stack, so the window may free
-    // the surface from here. An in-place WSL session (#217) ends on
-    // this: libghostty keeps a surface started with an explicit
-    // command open after its process exits, so no close would follow
-    // on its own. `runtimeMs` is how long the process lived, which is
-    // what tells a session that failed to start from one that was used
-    // (#237).
+    // in `surface` ended, as `ended`. Arrives on the UI thread outside
+    // the surface's own call stack, so the window may free the surface
+    // from here. An in-place WSL session (#217) ends on this:
+    // libghostty keeps a surface started with an explicit command open
+    // after its process exits, so no close would follow on its own.
     virtual void ChildExited(ghostty_surface_t surface,
-                             uint32_t exitCode,
-                             uint64_t runtimeMs) = 0;
+                             core::wsl::SessionExit ended) = 0;
 };
 
 }  // namespace core::host

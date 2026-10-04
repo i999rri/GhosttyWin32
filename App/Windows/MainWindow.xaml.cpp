@@ -2677,9 +2677,7 @@ namespace winrt::GhosttyWin32::implementation
         ApplyBackgroundOpacityAppearance();
     }
 
-    void MainWindow::ChildExited(ghostty_surface_t surface,
-                                 uint32_t exitCode,
-                                 uint64_t runtimeMs)
+    void MainWindow::ChildExited(ghostty_surface_t surface, core::wsl::SessionExit ended)
     {
         // Only an in-place WSL session (#217) acts on this: its WSL
         // pane is one libghostty keeps open after the process ends,
@@ -2692,11 +2690,10 @@ namespace winrt::GhosttyWin32::implementation
 
         // Tick-stamped like UndoPark: the gap to the restored line
         // is the host-side cost of ending a session.
-        DEBUG_TRACE(L"InPlaceWsl[%llu]: overlay=%llu exited code=%u\n",
+        DEBUG_TRACE(L"InPlaceWsl[%llu]: overlay=%llu exited code=%u after %llu ms\n",
                     GetTickCount64() % 100'000,
-                    static_cast<unsigned long long>(lookup.pane->id.value), exitCode);
-
-        const core::wsl::SessionExit ended{ exitCode, runtimeMs };
+                    static_cast<unsigned long long>(lookup.pane->id.value), ended.Code(),
+                    static_cast<unsigned long long>(ended.LivedMs()));
 
         // Answered first and once: the shell is blocked on the shim, and
         // whether the pane stays is no business of a shell waiting for
@@ -2717,10 +2714,9 @@ namespace winrt::GhosttyWin32::implementation
         // policy does it.
         core::ghostty::Config cfg{ m_ghosttyApp->ConfigHandle() };
         if (pending->parked && ended.FailedBeforeUse(cfg.AbnormalCommandExitRuntimeMs())) {
-            DEBUG_TRACE(L"InPlaceWsl[%llu]: overlay=%llu left up, code=%u after %llu ms\n",
+            DEBUG_TRACE(L"InPlaceWsl[%llu]: overlay=%llu left up\n",
                         GetTickCount64() % 100'000,
-                        static_cast<unsigned long long>(lookup.pane->id.value), exitCode,
-                        static_cast<unsigned long long>(runtimeMs));
+                        static_cast<unsigned long long>(lookup.pane->id.value));
             return;
         }
 

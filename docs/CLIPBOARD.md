@@ -35,7 +35,7 @@ Pasting is unaffected. Ctrl+V is something you asked for, so it goes through, in
 
 既定の `clipboard-read = ask` は、「ターミナル内のプログラムにクリップボードを渡す前に確認する」という意味。このアプリには確認する画面がないので、代わりに拒否している。OSC 52 と Kitty クリップボードの読み取りには、中身が空の応答が返る。`clipboard-read = allow` はこれまでどおり効き、確認そのものを省略する。
 
-貼り付けには影響しない。Ctrl+V は利用者が自分で指示したものなので通る。paste protection に引っかかる貼り付けも通ってしまうので、現状その保護は誰にも警告できていない ([#225](https://github.com/i999rri/GhosttyWin32/issues/225))。どちらも同じ確認ダイアログ待ち。
+貼り付けには影響しない。Ctrl+V はユーザーが自分で指示したものなので通る。paste protection に引っかかる貼り付けも通ってしまうので、現状その保護は誰にも警告できていない ([#225](https://github.com/i999rri/GhosttyWin32/issues/225))。どちらも同じ確認ダイアログ待ち。
 
 </details>
 

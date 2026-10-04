@@ -42,8 +42,9 @@ bool Actions::OnShowChildExited(ghostty_surface_t surface,
     // WSL session answers its shim with the code and swaps the shell
     // back (#217). See IWindow::ChildExited.
     if (surface) {
-        DispatchToView([this, surface, code = ce.exit_code, ms = ce.timetime_ms]() {
-            m_view.ChildExited(surface, code, ms);
+        const core::wsl::SessionExit ended{ ce.exit_code, ce.timetime_ms };
+        DispatchToView([this, surface, ended]() {
+            m_view.ChildExited(surface, ended);
         });
     }
 

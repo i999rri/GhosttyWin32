@@ -376,12 +376,10 @@ struct MockMainWindowView : core::host::IWindow {
     ghostty_surface_t lastChildExitedSurface = nullptr;
     uint64_t lastChildExitRuntimeMs = 0;
     uint32_t lastChildExitCode = 0;
-    void ChildExited(ghostty_surface_t surface,
-                     uint32_t exitCode,
-                     uint64_t runtimeMs) override {
+    void ChildExited(ghostty_surface_t surface, core::wsl::SessionExit ended) override {
         ++childExitedCalls;
         lastChildExitedSurface = surface;
-        lastChildExitRuntimeMs = runtimeMs;
-        lastChildExitCode = exitCode;
+        lastChildExitRuntimeMs = ended.LivedMs();
+        lastChildExitCode = ended.Code();
     }
 };
