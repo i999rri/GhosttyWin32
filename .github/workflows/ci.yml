@@ -39,9 +39,18 @@ jobs:
       # After the action, which has already set up MSBuild, restored
       # this project's packages and built ghostty.dll. What is left is
       # Core and the gtest binary that links it, which is quick.
+      #
+      # SolutionDir is passed because the project does not set OutDir
+      # and the default is $(SolutionDir)$(Platform)\$(Configuration)\.
+      # Building a vcxproj on its own leaves SolutionDir pointing at the
+      # project's own directory, so the EXE would land under Tests\
+      # instead of where the solution puts it.
       - name: Build the tests
         shell: pwsh
-        run: msbuild Tests\Tests.vcxproj -p:Configuration=Release,Platform=x64 -m
+        run: >
+          msbuild Tests\Tests.vcxproj -m
+          -p:Configuration=Release -p:Platform=x64
+          -p:SolutionDir=$env:GITHUB_WORKSPACE\
 
       # The suite covers what needs no WinRT running: the wsl command
       # line, the shim protocol, the pipe names, the action dispatch.
