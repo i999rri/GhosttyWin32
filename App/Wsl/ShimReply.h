@@ -48,6 +48,17 @@ public:
         Close();
     }
 
+    // The same, with a line for the shim to print first. For a refusal
+    // worth explaining -- a distribution without the bridge's half
+    // installed, say -- where silence would read as the feature simply
+    // not working. The wording is decided here because this side is
+    // what knows why, and the shim is the only one with a console to
+    // put it on.
+    void Refuse(std::wstring const& message) noexcept {
+        Send(core::wsl::EncodeRefused(message));
+        Close();
+    }
+
 private:
     // Long enough for a live shim, whose read is already posted, and
     // short enough that a peer that stopped reading costs one hiccup.

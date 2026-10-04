@@ -100,7 +100,7 @@ Then turn it on in `%LOCALAPPDATA%\ghostty\config` and restart the app:
 wsl-bridge = true
 ```
 
-With the setting on and the binary missing, a WSL tab ends with `ghostty-wsl-bridge: not found` rather than falling back — see [docs/WSL.md](WSL.md#why-the-binary-is-yours-to-install).
+With the setting on and the binary missing, a WSL tab ends with `ghostty-wsl-bridge: not found` rather than falling back — see [docs/WSL.md](WSL.md#why-the-binaries-are-yours-to-install).
 
 <details><summary>日本語</summary>
 
@@ -113,6 +113,29 @@ WSL のタブを Windows の擬似コンソールではなく本物の Linux pty
 そのうえで `%LOCALAPPDATA%\ghostty\config` で有効にし、アプリを再起動する。
 
 設定を on にしたままバイナリが無い場合、WSL のタブはフォールバックせずに `ghostty-wsl-bridge: not found` で終わる。理由は [docs/WSL.md](WSL.md#why-the-binary-is-yours-to-install) に書いた。
+
+</details>
+
+### The `wsl` shim / `wsl` の shim
+
+Only needed for typing `wsl` in a pane and having that pane become WSL. Download `wsl.exe` from the same release and put it here, creating the directory if it is not there:
+
+```powershell
+mkdir -Force "$env:LOCALAPPDATA\ghostty\bin"
+Move-Item "$env:USERPROFILE\Downloads\wsl.exe" "$env:LOCALAPPDATA\ghostty\bin\wsl.exe" -Force
+```
+
+The name has to stay `wsl.exe` -- that is the whole mechanism: the host puts that directory first on the `PATH` of the shells it starts, so the shell finds this one before System32's. Nothing outside those panes is affected.
+
+The app compares it against the copy it ships and uses it only if they match, so after an upgrade it has to be replaced. Until then, and if it is missing, `wsl` in a pane runs the real `wsl.exe` and the reason appears in the debug output.
+
+<details><summary>日本語</summary>
+
+ペインで `wsl` と打ってそのペインを WSL にしたい場合だけ必要。同じ release から `wsl.exe` をダウンロードして、ここに置く (ディレクトリが無ければ作る。上のコマンド)。
+
+名前は `wsl.exe` のままでないといけない。それが仕組みそのもので、host は起動するシェルの `PATH` の先頭にこのディレクトリを置くので、シェルは System32 のものより先にこちらを見つける。そのペインの外には影響しない。
+
+アプリは同梱しているコピーと比べ、一致したときだけ使う。だから更新したら置き換える必要がある。それまでのあいだ、また置いていない場合は、ペインの `wsl` は本物の `wsl.exe` を動かし、理由はデバッグ出力に出る。
 
 </details>
 

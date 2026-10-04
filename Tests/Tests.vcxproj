@@ -182,6 +182,7 @@
     <ClCompile Include="test_trigger_label.cpp" />
     <ClCompile Include="test_shim_protocol.cpp" />
     <ClCompile Include="test_wsl_helper_probe.cpp" />
+    <ClCompile Include="test_wsl_installed_shim.cpp" />
     <ClCompile Include="test_wsl_session_exit.cpp" />
     <ClCompile Include="test_wsl_invocation.cpp" />
   </ItemGroup>

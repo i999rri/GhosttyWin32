@@ -47,22 +47,30 @@ pty を作れるのは Linux カーネルだけなので、端末は distro の�
 
 </details>
 
-## Why the binary is yours to install
+## Why the binaries are yours to install
 
-It is not in the package, and it cannot be. A file inside an installed MSIX is read-only for you; DrvFs derives Unix permissions from the Windows ACL, and a file you cannot write arrives without the execute bit. A copy shipped that way is readable from the distribution and refused by `exec` before a byte of it is read.
+Two pieces are, and for the same reason: the package is the one place neither of them can be run from.
 
-Nor is it named by a path. The app runs it by name and lets the distribution's `PATH` find it, the same way the shell finds any other command — so there is nothing to point at it, and `wsl-bridge` is the only setting involved.
+`ghostty-wsl-bridge` runs inside the distribution. A file inside an installed MSIX is read-only for you; DrvFs derives Unix permissions from the Windows ACL, and a file you cannot write arrives without the execute bit. A copy shipped that way is readable from the distribution and refused by `exec` before a byte of it is read.
 
-That costs the one thing a path was buying: the app can no longer tell from the Windows side whether the binary is there, so it cannot quietly fall back to ConPTY when it is not. Turning `wsl-bridge` on without installing the binary ends the session with `ghostty-wsl-bridge: not found` instead. The default is off to make that the right answer: a session that cannot start belongs to someone who asked for it.
+The `wsl` shim runs on Windows, as a child of your shell, and fares no better. `C:\Program Files\WindowsApps` refuses even a read of its own permissions, and starting a program under it answers access denied whatever the file's own entry grants. The host cannot put a runnable copy anywhere for you either -- a directory it writes to is a directory it has to keep in step with every upgrade, and an executable it drops into your profile unasked is not the sort of thing a terminal should do.
+
+So both are downloaded from the release and put where they are wanted. Neither is named by a path: the bridge is started by name on the distribution's `PATH`, and the shim is looked for in one place, `%LOCALAPPDATA%\ghostty\bin\`, beside the config.
+
+What the host does instead of installing is check. It compares the shim you installed against the one it ships and uses it only if they are the same file, so a shim left behind by an older version is not quietly talked to -- without it, `wsl` in a pane runs the real `wsl.exe` and says why. For the bridge it can only ask the distribution, which it does before offering to swap a pane.
 
 <details>
 <summary>日本語</summary>
 
-このバイナリはパッケージに入っていないし、入れられない。インストールされた MSIX の中のファイルは、ユーザーから見て読み取り専用になる。DrvFs は Unix の権限を Windows の ACL から導くので、書き込めないファイルには実行ビットが付かない。その形で同梱したコピーは、distro から読めはしても、1 バイトも読まれないうちに `exec` に拒否される。
+2 つあって、理由は同じ。どちらもパッケージの中からは実行できない。
 
-パスで指定するものでもない。アプリは名前で起動し、distro の `PATH` に解決させる。シェルがほかのコマンドを見つけるのと同じだ。だから指し示すための設定は要らず、関わる設定は `wsl-bridge` だけになる。
+`ghostty-wsl-bridge` は distro の中で動く。インストールされた MSIX の中のファイルは、ユーザーから見て読み取り専用になる。DrvFs は Unix の権限を Windows の ACL から導くので、書き込めないファイルには実行ビットが付かない。その形で同梱したコピーは、distro から読めはしても、1 バイトも読まれないうちに `exec` に拒否される。
 
-その代わり、パスが買っていた唯一のものを失う。バイナリがあるかどうかを Windows 側から判断できなくなるので、無いときに黙って ConPTY へ戻ることもできない。バイナリを入れずに `wsl-bridge` を on にすると、セッションは `ghostty-wsl-bridge: not found` で終わる。既定が off なのは、それを妥当な答えにするためだ。起動できないセッションは、自分で有効にした人のものになる。
+`wsl` の shim は Windows 側で、シェルの子として動くが、こちらも同じだ。`C:\Program Files\WindowsApps` は自分の権限を読むことすら拒否するし、その下のプログラムを起動すると、ファイル自身の権限が何を許していてもアクセス拒否が返る。host が代わりに実行できる場所へコピーしておくこともしない。書き込む先を持てば更新ごとに同期を取り続ける責任を負うことになるし、頼まれてもいない実行ファイルをユーザーのプロファイルに置くのは、ターミナルがやることではない。
+
+そこで両方とも release からダウンロードして、必要な場所に置く。どちらもパスで指定はしない。bridge は distro の `PATH` から名前で起動し、shim は config の隣の `%LOCALAPPDATA%\ghostty\bin\` という 1 箇所だけを見る。
+
+host が代わりにやるのは確認だ。置かれた shim を自分が同梱しているものと比べ、同じファイルのときだけ使う。古いバージョンが残した shim に黙って話しかけることはない。使えないときは、ペインで `wsl` と打つと本物の `wsl.exe` が動き、その理由が 1 行出る。bridge については distro に尋ねることしかできないので、ペインの差し替えを申し出る前に尋ねる。
 
 </details>
 

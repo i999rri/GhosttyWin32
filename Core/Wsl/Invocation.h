@@ -18,10 +18,72 @@
 
 #include "Wsl/ShimProtocol.h"
 
+#include <shellapi.h>
+
 #include <string>
 #include <string_view>
 
 namespace core::wsl {
+
+// What each option will carry. Here rather than with the wire format,
+// because these are the host's rules about a wsl command line and the
+// shim neither reads a line nor knows what it may hold.
+
+// Whether `distro` may be forwarded: empty (the default distribution),
+// or letters, digits, '.', '_' and '-' starting with a letter or digit.
+// The host puts it on a command line that is split on whitespace with
+// no quoting, so anything else could smuggle arguments to wsl.exe or a
+// command into the distribution. A distribution outside this set can
+// still be opened by running the real wsl.exe.
+inline bool IsForwardableDistro(std::wstring_view distro) noexcept {
+    auto alnum = [](wchar_t c) {
+        return (c >= L'a' && c <= L'z') || (c >= L'A' && c <= L'Z') || (c >= L'0' && c <= L'9');
+    };
+    if (distro.empty()) return true;
+    if (!alnum(distro.front())) return false;
+    for (wchar_t c : distro) {
+        if (!alnum(c) && c != L'.' && c != L'_' && c != L'-') return false;
+    }
+    return true;
+}
+
+// Whether `directory` may be forwarded as `--cd`: a path under the home
+// (`~`, `~/src`) or an absolute Linux one, of letters, digits, '.', '_',
+// '-' and '/'. Same reason as the distribution, with the separator and
+// the home added -- wsl.exe expands a leading `~` whether or not
+// anything follows it. A Windows path is left out: the host already
+// carries the working directory of the shell that asked, and a drive
+// letter brings a backslash and often a space.
+inline bool IsForwardableDirectory(std::wstring_view directory) noexcept {
+    auto alnum = [](wchar_t c) {
+        return (c >= L'a' && c <= L'z') || (c >= L'A' && c <= L'Z') || (c >= L'0' && c <= L'9');
+    };
+    bool rooted = directory == L"~" || directory.starts_with(L"~/") ||
+                  directory.starts_with(L"/");
+    if (!rooted) return false;
+    for (wchar_t c : directory) {
+        if (c == L'~') continue;  // only ever the first character here
+        if (!alnum(c) && c != L'.' && c != L'_' && c != L'-' && c != L'/') return false;
+    }
+    return true;
+}
+
+// Whether `user` may be forwarded as `--user`: letters, digits, '.',
+// '_' and '-', not starting with the '-' that would read as an option.
+// Same reason as the distribution. Whether the name exists, or whether
+// a Linux name should begin with a digit, is wsl.exe's business: this
+// asks only whether the line can carry it.
+inline bool IsForwardableUser(std::wstring_view user) noexcept {
+    auto alnum = [](wchar_t c) {
+        return (c >= L'a' && c <= L'z') || (c >= L'A' && c <= L'Z') || (c >= L'0' && c <= L'9');
+    };
+    if (user.empty()) return false;
+    if (!alnum(user.front()) && user.front() != L'_') return false;
+    for (wchar_t c : user) {
+        if (!alnum(c) && c != L'.' && c != L'_' && c != L'-') return false;
+    }
+    return true;
+}
 
 class Invocation {
 public:
@@ -29,12 +91,10 @@ public:
     // leaves TakesOver() false, and the line belongs to wsl.exe.
     static Invocation Parse(int argc, wchar_t const* const* argv) noexcept;
 
-    // From the fields the shim sent. Values that fail their rule are
-    // dropped rather than trusted, so what this holds can always be
-    // written out.
-    static Invocation FromRequest(std::wstring_view distribution,
-                                  std::wstring_view directory,
-                                  std::wstring_view user) noexcept;
+    // From the command line the shim sent: the arguments as the shell
+    // wrote them, split the way a program's own startup would split
+    // them, so what this reads is what wsl.exe would have been given.
+    static Invocation ParseLine(std::wstring_view commandLine) noexcept;
 
     // Whether the shim should ask the host for an in-place session
     // instead of running wsl.exe.
@@ -171,18 +231,18 @@ inline Invocation Invocation::Parse(int argc, wchar_t const* const* argv) noexce
     return result;
 }
 
-inline Invocation Invocation::FromRequest(std::wstring_view distribution,
-                                          std::wstring_view directory,
-                                          std::wstring_view user) noexcept {
-    // Named one by one rather than walked with the table: the caller
-    // hands these over as three separate fields, and pairing them by
-    // position would turn a reordering of the table into a silently
-    // wrong command line. Each rule still appears beside its field.
-    Invocation result;
-    if (IsForwardableDistro(distribution)) result.m_distribution = distribution;
-    if (IsForwardableDirectory(directory)) result.m_directory = directory;
-    if (IsForwardableUser(user)) result.m_user = user;
-    result.m_takesOver = true;
+inline Invocation Invocation::ParseLine(std::wstring_view commandLine) noexcept {
+    // CommandLineToArgvW wants a program token in front, since that is
+    // what it drops; Parse skips argv[0] for the same reason.
+    std::wstring line = L"wsl ";
+    line += commandLine;
+
+    int argc = 0;
+    wchar_t** argv = CommandLineToArgvW(line.c_str(), &argc);
+    if (argv == nullptr) return Invocation{};
+
+    Invocation result = Parse(argc, argv);
+    LocalFree(argv);
     return result;
 }
 
