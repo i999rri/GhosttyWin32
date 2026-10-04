@@ -68,7 +68,7 @@ Nor does the host check what is there. With nothing installed, the shell finds S
 
 2 つあって、理由は同じ。どちらもパッケージの中からは実行できない。
 
-`ghostty-wsl-bridge` は distribution の中で動く。そしてその単位が distribution であることに意味がある。WSL 2 ではすべての distribution が 1 つの軽量 utility VM とカーネルを共有するが、mount namespace は各自が持つので、`/usr/local/bin` は distribution ごとに別のディレクトリになる[^distros]。1 つに入れても別の 1 つには入っていない。だから `wsl -d NAME` は distribution ごとに確かめられるし、無いときのメッセージは distribution の名前を出す。
+`ghostty-wsl-bridge` は distribution の中で動く。そしてその単位が distribution であることに意味がある。WSL 2 ではすべての distribution が 1 つの軽量 utility VM とカーネルを共有するが、mount namespace は各自が持つので、`/usr/local/bin` は distribution ごとに別のディレクトリになる[^distros]。ある distribution に入れても、別の distribution には入らない。だから host は `wsl -d NAME` で名指された distribution に対して有無を確かめるし、無いときのメッセージにもその名前を出す。
 
 インストールされた MSIX の中のファイルは、ユーザーから見て読み取り専用になる。DrvFs は Unix の権限を Windows の ACL から導くので、書き込めないファイルには実行ビットが付かない。その形で同梱したコピーは、distribution から読めはしても、1 バイトも読まれないうちに `exec` に拒否される。
 
