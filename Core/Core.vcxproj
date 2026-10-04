@@ -125,6 +125,7 @@
     <ClInclude Include="Win32\SEHGuard.h" />
     <ClInclude Include="Wsl\HelperProbe.h" />
     <ClInclude Include="Wsl\Invocation.h" />
+    <ClInclude Include="Wsl\SessionExit.h" />
     <ClInclude Include="Wsl\ShimProtocol.h" />
   </ItemGroup>
   <ItemGroup>

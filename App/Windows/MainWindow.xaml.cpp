@@ -15,6 +15,7 @@
 #include "Win32/DebugTrace.h"
 #include "Win32/SEHGuard.h"
 #include "Wsl/Invocation.h"
+#include "Wsl/SessionExit.h"
 #if __has_include("MainWindow.g.cpp")
 #include "MainWindow.g.cpp"
 #endif
@@ -2676,7 +2677,7 @@ namespace winrt::GhosttyWin32::implementation
         ApplyBackgroundOpacityAppearance();
     }
 
-    void MainWindow::ChildExited(ghostty_surface_t surface, uint32_t exitCode)
+    void MainWindow::ChildExited(ghostty_surface_t surface, core::wsl::SessionExit ended)
     {
         // Only an in-place WSL session (#217) acts on this: its WSL
         // pane is one libghostty keeps open after the process ends,
@@ -2684,15 +2685,44 @@ namespace winrt::GhosttyWin32::implementation
         // closes itself through close_surface_cb.
         auto lookup = m_tabs.FindPaneBySurface(surface);
         if (!lookup.tab || !lookup.pane) return;
-        auto session = lookup.tab->TakeInPlaceByOverlay(lookup.pane->id);
-        if (!session) return;
+        Tab::InPlaceSession* pending = lookup.tab->FindInPlaceByOverlay(lookup.pane->id);
+        if (!pending) return;
 
         // Tick-stamped like UndoPark: the gap to the restored line
         // is the host-side cost of ending a session.
-        DEBUG_TRACE(L"InPlaceWsl[%llu]: overlay=%llu exited code=%u\n",
+        DEBUG_TRACE(L"InPlaceWsl[%llu]: overlay=%llu exited code=%u after %llu ms\n",
                     GetTickCount64() % 100'000,
-                    static_cast<unsigned long long>(lookup.pane->id.value), exitCode);
-        if (session->onFinished) session->onFinished(exitCode);
+                    static_cast<unsigned long long>(lookup.pane->id.value), ended.Code(),
+                    static_cast<unsigned long long>(ended.LivedMs()));
+
+        // Answered first and once: the shell is blocked on the shim, and
+        // whether the pane stays is no business of a shell waiting for
+        // its prompt back.
+        if (pending->onFinished) {
+            pending->onFinished(ended.Code());
+            pending->onFinished = nullptr;
+        }
+
+        // A session that failed before it could be used has its reason
+        // on the pane, and ghostty keeps that pane for exactly that, so
+        // the shell waits instead of being restored over it. Closing
+        // the pane puts it back, through the close this window already
+        // handles -- and with nothing left to answer there, the shim
+        // having been answered above.
+        //
+        // Read fresh so a reload is in effect, as the notification
+        // policy does it.
+        core::ghostty::Config cfg{ m_ghosttyApp->ConfigHandle() };
+        if (pending->parked && ended.FailedBeforeUse(cfg.AbnormalCommandExitRuntimeMs())) {
+            DEBUG_TRACE(L"InPlaceWsl[%llu]: overlay=%llu left up\n",
+                        GetTickCount64() % 100'000,
+                        static_cast<unsigned long long>(lookup.pane->id.value));
+            return;
+        }
+
+        auto session = lookup.tab->TakeInPlaceByOverlay(lookup.pane->id);
+        if (!session) return;
+
         if (session->parked) {
             RestoreParkedPane(*lookup.tab, *lookup.pane, *session->parked);
             return;
@@ -2927,12 +2957,15 @@ namespace winrt::GhosttyWin32::implementation
         auto* tab = lookup.tab;
         auto* pane = lookup.pane;
 
-        // In-place WSL (#217): the WSL pane was closed from the host
-        // side (close_surface keybind) while WSL was still running,
-        // since a finished WSL ends its session in ChildExited before
-        // any close. Answer the shim as a cut-short session, then put
-        // the shell back. With no shell left to restore (it died
-        // while parked) the WSL pane closes like any other pane below.
+        // In-place WSL (#217): the shell goes back in the slot the WSL
+        // pane is leaving. Two ways here. The pane was closed while WSL
+        // was still running, from the close_surface keybind, and the
+        // shim is answered as a cut-short session; or the session ended
+        // badly and ChildExited left the pane up with its reason on it
+        // (#237), in which case the shim has its real code already and
+        // the answer below finds nothing to say. With no shell left to
+        // restore (it died while parked) the WSL pane closes like any
+        // other pane below.
         if (auto session = tab->TakeInPlaceByOverlay(id)) {
             if (session->onFinished) session->onFinished(kCutSessionExitCode);
             if (session->parked) {

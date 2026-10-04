@@ -163,6 +163,15 @@ public:
         m_inPlace.push_back(std::move(session));
     }
 
+    // The session whose WSL pane is `overlay`, left in the tab. For the
+    // one caller that has to answer a session before it knows whether
+    // to end it; every other caller takes it.
+    InPlaceSession* FindInPlaceByOverlay(PaneId overlay) noexcept {
+        auto it = std::find_if(m_inPlace.begin(), m_inPlace.end(),
+                               [overlay](InPlaceSession const& s) { return s.overlay == overlay; });
+        return it == m_inPlace.end() ? nullptr : &*it;
+    }
+
     // The session whose WSL pane is `overlay`, taken out of the tab.
     std::optional<InPlaceSession> TakeInPlaceByOverlay(PaneId overlay) {
         auto it = std::find_if(m_inPlace.begin(), m_inPlace.end(),
