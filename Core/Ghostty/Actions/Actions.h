@@ -196,6 +196,7 @@ public:
     bool OnGotoSplit(ghostty_surface_t surface,
                      ghostty_action_goto_split_e direction);
     bool OnEqualizeSplits(ghostty_surface_t surface);
+    bool OnMoveTabToNewWindow(ghostty_surface_t surface);
     bool OnToggleSplitZoom(ghostty_surface_t surface);
 
 private:
