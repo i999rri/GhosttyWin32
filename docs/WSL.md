@@ -39,9 +39,9 @@ The terminal the shell sees is a Linux pty, and Windows only carries bytes. Both
 
 pty を作れるのは Linux カーネルだけなので、端末は distribution の中で用意するしかない。仕事は 3 つに分かれている。
 
-- **アプリ**は、このサーフェスについては ConPTY を作らない。リダイレクトしたただのパイプを渡して `wsl.exe` を起動する。
+- **アプリ**は、この surface については ConPTY を作らない。リダイレクトしたただのパイプを渡して `wsl.exe` を起動する。
 - **`wsl.exe`** は stdio がリダイレクトされているので、そのパイプと distribution 内のプロセスの間でバイト列を中継するだけになる。何もエミュレートしない。
-- **`ghostty-wsl-bridge`** が distribution の中で動く。本物の Linux pty を開き、slave 側でシェルを起こし、pty と自分の stdio の間を中継する。
+- **`ghostty-wsl-bridge`** は distribution の中で動く。本物の Linux pty を開き、その slave 側にシェルを起動し、pty と自分の stdio の間でバイト列を中継する。
 
 シェルから見える端末は Linux の pty で、Windows 側はバイト列を運ぶだけになる。パイプには帯域外のチャンネルがなく、ウインドウのサイズ変更も伝える必要があるため、どちらの向きもフレームに包んである。
 
@@ -112,7 +112,7 @@ bash scripts/verify/wsl-bridge-routing.sh
 
 状態は 4 つで、それぞれ何が起きるべきかが上の表。`wsl-bridge` は `%LOCALAPPDATA%\ghostty\config` にあり、変更したらアプリの再起動が要る。
 
-pwsh のタブか Windows Terminal からは、上の `pgrep` で確認できる。bridge のプロセスは WSL のサーフェス 1 枚につき 1 本で、タブでも分割でも同じ。
+pwsh のタブか Windows Terminal からは、上の `pgrep` で確認できる。bridge のプロセスは WSL の surface 1 枚につき 1 本で、タブでも分割でも同じ。
 
 WSL のタブの中からは `scripts/verify/wsl-bridge-routing.sh` が、そのタブがどちらの経路かを答える。2 つのことを別々に聞いているのは意図したもので、シェルより上のプロセスの並びは「どう起動されたか」を、OSC 52 の往復は「ストリームが何をするか」を示す。bridge 経由で起動したのにバイト列が往復しないタブは、そもそも bridge を通っていないタブとは別の問題だ。
 
