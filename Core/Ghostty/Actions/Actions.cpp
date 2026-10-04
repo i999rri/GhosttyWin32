@@ -48,16 +48,21 @@ bool Actions::OnShowChildExited(ghostty_surface_t surface,
         });
     }
 
-    // False on purpose, which is not "unhandled": it means ghostty
-    // writes its own account into the terminal instead of a native one
-    // this app has no window for. For a command that failed to start
-    // that account is the command line it tried, the runtime and the
-    // exit code, under a rule that keeps the command's own output above
-    // it -- the three things a reader needs and the host cannot put
-    // there itself, since the C API only sends text to the pty and the
-    // pty is gone. It also leaves the keyboard able to close the
-    // surface, so any key puts an in-place WSL pane's shell back (#237).
-    return false;
+    // True says a native window is showing this, so ghostty writes
+    // nothing into the terminal. A clean exit has nothing to explain,
+    // and the line ghostty would write there is one the pane carries
+    // for the frame before it closes.
+    //
+    // False for anything else, which is not "unhandled": it asks for
+    // the account this app has no window of its own for. For a command
+    // that failed to start, that account is the command line it tried,
+    // the runtime and the exit code, under a rule that keeps the
+    // command's own output above it -- the three things a reader needs
+    // and the host cannot put there itself, since the C API only sends
+    // text to the pty and the pty is gone. It also leaves the keyboard
+    // able to close the surface, so any key puts an in-place WSL pane's
+    // shell back (#237).
+    return ce.exit_code == 0;
 }
 
 bool Actions::OnRendererHealth(ghostty_action_renderer_health_e health) {

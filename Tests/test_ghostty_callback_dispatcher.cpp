@@ -405,7 +405,7 @@ TEST(GhosttyCallbackDispatcherTest, ShowChildExitedReachesTheViewWithItsSurface)
     action.tag = GHOSTTY_ACTION_SHOW_CHILD_EXITED;
     action.action.child_exited = { 130u, 2500u };
 
-    // Answered false so ghostty writes its own account of the exit
+    // Answered false so ghostty writes its own account of the failure
     // into the terminal, which this app has no native window for.
     EXPECT_FALSE(d->DispatchAction(target, action));
     EXPECT_EQ(view.childExitedCalls, 1);
@@ -416,10 +416,33 @@ TEST(GhosttyCallbackDispatcherTest, ShowChildExitedReachesTheViewWithItsSurface)
     EXPECT_EQ(view.lastChildExitRuntimeMs, 2500u);
 }
 
+TEST(GhosttyCallbackDispatcherTest, ShowChildExitedSaysNothingAboutACleanExit) {
+    // A shell the user exited explains itself. Asking ghostty to write
+    // its line here would put it on every pane for the frame before it
+    // closes, which is what it looked like at first (#237).
+    MockMainWindowView view;
+    auto d = CallbackDispatcher::Create(view);
+
+    ghostty_target_s target{};
+    target.tag = GHOSTTY_TARGET_SURFACE;
+    target.target.surface = reinterpret_cast<ghostty_surface_t>(0x5150);
+    ghostty_action_s action{};
+    action.tag = GHOSTTY_ACTION_SHOW_CHILD_EXITED;
+    action.action.child_exited = { 0u, 90'000u };
+
+    EXPECT_TRUE(d->DispatchAction(target, action));
+    // Still the window's to act on: an in-place WSL session ends here
+    // whether or not anything was written.
+    EXPECT_EQ(view.childExitedCalls, 1);
+    EXPECT_EQ(view.lastChildExitCode, 0u);
+}
+
 TEST(GhosttyCallbackDispatcherTest, ShowChildExitedWithAppTargetReachesNoView) {
     MockMainWindowView view;
     auto d = CallbackDispatcher::Create(view);
 
-    EXPECT_FALSE(DispatchTag(*d, GHOSTTY_ACTION_SHOW_CHILD_EXITED));
+    // The zeroed payload is a clean exit, which needs no account, so
+    // this answers true for that reason rather than for the target.
+    EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_SHOW_CHILD_EXITED));
     EXPECT_EQ(view.childExitedCalls, 0);
 }
