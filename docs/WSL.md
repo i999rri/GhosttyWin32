@@ -59,9 +59,9 @@ The `wsl` shim runs on Windows, as a child of your shell, and fares no better. `
 
 So both are downloaded from the release and put where they are wanted, one `curl` each — [docs/INSTALL.md](INSTALL.md#step-4-wsl-bridge-optional--wsl-bridge-任意) has the lines. Neither is named by a path: the bridge is started by name on the distribution's `PATH`, and the shim is looked for in one place, `%LOCALAPPDATA%\ghostty\bin\`, beside the config.
 
-Taking them from the release rather than out of the installed package is deliberate. Whether a shim and a host can work together is settled by the wire format the shim reports, not by which build produced the file, and copying the app's own copy would be asserting the opposite.
+Taking them from the release rather than out of the installed package is deliberate. Whether a shim and a host can work together is settled by the protocol version the shim sends, not by which build produced the file, and copying the app's own copy would be asserting the opposite.
 
-Nor does the host check what is there. With nothing installed, the shell finds System32's `wsl.exe` and that is the right answer, so there is nothing to detect. A shim from another build says which wire format it speaks when it asks for a pane, and the host answers that in the pane rather than refusing a line for a reason you cannot see. So the only thing that makes a reinstall necessary is that format changing -- not a release, and not a rebuild. For the bridge's helper the host can only ask the distribution, which it does before offering to swap a pane.
+Nor does the host check what is there. With nothing installed, the shell finds System32's `wsl.exe` and that is the right answer, so there is nothing to detect. A shim from another build sends its protocol version when it asks the host to take a pane over, and the host answers a version it does not know in that pane rather than refusing the line for a reason you cannot see. So the only thing that makes a reinstall necessary is that version changing -- not a release, and not a rebuild. For the bridge's helper the host can only ask the distribution, which it does before offering to swap a pane.
 
 <details>
 <summary>日本語</summary>
@@ -76,9 +76,9 @@ Nor does the host check what is there. With nothing installed, the shell finds S
 
 そこで両方とも release からダウンロードして、必要な場所に置く。それぞれ `curl` 1 行で、コマンドは [docs/INSTALL.md](INSTALL.md#step-4-wsl-bridge-optional--wsl-bridge-任意) にある。どちらもパスで指定はしない。bridge は distribution の `PATH` から名前で起動し、shim は config の隣の `%LOCALAPPDATA%\ghostty\bin\` という 1 箇所だけを見る。
 
-インストール済みのパッケージの中から取り出すのではなく release から取るのは意図的だ。shim と host が一緒に動けるかを決めるのは、shim が送ってくる形式の番号であって、そのファイルがどのビルドから出たかではない。アプリ自身のコピーを持ってこさせると、同じビルドのファイルでなければ動かない、と言っているのと同じになる。
+インストール済みのパッケージの中から取り出すのではなく release から取るのは意図的だ。shim と host が一緒に動けるかを決めるのは、shim が送ってくるプロトコルのバージョンであって、そのファイルがどのビルドから出たかではない。アプリ自身のコピーを持ってこさせると、同じビルドのファイルでなければ動かない、と言っているのと同じになる。
 
-置かれているものを host が点検することもしない。何も置かれていなければシェルは System32 の `wsl.exe` を見つけ、それが正しい結果なので、確かめる必要がない。別のビルドの shim は、ペインを頼むときに自分が対応している形式の番号を送ってくる。host が知らない番号だったときは、そのペインにそう書く。黙って断れば、打った人には理由が見えないからだ。だから置き直しが必要になるのは形式が変わったときだけで、リリースごとでも、ビルドし直すごとでもない。bridge の helper については distribution に尋ねるしかないので、ペインの差し替えを申し出る前に尋ねる。
+置かれているものを host が点検することもしない。何も置かれていなければシェルは System32 の `wsl.exe` を見つけ、それが正しい結果なので、確かめる必要がない。別のビルドの shim は、ペインの差し替えを頼むときに自分のプロトコルのバージョンを送ってくる。host が知らないバージョンだったときは、そのペインにそう書く。黙って断れば、打った人には理由が見えないからだ。だから置き直しが必要になるのはそのバージョンが変わったときだけで、リリースごとでも、ビルドし直すごとでもない。bridge の helper については distribution に尋ねるしかないので、ペインの差し替えを申し出る前に尋ねる。
 
 </details>
 
