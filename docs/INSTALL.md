@@ -125,7 +125,7 @@ curl.exe -fsSL --create-dirs -o "$env:LOCALAPPDATA\ghostty\bin\wsl.exe" https://
 
 The name has to stay `wsl.exe` -- that is the whole mechanism: the host puts that directory first on the `PATH` of the shells it starts, so the shell finds this one before System32's. Nothing outside those panes is affected.
 
-It needs replacing only when the way it talks to the app changes, not on every release: it sends its protocol version when it asks the host to take the pane over, and a version the host does not know is answered in that pane. With nothing installed, `wsl` in a pane is simply the real `wsl.exe`.
+It needs replacing only when the way it talks to the app changes, not on every release: its protocol version is in the line it sends the host, and a version the host does not know is answered in that pane. With nothing installed, `wsl` in a pane is simply the real `wsl.exe`.
 
 <details><summary>日本語</summary>
 
@@ -133,7 +133,7 @@ It needs replacing only when the way it talks to the app changes, not on every r
 
 名前は `wsl.exe` でなければならない。host は自分が起動するシェルの `PATH` の先頭に `%LOCALAPPDATA%\ghostty\bin` を置くので、そのシェルは System32 より先にここの `wsl.exe` を 見つける。名前が違えば見つからないし、ここを見るのはそのペインのシェルだけで、ほかのシェルの `wsl` は変わらない。
 
-置き換えが必要なのは、アプリとのやりとりの形が変わったときだけで、リリースごとではない。shim は host にペインの差し替えを頼むとき、自分のプロトコルのバージョンを一緒に送る。host が知らないバージョンなら、そのペインに「別のビルドの shim なので入れ替えてほしい」と出て、本物の `wsl.exe` が動く。何も置いていない場合も本物が動く。
+置き換えが必要なのは、アプリとのやりとりの形が変わったときだけで、リリースごとではない。shim が host に送る行には、自分のプロトコルのバージョンが入っている。host が知らないバージョンなら、そのペインに「別のビルドの shim なので入れ替えてほしい」と出て、本物の `wsl.exe` が動く。何も置いていない場合も本物が動く。
 
 </details>
 
