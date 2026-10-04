@@ -9,6 +9,7 @@
 // it runs as a child of the user's shell, outside the package, where
 // neither the VC runtime framework nor the ASan runtime is on hand.
 
+#include "Wsl/HelperProbe.h"
 #include "Wsl/Invocation.h"
 #include <windows.h>
 #include <aclapi.h>
@@ -213,9 +214,7 @@ bool HelperInstalled(std::wstring const& distro) {
     const std::wstring exe = RealWslPath();
     if (exe.empty()) return false;
 
-    std::wstring commandLine = L"\"" + exe + L"\"";
-    if (!distro.empty()) commandLine += L" --distribution \"" + distro + L"\"";
-    commandLine += L" --exec /bin/sh -c \"command -v ghostty-wsl-bridge >/dev/null\"";
+    std::wstring commandLine = HelperProbeCommandLine(exe, distro);
 
     // No console and no inherited handles: the answer is the exit code,
     // and anything it printed would land in the user's shell.
@@ -237,7 +236,9 @@ bool HelperInstalled(std::wstring const& distro) {
 // pipes. The distribution is named because the binary is installed per
 // distribution, and having it in one is easy to mistake for having it.
 void ReportMissingHelper(std::wstring const& distro) {
-    std::wstring message = L"wsl: ghostty-wsl-bridge is not installed in ";
+    std::wstring message = L"wsl: ";
+    message += kHelperName;
+    message += L" is not installed in ";
     message += distro.empty() ? L"the default distribution" : distro;
     message += L"; running wsl.exe instead. See docs/WSL.md.\n";
 
