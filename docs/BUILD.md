@@ -1,11 +1,11 @@
 # Building from source
 
-Two builds, in this order: `zig` produces the libghostty DLL, then Visual Studio produces the app around it. The second does not run the first, so a change inside the submodule is invisible until you repeat step 2.
+Two builds, in this order: `zig` produces the libghostty DLL, then MSBuild produces the C++/WinRT desktop application that hosts it. The second does not run the first, so a change inside the submodule is invisible until you repeat step 2.
 
 <details>
 <summary>日本語</summary>
 
-ビルドは 2 段で、この順に行う。`zig` が libghostty の DLL を作り、そのあと Visual Studio がそれを囲むアプリを作る。2 番目は 1 番目を呼ばないので、submodule の中を変えても step 2 をやり直すまで反映されない。
+ビルドは 2 段で、この順に行う。`zig` が libghostty の DLL を作り、そのあと MSBuild が、その DLL を載せる C++/WinRT のデスクトップアプリをビルドする。2 番目は 1 番目を呼ばないので、submodule の中を変えても step 2 をやり直すまで反映されない。
 
 </details>
 
