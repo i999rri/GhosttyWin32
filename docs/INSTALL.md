@@ -84,23 +84,14 @@ If you previously installed Ghostty (stable or dev), the new MSIX upgrades it in
 
 Skip this unless you want WSL tabs to run on a real Linux pty instead of on Windows' pseudo console. [docs/WSL.md](WSL.md) explains what that buys and why the binary is not in the package.
 
-Both binaries come from the release assets, and one script fetches and places them:
-
-```powershell
-.\scripts\install-wsl.ps1
-```
-
-It takes the release from the version you have installed, puts the shim in `%LOCALAPPDATA%\ghostty\bin`, installs the helper into the distribution, and says whether each landed. `-Tag v0.9.0` picks a release by hand, which is also how to run it before installing anything; `-Distro Ubuntu` picks the distribution.
-
-By hand instead, for the helper: download `ghostty-wsl-bridge` from the release, put it anywhere on the distribution's `PATH`, and make it executable. `/usr/local/bin` is on `PATH` and is not managed by a package manager, so it suits a copy placed by hand:
+Inside the distribution, with `<tag>` the release you installed:
 
 ```sh
-# in the distribution
-sudo install -Dm755 /mnt/c/Users/<you>/Downloads/ghostty-wsl-bridge /usr/local/bin/ghostty-wsl-bridge
-command -v ghostty-wsl-bridge
+curl -fsSLo /tmp/gwb https://github.com/i999rri/GhosttyWin32/releases/download/<tag>/ghostty-wsl-bridge \
+  && sudo install -Dm755 /tmp/gwb /usr/local/bin/ghostty-wsl-bridge
 ```
 
-The `PATH` that matters is the one a session gets from `wsl.exe --exec`, not a login shell's, so a directory added by `.profile` or `.zshrc` — `~/.local/bin`, typically — will not do. On NixOS, `environment.systemPackages` lands in `/run/current-system/sw/bin`, which is on it.
+`/usr/local/bin` because the `PATH` that matters is the one a session gets from `wsl.exe --exec`, not a login shell's, so a directory added by `.profile` or `.zshrc` — `~/.local/bin`, typically — will not do. On NixOS, `environment.systemPackages` lands in `/run/current-system/sw/bin`, which is on it. Anywhere else on that `PATH` is fine; the app starts the binary by name.
 
 Then turn it on in `%LOCALAPPDATA%\ghostty\config` and restart the app:
 
@@ -114,31 +105,22 @@ With the setting on and the binary missing, a WSL tab ends with `ghostty-wsl-bri
 
 WSL のタブを Windows の擬似コンソールではなく本物の Linux pty で動かしたい場合だけ必要。何が得られるのか、なぜバイナリがパッケージに入っていないのかは [docs/WSL.md](WSL.md) に書いた。
 
-2 つのバイナリはどちらも release の asset から来る。取得と設置はスクリプト 1 本で済む。
+distro の中で、`<tag>` はインストールした release (上のコマンド)。
 
-```powershell
-.\scripts\install-wsl.ps1
-```
-
-インストール済みのバージョンから release を決め、shim を `%LOCALAPPDATA%\ghostty\bin` に置き、helper を distro に入れ、それぞれ届いたかを報告する。`-Tag v0.9.0` で release を手で選べる (何もインストールしていない状態で走らせるときもこれ)。`-Distro Ubuntu` で distro を選ぶ。
-
-手でやる場合、helper はこう。release から `ghostty-wsl-bridge` をダウンロードし、distro の `PATH` のどこかに置いて実行権限を付ける。`/usr/local/bin` は `PATH` に入っていて、かつパッケージマネージャの管理下にないので、手で置くコピーに向いている (上のコマンド)。
-
-ここで効く `PATH` は、`wsl.exe --exec` がセッションに与えるものであって、ログインシェルのものではない。`.profile` や `.zshrc` で足したディレクトリ (たいていは `~/.local/bin`) は使えない。NixOS なら `environment.systemPackages` が `/run/current-system/sw/bin` に入れてくれて、そこは `PATH` に乗っている。
+`/usr/local/bin` なのは、ここで効く `PATH` が `wsl.exe --exec` がセッションに与えるものであって、ログインシェルのものではないから。`.profile` や `.zshrc` で足したディレクトリ (たいていは `~/.local/bin`) は使えない。NixOS なら `environment.systemPackages` が `/run/current-system/sw/bin` に入れてくれて、そこは `PATH` に乗っている。その `PATH` 上ならどこでもよく、アプリは名前で起動する。
 
 そのうえで `%LOCALAPPDATA%\ghostty\config` で有効にし、アプリを再起動する。
 
-設定を on にしたままバイナリが無い場合、WSL のタブはフォールバックせずに `ghostty-wsl-bridge: not found` で終わる。理由は [docs/WSL.md](WSL.md#why-the-binary-is-yours-to-install) に書いた。
+設定を on にしたままバイナリが無い場合、WSL のタブはフォールバックせずに `ghostty-wsl-bridge: not found` で終わる。理由は [docs/WSL.md](WSL.md#why-the-binaries-are-yours-to-install) に書いた。
 
 </details>
 
 ### The `wsl` shim / `wsl` の shim
 
-Only needed for typing `wsl` in a pane and having that pane become WSL. Download `wsl.exe` from the same release and put it here, creating the directory if it is not there:
+Only needed for typing `wsl` in a pane and having that pane become WSL. One line, with `<tag>` the release you installed:
 
 ```powershell
-mkdir -Force "$env:LOCALAPPDATA\ghostty\bin"
-Move-Item "$env:USERPROFILE\Downloads\wsl.exe" "$env:LOCALAPPDATA\ghostty\bin\wsl.exe" -Force
+curl.exe -fsSL --create-dirs -o "$env:LOCALAPPDATA\ghostty\bin\wsl.exe" https://github.com/i999rri/GhosttyWin32/releases/download/<tag>/wsl.exe
 ```
 
 The name has to stay `wsl.exe` -- that is the whole mechanism: the host puts that directory first on the `PATH` of the shells it starts, so the shell finds this one before System32's. Nothing outside those panes is affected.
@@ -147,11 +129,26 @@ It needs replacing only when the way it talks to the app changes, not on every r
 
 <details><summary>日本語</summary>
 
-ペインで `wsl` と打ってそのペインを WSL にしたい場合だけ必要。同じ release から `wsl.exe` をダウンロードして、ここに置く (ディレクトリが無ければ作る。上のコマンド)。
+ペインで `wsl` と打ってそのペインを WSL にしたい場合だけ必要。1 行で済む。`<tag>` はインストールした release (上のコマンド)。
 
 名前は `wsl.exe` のままでないといけない。それが仕組みそのもので、host は起動するシェルの `PATH` の先頭にこのディレクトリを置くので、シェルは System32 のものより先にこちらを見つける。そのペインの外には影響しない。
 
 置き換えが必要になるのは、アプリとの会話の形式が変わったときだけで、リリースごとではない。shim はペインを頼むときに自分が話す形式を名乗り、合わなければそのペインの中で答えが返る。何も置いていない場合、ペインの `wsl` は単に本物の `wsl.exe` になる。
+
+</details>
+
+### Checking both landed / 両方入ったか確かめる
+
+```powershell
+Get-Command -All wsl | Format-Table CommandType, Source      # the first Application is the shim
+wsl.exe --exec /bin/sh -c 'command -v ghostty-wsl-bridge'    # prints the helper's path
+```
+
+The first line asked in this shell only says the file is in place; the `PATH` of a pane is the app's to set, and it puts that directory first.
+
+<details><summary>日本語</summary>
+
+1 行目をこのシェルで打って分かるのは、ファイルが置かれていることだけ。ペインの `PATH` はアプリが決めるもので、そこではこのディレクトリが先頭に来る。
 
 </details>
 

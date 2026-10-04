@@ -55,9 +55,9 @@ Two pieces are, and for the same reason: the package is the one place neither of
 
 The `wsl` shim runs on Windows, as a child of your shell, and fares no better. `C:\Program Files\WindowsApps` refuses even a read of its own permissions, and starting a program under it answers access denied whatever the file's own entry grants. The host cannot put a runnable copy anywhere for you either -- a directory it writes to is a directory it has to keep in step with every upgrade, and an executable it drops into your profile unasked is not the sort of thing a terminal should do.
 
-So both are downloaded from the release and put where they are wanted, which `scripts/install-wsl.ps1` will do. Neither is named by a path: the bridge is started by name on the distribution's `PATH`, and the shim is looked for in one place, `%LOCALAPPDATA%\ghostty\bin\`, beside the config.
+So both are downloaded from the release and put where they are wanted, one `curl` each — [docs/INSTALL.md](INSTALL.md#step-4-wsl-bridge-optional--wsl-bridge-任意) has the lines. Neither is named by a path: the bridge is started by name on the distribution's `PATH`, and the shim is looked for in one place, `%LOCALAPPDATA%\ghostty\bin\`, beside the config.
 
-Taking them from the release rather than out of the installed package is deliberate. Whether a shim and a host can work together is settled by the wire format the shim reports, not by which build produced the file, and a script that copied the app's own copy would be asserting the opposite.
+Taking them from the release rather than out of the installed package is deliberate. Whether a shim and a host can work together is settled by the wire format the shim reports, not by which build produced the file, and copying the app's own copy would be asserting the opposite.
 
 Nor does the host check what is there. With nothing installed, the shell finds System32's `wsl.exe` and that is the right answer, so there is nothing to detect. A shim from another build says which wire format it speaks when it asks for a pane, and the host answers that in the pane rather than refusing a line for a reason you cannot see. So the only thing that makes a reinstall necessary is that format changing -- not a release, and not a rebuild. For the bridge's helper the host can only ask the distribution, which it does before offering to swap a pane.
 
@@ -70,9 +70,9 @@ Nor does the host check what is there. With nothing installed, the shell finds S
 
 `wsl` の shim は Windows 側で、シェルの子として動くが、こちらも同じだ。`C:\Program Files\WindowsApps` は自分の権限を読むことすら拒否するし、その下のプログラムを起動すると、ファイル自身の権限が何を許していてもアクセス拒否が返る。host が代わりに実行できる場所へコピーしておくこともしない。書き込む先を持てば更新ごとに同期を取り続ける責任を負うことになるし、頼まれてもいない実行ファイルをユーザーのプロファイルに置くのは、ターミナルがやることではない。
 
-そこで両方とも release からダウンロードして、必要な場所に置く。それをやるのが `scripts/install-wsl.ps1` だ。どちらもパスで指定はしない。bridge は distro の `PATH` から名前で起動し、shim は config の隣の `%LOCALAPPDATA%\ghostty\bin\` という 1 箇所だけを見る。
+そこで両方とも release からダウンロードして、必要な場所に置く。それぞれ `curl` 1 行で、コマンドは [docs/INSTALL.md](INSTALL.md#step-4-wsl-bridge-optional--wsl-bridge-任意) にある。どちらもパスで指定はしない。bridge は distro の `PATH` から名前で起動し、shim は config の隣の `%LOCALAPPDATA%\ghostty\bin\` という 1 箇所だけを見る。
 
-インストール済みのパッケージの中から取り出すのではなく release から取るのは意図的だ。shim と host が一緒に動けるかを決めるのは shim が名乗る形式で、そのファイルがどのビルドから出たかではない。アプリ自身のコピーを持ってくるスクリプトは、その逆を主張することになる。
+インストール済みのパッケージの中から取り出すのではなく release から取るのは意図的だ。shim と host が一緒に動けるかを決めるのは shim が名乗る形式で、そのファイルがどのビルドから出たかではない。アプリ自身のコピーを持ってくるのは、その逆を主張することになる。
 
 置かれているものを host が点検することもしない。何も置かれていなければシェルは System32 の `wsl.exe` を見つけ、それが正しい答えなので、検出するものがない。別のビルドの shim は、ペインを頼むときに自分が話す形式を名乗る。host はそれにペインの中で答える。見えない理由で行を断るのではなく。つまり置き直しが必要になる唯一の条件はその形式が変わったときで、リリースごとでも、ビルドし直すごとでもない。bridge の helper については distro に尋ねることしかできないので、ペインの差し替えを申し出る前に尋ねる。
 
