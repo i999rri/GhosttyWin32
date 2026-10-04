@@ -405,7 +405,9 @@ TEST(GhosttyCallbackDispatcherTest, ShowChildExitedReachesTheViewWithItsSurface)
     action.tag = GHOSTTY_ACTION_SHOW_CHILD_EXITED;
     action.action.child_exited = { 130u, 2500u };
 
-    EXPECT_TRUE(d->DispatchAction(target, action));
+    // Answered false so ghostty writes its own account of the exit
+    // into the terminal, which this app has no native window for.
+    EXPECT_FALSE(d->DispatchAction(target, action));
     EXPECT_EQ(view.childExitedCalls, 1);
     EXPECT_EQ(view.lastChildExitedSurface, surface);
     EXPECT_EQ(view.lastChildExitCode, 130u);
@@ -415,6 +417,6 @@ TEST(GhosttyCallbackDispatcherTest, ShowChildExitedWithAppTargetReachesNoView) {
     MockMainWindowView view;
     auto d = CallbackDispatcher::Create(view);
 
-    EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_SHOW_CHILD_EXITED));
+    EXPECT_FALSE(DispatchTag(*d, GHOSTTY_ACTION_SHOW_CHILD_EXITED));
     EXPECT_EQ(view.childExitedCalls, 0);
 }
