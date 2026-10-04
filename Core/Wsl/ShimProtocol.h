@@ -108,33 +108,38 @@ inline bool IsForwardableDistro(std::wstring_view distro) noexcept {
     return true;
 }
 
-// Whether `directory` may be forwarded as `--cd`: `~`, or an absolute
-// Linux path of letters, digits, '.', '_', '-' and '/'. Same reason as
-// the distribution, with the separator added. A Windows path is left
-// out: the host already carries the working directory of the shell that
-// asked, and a drive letter brings a backslash and often a space.
+// Whether `directory` may be forwarded as `--cd`: a path under the home
+// (`~`, `~/src`) or an absolute Linux one, of letters, digits, '.', '_',
+// '-' and '/'. Same reason as the distribution, with the separator and
+// the home added -- wsl.exe expands a leading `~` whether or not
+// anything follows it. A Windows path is left out: the host already
+// carries the working directory of the shell that asked, and a drive
+// letter brings a backslash and often a space.
 inline bool IsForwardableDirectory(std::wstring_view directory) noexcept {
     auto alnum = [](wchar_t c) {
         return (c >= L'a' && c <= L'z') || (c >= L'A' && c <= L'Z') || (c >= L'0' && c <= L'9');
     };
-    if (directory == L"~") return true;
-    if (directory.size() < 2 || directory.front() != L'/') return false;
+    bool rooted = directory == L"~" || directory.starts_with(L"~/") ||
+                  directory.starts_with(L"/");
+    if (!rooted) return false;
     for (wchar_t c : directory) {
+        if (c == L'~') continue;  // only ever the first character here
         if (!alnum(c) && c != L'.' && c != L'_' && c != L'-' && c != L'/') return false;
     }
     return true;
 }
 
 // Whether `user` may be forwarded as `--user`: letters, digits, '.',
-// '_' and '-', starting with a letter or '_' as a Linux name does.
-// Same reason as the distribution.
+// '_' and '-', not starting with the '-' that would read as an option.
+// Same reason as the distribution. Whether the name exists, or whether
+// a Linux name should begin with a digit, is wsl.exe's business: this
+// asks only whether the line can carry it.
 inline bool IsForwardableUser(std::wstring_view user) noexcept {
-    auto alpha = [](wchar_t c) {
-        return (c >= L'a' && c <= L'z') || (c >= L'A' && c <= L'Z');
+    auto alnum = [](wchar_t c) {
+        return (c >= L'a' && c <= L'z') || (c >= L'A' && c <= L'Z') || (c >= L'0' && c <= L'9');
     };
-    auto alnum = [&](wchar_t c) { return alpha(c) || (c >= L'0' && c <= L'9'); };
     if (user.empty()) return false;
-    if (!alpha(user.front()) && user.front() != L'_') return false;
+    if (!alnum(user.front()) && user.front() != L'_') return false;
     for (wchar_t c : user) {
         if (!alnum(c) && c != L'.' && c != L'_' && c != L'-') return false;
     }

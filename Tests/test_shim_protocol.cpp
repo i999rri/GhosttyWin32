@@ -58,12 +58,16 @@ TEST(ShimProtocolTest, OpenRejectsDistroNamesThatCouldCarryArguments) {
 }
 
 TEST(ShimProtocolTest, OpenAcceptsDirectoriesAndUsersWslExeWouldTake) {
-    for (auto dir : { L"~", L"/", L"/home/me", L"/srv/app-1.0_x" }) {
+    // wsl.exe replaces a leading `~` with the home, whether or not a
+    // path follows it.
+    for (auto dir : { L"~", L"~/", L"~/src", L"/", L"/home/me", L"/srv/app-1.0_x" }) {
         auto req = ParseOpen(EncodeOpen(1, L"C:\\", L"", dir, L""));
         ASSERT_TRUE(req.has_value()) << dir;
         EXPECT_EQ(req->directory, dir);
     }
-    for (auto user : { L"root", L"_svc", L"me.you-1" }) {
+    // Whether the name exists is wsl.exe's business; the rule only
+    // asks whether the line can carry it, so a leading digit is fine.
+    for (auto user : { L"root", L"_svc", L"me.you-1", L"1root" }) {
         auto req = ParseOpen(EncodeOpen(1, L"C:\\", L"", L"", user));
         ASSERT_TRUE(req.has_value()) << user;
         EXPECT_EQ(req->user, user);
@@ -76,12 +80,17 @@ TEST(ShimProtocolTest, OpenRejectsDirectoriesAndUsersThatCouldCarryArguments) {
     // A Windows path is left out as well — the cwd field already carries
     // where the asking shell was.
     for (auto dir : { L"/srv/my app", L"/tmp;calc", L"/tmp/$(whoami)", L"relative",
-                      L"C:\\Users", L"~/sub" }) {
+                      L"C:\\Users", L"sub/~/x" }) {
         EXPECT_FALSE(ParseOpen(EncodeOpen(1, L"C:\\", L"", dir, L"")).has_value()) << dir;
     }
-    // A Linux name does not start with a digit, and the rest is the same
-    // charset the distribution gets.
-    for (auto user : { L"1root", L"ro ot", L"root;calc", L"-u" }) {
+    // wsl.exe pastes the home in front of whatever follows the tilde, so
+    // `~root` reaches for /home/<me>root rather than root's home. Left
+    // to wsl.exe, which fails the same way with or without the bridge.
+    for (auto dir : { L"~root", L"~~" }) {
+        EXPECT_FALSE(ParseOpen(EncodeOpen(1, L"C:\\", L"", dir, L"")).has_value()) << dir;
+    }
+    // A space splits the line, and a leading dash reads as an option.
+    for (auto user : { L"ro ot", L"root;calc", L"-u", L"ro\"ot" }) {
         EXPECT_FALSE(ParseOpen(EncodeOpen(1, L"C:\\", L"", L"", user)).has_value()) << user;
     }
 }
