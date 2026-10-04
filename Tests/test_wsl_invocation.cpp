@@ -77,12 +77,19 @@ TEST(WslInvocationTest, LeavesEveryOtherLineToWslExe) {
 }
 
 TEST(WslInvocationTest, LeavesALineWhoseValueCouldCarryArguments) {
-    // The rules live in ShimProtocol.h; this is that they are consulted.
+    // Each option's rule is consulted; what they refuse is a value that
+    // could turn into more arguments once the line is split and shell
+    // expanded. The rules themselves are tested through the values they
+    // are asked about, here and in test_shim_protocol.cpp.
     EXPECT_FALSE(Parse({ L"wsl", L"-d", L"Ubuntu --exec calc" }).TakesOver());
     EXPECT_FALSE(Parse({ L"wsl", L"--cd", L"/srv/my app" }).TakesOver());
     EXPECT_FALSE(Parse({ L"wsl", L"--cd", L"/tmp;calc" }).TakesOver());
     EXPECT_FALSE(Parse({ L"wsl", L"-u", L"ro ot" }).TakesOver());
-    EXPECT_FALSE(Parse({ L"wsl", L"-u", L"1root" }).TakesOver());
+
+    // Not this one. Whether a Linux name may begin with a digit is
+    // wsl.exe's business; the question here is only whether the line
+    // can carry it, and `1root` is letters and digits.
+    EXPECT_TRUE(Parse({ L"wsl", L"-u", L"1root" }).TakesOver());
 }
 
 TEST(WslInvocationTest, LeavesAnOptionWithNothingToTake) {
