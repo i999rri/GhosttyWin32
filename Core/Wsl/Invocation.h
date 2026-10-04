@@ -46,48 +46,105 @@ public:
     std::wstring const& Directory() const noexcept { return m_directory; }
     std::wstring const& User() const noexcept { return m_user; }
 
+    // Where the pane itself starts, set when `--cd` named a Windows
+    // directory. wsl.exe translates such a value the same way it
+    // translates the directory it inherits, so handing it over as the
+    // pane's working directory asks for the same thing. Empty when the
+    // line said nothing, or said it in Linux form.
+    std::wstring const& WorkingDirectory() const noexcept { return m_workingDirectory; }
+
     // The line for libghostty, e.g. `wsl -d NixOS --cd ~ --user root`.
     // Only validated values reach it, and the options keep the order of
     // the table so the result reads the same way every time.
     std::string ToCommandLine() const;
 
 private:
-    // The options that keep the pane, each with the rule its value has
-    // to meet. An option absent from this table hands the line to
-    // wsl.exe whole, which is why `--exec` and the management commands
-    // need no mention: they are not lines that open a shell in a pane.
+    // The options that keep the pane, each with what it accepts and
+    // what it writes. An option absent from this table hands the line
+    // to wsl.exe whole, which is why `--exec` and the management
+    // commands need no mention: they are not lines that open a shell
+    // in a pane.
     //
     // Filled in below the class: a pointer to a member needs the class
     // to be complete, which it is not while its own body is being read.
     struct Option {
         std::wstring_view longName;
         std::wstring_view shortName;  // empty when the option has none
-        bool (*forwardable)(std::wstring_view) noexcept;
+        // Reading: checks the value against this option's own rule and
+        // keeps it, or says the line is not one this host takes. `--cd`
+        // has two accepted forms and keeps them apart, so the value does
+        // not always land in `field`.
+        bool (*take)(Invocation&, std::wstring_view) noexcept;
+        // Writing: what ToCommandLine emits the option with, left empty
+        // when the value went somewhere the command line cannot carry.
         std::wstring Invocation::*field;
     };
 
     static const Option kOptions[3];
 
+    static bool TakeDistribution(Invocation& out, std::wstring_view value) noexcept;
+    static bool TakeDirectory(Invocation& out, std::wstring_view value) noexcept;
+    static bool TakeUser(Invocation& out, std::wstring_view value) noexcept;
+
     std::wstring m_distribution;
     std::wstring m_directory;
     std::wstring m_user;
+    std::wstring m_workingDirectory;
     bool m_takesOver{ false };
 };
 
 inline constexpr Invocation::Option Invocation::kOptions[3] = {
-    { L"--distribution", L"-d", &IsForwardableDistro, &Invocation::m_distribution },
-    { L"--cd", L"", &IsForwardableDirectory, &Invocation::m_directory },
-    { L"--user", L"-u", &IsForwardableUser, &Invocation::m_user },
+    { L"--distribution", L"-d", &Invocation::TakeDistribution, &Invocation::m_distribution },
+    { L"--cd", L"", &Invocation::TakeDirectory, &Invocation::m_directory },
+    { L"--user", L"-u", &Invocation::TakeUser, &Invocation::m_user },
 };
+
+inline bool Invocation::TakeDistribution(Invocation& out, std::wstring_view value) noexcept {
+    if (!IsForwardableDistro(value)) return false;
+    out.m_distribution = value;
+    return true;
+}
+
+inline bool Invocation::TakeDirectory(Invocation& out, std::wstring_view value) noexcept {
+    // The two forms are kept apart because wsl.exe keeps them apart: a
+    // Linux `--cd` wins over a Windows one whichever came first, and
+    // within one form the last wins. Measured, both orders: `--cd ~
+    // --cd C:\Users\me` and the reverse both start in the home, and
+    // `--cd /tmp --cd C:\Windows` and the reverse both start in /tmp.
+    //
+    // A Linux path goes on the command line as `--cd`; a Windows one is
+    // handed over as the directory the pane starts in, which crosses as
+    // a field rather than as text, so a space or a backslash in it is
+    // no trouble. The host prefers the former, which is what makes the
+    // precedence above come out right.
+    if (IsForwardableDirectory(value)) {
+        out.m_directory = value;
+        return true;
+    }
+    if (IsDriveAbsolutePath(value)) {
+        out.m_workingDirectory = value;
+        return true;
+    }
+    return false;
+}
+
+inline bool Invocation::TakeUser(Invocation& out, std::wstring_view value) noexcept {
+    if (!IsForwardableUser(value)) return false;
+    out.m_user = value;
+    return true;
+}
 
 inline Invocation Invocation::Parse(int argc, wchar_t const* const* argv) noexcept {
     Invocation result;
     for (int i = 1; i < argc; ++i) {
         std::wstring_view arg = argv[i];
 
-        // wsl.exe reads a lone `~` as `--cd ~`.
+        // wsl.exe reads a leading `~` as `--cd ~`. Further along the
+        // line it is the start of the in-distro command instead, which
+        // this host does not open a pane for.
         if (arg == L"~") {
-            result.m_directory = L"~";
+            if (i != 1) return result;
+            TakeDirectory(result, L"~");
             continue;
         }
 
@@ -104,12 +161,10 @@ inline Invocation Invocation::Parse(int argc, wchar_t const* const* argv) noexce
         // Unknown to this host, or given without the value it takes.
         if (option == nullptr || i + 1 >= argc) return result;
 
-        std::wstring_view value = argv[++i];
-        if (!option->forwardable(value)) return result;
-        // Given twice: wsl.exe has its own answer for that, and this is
-        // not the place to guess at it.
-        if (!(result.*(option->field)).empty()) return result;
-        result.*(option->field) = value;
+        // Given twice, the last one wins, as it does for wsl.exe. A
+        // PowerShell profile that wraps `wsl` with its own `--cd` puts
+        // the user's own in second, and the line has to mean there.
+        if (!option->take(result, argv[++i])) return result;
     }
 
     result.m_takesOver = true;

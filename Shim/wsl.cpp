@@ -135,7 +135,15 @@ std::optional<uint32_t> AskHost(Invocation const& invocation) {
     HANDLE h = ConnectToHost(pipe, *hostPid);
     if (h == INVALID_HANDLE_VALUE) return std::nullopt;
 
-    std::string request = EncodeOpen(paneId, CurrentDirectory(), invocation.Distribution(),
+    // A Windows `--cd` is asked for as where the pane starts, since that
+    // is what wsl.exe would have made of it; without one the pane starts
+    // where this shell is, as a child of it would. A Linux `--cd` is
+    // sent as well and the host prefers it, which is the precedence
+    // wsl.exe gives the two forms.
+    std::wstring directory = invocation.WorkingDirectory();
+    if (directory.empty()) directory = CurrentDirectory();
+
+    std::string request = EncodeOpen(paneId, directory, invocation.Distribution(),
                                      invocation.Directory(), invocation.User());
     DWORD written = 0;
     if (!WriteFile(h, request.data(), static_cast<DWORD>(request.size()), &written, nullptr)
