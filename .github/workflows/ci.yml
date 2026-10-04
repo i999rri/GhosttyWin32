@@ -1,8 +1,10 @@
 name: CI
 
-# Compile-only verification on every PR. Runs the same build pipeline as
-# Dev Build / Release but without signing or publishing — catches build
-# breakages (e.g. /std:c++17 vs c++20 mismatches) before merge.
+# Verification on every PR: the same build pipeline as Dev Build /
+# Release without signing or publishing, then the unit tests. The build
+# catches breakages (e.g. /std:c++17 vs c++20 mismatches); the tests
+# catch a rule changed in one place and asserted in another, which has
+# reached dev before now.
 on:
   pull_request: {}
   workflow_dispatch: {}
@@ -33,3 +35,16 @@ jobs:
           # a syntactically valid 4-part number.
           msix-version: '0.0.0.0'
           sign: 'false'
+
+      # After the action, which has already set up MSBuild, restored
+      # this project's packages and built ghostty.dll. What is left is
+      # Core and the gtest binary that links it, which is quick.
+      - name: Build the tests
+        shell: pwsh
+        run: msbuild Tests\Tests.vcxproj -p:Configuration=Release,Platform=x64 -m
+
+      # The suite covers what needs no WinRT running: the wsl command
+      # line, the shim protocol, the pipe names, the action dispatch.
+      - name: Run the tests
+        shell: pwsh
+        run: .\x64\Release\Tests.exe
