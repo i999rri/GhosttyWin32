@@ -12,6 +12,7 @@
 #include <atomic>
 #include <functional>
 #include <memory>
+#include <optional>
 
 namespace winrt::GhosttyWin32::implementation
 {
@@ -251,6 +252,10 @@ namespace winrt::GhosttyWin32::implementation
         // constructed first and destroyed last.
         EditContext m_editContext;
         ImeSession m_ime;
+
+        // The button of the press this control is waiting to see
+        // released. Empty between a release and the next press.
+        std::optional<ghostty_input_mouse_button_e> m_pressedButton;
 
         std::function<void(ghostty_surface_t)> m_onFocused;
         std::function<bool()> m_terminalOwnsInput;

@@ -295,16 +295,31 @@ namespace winrt::GhosttyWin32::implementation
                 return;
             }
             btn = GHOSTTY_MOUSE_RIGHT;
+        } else if (props.IsMiddleButtonPressed()) {
+            btn = GHOSTTY_MOUSE_MIDDLE;
         } else {
             return;
         }
+        // Remembered for the release: a press and its release have to
+        // name the same button, or libghostty is left holding one it
+        // never saw go up.
+        m_pressedButton = btn;
         m_surface.MouseButton(GHOSTTY_MOUSE_PRESS, btn, host::currentMods());
     }
 
     void SurfaceHost::OnPointerReleased(muxi::PointerRoutedEventArgs const& args)
     {
         if (!m_surface) return;
-        m_surface.MouseButton(GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, host::currentMods());
+        // The properties here report what is still down, which for a
+        // release is nothing, so the button comes from the press. A
+        // release with no press of its own -- the right-click that
+        // copied a selection, a press that arrived before this control
+        // had a surface -- is not reported at all.
+        if (m_pressedButton) {
+            m_surface.MouseButton(GHOSTTY_MOUSE_RELEASE, *m_pressedButton,
+                                  host::currentMods());
+            m_pressedButton.reset();
+        }
         args.Handled(true);
     }
 
