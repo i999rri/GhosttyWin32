@@ -2,7 +2,7 @@
 
 A Windows host for the [Ghostty](https://github.com/ghostty-org/ghostty) terminal emulator.
 
-The terminal itself is libghostty, upstream's own code, embedded through its C API. What this repository adds is everything Windows asks for around it: a WinUI 3 and C++/WinRT shell where each pane owns a ghostty surface and its own DirectX 11 device, rendered into a `SwapChainPanel`. Multiple windows, tabs and split panes are all first-class, and a WSL pane can run on a real Linux pty instead of on Windows' pseudo console.
+The terminal itself is libghostty, upstream's own code, embedded through its C API. What this repository adds is everything Windows asks for around it: a WinUI 3 and C++/WinRT shell where each pane owns a ghostty surface and its own DirectX 11 device, rendered into a `SwapChainPanel`. Multiple windows, tabs and split panes are all first-class, and a WSL pane can run on a Linux pty instead of on Windows' pseudo console.
 
 [What it can do](docs/FEATURES.md) is the list, with what it cannot yet at the end of the same page.
 
@@ -39,7 +39,7 @@ Three of them behave in ways that reference cannot tell you about on Windows, an
 | [WSL.md](docs/WSL.md) | The bridge: what it is for, how to install its helper, how to check which path a tab is on |
 | [CLIPBOARD.md](docs/CLIPBOARD.md) | Why a setting applies in one pane and not another |
 | [NOTIFICATIONS.md](docs/NOTIFICATIONS.md) | Command-finished notifications, and why they do not fire on their own |
-| [KEYBINDS.md](docs/KEYBINDS.md) | Keybinds, and the ones Windows takes first |
+| [KEYBINDS.md](docs/KEYBINDS.md) | The key combinations Windows takes before this app sees them, and how to tell |
 | [ASAN.md](docs/ASAN.md) | Running under AddressSanitizer |
 
 ## Shape of it
