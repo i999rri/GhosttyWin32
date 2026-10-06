@@ -293,7 +293,16 @@ namespace winrt::GhosttyWin32::implementation
             CopySelectionToClipboard();
             return;
         }
+        bool const firstButtonDown = !m_pressedButtons.AnyDown();
         if (!m_pressedButtons.Press(*button)) return;
+
+        // Capture so the release still arrives when the pointer has
+        // left the panel by then, which is also what lets a selection
+        // keep growing past the pane's edge: ghostty reads a negative
+        // position as a drag that should scroll
+        // (external/ghostty/src/Surface.zig:4555). Best effort -- a
+        // refused capture costs the drag, not the click.
+        if (firstButtonDown) m_panel.CapturePointer(args.Pointer());
 
         m_surface.MouseButton(GHOSTTY_MOUSE_PRESS, *button, host::currentMods());
     }
@@ -308,9 +317,27 @@ namespace winrt::GhosttyWin32::implementation
         // not reported.
         auto button = input::TerminalPointerButton(args).releasedButton();
         if (!button) return;
-        if (!m_pressedButtons.Release(*button)) return;
+
+        bool const takenBack = m_pressedButtons.Release(*button);
+        if (!m_pressedButtons.AnyDown()) m_panel.ReleasePointerCapture(args.Pointer());
+        if (!takenBack) return;
 
         m_surface.MouseButton(GHOSTTY_MOUSE_RELEASE, *button, host::currentMods());
+    }
+
+    void SurfaceHost::OnPointerCaptureLost(muxi::PointerRoutedEventArgs const& args)
+    {
+        if (!m_surface) return;
+        args.Handled(true);
+        // The capture is what was going to deliver the releases, so
+        // once it is gone they are not coming. Take every press back
+        // now, before libghostty reads the next move as a drag of a
+        // button nobody is holding. The release path gets here too,
+        // by its own ReleasePointerCapture call, and finds the record
+        // already empty.
+        while (auto button = m_pressedButtons.ReleaseAny()) {
+            m_surface.MouseButton(GHOSTTY_MOUSE_RELEASE, *button, host::currentMods());
+        }
     }
 
     void SurfaceHost::OnPointerWheelChanged(muxi::PointerRoutedEventArgs const& args)

@@ -1,7 +1,9 @@
 #pragma once
 
 #include "ghostty.h"
+#include <bit>
 #include <cstdint>
+#include <optional>
 
 namespace core::input {
 
@@ -39,6 +41,25 @@ public:
 
         m_down &= ~bit;
         return true;
+    }
+
+    // True while any button is down. The host holds the pointer
+    // capture for exactly this long: it is what brings a release
+    // that happens outside the panel back to this control, and
+    // keeping it after the last button is up would take the pointer
+    // away from everything else.
+    bool AnyDown() const noexcept { return m_down != 0; }
+
+    // Takes back one of the buttons still down, until none is left.
+    // The releases arrive one at a time everywhere except when the
+    // capture is lost, where none of them is going to arrive at all.
+    std::optional<ghostty_input_mouse_button_e> ReleaseAny() noexcept {
+        if (m_down == 0) return std::nullopt;
+
+        auto button = static_cast<ghostty_input_mouse_button_e>(
+            std::countr_zero(m_down));
+        Release(button);
+        return button;
     }
 
 private:
