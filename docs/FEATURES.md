@@ -1,11 +1,15 @@
 # What GhosttyWin32 can do
 
-Everything below works today. What does not is in [Not yet](#not-yet) at the end, with the issue tracking it. Config keys are upstream ghostty's unless marked otherwise; the full list is in the [upstream reference](https://ghostty.org/docs/config).
+Everything below works today. What does not is in [Not yet](#not-yet) at the end, with the issue tracking it. Config keys are upstream ghostty's unless marked otherwise; the full list is in the [reference](https://ghostty.org/docs/config).
+
+A key named here is one this host reads. The keys libghostty acts on by itself all work; of the ones that need the host to do something, this host reads about a third, so a key absent from this page may well be absent from the code too.
 
 <details>
 <summary>日本語</summary>
 
 ここに書いてあるものは今動く。動かないものは末尾の [Not yet](#not-yet) に、追っている issue と一緒に置いてある。config キーは印のあるものを除いて upstream ghostty のもので、全一覧は[ドキュメント](https://ghostty.org/docs/config)にある。
+
+ここに名前のあるキーは、この host が読んでいるもの。libghostty が自分で処理するキーはすべて効くが、host が何かをしなければならないキーについては、この host が読んでいるのは 3 分の 1 ほど。このページに無いキーはコードにも無い可能性が高い。
 
 </details>
 
@@ -65,7 +69,7 @@ Everything below works today. What does not is in [Not yet](#not-yet) at the end
 | --- | --- |
 | Keyboard | Scan code and text are forwarded separately, so keybinds hold across non-Latin layouts, dead keys and AltGr |
 | Mouse | Left, middle and right click, drag, and the wheel |
-| Selection | Drag to select, `Ctrl+C`, `Ctrl+V`, right-click to copy. The selection clears after a copy |
+| Selection | Drag to select, `Ctrl+C`, `Ctrl+V`, right-click to copy. The selection clears after a copy. The right-click behaviour is fixed here, not read from `right-click-action` |
 | Cursor shape | Follows the terminal: a text cursor over text, a hand over a link |
 | Links | Ctrl+click opens the URL in the default browser |
 | Hidden while typing | The pointer disappears while you type and comes back when you move it |
@@ -77,7 +81,7 @@ Everything below works today. What does not is in [Not yet](#not-yet) at the end
 | --- | --- |
 | キーボード | スキャンコードと文字を別々に渡すので、ラテン以外の配列、デッドキー、AltGr でもキーバインドが崩れない |
 | マウス | 左・中・右クリック、ドラッグ、ホイール |
-| 選択 | ドラッグで選択、`Ctrl+C`、`Ctrl+V`、右クリックでコピー。コピー後に選択は解除される |
+| 選択 | ドラッグで選択、`Ctrl+C`、`Ctrl+V`、右クリックでコピー。コピー後に選択は解除される。右クリックの動作は固定で、`right-click-action` から読んではいない |
 | カーソルの形 | 端末に従う。文字の上では文字カーソル、リンクの上では手 |
 | リンク | Ctrl+クリックで既定のブラウザが開く |
 | 打鍵中は隠れる | 文字を打つあいだポインタが消え、動かすと戻る |
@@ -110,6 +114,29 @@ Everything below works today. What does not is in [Not yet](#not-yet) at the end
 | テーマ | `theme`。config か `%LOCALAPPDATA%\ghostty\themes\` から |
 | 色 | ANSI 16 色とカーソル色を config から |
 | HiDPI | モニタごとの DPI に対応。最初の描画から正しく、モニタ間の移動や RDP に入っても崩れない |
+
+</details>
+
+## Overlays
+
+| | |
+| --- | --- |
+| Search | `Ctrl+Shift+F` opens it; matches are counted and stepped through, and the pane scrolls to each |
+| Scrollbar | A thin overlay scrollbar that follows the scrollback and fades when it is not moving |
+| Pane indicators | Read-only, secure input, a key sequence in progress, the active key table, and the link under the pointer |
+| Command palette | `Ctrl+Shift+P`, from the actions libghostty offers. `command-palette-entry` adds to it |
+| Taskbar progress | A program's OSC 9;4 progress reaches the taskbar button |
+
+<details>
+<summary>日本語</summary>
+
+| | |
+| --- | --- |
+| 検索 | `Ctrl+Shift+F` で開く。一致数を数えて順に送り、ペインがその位置までスクロールする |
+| スクロールバー | スクロールバックに追従する細い overlay。動いていないあいだは薄くなる |
+| ペインの表示 | 読み取り専用、secure input、入力中のキーシーケンス、有効な key table、ポインタの下のリンク |
+| コマンドパレット | `Ctrl+Shift+P`。libghostty が提供する action から作られ、`command-palette-entry` で追加できる |
+| タスクバーの進捗 | プログラムの OSC 9;4 の進捗がタスクバーのボタンに出る |
 
 </details>
 
@@ -161,7 +188,7 @@ WSL のペインは、Windows の擬似コンソールではなく本物の Linu
 | --- | --- |
 | Desktop notifications | From the terminal (OSC 9 / OSC 777) and from ghostty itself, as Windows toasts. Clicking one selects the pane it came from |
 | Command finished | `notify-on-command-finish`, for a command that ran longer than `notify-on-command-finish-after`. Needs the OSC 133 marks, which nothing writes here yet: [docs/NOTIFICATIONS.md](NOTIFICATIONS.md) |
-| Bell | `RING_BELL` flashes the window and plays the system sound |
+| Bell | Plays the system sound. `bell-features` — a border flash, taskbar attention, a tab marker, an audio file — is not read |
 
 <details>
 <summary>日本語</summary>
@@ -170,7 +197,7 @@ WSL のペインは、Windows の擬似コンソールではなく本物の Linu
 | --- | --- |
 | デスクトップ通知 | 端末から (OSC 9 / OSC 777) と ghostty 自身から、Windows のトーストとして出る。クリックすると出どころのペインが選ばれる |
 | コマンドの終了 | `notify-on-command-finish`。`notify-on-command-finish-after` より長く走ったコマンドが対象。OSC 133 の mark が必要で、ここではまだ誰も書かない: [docs/NOTIFICATIONS.md](NOTIFICATIONS.md) |
-| ベル | `RING_BELL` でウインドウが光り、システム音が鳴る |
+| ベル | システム音が鳴る。`bell-features` (枠の点滅、タスクバーの注意喚起、タブの印、音声ファイル) は読んでいない |
 
 </details>
 
@@ -203,11 +230,17 @@ libghostty は action という形で host に仕事を頼む。定義されて�
 
 | Missing | Where it stands |
 | --- | --- |
-| Command palette, tab overview, quick terminal | The overlay UIs have no host side yet ([#205](https://github.com/i999rri/GhosttyWin32/issues/205), [#153](https://github.com/i999rri/GhosttyWin32/issues/153)) |
+| Tab overview, quick terminal | Neither overlay has a host side yet ([#153](https://github.com/i999rri/GhosttyWin32/issues/153)) |
 | Terminal inspector | Not on the DirectX renderer ([#152](https://github.com/i999rri/GhosttyWin32/issues/152)) |
 | Automatic tab titles from the running program | Needs Windows foreground-process info ([#199](https://github.com/i999rri/GhosttyWin32/issues/199)) |
 | Clipboard settings in a ConPTY pane | conhost answers OSC 52 itself, so the settings never reach the terminal ([#226](https://github.com/i999rri/GhosttyWin32/issues/226), [docs/CLIPBOARD.md](CLIPBOARD.md)) |
-| Paste protection | Confirmed without asking, for want of a dialog ([#225](https://github.com/i999rri/GhosttyWin32/issues/225)) |
+| Asking about the clipboard | There is no dialog, so the host answers for you: a paste is confirmed and a read by a program in the terminal is refused. `clipboard-read = ask`, the default, therefore behaves as `deny` ([#225](https://github.com/i999rri/GhosttyWin32/issues/225)) |
+| Menus | No terminal context menu, app menu or tab menu, so `right-click-action` is not read either |
+| `global:` keybinds | A binding with that qualifier never fires; nothing registers a system-wide hotkey |
+| Reporting a bad config | A reload applies what parsed and says nothing about what did not |
+| Dropping files into a pane | Dragging a file onto the terminal does nothing |
+| Window geometry and title-bar appearance | `window-position-x`/`-y`, `maximize`, `fullscreen` at startup, `window-theme`, `window-titlebar-background`/`-foreground`, `window-title-font-family`, `window-subtitle`, `window-show-tab-bar`, `window-new-tab-position`, `focus-follows-mouse`, `scrollbar`, `progress-style` and `title` are not read |
+| Inheriting from the pane you came from | `tab-inherit-working-directory`, `split-inherit-working-directory` and `window-inherit-font-size` have no effect: the host never says which kind of surface it is making, so all three fall back to the window case |
 | Split or new tab from an in-place WSL pane | Opens the default shell rather than WSL ([#220](https://github.com/i999rri/GhosttyWin32/issues/220)) |
 
 <details>
@@ -215,11 +248,17 @@ libghostty は action という形で host に仕事を頼む。定義されて�
 
 | まだ無いもの | 状況 |
 | --- | --- |
-| コマンドパレット、タブ一覧、クイックターミナル | overlay の UI はまだ host 側が無い ([#205](https://github.com/i999rri/GhosttyWin32/issues/205)、[#153](https://github.com/i999rri/GhosttyWin32/issues/153)) |
+| タブ一覧、クイックターミナル | どちらの overlay もまだ host 側が無い ([#153](https://github.com/i999rri/GhosttyWin32/issues/153)) |
 | ターミナルインスペクタ | DirectX レンダラ側に無い ([#152](https://github.com/i999rri/GhosttyWin32/issues/152)) |
 | 動いているプログラムからタブ名を決める | Windows の前景プロセス情報が必要 ([#199](https://github.com/i999rri/GhosttyWin32/issues/199)) |
 | ConPTY のペインでのクリップボード設定 | conhost が OSC 52 に自分で応答するので、設定が端末まで届かない ([#226](https://github.com/i999rri/GhosttyWin32/issues/226)、[docs/CLIPBOARD.md](CLIPBOARD.md)) |
-| paste protection | 確認ダイアログが無いため、聞かずに承認している ([#225](https://github.com/i999rri/GhosttyWin32/issues/225)) |
+| クリップボードについて尋ねること | ダイアログが無いので host が代わりに答える。貼り付けは承認し、端末の中のプログラムからの読み取りは拒否する。つまり既定の `clipboard-read = ask` は `deny` として振る舞う ([#225](https://github.com/i999rri/GhosttyWin32/issues/225)) |
+| メニュー | 端末のコンテキストメニュー、アプリのメニュー、タブのメニューがどれも無い。そのため `right-click-action` も読んでいない |
+| `global:` のキーバインド | この修飾子を付けた割り当ては発火しない。システム全体のホットキーを登録していない |
+| config の誤りを知らせること | reload は読めた分を適用し、読めなかった分については何も言わない |
+| ペインへのファイルのドロップ | 端末にファイルをドラッグしても何も起きない |
+| ウインドウの位置とタイトルバーの見た目 | `window-position-x`/`-y`、起動時の `maximize` と `fullscreen`、`window-theme`、`window-titlebar-background`/`-foreground`、`window-title-font-family`、`window-subtitle`、`window-show-tab-bar`、`window-new-tab-position`、`focus-follows-mouse`、`scrollbar`、`progress-style`、`title` を読んでいない |
+| 元のペインから受け継ぐもの | `tab-inherit-working-directory`、`split-inherit-working-directory`、`window-inherit-font-size` が効かない。host がどの種類の surface を作るのかを伝えていないので、3 つとも window の場合に落ちる |
 | in-place の WSL ペインからの split と新規タブ | WSL ではなく既定のシェルで開く ([#220](https://github.com/i999rri/GhosttyWin32/issues/220)) |
 
 </details>
