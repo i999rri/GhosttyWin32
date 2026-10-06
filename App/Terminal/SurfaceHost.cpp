@@ -5,6 +5,7 @@
 #include "Input/KeyEventTranslator.h"
 #include "Input/TerminalKeyDown.h"
 #include "Input/TerminalKeyUp.h"
+#include "Input/TerminalPointerButton.h"
 #include "Display/PhysicalPixels.h"
 #include "Win32/Clipboard.h"
 #include "Win32/DebugTrace.h"
@@ -282,45 +283,34 @@ namespace winrt::GhosttyWin32::implementation
         // LostFocus fires, and KeyDown stops being delivered until
         // focus is restored some other way.
         args.Handled(true);
-        muix::PointerPoint point = args.GetCurrentPoint(m_panel);
-        muix::PointerPointProperties props = point.Properties();
-        ghostty_input_mouse_button_e btn;
-        if (props.IsLeftButtonPressed()) {
-            btn = GHOSTTY_MOUSE_LEFT;
-        } else if (props.IsRightButtonPressed()) {
-            // Right-click: copy selection if there is one, otherwise
-            // treat as a normal right button press.
-            if (m_surface.HasSelection()) {
-                CopySelectionToClipboard();
-                return;
-            }
-            btn = GHOSTTY_MOUSE_RIGHT;
-        } else if (props.IsMiddleButtonPressed()) {
-            btn = GHOSTTY_MOUSE_MIDDLE;
-        } else {
+        auto button = input::TerminalPointerButton(args).pressedButton();
+        if (!button) return;
+
+        // Right-click copies a selection instead of reaching the
+        // terminal. libghostty hears no press, which is also what
+        // keeps it from hearing the release.
+        if (*button == GHOSTTY_MOUSE_RIGHT && m_surface.HasSelection()) {
+            CopySelectionToClipboard();
             return;
         }
-        // Remembered for the release: a press and its release have to
-        // name the same button, or libghostty is left holding one it
-        // never saw go up.
-        m_pressedButton = btn;
-        m_surface.MouseButton(GHOSTTY_MOUSE_PRESS, btn, host::currentMods());
+        if (!m_pressedButtons.Press(*button)) return;
+
+        m_surface.MouseButton(GHOSTTY_MOUSE_PRESS, *button, host::currentMods());
     }
 
     void SurfaceHost::OnPointerReleased(muxi::PointerRoutedEventArgs const& args)
     {
         if (!m_surface) return;
-        // The properties here report what is still down, which for a
-        // release is nothing, so the button comes from the press. A
-        // release with no press of its own -- the right-click that
-        // copied a selection, a press that arrived before this control
-        // had a surface -- is not reported at all.
-        if (m_pressedButton) {
-            m_surface.MouseButton(GHOSTTY_MOUSE_RELEASE, *m_pressedButton,
-                                  host::currentMods());
-            m_pressedButton.reset();
-        }
         args.Handled(true);
+        // Nothing to decide here beyond taking back a press that went
+        // out: a button released without one -- the right-click above,
+        // a press that landed before this control had a surface -- is
+        // not reported.
+        auto button = input::TerminalPointerButton(args).releasedButton();
+        if (!button) return;
+        if (!m_pressedButtons.Release(*button)) return;
+
+        m_surface.MouseButton(GHOSTTY_MOUSE_RELEASE, *button, host::currentMods());
     }
 
     void SurfaceHost::OnPointerWheelChanged(muxi::PointerRoutedEventArgs const& args)
