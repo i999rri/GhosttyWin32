@@ -207,6 +207,7 @@
     <ClInclude Include="Wsl\ShimServer.h" />
     <ClInclude Include="Input\TerminalKeyDown.h" />
     <ClInclude Include="Input\TerminalKeyUp.h" />
+    <ClInclude Include="Input\TerminalPointerButton.h" />
     <ClInclude Include="Terminal\TerminalControl.xaml.h">
       <DependentUpon>Terminal\TerminalControl.xaml</DependentUpon>
     </ClInclude>

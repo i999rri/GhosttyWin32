@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Ghostty/Surface.h"
+#include "Input/PressedMouseButtons.h"
 #include "Terminal/EditContext.h"
 #include "Terminal/ImeSession.h"
 #include "Interop/Encoding.h"
@@ -12,7 +13,6 @@
 #include <atomic>
 #include <functional>
 #include <memory>
-#include <optional>
 
 namespace winrt::GhosttyWin32::implementation
 {
@@ -253,9 +253,9 @@ namespace winrt::GhosttyWin32::implementation
         EditContext m_editContext;
         ImeSession m_ime;
 
-        // The button of the press this control is waiting to see
-        // released. Empty between a release and the next press.
-        std::optional<ghostty_input_mouse_button_e> m_pressedButton;
+        // Which buttons libghostty has been told are down, so a
+        // release reports the button whose press it answers.
+        core::input::PressedMouseButtons m_pressedButtons;
 
         std::function<void(ghostty_surface_t)> m_onFocused;
         std::function<bool()> m_terminalOwnsInput;
