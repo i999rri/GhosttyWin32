@@ -183,6 +183,7 @@ namespace winrt::GhosttyWin32::implementation
         void OnPointerMoved(Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args);
         void OnPointerPressed(Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args);
         void OnPointerReleased(Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args);
+        void OnPointerCaptureLost(Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args);
         void OnPointerWheelChanged(Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args);
         // Wheel from somewhere other than the panel (an overlay that
         // would otherwise consume it). Same scroll path, delta only.
