@@ -5,6 +5,7 @@
 #include "Input/KeyEventTranslator.h"
 #include "Input/TerminalKeyDown.h"
 #include "Input/TerminalKeyUp.h"
+#include "Input/TerminalPointerButton.h"
 #include "Display/PhysicalPixels.h"
 #include "Win32/Clipboard.h"
 #include "Win32/DebugTrace.h"
@@ -282,30 +283,61 @@ namespace winrt::GhosttyWin32::implementation
         // LostFocus fires, and KeyDown stops being delivered until
         // focus is restored some other way.
         args.Handled(true);
-        muix::PointerPoint point = args.GetCurrentPoint(m_panel);
-        muix::PointerPointProperties props = point.Properties();
-        ghostty_input_mouse_button_e btn;
-        if (props.IsLeftButtonPressed()) {
-            btn = GHOSTTY_MOUSE_LEFT;
-        } else if (props.IsRightButtonPressed()) {
-            // Right-click: copy selection if there is one, otherwise
-            // treat as a normal right button press.
-            if (m_surface.HasSelection()) {
-                CopySelectionToClipboard();
-                return;
-            }
-            btn = GHOSTTY_MOUSE_RIGHT;
-        } else {
+        auto button = input::TerminalPointerButton(args).pressedButton();
+        if (!button) return;
+
+        // Right-click copies a selection instead of reaching the
+        // terminal. libghostty hears no press, which is also what
+        // keeps it from hearing the release.
+        if (*button == GHOSTTY_MOUSE_RIGHT && m_surface.HasSelection()) {
+            CopySelectionToClipboard();
             return;
         }
-        m_surface.MouseButton(GHOSTTY_MOUSE_PRESS, btn, host::currentMods());
+        bool const firstButtonDown = !m_pressedButtons.AnyDown();
+        if (!m_pressedButtons.Press(*button)) return;
+
+        // Capture so the release still arrives when the pointer has
+        // left the panel by then, which is also what lets a selection
+        // keep growing past the pane's edge: ghostty reads a negative
+        // position as a drag that should scroll
+        // (external/ghostty/src/Surface.zig:4555). Best effort -- a
+        // refused capture costs the drag, not the click.
+        if (firstButtonDown) m_panel.CapturePointer(args.Pointer());
+
+        m_surface.MouseButton(GHOSTTY_MOUSE_PRESS, *button, host::currentMods());
     }
 
     void SurfaceHost::OnPointerReleased(muxi::PointerRoutedEventArgs const& args)
     {
         if (!m_surface) return;
-        m_surface.MouseButton(GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, host::currentMods());
         args.Handled(true);
+        // Nothing to decide here beyond taking back a press that went
+        // out: a button released without one -- the right-click above,
+        // a press that landed before this control had a surface -- is
+        // not reported.
+        auto button = input::TerminalPointerButton(args).releasedButton();
+        if (!button) return;
+
+        bool const takenBack = m_pressedButtons.Release(*button);
+        if (!m_pressedButtons.AnyDown()) m_panel.ReleasePointerCapture(args.Pointer());
+        if (!takenBack) return;
+
+        m_surface.MouseButton(GHOSTTY_MOUSE_RELEASE, *button, host::currentMods());
+    }
+
+    void SurfaceHost::OnPointerCaptureLost(muxi::PointerRoutedEventArgs const& args)
+    {
+        if (!m_surface) return;
+        args.Handled(true);
+        // The capture is what was going to deliver the releases, so
+        // once it is gone they are not coming. Take every press back
+        // now, before libghostty reads the next move as a drag of a
+        // button nobody is holding. The release path gets here too,
+        // by its own ReleasePointerCapture call, and finds the record
+        // already empty.
+        while (auto button = m_pressedButtons.ReleaseAny()) {
+            m_surface.MouseButton(GHOSTTY_MOUSE_RELEASE, *button, host::currentMods());
+        }
     }
 
     void SurfaceHost::OnPointerWheelChanged(muxi::PointerRoutedEventArgs const& args)

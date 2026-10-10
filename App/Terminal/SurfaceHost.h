@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Ghostty/Surface.h"
+#include "Input/PressedMouseButtons.h"
 #include "Terminal/EditContext.h"
 #include "Terminal/ImeSession.h"
 #include "Interop/Encoding.h"
@@ -182,6 +183,7 @@ namespace winrt::GhosttyWin32::implementation
         void OnPointerMoved(Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args);
         void OnPointerPressed(Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args);
         void OnPointerReleased(Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args);
+        void OnPointerCaptureLost(Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args);
         void OnPointerWheelChanged(Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args);
         // Wheel from somewhere other than the panel (an overlay that
         // would otherwise consume it). Same scroll path, delta only.
@@ -251,6 +253,10 @@ namespace winrt::GhosttyWin32::implementation
         // constructed first and destroyed last.
         EditContext m_editContext;
         ImeSession m_ime;
+
+        // Which buttons libghostty has been told are down, so a
+        // release reports the button whose press it answers.
+        core::input::PressedMouseButtons m_pressedButtons;
 
         std::function<void(ghostty_surface_t)> m_onFocused;
         std::function<bool()> m_terminalOwnsInput;

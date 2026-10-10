@@ -68,7 +68,7 @@ A key named here is one this host reads. The keys libghostty acts on by itself a
 | Feature | Notes |
 | --- | --- |
 | Keyboard | Scan code and text are forwarded separately, so keybinds hold across non-Latin layouts, dead keys and AltGr |
-| Mouse | Left, middle and right click, drag, and the wheel |
+| Mouse | Left, middle and right click, drag, and the wheel. The middle button reaches libghostty, so `middle-click-action` applies |
 | Selection | Drag to select, `Ctrl+C`, `Ctrl+V`, right-click to copy. The selection clears after a copy. The right-click behaviour is fixed here, not read from `right-click-action` |
 | Cursor shape | Follows the terminal: a text cursor over text, a hand over a link |
 | Links | Ctrl+click opens the URL in the default browser |
@@ -80,7 +80,7 @@ A key named here is one this host reads. The keys libghostty acts on by itself a
 | 機能 | 補足 |
 | --- | --- |
 | キーボード | スキャンコードと文字を別々に渡すので、ラテン以外の配列、デッドキー、AltGr でもキーバインドが崩れない |
-| マウス | 左・中・右クリック、ドラッグ、ホイール |
+| マウス | 左・中・右クリック、ドラッグ、ホイール。中ボタンは libghostty まで届くので `middle-click-action` が効く |
 | 選択 | ドラッグで選択、`Ctrl+C`、`Ctrl+V`、右クリックでコピー。コピー後に選択は解除される。右クリックの動作は固定で、`right-click-action` から読んではいない |
 | カーソルの形 | 端末に従う。文字の上では文字カーソル、リンクの上では手 |
 | リンク | Ctrl+クリックで既定のブラウザが開く |
@@ -203,26 +203,36 @@ WSL のペインは、Windows の擬似コンソールではなく本物の Linu
 
 ## libghostty actions
 
-libghostty asks the host to do things through actions. 65 of the 69 it defines are wired up. The four that are not:
+libghostty asks the host to do things through actions, and of the 69 it defines, 60 do something here. Seven more are answered and deliberately do nothing, and two are not answered at all.
 
-| Action | What it would do |
+Answering matters more than it looks: a refused action is not consumed by libghostty, so a key bound to it is encoded for the shell instead. That is why the list below is "answered, does nothing" rather than "unhandled".
+
+| Action | What happens here |
 | --- | --- |
-| `SET_WINDOW_TITLE` | The window's own title, as distinct from a surface's. `SET_TITLE` is wired, so tab titles follow the terminal |
-| `MOVE_TAB_TO_NEW_WINDOW` | Tearing a tab out works from the mouse; the action is not routed to it |
-| `SELECTION_CHANGED` | Nothing in the host listens for a selection changing yet |
-| `EXPORT_TERMINAL_IO` | Writing the terminal's I/O to a file |
+| `SET_WINDOW_TITLE` | Answered, does nothing: this host has no title for a window apart from the active tab's. `SET_TITLE` is wired, so tab titles follow the terminal |
+| `INSPECTOR`, `RENDER_INSPECTOR` | Answered, does nothing. No inspector on the DirectX renderer ([#152](https://github.com/i999rri/GhosttyWin32/issues/152)) |
+| `TOGGLE_TAB_OVERVIEW`, `TOGGLE_QUICK_TERMINAL` | Answered, does nothing. Neither overlay exists ([#153](https://github.com/i999rri/GhosttyWin32/issues/153)) |
+| `QUIT_TIMER` | Answered, does nothing. Windows quits when the last window closes |
+| `SHOW_GTK_INSPECTOR` | Answered, does nothing. GTK-only, never sent here |
+| `SELECTION_CHANGED` | Not answered. Nothing in the host listens for a selection changing |
+| `EXPORT_TERMINAL_IO` | Not answered. Writing the terminal's I/O to a file, which needs a save dialog the host does not have |
 
 <details>
 <summary>日本語</summary>
 
-libghostty は action という形で host に仕事を頼む。定義されている 69 個のうち 65 個が繋がっている。繋がっていない 4 個:
+libghostty は action という形で host に仕事を頼む。定義されている 69 個のうち、60 個がここで何かをする。7 個は答えるだけで意図的に何もせず、2 個は答えてもいない。
 
-| action | 何をするものか |
+答えるかどうかは見た目より重い。断った action は libghostty に消費されないので、それに割り当てたキーがシェル向けにエンコードされる。下の表が「未対応」ではなく「答えるが何もしない」になっているのはそのため。
+
+| action | ここで何が起きるか |
 | --- | --- |
-| `SET_WINDOW_TITLE` | surface のものとは別の、ウインドウ自体のタイトル。`SET_TITLE` は繋がっているので、タブのタイトルは端末に追従する |
-| `MOVE_TAB_TO_NEW_WINDOW` | タブの引き剥がしはマウスからはできるが、この action からは繋がっていない |
-| `SELECTION_CHANGED` | 選択範囲の変化を host 側で待っているものが、まだ無い |
-| `EXPORT_TERMINAL_IO` | 端末の入出力をファイルに書き出すもの |
+| `SET_WINDOW_TITLE` | 答えるが何もしない。この host にはアクティブなタブのもの以外にウインドウのタイトルが無い。`SET_TITLE` は繋がっているので、タブのタイトルは端末に追従する |
+| `INSPECTOR`、`RENDER_INSPECTOR` | 答えるが何もしない。DirectX レンダラ側にインスペクタが無い ([#152](https://github.com/i999rri/GhosttyWin32/issues/152)) |
+| `TOGGLE_TAB_OVERVIEW`、`TOGGLE_QUICK_TERMINAL` | 答えるが何もしない。どちらの overlay も無い ([#153](https://github.com/i999rri/GhosttyWin32/issues/153)) |
+| `QUIT_TIMER` | 答えるが何もしない。Windows では最後のウインドウが閉じた時点で終了する |
+| `SHOW_GTK_INSPECTOR` | 答えるが何もしない。GTK 専用で、ここには来ない |
+| `SELECTION_CHANGED` | 答えていない。選択範囲の変化を host 側で待っているものが無い |
+| `EXPORT_TERMINAL_IO` | 答えていない。端末の入出力をファイルに書き出すもので、この host が持っていない保存ダイアログが必要 |
 
 </details>
 
