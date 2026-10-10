@@ -1817,7 +1817,7 @@ namespace winrt::GhosttyWin32::implementation
                 name = PidToBasename(pid);
             } else {
                 // No Windows pid: a WSL bridge session. Its foreground
-                // process lives inside the distro, where no Windows-side
+                // process lives inside the distribution, where no Windows-side
                 // lookup can see, so the helper resolves the name there
                 // and reports it through the bridge.
                 auto utf8 = tc->Surface().ForegroundProcessName();
@@ -2520,7 +2520,9 @@ namespace winrt::GhosttyWin32::implementation
         if (newView) newView->TakeFocus();
     }
 
-    void MainWindow::OpenWslInPane(PaneId id, core::wsl::OpenRequest request,
+    void MainWindow::OpenWslInPane(PaneId id,
+                                   std::wstring cwd,
+                                   core::wsl::Invocation invocation,
                                    std::shared_ptr<wsl::ShimReply> reply)
     {
         auto lookup = m_tabs.FindByPaneId(id);
@@ -2547,22 +2549,30 @@ namespace winrt::GhosttyWin32::implementation
         if (auto* srcTc = ControlOf(*sourcePane)) {
             hint = display::PhysicalSizeFactory::ForNewTab(srcTc->InnerPanel(), AppContent());
         }
-        // Built from the same table that read the line, so an option
-        // this host understands is emitted the way wsl.exe reads it.
-        const auto invocation = core::wsl::Invocation::FromRequest(
-            request.distro, request.directory, request.user);
+        // Written from the table that read it, so an option this host
+        // understands reaches wsl.exe the way wsl.exe reads it.
         const std::string command = invocation.ToCommandLine();
 
-        // ghostty opens the requested directory synchronously, here on
-        // the UI thread; a UNC path or a mapped network drive could
-        // stall every window on the network. Those start in the
-        // configured directory instead. An explicit --cd outranks it,
-        // as it does for wsl.exe, so there is nothing to pass.
+        // Where the pane starts, when the command line does not say. A
+        // Linux `--cd` is on that line already and outranks this, as it
+        // does for wsl.exe; a Windows one cannot go on a line that gets
+        // shell-expanded, so it arrives here instead. With neither, the
+        // pane starts where the asking shell was.
+        //
+        // ghostty opens the directory synchronously, here on the UI
+        // thread, so a UNC path or a mapped network drive could stall
+        // every window on the network. Those start in the configured
+        // directory instead.
         std::string workingDirectory;
-        if (invocation.Directory().empty() && core::wsl::IsDriveAbsolutePath(request.cwd)) {
-            const wchar_t root[] = { request.cwd[0], L':', L'\\', L'\0' };
-            if (GetDriveTypeW(root) != DRIVE_REMOTE) {
-                workingDirectory = interop::Encoding::toUtf8(request.cwd);
+        if (invocation.Directory().empty()) {
+            std::wstring const& start = invocation.WorkingDirectory().empty()
+                ? cwd
+                : invocation.WorkingDirectory();
+            if (core::wsl::IsDriveAbsolutePath(start)) {
+                const wchar_t root[] = { start[0], L':', L'\\', L'\0' };
+                if (GetDriveTypeW(root) != DRIVE_REMOTE) {
+                    workingDirectory = interop::Encoding::toUtf8(start);
+                }
             }
         }
 
