@@ -1,8 +1,10 @@
 name: CI
 
-# Compile-only verification on every PR. Runs the same build pipeline as
-# Dev Build / Release but without signing or publishing — catches build
-# breakages (e.g. /std:c++17 vs c++20 mismatches) before merge.
+# Verification on every PR: the same build pipeline as Dev Build /
+# Release without signing or publishing, then the unit tests. The build
+# catches breakages (e.g. /std:c++17 vs c++20 mismatches); the tests
+# catch a rule changed in one place and asserted in another, which has
+# reached dev before now.
 on:
   pull_request: {}
   workflow_dispatch: {}
@@ -33,3 +35,25 @@ jobs:
           # a syntactically valid 4-part number.
           msix-version: '0.0.0.0'
           sign: 'false'
+
+      # After the action, which has already set up MSBuild, restored
+      # this project's packages and built ghostty.dll. What is left is
+      # Core and the gtest binary that links it, which is quick.
+      #
+      # SolutionDir is passed because the project does not set OutDir
+      # and the default is $(SolutionDir)$(Platform)\$(Configuration)\.
+      # Building a vcxproj on its own leaves SolutionDir pointing at the
+      # project's own directory, so the EXE would land under Tests\
+      # instead of where the solution puts it.
+      - name: Build the tests
+        shell: pwsh
+        run: >
+          msbuild Tests\Tests.vcxproj -m
+          -p:Configuration=Release -p:Platform=x64
+          -p:SolutionDir=$env:GITHUB_WORKSPACE\
+
+      # The suite covers what needs no WinRT running: the wsl command
+      # line, the shim protocol, the pipe names, the action dispatch.
+      - name: Run the tests
+        shell: pwsh
+        run: .\x64\Release\Tests.exe
