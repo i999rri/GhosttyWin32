@@ -707,7 +707,11 @@ bool Actions::OnGotoSplit(ghostty_surface_t surface,
 // the machinery already -- this is what a tab dragged off the strip
 // does -- so what was missing was the route from the action.
 bool Actions::OnMoveTabToNewWindow(ghostty_surface_t surface) {
-    if (!surface) return false;
+    // An app-targeted delivery names no tab to move, and is still
+    // answered: a false answer is not consumed, and the key would
+    // type itself into the shell -- the whole reason this route
+    // exists.
+    if (!surface) return true;
     DispatchToView([this, surface]() { m_view.MoveTabToNewWindow(surface); });
     return true;
 }
