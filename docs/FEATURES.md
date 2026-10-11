@@ -159,24 +159,24 @@ A key named here is one this host reads. The keys libghostty acts on by itself a
 
 ## WSL
 
-A WSL pane can run on a real Linux pty instead of on Windows' pseudo console, which is what makes the bytes a program writes arrive as it wrote them. It is off by default and needs a binary installed inside the distribution. See [docs/WSL.md](WSL.md).
+A WSL pane can run on a Linux pty instead of on Windows' pseudo console, which is what makes the bytes a program writes arrive as it wrote them. It is off by default and needs a binary installed inside the distribution. See [docs/WSL.md](WSL.md).
 
 | Feature | Notes |
 | --- | --- |
-| `wsl-bridge` | Fork-only config key, `false` by default. With it on, a WSL tab gets a real Linux pty |
-| `wsl` in a pane | Typing `wsl` at a pwsh or cmd prompt opens WSL in the same pane, and `exit` brings the shell back with WSL's exit code |
+| `wsl-bridge` | Fork-only config key, `false` by default. With it on, a WSL tab gets a Linux pty |
+| `wsl` in a pane | Typing `wsl` at a pwsh or cmd prompt opens WSL in the same pane, and `exit` brings the shell back with WSL's exit code. Needs the `wsl` shim installed as well as the bridge's helper |
 | Options carried | `--distribution` / `-d`, `--cd`, `--user` / `-u`, and a lone `~`. Any other line runs the real `wsl.exe` as typed |
 | A failed session | The pane stays up with the reason on it, rather than vanishing back to the shell |
 
 <details>
 <summary>日本語</summary>
 
-WSL のペインは、Windows の擬似コンソールではなく本物の Linux pty の上で動かせる。プログラムが書いたバイト列がそのまま届くのはそのため。既定では無効で、distro の中にバイナリを置く必要がある。[docs/WSL.md](WSL.md) を参照。
+WSL のペインは、Windows の擬似コンソールではなく Linux の pty の上で動かせる。プログラムが書いたバイト列がそのまま届くのはそのため。既定では無効で、distribution の中にバイナリを置く必要がある。[docs/WSL.md](WSL.md) を参照。
 
 | 機能 | 補足 |
 | --- | --- |
-| `wsl-bridge` | fork だけの config キー。既定は `false`。有効にすると WSL のタブが本物の Linux pty を得る |
-| ペインの中の `wsl` | pwsh や cmd のプロンプトで `wsl` と打つと同じペインで WSL が開き、`exit` で WSL の終了コードと一緒にシェルが戻る |
+| `wsl-bridge` | fork だけの config キー。既定は `false`。有効にすると WSL のタブが Linux の pty を得る |
+| ペインの中の `wsl` | pwsh や cmd のプロンプトで `wsl` と打つと同じペインで WSL が開き、`exit` で WSL の終了コードと一緒にシェルが戻る。bridge の helper に加えて `wsl` の shim の設置も必要 |
 | 運ばれるオプション | `--distribution` / `-d`、`--cd`、`--user` / `-u`、単独の `~`。それ以外の行は打たれたまま本物の `wsl.exe` が動かす |
 | 失敗したセッション | ペインが理由を表示したまま残る。シェルに戻って消えてしまうことはない |
 

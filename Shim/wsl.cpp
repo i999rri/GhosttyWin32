@@ -9,8 +9,8 @@
 // it runs as a child of the user's shell, outside the package, where
 // neither the VC runtime framework nor the ASan runtime is on hand.
 
-#include "Wsl/HelperProbe.h"
-#include "Wsl/Invocation.h"
+#include "Wsl/RealWsl.h"
+#include "Wsl/ShimProtocol.h"
 #include <windows.h>
 #include <aclapi.h>
 #include <cstdint>
@@ -120,11 +120,22 @@ constexpr uint32_t kNoAnswerExitCode = 1;
 // A reply is one short line.
 constexpr size_t kMaxReplyBytes = 64;
 
+// Whatever the host asked to have said, on stderr so it stays out of
+// anything the user pipes. The wording is the host's; this only writes.
+void Say(std::wstring const& message) {
+    if (message.empty()) return;
+    HANDLE err = GetStdHandle(STD_ERROR_HANDLE);
+    if (err == nullptr || err == INVALID_HANDLE_VALUE) return;
+    std::wstring line = message + L"\n";
+    DWORD written = 0;
+    WriteConsoleW(err, line.c_str(), static_cast<DWORD>(line.size()), &written, nullptr);
+}
+
 // WSL's exit code once the host has taken the request, or nullopt when
 // there is no host to ask or it declined; only then is the real wsl.exe
 // run instead. Blocks for the whole session: the reply only comes when
 // WSL ends.
-std::optional<uint32_t> AskHost(Invocation const& invocation) {
+std::optional<uint32_t> AskHost(std::wstring_view arguments) {
     std::wstring pipe = Env(kPipeEnvVarW);
     std::wstring pane = Env(kPaneEnvVarW);
     auto hostPid = PidFromPipeName(pipe);
@@ -136,16 +147,11 @@ std::optional<uint32_t> AskHost(Invocation const& invocation) {
     HANDLE h = ConnectToHost(pipe, *hostPid);
     if (h == INVALID_HANDLE_VALUE) return std::nullopt;
 
-    // A Windows `--cd` is asked for as where the pane starts, since that
-    // is what wsl.exe would have made of it; without one the pane starts
-    // where this shell is, as a child of it would. A Linux `--cd` is
-    // sent as well and the host prefers it, which is the precedence
-    // wsl.exe gives the two forms.
-    std::wstring directory = invocation.WorkingDirectory();
-    if (directory.empty()) directory = CurrentDirectory();
-
-    std::string request = EncodeOpen(paneId, directory, invocation.Distribution(),
-                                     invocation.Directory(), invocation.User());
+    // The arguments go over as written. What they ask for, and whether
+    // this host will do it, is the host's to decide -- it has the
+    // option table and the tests that hold it. The working directory
+    // goes with them because only this process knows it.
+    std::string request = EncodeOpen(paneId, CurrentDirectory(), arguments);
     DWORD written = 0;
     if (!WriteFile(h, request.data(), static_cast<DWORD>(request.size()), &written, nullptr)
         || written != request.size()) {
@@ -164,7 +170,14 @@ std::optional<uint32_t> AskHost(Invocation const& invocation) {
 
     auto parsed = ParseReply(reply);
     if (!parsed) return kNoAnswerExitCode;
-    if (!parsed->opened) return std::nullopt;
+    if (!parsed->opened) {
+        // The host says why when there is a reason worth a line, such
+        // as a distribution without the bridge's half installed. The
+        // shim prints it and runs the real wsl.exe, so the wording
+        // lives in one place and this program needs none of its own.
+        Say(parsed->message);
+        return std::nullopt;
+    }
     return parsed->exitCode;
 }
 
@@ -195,59 +208,6 @@ BOOL WINAPI OutlastConsoleBreak(DWORD event) {
     return event == CTRL_C_EVENT || event == CTRL_BREAK_EVENT;
 }
 
-// The real one, by absolute path. This program is also called wsl.exe
-// and comes first on PATH, so anything resolved by name would be itself.
-std::wstring RealWslPath() {
-    wchar_t system32[MAX_PATH];
-    UINT len = GetSystemDirectoryW(system32, MAX_PATH);
-    if (len == 0 || len >= MAX_PATH) return {};
-    return std::wstring(system32, len) + L"\\wsl.exe";
-}
-
-// Whether `distro` has the bridge's in-distro half on its PATH, asked of
-// the distribution because nothing on this side can see it (#229). A
-// session started without it swaps the pane, dies on the shell's "not
-// found", and swaps back before the message can be read, so it is worth
-// one wsl.exe here: this runs when a person types `wsl`, where the wait
-// does not show.
-bool HelperInstalled(std::wstring const& distro) {
-    const std::wstring exe = RealWslPath();
-    if (exe.empty()) return false;
-
-    std::wstring commandLine = HelperProbeCommandLine(exe, distro);
-
-    // No console and no inherited handles: the answer is the exit code,
-    // and anything it printed would land in the user's shell.
-    STARTUPINFOW si{ .cb = sizeof(STARTUPINFOW) };
-    PROCESS_INFORMATION pi{};
-    if (!CreateProcessW(exe.c_str(), commandLine.data(), nullptr, nullptr, FALSE,
-                        CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
-        return false;
-    }
-    CloseHandle(pi.hThread);
-    WaitForSingleObject(pi.hProcess, INFINITE);
-    DWORD code = 1;
-    GetExitCodeProcess(pi.hProcess, &code);
-    CloseHandle(pi.hProcess);
-    return code == 0;
-}
-
-// Said once per `wsl`, on stderr, so it stays out of anything the user
-// pipes. The distribution is named because the binary is installed per
-// distribution, and having it in one is easy to mistake for having it.
-void ReportMissingHelper(std::wstring const& distro) {
-    std::wstring message = L"wsl: ";
-    message += kHelperName;
-    message += L" is not installed in ";
-    message += distro.empty() ? L"the default distribution" : distro;
-    message += L"; running wsl.exe instead. See docs/WSL.md.\n";
-
-    HANDLE err = GetStdHandle(STD_ERROR_HANDLE);
-    if (err == nullptr || err == INVALID_HANDLE_VALUE) return;
-    DWORD written = 0;
-    WriteConsoleW(err, message.c_str(), static_cast<DWORD>(message.size()), &written, nullptr);
-}
-
 int RunRealWsl() {
     const std::wstring exe = RealWslPath();
     if (exe.empty()) return 1;
@@ -273,22 +233,18 @@ int RunRealWsl() {
 
 }  // namespace
 
-int wmain(int argc, wchar_t** argv) {
+int wmain() {
     // Before anything that starts a session, so no break can separate
     // the shim from the session it is waiting on.
     SetConsoleCtrlHandler(OutlastConsoleBreak, TRUE);
 
-    const Invocation invocation = Invocation::Parse(argc, argv);
-    // Redirected stdio means a script is driving wsl, not a person.
-    if (invocation.TakesOver() && IsConsole(STD_INPUT_HANDLE) && IsConsole(STD_OUTPUT_HANDLE)) {
-        if (HelperInstalled(invocation.Distribution())) {
-            if (auto exitCode = AskHost(invocation)) return static_cast<int>(*exitCode);
-        } else {
-            // Only someone who set wsl-bridge gets here: the shim is on
-            // PATH while it is on. Having asked for the bridge and not
-            // installed its half, they are owed the reason the pane
-            // stays where it is.
-            ReportMissingHelper(invocation.Distribution());
+    // Redirected stdio means a script is driving wsl, not a person, and
+    // a pane is no use to it. That is the only thing this program
+    // decides: everything about what the line means is asked of the
+    // host, which answers with a session or with a refusal.
+    if (IsConsole(STD_INPUT_HANDLE) && IsConsole(STD_OUTPUT_HANDLE)) {
+        if (auto exitCode = AskHost(ArgumentsAfterProgram())) {
+            return static_cast<int>(*exitCode);
         }
     }
     return RunRealWsl();

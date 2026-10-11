@@ -1,11 +1,11 @@
 # The WSL bridge
 
-A WSL tab can run on a real Linux pty instead of on Windows' pseudo console, so the bytes a program writes reach the terminal unchanged. It is off by default and needs one binary installed inside the distribution. For the steps alone see Step 4 of [the install guide](INSTALL.md); this page is why it exists and how to tell whether it is working.
+A WSL tab can run on a Linux pty instead of on Windows' pseudo console, so the bytes a program writes reach the terminal unchanged. It is off by default and needs one binary installed inside the distribution. For the steps alone see Step 4 of [the install guide](INSTALL.md); this page is why it exists and how to tell whether it is working.
 
 <details>
 <summary>日本語</summary>
 
-WSL のタブは、Windows の擬似コンソールではなく本物の Linux pty の上で動かせる。そうすると、プログラムが書いたバイト列がそのままターミナルに届く。既定では無効で、distro の中にバイナリを 1 つ入れる必要がある。手順だけなら[インストール手順](INSTALL.md)の Step 4 を見てほしい。このページは、なぜそれが要るのかと、効いているかの確かめ方。
+WSL のタブは、Windows の擬似コンソールではなく Linux の pty の上で動かせる。そうすると、プログラムが書いたバイト列がそのままターミナルに届く。既定では無効で、distribution の中にバイナリを 1 つ入れる必要がある。手順だけなら[インストール手順](INSTALL.md)の Step 4 を見てほしい。このページは、なぜそれが要るのかと、効いているかの確かめ方。
 
 </details>
 
@@ -20,7 +20,7 @@ That is a re-rendering, not a hand-off, and `wsl.exe` is an ordinary Windows con
 
 Windows のコンソールプログラムは生のバイト列を読み書きせず、コンソール API を使う。そうしたプログラムを動かすターミナルは擬似コンソールを間に挟む必要があり、Windows ではそれが ConPTY になる。ウインドウを持たない conhost のことだ。ConPTY はプログラムの出力を解釈し、自前の画面バッファを保ち、そのバッファから組み立て直した VT を出す。
 
-これは受け渡しではなく再描画で、`wsl.exe` もただの Windows のコンソールプログラムだ。だから ConPTY 経由の WSL セッションでは、distro の中のプログラムが実際に書いたものは届かない。conhost が自分で実装している列は conhost が応答し、理解しない列は捨てられる。クリップボードの列である OSC 52 は前者で、conhost が応答してしまうためターミナルには届かず、そうしたタブでは `clipboard-read` も `clipboard-write` も効かない。詳しくは [docs/CLIPBOARD.md](CLIPBOARD.md) に書いた。
+これは受け渡しではなく再描画で、`wsl.exe` もただの Windows のコンソールプログラムだ。だから ConPTY 経由の WSL セッションでは、distribution の中のプログラムが実際に書いたものは届かない。conhost が自分で実装している列は conhost が応答し、理解しない列は捨てられる。クリップボードの列である OSC 52 は前者で、conhost が応答してしまうためターミナルには届かず、そうしたタブでは `clipboard-read` も `clipboard-write` も効かない。詳しくは [docs/CLIPBOARD.md](CLIPBOARD.md) に書いた。
 
 </details>
 
@@ -30,39 +30,55 @@ A pty can only be created by the Linux kernel, so the terminal has to be built i
 
 - **The app** creates no ConPTY for this surface at all. It starts `wsl.exe` with plain redirected pipes.
 - **`wsl.exe`**, with its stdio redirected, relays bytes between those pipes and the process it runs in the distribution. It emulates nothing.
-- **`ghostty-wsl-bridge`** runs inside the distribution. It opens a real Linux pty, starts your shell on the slave side, and relays between the pty and its own stdio.
+- **`ghostty-wsl-bridge`** runs inside the distribution. It opens a Linux pty, which has two ends: it starts your shell with one of them as the shell's terminal, and relays bytes between the other and its own stdio.
 
 The terminal the shell sees is a Linux pty, and Windows only carries bytes. Both directions are framed, because the pipes have no out-of-band channel and a window resize has to travel somehow.
 
 <details>
 <summary>日本語</summary>
 
-pty を作れるのは Linux カーネルだけなので、端末は distro の中で用意するしかない。仕事は 3 つに分かれている。
+pty を作れるのは Linux カーネルだけなので、端末は distribution の中で用意するしかない。仕事は 3 つに分かれている。
 
-- **アプリ**は、このサーフェスについては ConPTY を作らない。リダイレクトしたただのパイプを渡して `wsl.exe` を起動する。
-- **`wsl.exe`** は stdio がリダイレクトされているので、そのパイプと distro 内のプロセスの間でバイト列を中継するだけになる。何もエミュレートしない。
-- **`ghostty-wsl-bridge`** が distro の中で動く。本物の Linux pty を開き、slave 側でシェルを起こし、pty と自分の stdio の間を中継する。
+- **アプリ**は、この surface については ConPTY を作らない。リダイレクトしたただのパイプを渡して `wsl.exe` を起動する。
+- **`wsl.exe`** は stdio がリダイレクトされているので、そのパイプと distribution 内のプロセスの間でバイト列を中継するだけになる。何もエミュレートしない。
+- **`ghostty-wsl-bridge`** は distribution の中で動く。Linux の pty を開く。pty には端が 2 つあり、その一方をシェルの端末として渡してシェルを起動し、もう一方と自分の stdio の間でバイト列を中継する。
 
 シェルから見える端末は Linux の pty で、Windows 側はバイト列を運ぶだけになる。パイプには帯域外のチャンネルがなく、ウインドウのサイズ変更も伝える必要があるため、どちらの向きもフレームに包んである。
 
 </details>
 
-## Why the binary is yours to install
+## Why the binaries are yours to install
 
-It is not in the package, and it cannot be. A file inside an installed MSIX is read-only for you; DrvFs derives Unix permissions from the Windows ACL, and a file you cannot write arrives without the execute bit. A copy shipped that way is readable from the distribution and refused by `exec` before a byte of it is read.
+Two pieces are, and for the same reason: the package is the one place neither of them can be run from.
 
-Nor is it named by a path. The app runs it by name and lets the distribution's `PATH` find it, the same way the shell finds any other command — so there is nothing to point at it, and `wsl-bridge` is the only setting involved.
+`ghostty-wsl-bridge` runs inside the distribution, and that is the unit: on WSL 2 every distribution shares one lightweight utility VM and one kernel, but each has its own mount namespace, so `/usr/local/bin` is a different directory in each one.[^distros] Installing the binary in one does not install it in another, which is why `wsl -d NAME` is asked about separately and why the message that it is missing names the distribution.
 
-That costs the one thing a path was buying: the app can no longer tell from the Windows side whether the binary is there, so it cannot quietly fall back to ConPTY when it is not. Turning `wsl-bridge` on without installing the binary ends the session with `ghostty-wsl-bridge: not found` instead. The default is off to make that the right answer: a session that cannot start belongs to someone who asked for it.
+A file inside an installed MSIX is read-only for you; DrvFs derives Unix permissions from the Windows ACL, and a file you cannot write arrives without the execute bit. A copy shipped that way is readable from the distribution and refused by `exec` before a byte of it is read.
+
+The `wsl` shim runs on Windows, as a child of your shell, and fares no better. `C:\Program Files\WindowsApps` refuses even a read of its own permissions, and starting a program under it answers access denied whatever the file's own entry grants. The host cannot put a runnable copy anywhere for you either -- a directory it writes to is a directory it has to keep in step with every upgrade, and an executable it drops into your profile unasked is not the sort of thing a terminal should do.
+
+So both are downloaded from the release and put where they are wanted, one `curl` each — [docs/INSTALL.md](INSTALL.md#step-4-wsl-bridge-optional--wsl-bridge-任意) has the lines. Neither is named by a path: the bridge is started by name on the distribution's `PATH`, and the shim is looked for in one place, `%LOCALAPPDATA%\ghostty\bin\`, beside the config.
+
+Taking them from the release rather than out of the installed package is deliberate. Whether a shim and a host can work together is settled by the protocol version the shim sends, not by which build produced the file, and copying the app's own copy would be asserting the opposite.
+
+Nor does the host check what is there. With nothing installed, the shell finds System32's `wsl.exe` and that is the right answer, so there is nothing to detect. A shim from another build puts its protocol version in the line it sends, and the host answers a version it does not know in the pane rather than refusing that line for a reason you cannot see. So the only thing that makes a reinstall necessary is that version changing -- not a release, and not a rebuild. For the bridge's helper the host can only ask the distribution, which it does before offering to swap a pane.
 
 <details>
 <summary>日本語</summary>
 
-このバイナリはパッケージに入っていないし、入れられない。インストールされた MSIX の中のファイルは、ユーザーから見て読み取り専用になる。DrvFs は Unix の権限を Windows の ACL から導くので、書き込めないファイルには実行ビットが付かない。その形で同梱したコピーは、distro から読めはしても、1 バイトも読まれないうちに `exec` に拒否される。
+2 つあって、理由は同じ。どちらもパッケージの中からは実行できない。
 
-パスで指定するものでもない。アプリは名前で起動し、distro の `PATH` に解決させる。シェルがほかのコマンドを見つけるのと同じだ。だから指し示すための設定は要らず、関わる設定は `wsl-bridge` だけになる。
+`ghostty-wsl-bridge` は distribution の中で動く。そしてその単位が distribution であることに意味がある。WSL 2 ではすべての distribution が 1 つの軽量 utility VM とカーネルを共有するが、mount namespace は各自が持つので、`/usr/local/bin` は distribution ごとに別のディレクトリになる[^distros]。ある distribution に入れても、別の distribution には入らない。だから host は `wsl -d NAME` で名指された distribution に対して有無を確かめるし、無いときのメッセージにもその名前を出す。
 
-その代わり、パスが買っていた唯一のものを失う。バイナリがあるかどうかを Windows 側から判断できなくなるので、無いときに黙って ConPTY へ戻ることもできない。バイナリを入れずに `wsl-bridge` を on にすると、セッションは `ghostty-wsl-bridge: not found` で終わる。既定が off なのは、それを妥当な答えにするためだ。起動できないセッションは、自分で有効にした人のものになる。
+インストールされた MSIX の中のファイルは、ユーザーから見て読み取り専用になる。DrvFs は Unix の権限を Windows の ACL から導くので、書き込めないファイルには実行ビットが付かない。その形で同梱したコピーは、distribution から読めはしても、1 バイトも読まれないうちに `exec` に拒否される。
+
+`wsl` の shim は Windows 側で、シェルの子として動くが、こちらも同じだ。`C:\Program Files\WindowsApps` は自分の権限を読むことすら拒否するし、その下のプログラムを起動すると、ファイル自身の権限が何を許していてもアクセス拒否が返る。host が代わりに実行できる場所へコピーしておくこともしない。コピー先を持つと、アプリを更新するたびにそのコピーも入れ替え続けることになる。それに、頼まれてもいない実行ファイルをユーザーのプロファイルに書くのは、ターミナルがやることではない。
+
+そこで両方とも release からダウンロードして、必要な場所に置く。それぞれ `curl` 1 行で、コマンドは [docs/INSTALL.md](INSTALL.md#step-4-wsl-bridge-optional--wsl-bridge-任意) にある。どちらもパスで指定はしない。bridge は distribution の `PATH` から名前で起動し、shim は config の隣の `%LOCALAPPDATA%\ghostty\bin\` という 1 箇所だけを見る。
+
+インストール済みのパッケージの中から取り出すのではなく release から取るのは意図的だ。shim と host が一緒に動けるかを決めるのは、shim が送ってくるプロトコルのバージョンであって、そのファイルがどのビルドから出たかではない。アプリ自身のコピーを持ってこさせると、同じビルドのファイルでなければ動かない、と言っているのと同じになる。
+
+置かれているものを host が点検することもしない。何も置かれていなければシェルは System32 の `wsl.exe` を見つけ、それが正しい結果なので、確かめる必要がない。別のビルドの shim も、送ってくる行に自分のプロトコルのバージョンを入れている。host が知らないバージョンだったときは、そのペインにそう書く。黙って断れば、打った人には理由が見えないからだ。だから置き直しが必要になるのはそのバージョンが変わったときだけで、リリースごとでも、ビルドし直すごとでもない。bridge の helper については distribution に尋ねるしかないので、ペインの差し替えを申し出る前に尋ねる。
 
 </details>
 
@@ -96,11 +112,11 @@ bash scripts/verify/wsl-bridge-routing.sh
 
 状態は 4 つで、それぞれ何が起きるべきかが上の表。`wsl-bridge` は `%LOCALAPPDATA%\ghostty\config` にあり、変更したらアプリの再起動が要る。
 
-pwsh のタブか Windows Terminal からは、上の `pgrep` で確認できる。bridge のプロセスは WSL のサーフェス 1 枚につき 1 本で、タブでも分割でも同じ。
+pwsh のタブか Windows Terminal からは、上の `pgrep` で確認できる。bridge のプロセスは WSL の surface 1 枚につき 1 本で、タブでも分割でも同じ。
 
 WSL のタブの中からは `scripts/verify/wsl-bridge-routing.sh` が、そのタブがどちらの経路かを答える。2 つのことを別々に聞いているのは意図したもので、シェルより上のプロセスの並びは「どう起動されたか」を、OSC 52 の往復は「ストリームが何をするか」を示す。bridge 経由で起動したのにバイト列が往復しないタブは、そもそも bridge を通っていないタブとは別の問題だ。
 
-`scripts/verify/wsl-exec-bit.ps1` は、前の節の前提を確かめる。パッケージの中のファイルは distro から実行できず、自分が所有するファイルは実行できる、という前提だ。将来の Windows や WSL がこのページを間違いにしたときのために置いてある。
+`scripts/verify/wsl-exec-bit.ps1` は、前の節の前提を確かめる。パッケージの中のファイルは distribution から実行できず、自分が所有するファイルは実行できる、という前提だ。将来の Windows や WSL がこのページを間違いにしたときのために置いてある。
 
 </details>
 
@@ -121,7 +137,7 @@ command = wsl --cd ~ -d Ubuntu
 <details>
 <summary>日本語</summary>
 
-バイナリは 1 つの distro の中にあるので、別の distro を使うならそちらにも要る。2 つの半分が話すフレーム protocol には版が入っていない。知らない種類のフレームは読み飛ばす作りなので多少の差は耐えるが、アプリを更新したら新しい release のバイナリに置き換えておくのがよい。
+バイナリは 1 つの distribution の中にあるので、別の distribution を使うならそちらにも要る。2 つの半分が話すフレーム protocol には版が入っていない。知らない種類のフレームは読み飛ばす作りなので多少の差は耐えるが、アプリを更新したら新しい release のバイナリに置き換えておくのがよい。
 
 v0.8.2 では、タブ自身のコマンドが `wsl` のときだけ bridge に入る。つまり config の `command = wsl` だ。pwsh のタブの中で `wsl` と打った場合は、そのタブの ConPTY の下で動くので関係ない。
 
@@ -130,3 +146,5 @@ v0.8.2 では、タブ自身のコマンドが `wsl` のときだけ bridge に�
 `--cd` はセッションの開始位置で、`~` なら Linux のホーム、先頭が `/` なら Linux の絶対パス、それ以外は Windows の絶対パス。指定しなければ、Windows の作業ディレクトリを変換した先、つまり `/mnt/c` の下で始まる。`wsl ~` のような単独の `~` も `--cd ~` と同じ意味になる。
 
 </details>
+
+[^distros]: [Comparing WSL versions](https://learn.microsoft.com/en-us/windows/wsl/compare-versions) — distributions running under WSL 2 share the network namespace, device tree, CPU, kernel, memory and `/init`, and have their own PID, mount, user and cgroup namespaces and their own init process.

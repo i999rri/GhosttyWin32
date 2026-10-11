@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Wsl/Invocation.h"
 #include "Wsl/ShimProtocol.h"
 #include "Wsl/ShimReply.h"
 #include <winrt/Microsoft.UI.Dispatching.h>
@@ -32,9 +33,13 @@ namespace winrt::GhosttyWin32::implementation::wsl {
 //   - never waits on a client without a bound (see PipeIo.h).
 class ShimServer {
 public:
-    // Runs on the UI thread. Refuses the reply itself when it cannot
-    // open a session.
-    using OnOpen = std::function<void(core::wsl::OpenRequest, std::shared_ptr<ShimReply>)>;
+    // Runs on the UI thread, with a line already read and found to be
+    // one this host takes. Refuses the reply itself when it cannot open
+    // a session after all.
+    using OnOpen = std::function<void(uint64_t paneId,
+                                      std::wstring cwd,
+                                      core::wsl::Invocation invocation,
+                                      std::shared_ptr<ShimReply>)>;
 
     ShimServer(Microsoft::UI::Dispatching::DispatcherQueue ui, OnOpen onOpen);
     ~ShimServer();
@@ -56,6 +61,9 @@ public:
 private:
     void Run(winrt::handle pending);
     void Serve(winrt::handle client);
+
+    // Runs on this server's thread, since it waits on a wsl.exe.
+    static bool HelperInstalled(std::wstring const& distro);
     winrt::handle CreateInstance(bool first) const noexcept;
 
     std::wstring m_pipeName;

@@ -27,6 +27,17 @@ namespace {
         if (len == 0) return L"GhosttyWin32_running.flag";
         return std::filesystem::path(buf) / L"GhosttyWin32_running.flag";
     }
+
+    // Where the shim is installed: beside the config, in a directory
+    // the person owns. It ends up first on a ConPTY shell's PATH, so
+    // what else goes in there shadows System32 for those panes.
+    std::filesystem::path userShimDirectory() {
+        wchar_t appdata[MAX_PATH];
+        DWORD len = GetEnvironmentVariableW(L"LOCALAPPDATA", appdata,
+                                            static_cast<DWORD>(std::size(appdata)));
+        if (len == 0 || len >= std::size(appdata)) return {};
+        return std::filesystem::path(appdata) / L"ghostty" / L"bin";
+    }
 }
 
 // To learn more about WinUI, the WinUI project structure,
@@ -304,16 +315,16 @@ namespace winrt::GhosttyWin32::implementation
             return;
         }
 
-        // In-place WSL (#217): the shim `wsl.exe` ships under shim\
-        // next to the host. The pipe server that answers it runs only
-        // while wsl-bridge is on; see SyncShimServer.
-        {
-            wchar_t exe[MAX_PATH];
-            DWORD len = GetModuleFileNameW(nullptr, exe, MAX_PATH);
-            if (len > 0 && len < MAX_PATH) {
-                m_shimDir = (std::filesystem::path(exe).parent_path() / L"shim").wstring();
-            }
-        }
+        // In-place WSL (#217): the shim a shell runs is one the person
+        // installed, since the copy under shim\ in the package cannot
+        // be started from there at all -- see docs/WSL.md. The host
+        // names the directory and looks no further: with nothing in it
+        // the shell finds System32's wsl.exe, which is the right
+        // answer, and a shim from another build says so over the pipe
+        // and gets told in the pane (ShimServer::Serve). The pipe
+        // server that answers it runs only while wsl-bridge is on; see
+        // SyncShimServer.
+        m_shimDir = userShimDirectory().wstring();
         SyncShimServer();
 
         CreateNewWindow();
@@ -326,7 +337,13 @@ namespace winrt::GhosttyWin32::implementation
 
     void App::SyncShimServer()
     {
-        const bool wanted = m_ghostty
+        // A shell needs somewhere to find the shim, and that is the one
+        // directory this host names. With no name for it -- no
+        // LOCALAPPDATA to build one from -- nothing can reach this
+        // server, so the feature is off whole rather than half: no
+        // directory on the PATH and no pipe listening for a caller that
+        // cannot exist.
+        const bool wanted = m_ghostty && !m_shimDir.empty()
             && core::ghostty::Config(m_ghostty->ConfigHandle()).WslBridge();
         if (wanted == static_cast<bool>(m_shimServer)) return;
 
@@ -342,17 +359,18 @@ namespace winrt::GhosttyWin32::implementation
         // queued just before a reload turns it off.
         m_shimServer = std::make_unique<wsl::ShimServer>(
             Microsoft::UI::Dispatching::DispatcherQueue::GetForCurrentThread(),
-            [](core::wsl::OpenRequest request, std::shared_ptr<wsl::ShimReply> reply) {
+            [](uint64_t paneId, std::wstring cwd, core::wsl::Invocation invocation,
+               std::shared_ptr<wsl::ShimReply> reply) {
                 auto* app = App::g_app;
                 const bool enabled = app && app->Ghostty()
                     && core::ghostty::Config(app->Ghostty()->ConfigHandle()).WslBridge();
-                PaneId id{ request.paneId };
+                PaneId id{ paneId };
                 MainWindow* window = enabled ? app->Windows().FindForPaneId(id) : nullptr;
                 if (!window) {
                     reply->Refuse();
                     return;
                 }
-                window->OpenWslInPane(id, std::move(request), std::move(reply));
+                window->OpenWslInPane(id, std::move(cwd), invocation, std::move(reply));
             });
         // A name another process already holds is never advertised:
         // with no server, ShimPipeName is empty and shells get no shim.

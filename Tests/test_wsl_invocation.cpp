@@ -48,7 +48,7 @@ TEST(WslInvocationTest, ALoneTildeMeansTheLinuxHome) {
 
 TEST(WslInvocationTest, LeavesATildeThatIsNotFirstToWslExe) {
     // Only the first argument reads as `--cd ~`. Further along, wsl.exe
-    // starts the in-distro command with it: `wsl --cd /tmp ~` has the
+    // starts the in-distribution command with it: `wsl --cd /tmp ~` has the
     // login shell try to run /home/<me>, which is not a pane this host
     // opens.
     EXPECT_FALSE(Parse({ L"wsl", L"--cd", L"/tmp", L"~" }).TakesOver());
@@ -77,12 +77,19 @@ TEST(WslInvocationTest, LeavesEveryOtherLineToWslExe) {
 }
 
 TEST(WslInvocationTest, LeavesALineWhoseValueCouldCarryArguments) {
-    // The rules live in ShimProtocol.h; this is that they are consulted.
+    // Each option's rule is consulted; what they refuse is a value that
+    // could turn into more arguments once the line is split and shell
+    // expanded. The rules themselves are tested through the values they
+    // are asked about, here and in test_shim_protocol.cpp.
     EXPECT_FALSE(Parse({ L"wsl", L"-d", L"Ubuntu --exec calc" }).TakesOver());
     EXPECT_FALSE(Parse({ L"wsl", L"--cd", L"/srv/my app" }).TakesOver());
     EXPECT_FALSE(Parse({ L"wsl", L"--cd", L"/tmp;calc" }).TakesOver());
     EXPECT_FALSE(Parse({ L"wsl", L"-u", L"ro ot" }).TakesOver());
-    EXPECT_FALSE(Parse({ L"wsl", L"-u", L"1root" }).TakesOver());
+
+    // Not this one. Whether a Linux name may begin with a digit is
+    // wsl.exe's business; the question here is only whether the line
+    // can carry it, and `1root` is letters and digits.
+    EXPECT_TRUE(Parse({ L"wsl", L"-u", L"1root" }).TakesOver());
 }
 
 TEST(WslInvocationTest, LeavesAnOptionWithNothingToTake) {
@@ -167,18 +174,37 @@ TEST(WslInvocationTest, LeavesADirectoryOfNeitherFormToWslExe) {
     EXPECT_FALSE(Parse({ L"wsl", L"--cd", L"\\\\server\\share" }).TakesOver());
     EXPECT_FALSE(Parse({ L"wsl", L"--cd", L"\\\\wsl.localhost\\NixOS\\home" }).TakesOver());
 }
-
-TEST(WslInvocationTest, FromRequestDropsWhatItCannotWrite) {
-    // The pipe checks these too, so this is the second line of defence:
-    // a value that got through still never reaches a command line.
-    auto inv = Invocation::FromRequest(L"NixOS", L"/srv/my app", L"root");
+TEST(WslInvocationTest, ReadsTheLineTheShimSent) {
+    // The shim sends the arguments as the shell wrote them, so the
+    // split is this side's job now. Quoting has to survive it: a
+    // directory with a space in it is one wsl.exe would take.
+    auto inv = Invocation::ParseLine(L"-d NixOS --cd /srv -u root");
+    EXPECT_TRUE(inv.TakesOver());
     EXPECT_EQ(inv.Distribution(), L"NixOS");
-    EXPECT_TRUE(inv.Directory().empty());
+    EXPECT_EQ(inv.Directory(), L"/srv");
     EXPECT_EQ(inv.User(), L"root");
-    EXPECT_EQ(inv.ToCommandLine(), "wsl --distribution NixOS --user root");
+
+    auto quoted = Invocation::ParseLine(L"--cd \"C:\\Program Files\"");
+    EXPECT_TRUE(quoted.TakesOver());
+    EXPECT_EQ(quoted.WorkingDirectory(), L"C:\\Program Files");
+    EXPECT_EQ(quoted.ToCommandLine(), "wsl");
 }
 
-TEST(WslInvocationTest, FromRequestKeepsWhatTheShimSent) {
-    auto inv = Invocation::FromRequest(L"NixOS", L"~", L"root");
-    EXPECT_EQ(inv.ToCommandLine(), "wsl --distribution NixOS --cd ~ --user root");
+TEST(WslInvocationTest, AnEmptyLineIsABareWsl) {
+    auto inv = Invocation::ParseLine(L"");
+    EXPECT_TRUE(inv.TakesOver());
+    EXPECT_TRUE(inv.Distribution().empty());
+    EXPECT_TRUE(inv.Directory().empty());
+    EXPECT_TRUE(inv.User().empty());
+    EXPECT_EQ(inv.ToCommandLine(), "wsl");
+}
+
+TEST(WslInvocationTest, LeavesALineItDoesNotUnderstand) {
+    // Same answers as the argv form, now that the line is where they
+    // come from: this is the whole of what the shim used to decide.
+    EXPECT_FALSE(Invocation::ParseLine(L"-l -v").TakesOver());
+    EXPECT_FALSE(Invocation::ParseLine(L"echo hi").TakesOver());
+    EXPECT_FALSE(Invocation::ParseLine(L"--system").TakesOver());
+    EXPECT_FALSE(Invocation::ParseLine(L"--cd relative").TakesOver());
+    EXPECT_FALSE(Invocation::ParseLine(L"-- htop").TakesOver());
 }

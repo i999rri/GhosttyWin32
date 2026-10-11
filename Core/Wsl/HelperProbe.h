@@ -1,6 +1,6 @@
 #pragma once
 
-// How the shim asks a distribution whether the bridge's in-distro half
+// How the shim asks a distribution whether the bridge's in-distribution half
 // is installed (#229). The command line is built here, away from the
 // CreateProcessW call that runs it, because its quoting is the part that
 // is easy to get wrong and impossible to see going wrong: a probe that

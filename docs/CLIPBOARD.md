@@ -13,14 +13,14 @@
 
 A pane running a Windows console program — pwsh, cmd, anything that talks to the console API — is backed by ConPTY, which is conhost running headless. conhost parses the output stream itself and answers OSC 52 without passing it on, so the settings below never reach the terminal. A write goes to the Windows clipboard whenever the window has focus, and a read is dropped with no answer at all. `clipboard-write = deny` does not stop the write, and `clipboard-read` has no effect either.
 
-A WSL pane goes through the bridge, which owns a real pty inside the distribution, and a shell reached over ssh from such a pane is the same. There is no conhost in the way, so both settings apply as documented.
+A WSL pane goes through the bridge, which owns a pty inside the distribution, and a shell reached over ssh from such a pane is the same. There is no conhost in the way, so both settings apply as documented.
 
 <details>
 <summary>日本語</summary>
 
 Windows のコンソールプログラム (pwsh、cmd、コンソール API を使うもの全般) が動くペインは、ConPTY が裏にいる。ConPTY の正体は、画面を持たないモードで動く conhost。conhost は出力を自分で解析して OSC 52 に自分で応答し、その先へは渡さない。そのため下記の設定はターミナルまで届かない。書き込みはウィンドウにフォーカスがあれば Windows のクリップボードに入り、読み取りは応答なしで捨てられる。`clipboard-write = deny` にしても書き込みは止まらないし、`clipboard-read` も効かない。
 
-WSL のペインは bridge を通り、distro 内の本物の pty につながる。そのペインから ssh で入った先も同じ。あいだに conhost がいないので、どちらの設定もドキュメントどおりに効く。
+WSL のペインは bridge を通り、distribution 内の pty につながる。そのペインから ssh で入った先も同じ。あいだに conhost がいないので、どちらの設定もドキュメントどおりに効く。
 
 </details>
 

@@ -1,5 +1,7 @@
 #include "pch.h"
 #include "Wsl/ShimServer.h"
+#include "Wsl/HelperProbe.h"
+#include "Wsl/RealWsl.h"
 #include "Wsl/PipeIo.h"
 #include "Win32/DebugTrace.h"
 #include <sddl.h>
@@ -183,6 +185,36 @@ void ShimServer::Run(winrt::handle pending)
     }
 }
 
+// Whether `distro` has the bridge's in-distribution half on its PATH, asked
+// of the distribution because nothing on this side can see it (#229).
+// A session started without it would swap the pane, die on the shell's
+// "not found", and swap back before the message could be read, so it is
+// worth one wsl.exe here -- on this thread, which is the server's own
+// and already spends its time waiting on I/O. Doing it on the UI thread
+// would stop every window for as long as a distribution takes to answer.
+bool ShimServer::HelperInstalled(std::wstring const& distro)
+{
+    const std::wstring exe = core::wsl::RealWslPath();
+    if (exe.empty()) return false;
+
+    std::wstring commandLine = core::wsl::HelperProbeCommandLine(exe, distro);
+
+    // No console and no inherited handles: the answer is the exit code,
+    // and anything it printed would land in the user's shell.
+    STARTUPINFOW si{ .cb = sizeof(STARTUPINFOW) };
+    PROCESS_INFORMATION pi{};
+    if (!CreateProcessW(exe.c_str(), commandLine.data(), nullptr, nullptr, FALSE,
+                        CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
+        return false;
+    }
+    CloseHandle(pi.hThread);
+    WaitForSingleObject(pi.hProcess, INFINITE);
+    DWORD code = 1;
+    GetExitCodeProcess(pi.hProcess, &code);
+    CloseHandle(pi.hProcess);
+    return code == 0;
+}
+
 void ShimServer::Serve(winrt::handle client)
 {
     auto line = ReadPipeLine(client.get(), m_stop.get(), kReadBudgetMs, kMaxRequestBytes);
@@ -195,12 +227,53 @@ void ShimServer::Serve(winrt::handle client)
         return;
     }
 
+    if (request->version != core::wsl::kProtocolVersion) {
+        // A shim from another build. It is installed by hand, so this
+        // is what an upgrade leaves behind, and saying so in the pane
+        // beats refusing the line for a reason nobody can see.
+        reply->Refuse(L"wsl: the shim in %LOCALAPPDATA%\\ghostty\\bin is from another "
+                      L"build of Ghostty; running wsl.exe instead. Replace it with the "
+                      L"one from this release. See docs/WSL.md.");
+        return;
+    }
+
+    // What the line asks for is read here and nowhere else. The shim
+    // sends it as the shell wrote it and holds no opinion about it, so
+    // the option table and the rules about what may be carried stay in
+    // one place, with the tests that hold them.
+    const auto invocation = core::wsl::Invocation::ParseLine(request->commandLine);
+    if (!invocation.TakesOver()) {
+        // Nothing to explain: the line is one wsl.exe should have, and
+        // the shim running it is the right outcome, not a failure.
+        reply->Refuse();
+        return;
+    }
+
+    if (!HelperInstalled(invocation.Distribution())) {
+        // Only someone who turned wsl-bridge on reaches this, since the
+        // shim is on the PATH while it is on. Having asked for the
+        // bridge and not installed its half, they are owed the reason
+        // the pane stays where it is. The distribution is named because
+        // the binary is installed per distribution, and having it in
+        // one is easy to mistake for having it.
+        std::wstring message = L"wsl: ";
+        message += core::wsl::kHelperName;
+        message += L" is not installed in ";
+        message += invocation.Distribution().empty() ? L"the default distribution"
+                                                     : invocation.Distribution();
+        message += L"; running wsl.exe instead. See docs/WSL.md.";
+        reply->Refuse(message);
+        return;
+    }
+
     DEBUG_TRACE(L"ShimServer: open pane=%llu distro=%s\n",
                 static_cast<unsigned long long>(request->paneId),
-                request->distro.empty() ? L"(default)" : request->distro.c_str());
+                invocation.Distribution().empty() ? L"(default)"
+                                                  : invocation.Distribution().c_str());
     bool queued = m_ui.TryEnqueue(
-        [onOpen = m_onOpen, req = std::move(*request), reply]() mutable {
-            onOpen(std::move(req), reply);
+        [onOpen = m_onOpen, paneId = request->paneId, cwd = std::move(request->cwd),
+         invocation, reply]() mutable {
+            onOpen(paneId, std::move(cwd), invocation, reply);
         });
     if (!queued) reply->Refuse();
 }

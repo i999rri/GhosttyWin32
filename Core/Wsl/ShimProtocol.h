@@ -6,12 +6,25 @@
 // shim, a plain console program, and the host share this one copy.
 //
 // Wire format is one UTF-8 line per message, fields separated by tabs.
-// Windows paths and distribution names cannot contain tabs or
-// newlines, so no escaping is needed.
 //
-//   shim -> host   open\t<pane id>\t<cwd>\t<distro>\t<directory>\t<user>\n
+//   shim -> host   open\t<version>\t<pane id>\t<cwd>\t<command line>\n
 //   host -> shim   done\t<exit code>\n        the session ended
-//                  refused\n                  the host will not open one
+//                  refused\n                  no session; say nothing
+//                  refused\t<text>\n          no session; print this first
+//
+// The command line is whatever the shell wrote after the program name,
+// unread by the shim: deciding what a `wsl` line means belongs to the
+// host, which has the option table and the tests for it. It is the last
+// field, so a tab inside it needs no escaping, and a newline cannot be
+// in it at all -- the line ends at the first one.
+//
+// The version says which of these the shim speaks. It is there because
+// the shim is installed by hand and a host can meet one from another
+// build (docs/WSL.md says why it is installed that way): the host can
+// then say so, in the pane, instead of refusing a line for reasons the
+// person cannot see. It is the first field and never leaves, so even a
+// shim too old to send one is read as unparseable rather than
+// misunderstood.
 
 #include <windows.h>
 #include <charconv>
@@ -21,6 +34,11 @@
 #include <string_view>
 
 namespace core::wsl {
+
+// Which wire format this build speaks. Bumped when a message changes
+// shape, so a shim and a host from different builds can say so rather
+// than misread each other.
+inline constexpr uint32_t kProtocolVersion = 1;
 
 // Set on every ConPTY surface the host spawns while wsl-bridge is on,
 // so a shim started from that shell can find its way back to the pane.
@@ -57,17 +75,25 @@ inline std::optional<unsigned long> PidFromPipeName(std::wstring_view name) {
 
 // Shim -> host: open WSL in place of pane `paneId`.
 struct OpenRequest {
+    // Which wire format the shim was built against. Carried, not
+    // judged: what to do about a version this host does not know is the
+    // host's to decide, and it has a pane to explain it in.
+    uint32_t     version{ 0 };
     uint64_t     paneId{ 0 };
     std::wstring cwd;
-    std::wstring distro;      // empty = the default distribution
-    std::wstring directory;   // empty = wherever cwd lands
-    std::wstring user;        // empty = the distribution's default
+    // The arguments as typed, for the host to read. Empty is a bare
+    // `wsl`, which is the common case.
+    std::wstring commandLine;
 };
 
 // Host -> shim.
 struct Reply {
     bool     opened{ false };
     uint32_t exitCode{ 0 };
+    // What the shim prints before falling back to the real wsl.exe,
+    // decided by the host so the shim carries no wording of its own.
+    // Empty means say nothing.
+    std::wstring message;
 };
 
 inline std::string ToUtf8(std::wstring_view text) {
@@ -90,62 +116,6 @@ inline std::wstring ToUtf16(std::string_view text) {
     return out;
 }
 
-// Whether `distro` may be forwarded: empty (the default distribution),
-// or letters, digits, '.', '_' and '-' starting with a letter or digit.
-// The host puts it on a command line that is split on whitespace with
-// no quoting, so anything else could smuggle arguments to wsl.exe or a
-// command into the distribution. A distribution outside this set can
-// still be opened by running the real wsl.exe.
-inline bool IsForwardableDistro(std::wstring_view distro) noexcept {
-    auto alnum = [](wchar_t c) {
-        return (c >= L'a' && c <= L'z') || (c >= L'A' && c <= L'Z') || (c >= L'0' && c <= L'9');
-    };
-    if (distro.empty()) return true;
-    if (!alnum(distro.front())) return false;
-    for (wchar_t c : distro) {
-        if (!alnum(c) && c != L'.' && c != L'_' && c != L'-') return false;
-    }
-    return true;
-}
-
-// Whether `directory` may be forwarded as `--cd`: a path under the home
-// (`~`, `~/src`) or an absolute Linux one, of letters, digits, '.', '_',
-// '-' and '/'. Same reason as the distribution, with the separator and
-// the home added -- wsl.exe expands a leading `~` whether or not
-// anything follows it. A Windows path is left out: the host already
-// carries the working directory of the shell that asked, and a drive
-// letter brings a backslash and often a space.
-inline bool IsForwardableDirectory(std::wstring_view directory) noexcept {
-    auto alnum = [](wchar_t c) {
-        return (c >= L'a' && c <= L'z') || (c >= L'A' && c <= L'Z') || (c >= L'0' && c <= L'9');
-    };
-    bool rooted = directory == L"~" || directory.starts_with(L"~/") ||
-                  directory.starts_with(L"/");
-    if (!rooted) return false;
-    for (wchar_t c : directory) {
-        if (c == L'~') continue;  // only ever the first character here
-        if (!alnum(c) && c != L'.' && c != L'_' && c != L'-' && c != L'/') return false;
-    }
-    return true;
-}
-
-// Whether `user` may be forwarded as `--user`: letters, digits, '.',
-// '_' and '-', not starting with the '-' that would read as an option.
-// Same reason as the distribution. Whether the name exists, or whether
-// a Linux name should begin with a digit, is wsl.exe's business: this
-// asks only whether the line can carry it.
-inline bool IsForwardableUser(std::wstring_view user) noexcept {
-    auto alnum = [](wchar_t c) {
-        return (c >= L'a' && c <= L'z') || (c >= L'A' && c <= L'Z') || (c >= L'0' && c <= L'9');
-    };
-    if (user.empty()) return false;
-    if (!alnum(user.front()) && user.front() != L'_') return false;
-    for (wchar_t c : user) {
-        if (!alnum(c) && c != L'.' && c != L'_' && c != L'-') return false;
-    }
-    return true;
-}
-
 // Whether `path` is a drive-letter absolute path (`C:\...` or `C:/...`).
 // The host opens a requested directory on its UI thread; a UNC or
 // device path could make that wait on the network. A mapped network
@@ -159,11 +129,9 @@ inline bool IsDriveAbsolutePath(std::wstring_view path) noexcept {
 
 inline std::string EncodeOpen(uint64_t paneId,
                               std::wstring_view cwd,
-                              std::wstring_view distro,
-                              std::wstring_view directory,
-                              std::wstring_view user) {
-    return "open\t" + std::to_string(paneId) + "\t" + ToUtf8(cwd) + "\t" + ToUtf8(distro) +
-           "\t" + ToUtf8(directory) + "\t" + ToUtf8(user) + "\n";
+                              std::wstring_view commandLine) {
+    return "open\t" + std::to_string(kProtocolVersion) + "\t" + std::to_string(paneId) +
+           "\t" + ToUtf8(cwd) + "\t" + ToUtf8(commandLine) + "\n";
 }
 
 inline std::string EncodeDone(uint32_t exitCode) {
@@ -172,6 +140,12 @@ inline std::string EncodeDone(uint32_t exitCode) {
 
 inline std::string EncodeRefused() {
     return "refused\n";
+}
+
+// Refused, with a line for the shim to print first.
+inline std::string EncodeRefused(std::wstring_view message) {
+    if (message.empty()) return EncodeRefused();
+    return "refused\t" + ToUtf8(message) + "\n";
 }
 
 namespace detail {
@@ -200,47 +174,47 @@ inline std::optional<OpenRequest> ParseOpen(std::string_view text) {
     auto line = detail::Line(text);
     if (!line) return std::nullopt;
 
-    // open \t id \t cwd \t distro \t directory \t user: six.
-    std::string_view fields[6];
-    size_t count = 0;
+    // open \t version \t id \t cwd \t command line. The first four are
+    // read out one tab at a time and the fifth is the remainder,
+    // whatever it holds -- a quoted argument with a tab in it is the
+    // shell's business, not this format's.
     std::string_view rest = *line;
-    while (true) {
+    std::string_view head[4];
+    for (auto& field : head) {
         auto tab = rest.find('\t');
-        if (count == 6) return std::nullopt;
-        fields[count++] = rest.substr(0, tab);
-        if (tab == std::string_view::npos) break;
+        if (tab == std::string_view::npos) return std::nullopt;
+        field = rest.substr(0, tab);
         rest.remove_prefix(tab + 1);
     }
-    if (count != 6 || fields[0] != "open") return std::nullopt;
+    if (head[0] != "open") return std::nullopt;
 
-    auto id = detail::Number<uint64_t>(fields[1]);
+    auto version = detail::Number<uint32_t>(head[1]);
+    if (!version) return std::nullopt;
+
+    auto id = detail::Number<uint64_t>(head[2]);
     if (!id || *id == 0) return std::nullopt;
 
-    // Checked here rather than where the command is built, so no path
-    // from the pipe to a command line can skip it. Empty is how each of
-    // these says "not given"; whether that is allowed is its own rule's
-    // business.
-    std::wstring distro = ToUtf16(fields[3]);
-    std::wstring directory = ToUtf16(fields[4]);
-    std::wstring user = ToUtf16(fields[5]);
-    if (!IsForwardableDistro(distro)) return std::nullopt;
-    if (!directory.empty() && !IsForwardableDirectory(directory)) return std::nullopt;
-    if (!user.empty() && !IsForwardableUser(user)) return std::nullopt;
-
-    return OpenRequest{ *id, ToUtf16(fields[2]), std::move(distro),
-                        std::move(directory), std::move(user) };
+    // Nothing here reads the command line, and nothing here judges the
+    // version. What the line may ask for is Invocation's to say, on the
+    // host, where the rules live with the tests that hold them.
+    return OpenRequest{ *version, *id, ToUtf16(head[3]), ToUtf16(rest) };
 }
 
 inline std::optional<Reply> ParseReply(std::string_view text) {
     auto line = detail::Line(text);
     if (!line) return std::nullopt;
-    if (*line == "refused") return Reply{ false, 0 };
+    if (*line == "refused") return Reply{ false, 0, {} };
+
+    constexpr std::string_view kRefused = "refused\t";
+    if (line->starts_with(kRefused)) {
+        return Reply{ false, 0, ToUtf16(line->substr(kRefused.size())) };
+    }
 
     constexpr std::string_view kDone = "done\t";
     if (!line->starts_with(kDone)) return std::nullopt;
     auto code = detail::Number<uint32_t>(line->substr(kDone.size()));
     if (!code) return std::nullopt;
-    return Reply{ true, *code };
+    return Reply{ true, *code, {} };
 }
 
 }  // namespace core::wsl

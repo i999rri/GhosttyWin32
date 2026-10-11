@@ -126,6 +126,7 @@
     <ClInclude Include="Wsl\HelperProbe.h" />
     <ClInclude Include="Wsl\Invocation.h" />
     <ClInclude Include="Wsl\SessionExit.h" />
+    <ClInclude Include="Wsl\RealWsl.h" />
     <ClInclude Include="Wsl\ShimProtocol.h" />
   </ItemGroup>
   <ItemGroup>

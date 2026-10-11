@@ -15,6 +15,7 @@
 #include "Tabs/Tabs.h"
 #include "Windows/WindowCloseGate.h"
 #include "Windows/WindowState.h"
+#include "Wsl/Invocation.h"
 #include "Wsl/ShimProtocol.h"
 #include "Wsl/ShimReply.h"
 #include <memory>
@@ -224,7 +225,9 @@ namespace winrt::GhosttyWin32::implementation
         // answered with WSL's exit code then; it is refused now when
         // the pane is unknown, already shows WSL in place, or the
         // swap fails. Called on the UI thread by App's shim server.
-        void OpenWslInPane(PaneId id, core::wsl::OpenRequest request,
+        void OpenWslInPane(PaneId id,
+                           std::wstring cwd,
+                           core::wsl::Invocation invocation,
                            std::shared_ptr<wsl::ShimReply> reply);
 
         // Read HKCU\...\Themes\Personalize\AppsUseLightTheme and forward
