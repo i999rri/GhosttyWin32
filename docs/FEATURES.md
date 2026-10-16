@@ -205,7 +205,7 @@ WSL のペインは、Windows の擬似コンソールではなく Linux の pty
 
 libghostty asks the host to do things through actions, and of the 69 it defines, 60 do something here. Seven more are answered and deliberately do nothing, and two are not answered at all.
 
-Answering matters more than it looks: a refused action is not consumed by libghostty, so a key bound to it is encoded for the shell instead. That is why the list below is "answered, does nothing" rather than "unhandled".
+Answering matters more than it looks: libghostty reports a refused action as not performed, and a key bound to it with upstream's `performable:` flag is then encoded for the shell instead. That is why the list below is "answered, does nothing" rather than "unhandled".
 
 | Action | What happens here |
 | --- | --- |
@@ -222,7 +222,7 @@ Answering matters more than it looks: a refused action is not consumed by libgho
 
 libghostty は action という形で host に仕事を頼む。定義されている 69 個のうち、60 個がここで何かをする。7 個は答えるだけで意図的に何もせず、2 個は答えてもいない。
 
-答えるかどうかは見た目より重い。断った action は libghostty に消費されないので、それに割り当てたキーがシェル向けにエンコードされる。下の表が「未対応」ではなく「答えるが何もしない」になっているのはそのため。
+答えるかどうかは見た目より重い。断った action は実行されなかったものとして扱われ、upstream の `performable:` を付けて割り当てたキーはシェル向けにエンコードされる。下の表が「未対応」ではなく「答えるが何もしない」になっているのはそのため。
 
 | action | ここで何が起きるか |
 | --- | --- |

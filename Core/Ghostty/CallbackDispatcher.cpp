@@ -232,9 +232,11 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
         // last-HWND-gone via CLOSE_WINDOW:
         case GHOSTTY_ACTION_QUIT_TIMER:
         // A title for the window itself, which this host does not
-        // have: its chrome shows the active tab's. Acked rather
-        // than refused so `set_window_title` does not type its own
-        // keystroke into the shell.
+        // have: its chrome shows the active tab's. Acked rather than
+        // refused, because libghostty reports a refused action as not
+        // performed, and a binding carrying upstream's `performable:`
+        // flag is then treated as absent and its key typed into the
+        // shell.
         case GHOSTTY_ACTION_SET_WINDOW_TITLE:
             return true;
 

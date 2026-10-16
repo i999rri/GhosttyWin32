@@ -450,10 +450,9 @@ TEST(GhosttyCallbackDispatcherTest, ShowChildExitedWithAppTargetReachesNoView) {
 // ----- tab to a new window -----
 
 TEST(GhosttyCallbackDispatcherTest, MoveTabToNewWindowReachesTheViewWithItsSurface) {
-    // Routed rather than refused. An action the host answers false to is
-    // not consumed by libghostty, and the key that triggered it is then
-    // encoded to the shell -- so `move_tab_to_new_window` used to type
-    // its own keystroke into the terminal.
+    // Routed rather than refused. The dispatcher refuses every tag it
+    // has no case for, so `move_tab_to_new_window` used to do nothing
+    // at all.
     MockMainWindowView view;
     auto d = CallbackDispatcher::Create(view);
 
@@ -470,8 +469,8 @@ TEST(GhosttyCallbackDispatcherTest, MoveTabToNewWindowReachesTheViewWithItsSurfa
 }
 
 TEST(GhosttyCallbackDispatcherTest, MoveTabToNewWindowNeedsASurface) {
-    // App-targeted, so there is no tab to move. Still answered true:
-    // refusing would put the keystroke in the shell.
+    // App-targeted, so there is no tab to move. Answered all the same,
+    // to match the neighbouring tab and split actions.
     MockMainWindowView view;
     auto d = CallbackDispatcher::Create(view);
 

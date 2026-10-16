@@ -90,8 +90,8 @@ struct IWindow {
 
     // MOVE_TAB_TO_NEW_WINDOW: the tab holding `surface` leaves for a
     // window of its own, as a tear-out does from the mouse. Routed
-    // because an action this host does not take is not consumed, and
-    // the key that triggered it is then encoded to the shell.
+    // because the dispatcher refuses what it has no case for, which
+    // left `move_tab_to_new_window` doing nothing at all.
     virtual void MoveTabToNewWindow(ghostty_surface_t surface) = 0;
 
     // Expand the source leaf to fill its tab; a second call restores
