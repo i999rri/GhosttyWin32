@@ -325,10 +325,10 @@ namespace winrt::GhosttyWin32::implementation
         m_surface.MouseButton(GHOSTTY_MOUSE_RELEASE, *button, host::currentMods());
     }
 
-    void SurfaceHost::OnPointerCaptureLost(muxi::PointerRoutedEventArgs const& args)
+    void SurfaceHost::OnPointerCaptureLost()
     {
         if (!m_surface) return;
-        args.Handled(true);
+
         // The capture is what was going to deliver the releases, so
         // once it is gone they are not coming. Take every press back
         // now, before libghostty reads the next move as a drag of a

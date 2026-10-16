@@ -94,8 +94,8 @@ namespace winrt::GhosttyWin32::implementation
         PointerReleased([weakSelf](auto&&, muxi::PointerRoutedEventArgs const& args) {
             if (auto self = weakSelf.get()) self->m_host->OnPointerReleased(args);
         });
-        PointerCaptureLost([weakSelf](auto&&, muxi::PointerRoutedEventArgs const& args) {
-            if (auto self = weakSelf.get()) self->m_host->OnPointerCaptureLost(args);
+        PointerCaptureLost([weakSelf](auto&&, auto&&) {
+            if (auto self = weakSelf.get()) self->m_host->OnPointerCaptureLost();
         });
         PointerWheelChanged([weakSelf](auto&&, muxi::PointerRoutedEventArgs const& args) {
             if (auto self = weakSelf.get()) self->m_host->OnPointerWheelChanged(args);
