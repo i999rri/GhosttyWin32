@@ -203,8 +203,9 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
                                              action.action.goto_split);
             return false;
         case GHOSTTY_ACTION_MOVE_TAB_TO_NEW_WINDOW:
-            return m_actions.OnMoveTabToNewWindow(
-                target.tag == GHOSTTY_TARGET_SURFACE ? target.target.surface : nullptr);
+            if (target.tag == GHOSTTY_TARGET_SURFACE)
+                return m_actions.OnMoveTabToNewWindow(target.target.surface);
+            return false;
 
         case GHOSTTY_ACTION_EQUALIZE_SPLITS:
             if (target.tag == GHOSTTY_TARGET_SURFACE)

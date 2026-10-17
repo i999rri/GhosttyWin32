@@ -468,13 +468,14 @@ TEST(GhosttyCallbackDispatcherTest, MoveTabToNewWindowReachesTheViewWithItsSurfa
     EXPECT_EQ(view.lastMovedTabSurface, surface);
 }
 
-TEST(GhosttyCallbackDispatcherTest, MoveTabToNewWindowNeedsASurface) {
-    // App-targeted, so there is no tab to move. Answered all the same,
-    // to match the neighbouring tab and split actions.
+TEST(GhosttyCallbackDispatcherTest, MoveTabToNewWindowRefusesAnAppTarget) {
+    // The dispatcher owns the shape of the target, as it does for every
+    // other tab and split action: a delivery that names no surface is
+    // refused here rather than handed on as a null one.
     MockMainWindowView view;
     auto d = CallbackDispatcher::Create(view);
 
-    EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_MOVE_TAB_TO_NEW_WINDOW));
+    EXPECT_FALSE(DispatchTag(*d, GHOSTTY_ACTION_MOVE_TAB_TO_NEW_WINDOW));
     EXPECT_EQ(view.moveTabToNewWindowCalls, 0);
 }
 

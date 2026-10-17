@@ -707,12 +707,10 @@ bool Actions::OnGotoSplit(ghostty_surface_t surface,
 // the machinery already -- this is what a tab dragged off the strip
 // does -- so what was missing was the route from the action.
 bool Actions::OnMoveTabToNewWindow(ghostty_surface_t surface) {
-    // An app-targeted delivery names no tab to move. Answered all
-    // the same, as the neighbouring split actions are: a keybind
-    // always carries the surface it fired on
-    // (external/ghostty/src/Surface.zig:5353), so nothing arrives
-    // here that refusing would help.
-    if (!surface) return true;
+    // True is the only answer this can give: the view is reached on
+    // the UI thread, long after the return, so what it decides there
+    // -- including leaving a lone tab where it is -- cannot be
+    // reported back. See DispatchToView.
     DispatchToView([this, surface]() { m_view.MoveTabToNewWindow(surface); });
     return true;
 }
