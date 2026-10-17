@@ -68,7 +68,7 @@ A key named here is one this host reads. The keys libghostty acts on by itself a
 | Feature | Notes |
 | --- | --- |
 | Keyboard | Scan code and text are forwarded separately, so keybinds hold across non-Latin layouts, dead keys and AltGr |
-| Mouse | Left, middle and right click, drag, and the wheel |
+| Mouse | Left, middle and right click, drag, and the wheel. The middle button reaches libghostty, so `middle-click-action` applies |
 | Selection | Drag to select, `Ctrl+C`, `Ctrl+V`, right-click to copy. The selection clears after a copy. The right-click behaviour is fixed here, not read from `right-click-action` |
 | Cursor shape | Follows the terminal: a text cursor over text, a hand over a link |
 | Links | Ctrl+click opens the URL in the default browser |
@@ -80,7 +80,7 @@ A key named here is one this host reads. The keys libghostty acts on by itself a
 | 機能 | 補足 |
 | --- | --- |
 | キーボード | スキャンコードと文字を別々に渡すので、ラテン以外の配列、デッドキー、AltGr でもキーバインドが崩れない |
-| マウス | 左・中・右クリック、ドラッグ、ホイール |
+| マウス | 左・中・右クリック、ドラッグ、ホイール。中ボタンは libghostty まで届くので `middle-click-action` が効く |
 | 選択 | ドラッグで選択、`Ctrl+C`、`Ctrl+V`、右クリックでコピー。コピー後に選択は解除される。右クリックの動作は固定で、`right-click-action` から読んではいない |
 | カーソルの形 | 端末に従う。文字の上では文字カーソル、リンクの上では手 |
 | リンク | Ctrl+クリックで既定のブラウザが開く |
