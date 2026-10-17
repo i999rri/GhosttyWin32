@@ -88,6 +88,12 @@ struct IWindow {
     // Reset every split ratio in the source surface's tab to 0.5.
     virtual void EqualizeSplitsForSurface(ghostty_surface_t surface) = 0;
 
+    // MOVE_TAB_TO_NEW_WINDOW: the tab holding `surface` leaves for a
+    // window of its own, as a tear-out does from the mouse. Routed
+    // because the dispatcher refuses what it has no case for, which
+    // left `move_tab_to_new_window` doing nothing at all.
+    virtual void MoveTabToNewWindow(ghostty_surface_t surface) = 0;
+
     // Expand the source leaf to fill its tab; a second call restores
     // the regular split layout.
     virtual void ToggleSplitZoomForSurface(ghostty_surface_t surface) = 0;

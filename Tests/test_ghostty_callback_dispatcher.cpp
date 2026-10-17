@@ -446,3 +446,45 @@ TEST(GhosttyCallbackDispatcherTest, ShowChildExitedWithAppTargetReachesNoView) {
     EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_SHOW_CHILD_EXITED));
     EXPECT_EQ(view.childExitedCalls, 0);
 }
+
+// ----- tab to a new window -----
+
+TEST(GhosttyCallbackDispatcherTest, MoveTabToNewWindowReachesTheViewWithItsSurface) {
+    // Routed rather than refused. The dispatcher refuses every tag it
+    // has no case for, so `move_tab_to_new_window` used to do nothing
+    // at all.
+    MockMainWindowView view;
+    auto d = CallbackDispatcher::Create(view);
+
+    auto surface = reinterpret_cast<ghostty_surface_t>(0x4242);
+    ghostty_target_s target{};
+    target.tag = GHOSTTY_TARGET_SURFACE;
+    target.target.surface = surface;
+    ghostty_action_s action{};
+    action.tag = GHOSTTY_ACTION_MOVE_TAB_TO_NEW_WINDOW;
+
+    EXPECT_TRUE(d->DispatchAction(target, action));
+    EXPECT_EQ(view.moveTabToNewWindowCalls, 1);
+    EXPECT_EQ(view.lastMovedTabSurface, surface);
+}
+
+TEST(GhosttyCallbackDispatcherTest, MoveTabToNewWindowRefusesAnAppTarget) {
+    // The dispatcher owns the shape of the target, as it does for every
+    // other tab and split action: a delivery that names no surface is
+    // refused here rather than handed on as a null one.
+    MockMainWindowView view;
+    auto d = CallbackDispatcher::Create(view);
+
+    EXPECT_FALSE(DispatchTag(*d, GHOSTTY_ACTION_MOVE_TAB_TO_NEW_WINDOW));
+    EXPECT_EQ(view.moveTabToNewWindowCalls, 0);
+}
+
+TEST(GhosttyCallbackDispatcherTest, SetWindowTitleIsAcknowledged) {
+    // This host has no title of its own for a window -- the chrome shows
+    // the active tab's -- so there is nothing to do. It is still
+    // acknowledged, for the same reason as above.
+    MockMainWindowView view;
+    auto d = CallbackDispatcher::Create(view);
+
+    EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_SET_WINDOW_TITLE));
+}

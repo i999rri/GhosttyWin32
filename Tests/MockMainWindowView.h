@@ -64,6 +64,14 @@ struct MockMainWindowView : core::host::IWindow {
 
     int equalizeSplitsCalls = 0;
     ghostty_surface_t lastEqualizeSurface = nullptr;
+    int moveTabToNewWindowCalls = 0;
+    ghostty_surface_t lastMovedTabSurface = nullptr;
+
+    void MoveTabToNewWindow(ghostty_surface_t s) override {
+        ++moveTabToNewWindowCalls;
+        lastMovedTabSurface = s;
+    }
+
     void EqualizeSplitsForSurface(ghostty_surface_t s) override {
         ++equalizeSplitsCalls;
         lastEqualizeSurface = s;
