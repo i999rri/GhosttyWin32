@@ -1,13 +1,22 @@
 #pragma once
 
 #include "ghostty.h"
-#include <bit>
-#include <cstdint>
+#include <algorithm>
+#include <array>
+#include <cstddef>
 #include <optional>
 
 namespace core::input {
 
 // The mouse buttons this host has told libghostty are down.
+//
+// Deliberately not a copy of what Windows reports. Every pointer
+// event carries the live button state in its properties, so there is
+// nothing to gain by keeping it; what no one else can answer is
+// whether a press of ours already went out, and that is what every
+// method here is about. The two can disagree -- a right-click that
+// copies a selection sends no press at all -- and when they do, this
+// record is the one libghostty agrees with.
 //
 // The keyboard needs no counterpart. ghostty answers a key event and
 // keeps nothing the host has to stay in step with, but it does track
@@ -17,17 +26,20 @@ namespace core::input {
 // takes back turns every later move into a drag that is not
 // happening.
 //
-// Windows has five buttons and they are independent, so the record
-// is a bit per button rather than a single slot.
+// One slot per button, because Windows has five of them and they are
+// independent. A slot is a bool today, and an array rather than a bit
+// per button in one word so that the storage reads the way it is
+// meant -- and so that a button needing more than a bool later
+// changes the element, not the representation.
 class PressedMouseButtons {
 public:
     // True when this is the button's first press, which is the only
     // one libghostty should hear.
     bool Press(ghostty_input_mouse_button_e button) noexcept {
-        uint32_t const bit = Bit(button);
-        if ((m_down & bit) != 0) return false;
+        bool& relayed = Slot(button);
+        if (relayed) return false;
 
-        m_down |= bit;
+        relayed = true;
         return true;
     }
 
@@ -36,40 +48,50 @@ public:
     // right-click that copies a selection sends none, and neither
     // does a press that lands before the surface exists.
     bool Release(ghostty_input_mouse_button_e button) noexcept {
-        uint32_t const bit = Bit(button);
-        if ((m_down & bit) == 0) return false;
+        bool& relayed = Slot(button);
+        if (!relayed) return false;
 
-        m_down &= ~bit;
+        relayed = false;
         return true;
     }
 
-    // True while any button is down. The host holds the pointer
-    // capture for exactly this long: it is what brings a release
-    // that happens outside the panel back to this control, and
-    // keeping it after the last button is up would take the pointer
-    // away from everything else.
-    bool AnyDown() const noexcept { return m_down != 0; }
+    // True while any press is outstanding. The host holds the pointer
+    // capture for exactly this long: it is what brings a release that
+    // happens outside the panel back to this control, and keeping it
+    // after the last button is up would take the pointer away from
+    // everything else.
+    bool AnyDown() const noexcept {
+        return std::any_of(m_relayed.begin(), m_relayed.end(),
+                           [](bool relayed) { return relayed; });
+    }
 
-    // Takes back one of the buttons still down, until none is left.
-    // The releases arrive one at a time everywhere except when the
-    // capture is lost, where none of them is going to arrive at all.
+    // Takes back one of the presses still outstanding, until none is
+    // left. The releases arrive one at a time everywhere except when
+    // the capture is lost, where none of them is going to arrive at
+    // all.
     std::optional<ghostty_input_mouse_button_e> ReleaseAny() noexcept {
-        if (m_down == 0) return std::nullopt;
+        for (size_t i = 0; i < m_relayed.size(); ++i) {
+            if (!m_relayed[i]) continue;
 
-        auto button = static_cast<ghostty_input_mouse_button_e>(
-            std::countr_zero(m_down));
-        Release(button);
-        return button;
+            m_relayed[i] = false;
+            return static_cast<ghostty_input_mouse_button_e>(i);
+        }
+        return std::nullopt;
     }
 
 private:
-    static uint32_t Bit(ghostty_input_mouse_button_e button) noexcept {
-        static_assert(GHOSTTY_MOUSE_ELEVEN < 32,
-                      "one bit per button no longer fits the record");
-        return uint32_t{ 1 } << static_cast<uint32_t>(button);
+    // The enum's own value is the slot, which is what ghostty's
+    // `Button.max` exists for on the Zig side
+    // (external/ghostty/src/input/mouse.zig:34). The C header stops at
+    // the last button instead of naming a count, so the size is
+    // derived here.
+    static constexpr size_t kButtonCount = GHOSTTY_MOUSE_ELEVEN + 1;
+
+    bool& Slot(ghostty_input_mouse_button_e button) noexcept {
+        return m_relayed[static_cast<size_t>(button)];
     }
 
-    uint32_t m_down = 0;
+    std::array<bool, kButtonCount> m_relayed{};
 };
 
 }  // namespace core::input

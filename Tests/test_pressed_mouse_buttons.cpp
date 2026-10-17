@@ -87,8 +87,8 @@ TEST(PressedMouseButtonsTest, ReleaseAnyOnAnIdleRecordSaysNothing) {
 }
 
 TEST(PressedMouseButtonsTest, TheHighestButtonLibghosttyDefinesFits) {
-    // The record is one bit per button, so the top of the enum is
-    // the shift that has to stay in range.
+    // The record is one slot per button, sized from the top of the
+    // enum, so that is the index that has to stay in range.
     PressedMouseButtons buttons;
     EXPECT_TRUE(buttons.Press(GHOSTTY_MOUSE_ELEVEN));
     EXPECT_TRUE(buttons.Release(GHOSTTY_MOUSE_ELEVEN));
