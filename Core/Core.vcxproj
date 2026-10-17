@@ -107,6 +107,7 @@
     <ClInclude Include="Host\FuzzyMatch.h" />
     <ClInclude Include="Host\TitleSource.h" />
     <ClInclude Include="Input\KeyEventTranslator.h" />
+    <ClInclude Include="Input\PressedMouseButtons.h" />
     <ClInclude Include="Interop\Encoding.h" />
     <ClInclude Include="Win32\Clipboard.h" />
     <ClInclude Include="Panes\Branch.h" />
