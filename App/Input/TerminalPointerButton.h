@@ -24,7 +24,14 @@ namespace winrt::GhosttyWin32::implementation::input {
 // PointerUpdateKind values"), and a touch contact or a pen tip has
 // no button of its own. Windows reports those as the primary
 // action, which this terminal has always taken as the left button,
-// so Other is read the same way here.
+// so Other is read the same way -- but only for a press or a release
+// event, because a plain move is Other too.
+//
+// Only the first mouse button reaches PointerPressed and
+// PointerReleased. XAML ties one button to the pointer at a time,
+// and "other mouse button clicks are routed through the PointerMoved
+// event" (UIElement.PointerPressed), so a move can carry a press or
+// a release of its own.
 //
 // Buttons four and up are left alone. Windows carries them as
 // XBUTTON1 and XBUTTON2 and libghostty has GHOSTTY_MOUSE_FOUR
@@ -39,37 +46,58 @@ public:
         : m_kind(args.GetCurrentPoint(nullptr).Properties().PointerUpdateKind())
     {}
 
+    // The button a PointerPressed is about.
     std::optional<ghostty_input_mouse_button_e> pressedButton() const noexcept {
-        using winrt::Microsoft::UI::Input::PointerUpdateKind;
-        switch (m_kind) {
-        case PointerUpdateKind::LeftButtonPressed:
-        case PointerUpdateKind::Other:
-            return GHOSTTY_MOUSE_LEFT;
-        case PointerUpdateKind::RightButtonPressed:
-            return GHOSTTY_MOUSE_RIGHT;
-        case PointerUpdateKind::MiddleButtonPressed:
-            return GHOSTTY_MOUSE_MIDDLE;
-        default:
-            return std::nullopt;
-        }
+        if (auto named = namedPress()) return named;
+        return primaryContact();
     }
 
+    // The button a PointerReleased is about.
     std::optional<ghostty_input_mouse_button_e> releasedButton() const noexcept {
-        using winrt::Microsoft::UI::Input::PointerUpdateKind;
-        switch (m_kind) {
-        case PointerUpdateKind::LeftButtonReleased:
-        case PointerUpdateKind::Other:
-            return GHOSTTY_MOUSE_LEFT;
-        case PointerUpdateKind::RightButtonReleased:
-            return GHOSTTY_MOUSE_RIGHT;
-        case PointerUpdateKind::MiddleButtonReleased:
-            return GHOSTTY_MOUSE_MIDDLE;
-        default:
-            return std::nullopt;
-        }
+        if (auto named = namedRelease()) return named;
+        return primaryContact();
+    }
+
+    // The button a PointerMoved pressed or released, if it carried
+    // one. Only a kind that names a button counts here: read as a
+    // contact, every plain move would become a press.
+    std::optional<ghostty_input_mouse_button_e> buttonPressedDuringMove() const noexcept {
+        return namedPress();
+    }
+    std::optional<ghostty_input_mouse_button_e> buttonReleasedDuringMove() const noexcept {
+        return namedRelease();
     }
 
 private:
+    std::optional<ghostty_input_mouse_button_e> namedPress() const noexcept {
+        using winrt::Microsoft::UI::Input::PointerUpdateKind;
+        switch (m_kind) {
+        case PointerUpdateKind::LeftButtonPressed:   return GHOSTTY_MOUSE_LEFT;
+        case PointerUpdateKind::RightButtonPressed:  return GHOSTTY_MOUSE_RIGHT;
+        case PointerUpdateKind::MiddleButtonPressed: return GHOSTTY_MOUSE_MIDDLE;
+        default:                                     return std::nullopt;
+        }
+    }
+
+    std::optional<ghostty_input_mouse_button_e> namedRelease() const noexcept {
+        using winrt::Microsoft::UI::Input::PointerUpdateKind;
+        switch (m_kind) {
+        case PointerUpdateKind::LeftButtonReleased:   return GHOSTTY_MOUSE_LEFT;
+        case PointerUpdateKind::RightButtonReleased:  return GHOSTTY_MOUSE_RIGHT;
+        case PointerUpdateKind::MiddleButtonReleased: return GHOSTTY_MOUSE_MIDDLE;
+        default:                                      return std::nullopt;
+        }
+    }
+
+    // A press or release event whose kind names no button: a touch
+    // contact or a pen tip, taken as the left button.
+    std::optional<ghostty_input_mouse_button_e> primaryContact() const noexcept {
+        if (m_kind == winrt::Microsoft::UI::Input::PointerUpdateKind::Other) {
+            return GHOSTTY_MOUSE_LEFT;
+        }
+        return std::nullopt;
+    }
+
     winrt::Microsoft::UI::Input::PointerUpdateKind m_kind;
 };
 

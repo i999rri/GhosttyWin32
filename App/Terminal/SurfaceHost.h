@@ -184,6 +184,7 @@ namespace winrt::GhosttyWin32::implementation
         void OnPointerPressed(Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args);
         void OnPointerReleased(Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args);
         void OnPointerCaptureLost();
+        void OnPointerCanceled(Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args);
         void OnPointerWheelChanged(Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args);
         // Wheel from somewhere other than the panel (an overlay that
         // would otherwise consume it). Same scroll path, delta only.
@@ -217,6 +218,14 @@ namespace winrt::GhosttyWin32::implementation
             return !m_terminalOwnsInput || m_terminalOwnsInput();
         }
         void CopySelectionToClipboard();
+        // One button going down or up, whichever event carried it:
+        // the first button comes through Pressed and Released, any
+        // other through Moved.
+        void PressButton(ghostty_input_mouse_button_e button,
+                         Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args);
+        void ReleaseButton(ghostty_input_mouse_button_e button,
+                           Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args);
+        void TakeBackEveryPress();
         void Tick();
 
         Microsoft::UI::Xaml::Controls::SwapChainPanel m_panel{ nullptr };
