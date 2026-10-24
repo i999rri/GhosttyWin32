@@ -1,9 +1,9 @@
 #pragma once
 
 #include "Ghostty/Surface.h"
-#include "Input/PressedMouseButtons.h"
 #include "Terminal/EditContext.h"
 #include "Terminal/ImeSession.h"
+#include "Terminal/MouseInput.h"
 #include "Interop/Encoding.h"
 #include "Win32/Clipboard.h"
 #include "ghostty.h"
@@ -97,7 +97,8 @@ namespace winrt::GhosttyWin32::implementation
         explicit SurfaceHost(Microsoft::UI::Xaml::Controls::SwapChainPanel panel)
             : m_panel(std::move(panel))
             , m_editContext(m_panel)
-            , m_ime(m_editContext) {}
+            , m_ime(m_editContext)
+            , m_mouse(m_panel, m_surface, [this] { CopySelectionToClipboard(); }) {}
         ~SurfaceHost() { Detach(); }
 
         SurfaceHost(SurfaceHost const&) = delete;
@@ -218,14 +219,6 @@ namespace winrt::GhosttyWin32::implementation
             return !m_terminalOwnsInput || m_terminalOwnsInput();
         }
         void CopySelectionToClipboard();
-        // One button going down or up, whichever event carried it:
-        // the first button comes through Pressed and Released, any
-        // other through Moved.
-        void PressButton(ghostty_input_mouse_button_e button,
-                         Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args);
-        void ReleaseButton(ghostty_input_mouse_button_e button,
-                           Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args);
-        void TakeBackEveryPress();
         void Tick();
 
         Microsoft::UI::Xaml::Controls::SwapChainPanel m_panel{ nullptr };
@@ -263,9 +256,10 @@ namespace winrt::GhosttyWin32::implementation
         EditContext m_editContext;
         ImeSession m_ime;
 
-        // Which buttons libghostty has been told are down, so a
-        // release reports the button whose press it answers.
-        core::input::PressedMouseButtons m_pressedButtons;
+        // What the pointer tells libghostty, and the capture that
+        // keeps it whole. Declared after the panel and the surface,
+        // which it holds onto.
+        MouseInput m_mouse;
 
         std::function<void(ghostty_surface_t)> m_onFocused;
         std::function<bool()> m_terminalOwnsInput;

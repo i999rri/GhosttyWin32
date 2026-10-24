@@ -143,6 +143,9 @@
     <ClInclude Include="Terminal\ImeSession.h">
       <Filter>Terminal</Filter>
     </ClInclude>
+    <ClInclude Include="Terminal\MouseInput.h">
+      <Filter>Terminal</Filter>
+    </ClInclude>
     <ClInclude Include="Terminal\SurfaceHost.h">
       <Filter>Terminal</Filter>
     </ClInclude>

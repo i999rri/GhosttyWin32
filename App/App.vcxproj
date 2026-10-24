@@ -182,6 +182,7 @@
     <ClInclude Include="Terminal\EditContext.h" />
     <ClInclude Include="Terminal\EditContextHandlers.h" />
     <ClInclude Include="Terminal\ImeSession.h" />
+    <ClInclude Include="Terminal\MouseInput.h" />
     <ClInclude Include="Terminal\SurfaceHost.h" />
     <ClInclude Include="Tabs\ParkedTabs.h" />
     <ClInclude Include="Windows\TransparentBackdrop.h" />
