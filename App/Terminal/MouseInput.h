@@ -2,7 +2,7 @@
 
 #include "Ghostty/Surface.h"
 #include "Host/KeyModifiers.h"
-#include "Input/PressedMouseButtons.h"
+#include "Input/MouseButtonLedger.h"
 #include "Input/TerminalPointerButton.h"
 #include "ghostty.h"
 #include <winrt/Microsoft.UI.Input.h>
@@ -18,7 +18,7 @@ namespace winrt::GhosttyWin32::implementation
     // whole.
     //
     // The two live together because they describe one fact. The record
-    // (core::input::PressedMouseButtons) says which buttons libghostty
+    // (core::input::MouseButtonLedger) says which buttons libghostty
     // has been told are down, and the capture is held for exactly as
     // long as that record is not empty -- it is what brings a release
     // outside the panel back here. Kept apart, the rule linking them
@@ -121,14 +121,14 @@ namespace winrt::GhosttyWin32::implementation
 
         // The surface is going away and its presses with it, so there
         // is nothing left to take back.
-        void Reset() noexcept { m_buttons = {}; }
+        void Reset() noexcept { m_ledger = {}; }
 
     private:
         void Press(ghostty_input_mouse_button_e button,
                    Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args)
         {
-            bool const firstButtonDown = !m_buttons.AnyDown();
-            if (!m_buttons.Press(button)) return;
+            bool const firstButtonDown = !m_ledger.AnyOutstanding();
+            if (!m_ledger.Press(button)) return;
 
             // Capture so the release still arrives when the pointer has
             // left the panel by then, which is also what lets a
@@ -148,8 +148,8 @@ namespace winrt::GhosttyWin32::implementation
             // went out: a button released without one -- the
             // right-click that copied, a press that landed before the
             // owner had a surface -- is not reported.
-            bool const takenBack = m_buttons.Release(button);
-            if (!m_buttons.AnyDown()) m_panel.ReleasePointerCapture(args.Pointer());
+            bool const takenBack = m_ledger.Release(button);
+            if (!m_ledger.AnyOutstanding()) m_panel.ReleasePointerCapture(args.Pointer());
             if (!takenBack) return;
 
             m_surface.MouseButton(GHOSTTY_MOUSE_RELEASE, button, core::host::currentMods());
@@ -159,7 +159,7 @@ namespace winrt::GhosttyWin32::implementation
         // nobody is holding.
         void TakeBackEveryPress()
         {
-            while (auto button = m_buttons.ReleaseAny()) {
+            while (auto button = m_ledger.ReleaseAny()) {
                 m_surface.MouseButton(GHOSTTY_MOUSE_RELEASE, *button, core::host::currentMods());
             }
         }
@@ -168,6 +168,6 @@ namespace winrt::GhosttyWin32::implementation
         // The owner's member, so it follows Attach and Detach.
         core::ghostty::Surface& m_surface;
         CopySelection m_copySelection;
-        core::input::PressedMouseButtons m_buttons;
+        core::input::MouseButtonLedger m_ledger;
     };
 }

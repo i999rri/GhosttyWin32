@@ -31,7 +31,7 @@ namespace core::input {
 // per button in one word so that the storage reads the way it is
 // meant -- and so that a button needing more than a bool later
 // changes the element, not the representation.
-class PressedMouseButtons {
+class MouseButtonLedger {
 public:
     // True when this is the button's first press, which is the only
     // one libghostty should hear.
@@ -60,7 +60,7 @@ public:
     // happens outside the panel back to this control, and keeping it
     // after the last button is up would take the pointer away from
     // everything else.
-    bool AnyDown() const noexcept {
+    bool AnyOutstanding() const noexcept {
         return std::any_of(m_relayed.begin(), m_relayed.end(),
                            [](bool relayed) { return relayed; });
     }

@@ -84,7 +84,7 @@
     <ClInclude Include="Input\KeyEventTranslator.h">
       <Filter>Input</Filter>
     </ClInclude>
-    <ClInclude Include="Input\PressedMouseButtons.h">
+    <ClInclude Include="Input\MouseButtonLedger.h">
       <Filter>Input</Filter>
     </ClInclude>
     <ClInclude Include="Interop\Encoding.h">
