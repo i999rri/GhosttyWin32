@@ -55,6 +55,12 @@ public:
         return true;
     }
 
+    // True while this button's press is outstanding. The host asks
+    // before it decides what a press is, and records it afterwards.
+    bool IsOutstanding(ghostty_input_mouse_button_e button) const noexcept {
+        return m_relayed[static_cast<size_t>(button)];
+    }
+
     // True while any press is outstanding. The host holds the pointer
     // capture for exactly this long: it is what brings a release that
     // happens outside the panel back to this control, and keeping it

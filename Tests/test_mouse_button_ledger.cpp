@@ -45,6 +45,15 @@ TEST(MouseButtonLedgerTest, AButtonCanBePressedAgainAfterItsRelease) {
     EXPECT_TRUE(ledger.Press(GHOSTTY_MOUSE_LEFT));
 }
 
+TEST(MouseButtonLedgerTest, OnlyThePressedButtonIsOutstanding) {
+    MouseButtonLedger ledger;
+    ledger.Press(GHOSTTY_MOUSE_RIGHT);
+    EXPECT_TRUE(ledger.IsOutstanding(GHOSTTY_MOUSE_RIGHT));
+    EXPECT_FALSE(ledger.IsOutstanding(GHOSTTY_MOUSE_LEFT));
+    ledger.Release(GHOSTTY_MOUSE_RIGHT);
+    EXPECT_FALSE(ledger.IsOutstanding(GHOSTTY_MOUSE_RIGHT));
+}
+
 TEST(MouseButtonLedgerTest, NothingIsOutstandingUntilAPress) {
     MouseButtonLedger ledger;
     EXPECT_FALSE(ledger.AnyOutstanding());
