@@ -113,11 +113,18 @@ namespace winrt::GhosttyWin32::implementation
         // ledger and libghostty agreeing.
         void Apply(Transition const& t, Microsoft::UI::Xaml::Input::Pointer const& pointer)
         {
-            m_ledger = t.ledger;
+            AdoptLedger(t.ledger);
             if (t.capture.IsTake()) m_panel.CapturePointer(pointer);
             ReportButtonsToTerminal(t.reports);
             if (t.capture.IsDrop()) DropCaptureAfterThisEvent(pointer);
             if (t.copySelection) m_terminal.copySelection();
+        }
+
+        // The transition's ledger becomes this class's: from here on,
+        // this is what libghostty has been told.
+        void AdoptLedger(core::input::MouseButtonLedger const& ledger)
+        {
+            m_ledger = ledger;
         }
 
         // The presses and releases this transition owes libghostty,
