@@ -95,7 +95,7 @@
     <ClInclude Include="Input\TerminalKeyUp.h">
       <Filter>Input</Filter>
     </ClInclude>
-    <ClInclude Include="Input\TerminalPointerButton.h">
+    <ClInclude Include="Input\PointerEvent.h">
       <Filter>Input</Filter>
     </ClInclude>
     <ClInclude Include="Ghostty\MainWindowRuntime.h">

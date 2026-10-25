@@ -266,7 +266,7 @@ namespace winrt::GhosttyWin32::implementation
     void SurfaceHost::OnPointerMoved(muxi::PointerRoutedEventArgs const& args)
     {
         if (!m_surface) return;
-        m_mouse.Moved(args);
+        m_mouse.Handle(input::PointerEvent::from(args, m_panel));
     }
 
     void SurfaceHost::OnPointerPressed(muxi::PointerRoutedEventArgs const& args)
@@ -280,14 +280,14 @@ namespace winrt::GhosttyWin32::implementation
         // LostFocus fires, and KeyDown stops being delivered until
         // focus is restored some other way.
         args.Handled(true);
-        m_mouse.Pressed(args);
+        m_mouse.Handle(input::PointerEvent::from(args, m_panel));
     }
 
     void SurfaceHost::OnPointerReleased(muxi::PointerRoutedEventArgs const& args)
     {
         if (!m_surface) return;
         args.Handled(true);
-        m_mouse.Released(args);
+        m_mouse.Handle(input::PointerEvent::from(args, m_panel));
     }
 
     void SurfaceHost::OnPointerCaptureLost()
@@ -299,7 +299,7 @@ namespace winrt::GhosttyWin32::implementation
     void SurfaceHost::OnPointerCanceled(muxi::PointerRoutedEventArgs const& args)
     {
         if (!m_surface) return;
-        m_mouse.Canceled(args);
+        m_mouse.Canceled(args.Pointer());
     }
 
     void SurfaceHost::OnPointerWheelChanged(muxi::PointerRoutedEventArgs const& args)

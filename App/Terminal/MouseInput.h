@@ -3,7 +3,7 @@
 #include "Ghostty/Surface.h"
 #include "Host/KeyModifiers.h"
 #include "Input/MouseButtonLedger.h"
-#include "Input/TerminalPointerButton.h"
+#include "Input/PointerEvent.h"
 #include "ghostty.h"
 #include <winrt/Microsoft.UI.Input.h>
 #include <winrt/Microsoft.UI.Xaml.Controls.h>
@@ -47,48 +47,19 @@ namespace winrt::GhosttyWin32::implementation
         MouseInput(MouseInput const&) = delete;
         MouseInput& operator=(MouseInput const&) = delete;
 
-        void Moved(Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args)
+        // Every pointer event but the wheel comes through here: a
+        // move, a press, a release, and a press or release that rode
+        // in on a move because another button was already held. The
+        // position goes first so a change lands on the cell under the
+        // pointer.
+        void Handle(input::PointerEvent const& ev)
         {
-            auto pos = args.GetCurrentPoint(m_panel).Position();
-            m_surface.MousePos(pos.X, pos.Y, core::host::currentMods());
+            m_surface.MousePos(ev.position.X, ev.position.Y, core::host::currentMods());
+            if (!ev.change) return;
 
-            // A button pressed or released while another is held
-            // arrives here, not at Pressed or Released. The position
-            // goes first so the change lands on the cell under the
-            // pointer.
-            input::TerminalPointerButton pointer(args);
-            if (auto pressed = pointer.buttonPressedDuringMove()) {
-                Press(*pressed, args);
-            } else if (auto released = pointer.buttonReleasedDuringMove()) {
-                Release(*released, args);
-            }
-        }
-
-        void Pressed(Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args)
-        {
-            auto button = input::TerminalPointerButton(args).pressedButton();
-            if (!button) return;
-
-            // Right-click copies a selection instead of reaching the
-            // terminal. libghostty hears no press, which is also what
-            // keeps it from hearing the release. Only for a right
-            // button pressed on its own, which is what reaches this
-            // event: under a held left one it arrives at Moved, and
-            // copying there would clear the selection the left one is
-            // drawing.
-            if (*button == GHOSTTY_MOUSE_RIGHT && m_surface.HasSelection()) {
-                if (m_copySelection) m_copySelection();
-                return;
-            }
-            Press(*button, args);
-        }
-
-        void Released(Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args)
-        {
-            auto button = input::TerminalPointerButton(args).releasedButton();
-            if (!button) return;
-
-            Release(*button, args);
+            auto const [button, state] = *ev.change;
+            if (state == GHOSTTY_MOUSE_PRESS) Press(button, ev.pointer);
+            else                              Release(button, ev.pointer);
         }
 
         // The capture is what was going to deliver the releases, so
@@ -100,10 +71,10 @@ namespace winrt::GhosttyWin32::implementation
         // A canceled pointer ends its press with no release at all.
         // The capture goes after the record, so the CaptureLost it
         // raises finds nothing left to take back.
-        void Canceled(Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args)
+        void Canceled(Microsoft::UI::Xaml::Input::Pointer const& pointer)
         {
             TakeBackEveryPress();
-            m_panel.ReleasePointerCapture(args.Pointer());
+            m_panel.ReleasePointerCapture(pointer);
         }
 
         void Wheel(Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args)
@@ -125,9 +96,19 @@ namespace winrt::GhosttyWin32::implementation
 
     private:
         void Press(ghostty_input_mouse_button_e button,
-                   Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args)
+                   Microsoft::UI::Xaml::Input::Pointer const& pointer)
         {
             bool const firstButtonDown = !m_ledger.AnyOutstanding();
+
+            // Right-click copies a selection instead of reaching the
+            // terminal. libghostty hears no press, which is also what
+            // keeps it from hearing the release. Only for a right
+            // button pressed on its own: under a held left one, copying
+            // would clear the selection the left one is drawing.
+            if (button == GHOSTTY_MOUSE_RIGHT && firstButtonDown && m_surface.HasSelection()) {
+                if (m_copySelection) m_copySelection();
+                return;
+            }
             if (!m_ledger.Press(button)) return;
 
             // Capture so the release still arrives when the pointer has
@@ -136,20 +117,20 @@ namespace winrt::GhosttyWin32::implementation
             // reads a negative position as a drag that should scroll
             // (external/ghostty/src/Surface.zig:4555). Best effort -- a
             // refused capture costs the drag, not the click.
-            if (firstButtonDown) m_panel.CapturePointer(args.Pointer());
+            if (firstButtonDown) m_panel.CapturePointer(pointer);
 
             m_surface.MouseButton(GHOSTTY_MOUSE_PRESS, button, core::host::currentMods());
         }
 
         void Release(ghostty_input_mouse_button_e button,
-                     Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args)
+                     Microsoft::UI::Xaml::Input::Pointer const& pointer)
         {
             // Nothing to decide here beyond taking back a press that
             // went out: a button released without one -- the
             // right-click that copied, a press that landed before the
             // owner had a surface -- is not reported.
             bool const takenBack = m_ledger.Release(button);
-            if (!m_ledger.AnyOutstanding()) m_panel.ReleasePointerCapture(args.Pointer());
+            if (!m_ledger.AnyOutstanding()) m_panel.ReleasePointerCapture(pointer);
             if (!takenBack) return;
 
             m_surface.MouseButton(GHOSTTY_MOUSE_RELEASE, button, core::host::currentMods());
