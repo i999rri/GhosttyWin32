@@ -112,16 +112,17 @@ namespace winrt::GhosttyWin32::implementation
         // nothing of its own.
         void CarryOut(Transition const& t, Microsoft::UI::Xaml::Input::Pointer const& pointer)
         {
-            AdoptLedger(t.ledger);
+            RememberWhatTerminalHeard(t.ledger);
             ReportButtonsToTerminal(t.reports);
             if (t.capture.IsTake()) m_panel.CapturePointer(pointer);
             if (t.capture.IsDrop()) DropCaptureAfterThisEvent(pointer);
             if (t.copySelection) m_terminal.copySelection();
         }
 
-        // The transition's ledger becomes this class's: from here on,
-        // this is what libghostty has been told.
-        void AdoptLedger(core::input::MouseButtonLedger const& ledger)
+        // The next event is decided from this: the ledger is what
+        // libghostty has been told, and the transition carries it as
+        // it is after this event.
+        void RememberWhatTerminalHeard(core::input::MouseButtonLedger const& ledger)
         {
             m_ledger = ledger;
         }
