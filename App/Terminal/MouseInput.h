@@ -57,9 +57,8 @@ namespace winrt::GhosttyWin32::implementation
             m_surface.MousePos(ev.position.X, ev.position.Y, core::host::currentMods());
             if (!ev.change) return;
 
-            auto const [button, state] = *ev.change;
-            if (state == GHOSTTY_MOUSE_PRESS) Press(button, ev.pointer);
-            else                              Release(button, ev.pointer);
+            if (ev.change->IsPress()) Press(ev.change->button, ev.pointer);
+            else                      Release(ev.change->button, ev.pointer);
         }
 
         // The capture is what was going to deliver the releases, so

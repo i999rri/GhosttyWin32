@@ -14,6 +14,8 @@ namespace winrt::GhosttyWin32::implementation::input {
 struct PointerButtonChange {
     ghostty_input_mouse_button_e button;
     ghostty_input_mouse_state_e state;
+
+    bool IsPress() const noexcept { return state == GHOSTTY_MOUSE_PRESS; }
 };
 
 // One pointer event, read once. XAML hands every pointer event --
