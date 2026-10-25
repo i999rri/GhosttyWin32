@@ -113,8 +113,8 @@ namespace winrt::GhosttyWin32::implementation
         void CarryOut(Transition const& t, Microsoft::UI::Xaml::Input::Pointer const& pointer)
         {
             AdoptLedger(t.ledger);
-            if (t.capture.IsTake()) m_panel.CapturePointer(pointer);
             ReportButtonsToTerminal(t.reports);
+            if (t.capture.IsTake()) m_panel.CapturePointer(pointer);
             if (t.capture.IsDrop()) DropCaptureAfterThisEvent(pointer);
             if (t.copySelection) m_terminal.copySelection();
         }
