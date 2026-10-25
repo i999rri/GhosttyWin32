@@ -25,10 +25,14 @@ namespace winrt::GhosttyWin32::implementation
     // outside the panel back here. Kept apart, the rule linking them
     // was split across two handlers that each held half of it.
     //
-    // A right-click over a selection copies instead of reaching the
-    // terminal. When that happens is decided here; how is the owner's
-    // (SurfaceHost), through copySelection, because copying needs the
-    // window and the clipboard and this class sees neither.
+    // What this class does to the world leaves through Effects, which
+    // the owner (SurfaceHost) fills in when it builds the class. The
+    // decisions are here; the acts are named at that one call site, so
+    // reading it says what happens on a press that is relayed and on a
+    // right-click that copies, without descending into the handlers.
+    // Copying needs the window and the clipboard and this class sees
+    // neither; reporting a button needs the live modifier state, which
+    // is the owner's to read.
     //
     // Handling is in three parts. The event arrives already read into
     // a move, a press or a release (input::PointerEvent). A press is
@@ -42,14 +46,20 @@ namespace winrt::GhosttyWin32::implementation
     class MouseInput
     {
     public:
-        using CopySelection = std::function<void()>;
+        // The acts this class can ask of its owner.
+        struct Effects {
+            // A press or release that libghostty should hear.
+            std::function<void(ghostty_input_mouse_state_e, ghostty_input_mouse_button_e)> reportButton;
+            // The right-click gesture: copy what is selected.
+            std::function<void()> copySelection;
+        };
 
         MouseInput(Microsoft::UI::Xaml::Controls::SwapChainPanel panel,
                    core::ghostty::Surface& surface,
-                   CopySelection copySelection)
+                   Effects effects)
             : m_panel(std::move(panel))
             , m_surface(surface)
-            , m_copySelection(std::move(copySelection)) {}
+            , m_effects(std::move(effects)) {}
 
         MouseInput(MouseInput const&) = delete;
         MouseInput& operator=(MouseInput const&) = delete;
@@ -104,7 +114,7 @@ namespace winrt::GhosttyWin32::implementation
         {
             m_surface.MousePos(e.position.X, e.position.Y, core::host::currentMods());
             switch (Judge(e)) {
-            case PressVerdict::Copy:        if (m_copySelection) m_copySelection(); break;
+            case PressVerdict::Copy:        m_effects.copySelection(); break;
             case PressVerdict::Relay:       Relay(e);                               break;
             case PressVerdict::AlreadyDown:                                         break;
             }
@@ -117,7 +127,7 @@ namespace winrt::GhosttyWin32::implementation
             // that copied, a press that landed before the owner had a
             // surface -- is not reported.
             if (m_ledger.Release(e.button)) {
-                m_surface.MouseButton(GHOSTTY_MOUSE_RELEASE, e.button, core::host::currentMods());
+                m_effects.reportButton(GHOSTTY_MOUSE_RELEASE, e.button);
             }
             if (!m_ledger.AnyOutstanding()) m_panel.ReleasePointerCapture(e.pointer);
         }
@@ -160,7 +170,7 @@ namespace winrt::GhosttyWin32::implementation
             // refused capture costs the drag, not the click.
             if (firstButtonDown) m_panel.CapturePointer(e.pointer);
 
-            m_surface.MouseButton(GHOSTTY_MOUSE_PRESS, e.button, core::host::currentMods());
+            m_effects.reportButton(GHOSTTY_MOUSE_PRESS, e.button);
         }
 
         // Before libghostty reads the next move as a drag of a button
@@ -168,14 +178,14 @@ namespace winrt::GhosttyWin32::implementation
         void TakeBackEveryPress()
         {
             while (auto button = m_ledger.ReleaseAny()) {
-                m_surface.MouseButton(GHOSTTY_MOUSE_RELEASE, *button, core::host::currentMods());
+                m_effects.reportButton(GHOSTTY_MOUSE_RELEASE, *button);
             }
         }
 
         Microsoft::UI::Xaml::Controls::SwapChainPanel m_panel{ nullptr };
         // The owner's member, so it follows Attach and Detach.
         core::ghostty::Surface& m_surface;
-        CopySelection m_copySelection;
+        Effects m_effects;
         core::input::MouseButtonLedger m_ledger;
     };
 }

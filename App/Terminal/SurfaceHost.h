@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Ghostty/Surface.h"
+#include "Host/KeyModifiers.h"
 #include "Terminal/EditContext.h"
 #include "Terminal/ImeSession.h"
 #include "Terminal/MouseInput.h"
@@ -98,7 +99,13 @@ namespace winrt::GhosttyWin32::implementation
             : m_panel(std::move(panel))
             , m_editContext(m_panel)
             , m_ime(m_editContext)
-            , m_mouse(m_panel, m_surface, [this] { CopySelectionToClipboard(); }) {}
+            , m_mouse(m_panel, m_surface, {
+                  .reportButton = [this](ghostty_input_mouse_state_e state,
+                                         ghostty_input_mouse_button_e button) {
+                      m_surface.MouseButton(state, button, host::currentMods());
+                  },
+                  .copySelection = [this] { CopySelectionToClipboard(); },
+              }) {}
         ~SurfaceHost() { Detach(); }
 
         SurfaceHost(SurfaceHost const&) = delete;
