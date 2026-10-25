@@ -15,6 +15,10 @@
 #include "Tabs/Tabs.h"
 #include "Windows/WindowCloseGate.h"
 #include "Windows/WindowState.h"
+#include "Wsl/Invocation.h"
+#include "Wsl/ShimProtocol.h"
+#include "Wsl/ShimReply.h"
+#include <memory>
 
 namespace winrt::GhosttyWin32::implementation
 {
@@ -102,6 +106,7 @@ namespace winrt::GhosttyWin32::implementation
         void GotoSplitFromAction(ghostty_surface_t surface,
                                  ghostty_action_goto_split_e direction) override;
         void EqualizeSplitsForSurface(ghostty_surface_t surface) override;
+        void MoveTabToNewWindow(ghostty_surface_t surface) override;
         void ToggleSplitZoomForSurface(ghostty_surface_t surface) override;
 
         // Tab lifecycle / navigation / title operations from
@@ -213,6 +218,18 @@ namespace winrt::GhosttyWin32::implementation
         // to a plain foreground if `id` is the zero sentinel.
         void PresentNotification(PaneId id);
         void ReportProgress(ghostty_action_progress_report_s pr) override;
+        void ChildExited(ghostty_surface_t surface, core::wsl::SessionExit ended) override;
+
+        // In-place WSL (#217): put a WSL pane, started through the
+        // bridge in `cwd`, where the pane carrying `id` is, and park
+        // that pane's shell until the WSL pane closes. `reply` is
+        // answered with WSL's exit code then; it is refused now when
+        // the pane is unknown, already shows WSL in place, or the
+        // swap fails. Called on the UI thread by App's shim server.
+        void OpenWslInPane(PaneId id,
+                           std::wstring cwd,
+                           core::wsl::Invocation invocation,
+                           std::shared_ptr<wsl::ShimReply> reply);
 
         // Read HKCU\...\Themes\Personalize\AppsUseLightTheme and forward
         // to core::ghostty::App::SetColorScheme. Fired at first activation
@@ -249,6 +266,17 @@ namespace winrt::GhosttyWin32::implementation
         // close gate has already asked the user (or determined the
         // surface doesn't need confirmation).
         void RemovePaneByIdApproved(PaneId id);
+        // The shell parked for an in-place WSL session (#217) whose
+        // surface is `surface`, in any tab of this window; null when
+        // none. A parked pane is in no tree, but its surface is live:
+        // the app routes actions to the window that owns the surface
+        // and drops the rest, so ownership and the surface directory
+        // both have to count parked panes.
+        Pane* FindParkedPane(ghostty_surface_t surface) const noexcept;
+        // The WSL pane of an in-place session is done: free it and put
+        // the parked shell pane back in its slot, focused if the WSL
+        // pane was. UI thread only.
+        void RestoreParkedPane(Tab& tab, Pane& overlay, Pane parked);
         Tab* ActiveTab();
         // Convenience wrapper around ActiveTab()->ActiveControl(). Most
         // input/IME paths only care about the focused TerminalControl,

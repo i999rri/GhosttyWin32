@@ -84,6 +84,15 @@
     <ClInclude Include="Input\KeyEventTranslator.h">
       <Filter>Input</Filter>
     </ClInclude>
+    <ClInclude Include="Input\MouseButton.h">
+      <Filter>Input</Filter>
+    </ClInclude>
+    <ClInclude Include="Input\MouseButtonLedger.h">
+      <Filter>Input</Filter>
+    </ClInclude>
+    <ClInclude Include="Input\MouseTransition.h">
+      <Filter>Input</Filter>
+    </ClInclude>
     <ClInclude Include="Interop\Encoding.h">
       <Filter>Interop</Filter>
     </ClInclude>
@@ -127,6 +136,9 @@
       <Filter>Panes</Filter>
     </ClInclude>
     <ClInclude Include="Win32\DebugTrace.h">
+      <Filter>Win32</Filter>
+    </ClInclude>
+    <ClInclude Include="Win32\ShellOpen.h">
       <Filter>Win32</Filter>
     </ClInclude>
     <ClInclude Include="Win32\NativeWindow.h">

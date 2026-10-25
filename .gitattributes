@@ -1,3 +1,13 @@
-# Shell scripts run under bash on the Windows release runner, where a
-# CRLF checkout would leave a carriage return on every line.
-*.sh text eol=lf
+# The repository stores LF and checks LF out. core.autocrlf is ignored
+# where an eol attribute applies, so a clone lands the same on every
+# machine without each one having to configure git.
+* text=auto eol=lf
+
+# Binary files git cannot sniff, listed so a text conversion is never
+# attempted on them.
+*.png binary
+*.ico binary
+*.pfx binary
+*.msix binary
+*.ttf binary
+*.otf binary

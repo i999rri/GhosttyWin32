@@ -266,6 +266,7 @@ jobs:
             ${{ steps.artifact.outputs.msix_path }}
             ${{ steps.build.outputs.cer-path }}
             external/ghostty/zig-out/bin/ghostty-wsl-bridge
+            x64/Release/WslShim/wsl.exe
           # Tags with a hyphen are pre-releases (rc / beta / alpha).
           prerelease: ${{ contains(github.ref_name, '-') }}
           # Auto-generated changelog (anchored at the tag chosen above)

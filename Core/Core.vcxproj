@@ -107,6 +107,9 @@
     <ClInclude Include="Host\FuzzyMatch.h" />
     <ClInclude Include="Host\TitleSource.h" />
     <ClInclude Include="Input\KeyEventTranslator.h" />
+    <ClInclude Include="Input\MouseButton.h" />
+    <ClInclude Include="Input\MouseButtonLedger.h" />
+    <ClInclude Include="Input\MouseTransition.h" />
     <ClInclude Include="Interop\Encoding.h" />
     <ClInclude Include="Win32\Clipboard.h" />
     <ClInclude Include="Panes\Branch.h" />
@@ -121,8 +124,14 @@
     <ClInclude Include="Panes\Split.h" />
     <ClInclude Include="Panes\Tree.h" />
     <ClInclude Include="Win32\DebugTrace.h" />
+    <ClInclude Include="Win32\ShellOpen.h" />
     <ClInclude Include="Win32\NativeWindow.h" />
     <ClInclude Include="Win32\SEHGuard.h" />
+    <ClInclude Include="Wsl\HelperProbe.h" />
+    <ClInclude Include="Wsl\Invocation.h" />
+    <ClInclude Include="Wsl\SessionExit.h" />
+    <ClInclude Include="Wsl\RealWsl.h" />
+    <ClInclude Include="Wsl\ShimProtocol.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Ghostty\Actions\Actions.cpp" />

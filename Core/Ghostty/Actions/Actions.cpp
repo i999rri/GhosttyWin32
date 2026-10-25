@@ -1,8 +1,8 @@
 #include "Actions.h"
 #include "Tags/TriggerLabel.h"
 #include "Interop/Encoding.h"
+#include "Win32/ShellOpen.h"
 #include <windows.h>
-#include <shellapi.h>
 #include <cstdio>
 #include <string>
 #include <utility>
@@ -21,13 +21,13 @@ bool Actions::OnRingBell() {
     return true;
 }
 
-bool Actions::OnShowChildExited(ghostty_surface_message_childexited_s ce) {
-    // Shell process for a surface exited. With confirm-close-
-    // surface=false (our default) the surface tears itself down
-    // via close_surface_cb almost immediately, so this is a
-    // breadcrumb. A proper in-terminal overlay is design work;
-    // log and move on. Mirror to OutputDebugString so the line
-    // survives stderr buffering through surface teardown.
+bool Actions::OnShowChildExited(ghostty_surface_t surface,
+                                ghostty_surface_message_childexited_s ce) {
+    // Shell process for a surface exited. A surface without an
+    // explicit command tears itself down via close_surface_cb right
+    // after this, so the log line is a breadcrumb; mirrored to
+    // OutputDebugString so it survives stderr buffering through the
+    // teardown. A proper in-terminal overlay is design work.
     char buf[128];
     std::snprintf(buf, sizeof(buf),
                   "[child_exited] exit_code=%u after_ms=%llu\n",
@@ -36,7 +36,33 @@ bool Actions::OnShowChildExited(ghostty_surface_message_childexited_s ce) {
     std::fputs(buf, stderr);
     std::fflush(stderr);
     OutputDebugStringA(buf);
-    return true;
+
+    // A surface started with a command stays open after its process
+    // ends, so the window has to act on the exit itself: an in-place
+    // WSL session answers its shim with the code and swaps the shell
+    // back (#217). See IWindow::ChildExited.
+    if (surface) {
+        const core::wsl::SessionExit ended{ ce.exit_code, ce.timetime_ms };
+        DispatchToView([this, surface, ended]() {
+            m_view.ChildExited(surface, ended);
+        });
+    }
+
+    // True says a native window is showing this, so ghostty writes
+    // nothing into the terminal. A clean exit has nothing to explain,
+    // and the line ghostty would write there is one the pane carries
+    // for the frame before it closes.
+    //
+    // False for anything else, which is not "unhandled": it asks for
+    // the account this app has no window of its own for. For a command
+    // that failed to start, that account is the command line it tried,
+    // the runtime and the exit code, under a rule that keeps the
+    // command's own output above it -- the three things a reader needs
+    // and the host cannot put there itself, since the C API only sends
+    // text to the pty and the pty is gone. It also leaves the keyboard
+    // able to close the surface, so any key puts an in-place WSL pane's
+    // shell back (#237).
+    return ce.exit_code == 0;
 }
 
 bool Actions::OnRendererHealth(ghostty_action_renderer_health_e health) {
@@ -65,30 +91,39 @@ bool Actions::OnRender() {
 }
 
 // ===== shell-verb passthroughs =====
+//
+// Each of these hands a target to the shell's "open" verb, and none
+// of them does it here. An action callback arrives on whatever thread
+// libghostty is on, and open_url arrives under its renderer lock
+// (external/ghostty/src/Surface.zig:3921); ShellExecuteW blocks for
+// as long as the shell takes to find a handler and pumps messages
+// while it waits, which with that lock held on the UI thread is a
+// deadlock (#247). So the work hops to the UI thread first, out of
+// the callback, and OpenWithShell then puts the shell call on a
+// thread of its own.
 
 bool Actions::OnCheckForUpdates() {
     // No built-in updater on Windows; hand the user off to the
-    // GitHub releases page. ShellExecuteW dispatches via the
-    // default browser without the rundll32 child-process flash
-    // libghostty's std.process.Child fallback would otherwise
-    // produce.
-    ShellExecuteW(m_view.Hwnd(), L"open",
-                  L"https://github.com/i999rri/GhosttyWin32/releases",
-                  nullptr, nullptr, SW_SHOWNORMAL);
+    // GitHub releases page. The shell verb opens the default browser
+    // without the rundll32 child-process flash libghostty's
+    // std.process.Child fallback would otherwise produce.
+    DispatchToView([this]() {
+        core::win32::OpenWithShell(m_view.Hwnd(), L"https://github.com/i999rri/GhosttyWin32/releases");
+    });
     return true;
 }
 
 bool Actions::OnOpenUrl(ghostty_action_open_url_s ou) {
-    // Ctrl+click on a URL in the terminal. Hand off to the shell
-    // verb opener so the user's default browser / mail client /
-    // etc. handles it.
-    if (ou.url && ou.len > 0) {
-        std::wstring wurl = interop::Encoding::toUtf16(ou.url, static_cast<int>(ou.len));
-        if (!wurl.empty()) {
-            ShellExecuteW(m_view.Hwnd(), L"open", wurl.c_str(),
-                          nullptr, nullptr, SW_SHOWNORMAL);
-        }
-    }
+    // Ctrl+click on a URL in the terminal. The user's default
+    // browser, mail client, etc. handles it.
+    if (!ou.url || ou.len == 0) return true;
+
+    std::wstring wurl = interop::Encoding::toUtf16(ou.url, static_cast<int>(ou.len));
+    if (wurl.empty()) return true;
+
+    DispatchToView([this, wurl = std::move(wurl)]() mutable {
+        core::win32::OpenWithShell(m_view.Hwnd(), std::move(wurl));
+    });
     return true;
 }
 
@@ -207,8 +242,9 @@ bool Actions::OnOpenConfig() {
                                         static_cast<DWORD>(std::size(appdata)));
     if (len > 0 && len < std::size(appdata)) {
         std::wstring path = std::wstring(appdata) + L"\\ghostty\\config";
-        ShellExecuteW(nullptr, L"open", path.c_str(),
-                      nullptr, nullptr, SW_SHOWNORMAL);
+        DispatchToView([this, path = std::move(path)]() mutable {
+            core::win32::OpenWithShell(m_view.Hwnd(), std::move(path));
+        });
     }
     return true;
 }
@@ -674,6 +710,18 @@ bool Actions::OnGotoSplit(ghostty_surface_t surface,
     DispatchToView([this, surface, direction]() {
         m_view.GotoSplitFromAction(surface, direction);
     });
+    return true;
+}
+
+// The tab the surface is in becomes its own window. The host has
+// the machinery already -- this is what a tab dragged off the strip
+// does -- so what was missing was the route from the action.
+bool Actions::OnMoveTabToNewWindow(ghostty_surface_t surface) {
+    // True is the only answer this can give: the view is reached on
+    // the UI thread, long after the return, so what it decides there
+    // -- including leaving a lone tab where it is -- cannot be
+    // reported back. See DispatchToView.
+    DispatchToView([this, surface]() { m_view.MoveTabToNewWindow(surface); });
     return true;
 }
 

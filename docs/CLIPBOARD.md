@@ -5,7 +5,7 @@
 <details>
 <summary>日本語</summary>
 
-`clipboard-read` と `clipboard-write` は、どのペインでも同じ意味になるわけではない。またターミナル内のプログラムからの読み取りは、今のところ一律で拒否している。どちらも Windows 側の事情によるもので、このアプリの方針として選んだものではないが、上流の[設定ドキュメント](https://ghostty.org/docs/config)には書かれていない。このページは、もっと良い置き場所ができるまでの仮置き。
+`clipboard-read` と `clipboard-write` は、どのペインでも同じ意味になるわけではない。またターミナル内のプログラムからの読み取りは、今のところ一律で拒否している。どちらも Windows 側の事情によるもので、このアプリの方針として選んだものではないが、[設定ドキュメント](https://ghostty.org/docs/config)には書かれていない。このページは、もっと良い置き場所ができるまでの仮置き。
 
 </details>
 
@@ -13,14 +13,14 @@
 
 A pane running a Windows console program — pwsh, cmd, anything that talks to the console API — is backed by ConPTY, which is conhost running headless. conhost parses the output stream itself and answers OSC 52 without passing it on, so the settings below never reach the terminal. A write goes to the Windows clipboard whenever the window has focus, and a read is dropped with no answer at all. `clipboard-write = deny` does not stop the write, and `clipboard-read` has no effect either.
 
-A WSL pane goes through the bridge, which owns a real pty inside the distribution, and a shell reached over ssh from such a pane is the same. There is no conhost in the way, so both settings apply as documented.
+A WSL pane goes through the bridge, which owns a pty inside the distribution, and a shell reached over ssh from such a pane is the same. There is no conhost in the way, so both settings apply as documented.
 
 <details>
 <summary>日本語</summary>
 
 Windows のコンソールプログラム (pwsh、cmd、コンソール API を使うもの全般) が動くペインは、ConPTY が裏にいる。ConPTY の正体は、画面を持たないモードで動く conhost。conhost は出力を自分で解析して OSC 52 に自分で応答し、その先へは渡さない。そのため下記の設定はターミナルまで届かない。書き込みはウィンドウにフォーカスがあれば Windows のクリップボードに入り、読み取りは応答なしで捨てられる。`clipboard-write = deny` にしても書き込みは止まらないし、`clipboard-read` も効かない。
 
-WSL のペインは bridge を通り、distro 内の本物の pty につながる。そのペインから ssh で入った先も同じ。あいだに conhost がいないので、どちらの設定もドキュメントどおりに効く。
+WSL のペインは bridge を通り、distribution 内の pty につながる。そのペインから ssh で入った先も同じ。あいだに conhost がいないので、どちらの設定もドキュメントどおりに効く。
 
 </details>
 
@@ -35,7 +35,7 @@ Pasting is unaffected. Ctrl+V is something you asked for, so it goes through, in
 
 既定の `clipboard-read = ask` は、「ターミナル内のプログラムにクリップボードを渡す前に確認する」という意味。このアプリには確認する画面がないので、代わりに拒否している。OSC 52 と Kitty クリップボードの読み取りには、中身が空の応答が返る。`clipboard-read = allow` はこれまでどおり効き、確認そのものを省略する。
 
-貼り付けには影響しない。Ctrl+V は利用者が自分で指示したものなので通る。paste protection に引っかかる貼り付けも通ってしまうので、現状その保護は誰にも警告できていない ([#225](https://github.com/i999rri/GhosttyWin32/issues/225))。どちらも同じ確認ダイアログ待ち。
+貼り付けには影響しない。Ctrl+V はユーザーが自分で指示したものなので通る。paste protection に引っかかる貼り付けも通ってしまうので、現状その保護は誰にも警告できていない ([#225](https://github.com/i999rri/GhosttyWin32/issues/225))。どちらも同じ確認ダイアログ待ち。
 
 </details>
 
