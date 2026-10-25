@@ -115,7 +115,7 @@ namespace winrt::GhosttyWin32::implementation
         {
             m_ledger = t.ledger;
             if (t.capture.IsTake()) m_panel.CapturePointer(pointer);
-            ReportButtons(t.reports);
+            ReportButtonsToTerminal(t.reports);
             if (t.capture.IsDrop()) DropCaptureAfterThisEvent(pointer);
             if (t.copySelection) m_terminal.copySelection();
         }
@@ -124,7 +124,7 @@ namespace winrt::GhosttyWin32::implementation
         // in order. One for a press or a release of our own; one per
         // outstanding button when the capture is lost; none when the
         // event changed nothing libghostty should know about.
-        void ReportButtons(std::vector<core::input::ButtonReport> const& reports)
+        void ReportButtonsToTerminal(std::vector<core::input::ButtonReport> const& reports)
         {
             for (auto const& r : reports) {
                 m_terminal.reportButton(r.state, r.button.ToGhosttyEnum());
