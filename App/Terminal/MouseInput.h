@@ -1,7 +1,5 @@
 #pragma once
 
-#include "Ghostty/Surface.h"
-#include "Host/KeyModifiers.h"
 #include "Input/MouseButtonLedger.h"
 #include "Input/PointerEvent.h"
 #include "ghostty.h"
@@ -25,14 +23,14 @@ namespace winrt::GhosttyWin32::implementation
     // outside the panel back here. Kept apart, the rule linking them
     // was split across two handlers that each held half of it.
     //
-    // What this class does to the world leaves through Effects, which
-    // the owner (SurfaceHost) fills in when it builds the class. The
-    // decisions are here; the acts are named at that one call site, so
-    // reading it says what happens on a press that is relayed and on a
-    // right-click that copies, without descending into the handlers.
-    // Copying needs the window and the clipboard and this class sees
-    // neither; reporting a button needs the live modifier state, which
-    // is the owner's to read.
+    // Everything this class says to the terminal, and the one thing it
+    // asks of it, goes through Terminal, which the owner (SurfaceHost)
+    // fills in when it builds the class. The decisions are here; the
+    // acts are named at that one call site, so reading it says what a
+    // relayed press does, what a move does and what the right-click
+    // does, without descending into the handlers. The owner is also
+    // where the live modifier state is read, and where the window and
+    // the clipboard are. This class holds no surface.
     //
     // Handling is in three parts. The event arrives already read into
     // a move, a press or a release (input::PointerEvent). A press is
@@ -42,24 +40,28 @@ namespace winrt::GhosttyWin32::implementation
     //
     // UI thread only, like every pointer event it is fed, so nothing
     // here needs a lock. The owner calls it only while it has a
-    // surface.
+    // surface behind Terminal.
     class MouseInput
     {
     public:
-        // The acts this class can ask of its owner.
-        struct Effects {
-            // A press or release that libghostty should hear.
+        // The terminal as this class sees it: what it can be told,
+        // and the one thing it can be asked.
+        struct Terminal {
+            // A press or release libghostty should hear.
             std::function<void(ghostty_input_mouse_state_e, ghostty_input_mouse_button_e)> reportButton;
+            // Where the pointer is, relative to the panel.
+            std::function<void(double x, double y)> reportPosition;
+            // Wheel movement, in lines; positive is up.
+            std::function<void(double lines)> scroll;
             // The right-click gesture: copy what is selected.
             std::function<void()> copySelection;
+            // Whether there is anything to copy.
+            std::function<bool()> hasSelection;
         };
 
-        MouseInput(Microsoft::UI::Xaml::Controls::SwapChainPanel panel,
-                   core::ghostty::Surface& surface,
-                   Effects effects)
+        MouseInput(Microsoft::UI::Xaml::Controls::SwapChainPanel panel, Terminal terminal)
             : m_panel(std::move(panel))
-            , m_surface(surface)
-            , m_effects(std::move(effects)) {}
+            , m_terminal(std::move(terminal)) {}
 
         MouseInput(MouseInput const&) = delete;
         MouseInput& operator=(MouseInput const&) = delete;
@@ -94,8 +96,8 @@ namespace winrt::GhosttyWin32::implementation
         // it (SurfaceHost::ScrollByWheel).
         void ScrollBy(int wheelDelta)
         {
-            ghostty_input_scroll_mods_t smods = {};
-            m_surface.MouseScroll(0, static_cast<double>(wheelDelta) / 120.0, smods);
+            // WHEEL_DELTA is one notch; libghostty counts in lines.
+            m_terminal.scroll(static_cast<double>(wheelDelta) / 120.0);
         }
 
         // The surface is going away and its presses with it, so there
@@ -105,16 +107,16 @@ namespace winrt::GhosttyWin32::implementation
     private:
         void Handle(input::PointerMove const& e)
         {
-            m_surface.MousePos(e.position.X, e.position.Y, core::host::currentMods());
+            m_terminal.reportPosition(e.position.X, e.position.Y);
         }
 
         // The position goes first so the press lands on the cell under
         // the pointer.
         void Handle(input::PointerPress const& e)
         {
-            m_surface.MousePos(e.position.X, e.position.Y, core::host::currentMods());
+            m_terminal.reportPosition(e.position.X, e.position.Y);
             switch (Judge(e)) {
-            case PressVerdict::Copy:        m_effects.copySelection(); break;
+            case PressVerdict::Copy:        m_terminal.copySelection(); break;
             case PressVerdict::Relay:       Relay(e);                               break;
             case PressVerdict::AlreadyDown:                                         break;
             }
@@ -122,12 +124,12 @@ namespace winrt::GhosttyWin32::implementation
 
         void Handle(input::PointerRelease const& e)
         {
-            m_surface.MousePos(e.position.X, e.position.Y, core::host::currentMods());
+            m_terminal.reportPosition(e.position.X, e.position.Y);
             // A release whose press never went out -- the right-click
             // that copied, a press that landed before the owner had a
             // surface -- is not reported.
             if (m_ledger.Release(e.button)) {
-                m_effects.reportButton(GHOSTTY_MOUSE_RELEASE, e.button);
+                m_terminal.reportButton(GHOSTTY_MOUSE_RELEASE, e.button);
             }
             if (!m_ledger.AnyOutstanding()) m_panel.ReleasePointerCapture(e.pointer);
         }
@@ -149,7 +151,7 @@ namespace winrt::GhosttyWin32::implementation
             // left one it reaches the terminal, because copying would
             // clear the selection the left one is drawing.
             if (e.button == GHOSTTY_MOUSE_RIGHT && !m_ledger.AnyOutstanding()
-                && m_surface.HasSelection()) {
+                && m_terminal.hasSelection()) {
                 return PressVerdict::Copy;
             }
             return PressVerdict::Relay;
@@ -170,7 +172,7 @@ namespace winrt::GhosttyWin32::implementation
             // refused capture costs the drag, not the click.
             if (firstButtonDown) m_panel.CapturePointer(e.pointer);
 
-            m_effects.reportButton(GHOSTTY_MOUSE_PRESS, e.button);
+            m_terminal.reportButton(GHOSTTY_MOUSE_PRESS, e.button);
         }
 
         // Before libghostty reads the next move as a drag of a button
@@ -178,14 +180,12 @@ namespace winrt::GhosttyWin32::implementation
         void TakeBackEveryPress()
         {
             while (auto button = m_ledger.ReleaseAny()) {
-                m_effects.reportButton(GHOSTTY_MOUSE_RELEASE, *button);
+                m_terminal.reportButton(GHOSTTY_MOUSE_RELEASE, *button);
             }
         }
 
         Microsoft::UI::Xaml::Controls::SwapChainPanel m_panel{ nullptr };
-        // The owner's member, so it follows Attach and Detach.
-        core::ghostty::Surface& m_surface;
-        Effects m_effects;
+        Terminal m_terminal;
         core::input::MouseButtonLedger m_ledger;
     };
 }

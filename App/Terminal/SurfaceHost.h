@@ -99,12 +99,19 @@ namespace winrt::GhosttyWin32::implementation
             : m_panel(std::move(panel))
             , m_editContext(m_panel)
             , m_ime(m_editContext)
-            , m_mouse(m_panel, m_surface, {
+            , m_mouse(m_panel, {
                   .reportButton = [this](ghostty_input_mouse_state_e state,
                                          ghostty_input_mouse_button_e button) {
                       m_surface.MouseButton(state, button, host::currentMods());
                   },
+                  .reportPosition = [this](double x, double y) {
+                      m_surface.MousePos(x, y, host::currentMods());
+                  },
+                  .scroll = [this](double lines) {
+                      m_surface.MouseScroll(0, lines, ghostty_input_scroll_mods_t{});
+                  },
                   .copySelection = [this] { CopySelectionToClipboard(); },
+                  .hasSelection = [this] { return m_surface.HasSelection(); },
               }) {}
         ~SurfaceHost() { Detach(); }
 
@@ -264,8 +271,9 @@ namespace winrt::GhosttyWin32::implementation
         ImeSession m_ime;
 
         // What the pointer tells libghostty, and the capture that
-        // keeps it whole. Declared after the panel and the surface,
-        // which it holds onto.
+        // keeps it whole. Declared after the panel, which it holds
+        // onto; it reaches the surface only through the Terminal
+        // callbacks above, which read m_surface when they run.
         MouseInput m_mouse;
 
         std::function<void(ghostty_surface_t)> m_onFocused;
