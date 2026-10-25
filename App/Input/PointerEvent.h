@@ -48,8 +48,8 @@ using PointerEvent = std::variant<PointerMove, PointerPress, PointerRelease>;
 // (UIElement.PointerPressed, Remarks) -- which is why a move can turn
 // out to be a press or a release.
 //
-// A kind outside the table is a move. That is every plain move, and
-// it is also what a touch contact or a pen tip reports if Windows
+// A kind the switch does not name is a move. That is every plain move,
+// and it is also what a touch contact or a pen tip reports if Windows
 // gives them no button; the documentation does not say, and neither
 // has been tried here. XBUTTON1 and XBUTTON2 have kinds of their own
 // and libghostty has GHOSTTY_MOUSE_FOUR upwards for them; they wait
@@ -60,33 +60,20 @@ inline PointerEvent fromPointerArgs(
 {
     using winrt::Microsoft::UI::Input::PointerUpdateKind;
 
-    struct Row {
-        PointerUpdateKind kind;
-        ghostty_input_mouse_button_e button;
-        ghostty_input_mouse_state_e state;
-    };
-    static constexpr Row kTable[] = {
-        { PointerUpdateKind::LeftButtonPressed,    GHOSTTY_MOUSE_LEFT,   GHOSTTY_MOUSE_PRESS   },
-        { PointerUpdateKind::LeftButtonReleased,   GHOSTTY_MOUSE_LEFT,   GHOSTTY_MOUSE_RELEASE },
-        { PointerUpdateKind::RightButtonPressed,   GHOSTTY_MOUSE_RIGHT,  GHOSTTY_MOUSE_PRESS   },
-        { PointerUpdateKind::RightButtonReleased,  GHOSTTY_MOUSE_RIGHT,  GHOSTTY_MOUSE_RELEASE },
-        { PointerUpdateKind::MiddleButtonPressed,  GHOSTTY_MOUSE_MIDDLE, GHOSTTY_MOUSE_PRESS   },
-        { PointerUpdateKind::MiddleButtonReleased, GHOSTTY_MOUSE_MIDDLE, GHOSTTY_MOUSE_RELEASE },
-    };
-
     auto point = args.GetCurrentPoint(panel);
-    auto position = point.Position();
-    auto kind = point.Properties().PointerUpdateKind();
+    auto at = point.Position();
+    auto press   = [&](ghostty_input_mouse_button_e b) { return PointerPress{ at, b, args.Pointer() }; };
+    auto release = [&](ghostty_input_mouse_button_e b) { return PointerRelease{ at, b, args.Pointer() }; };
 
-    for (auto const& row : kTable) {
-        if (row.kind != kind) continue;
-
-        if (row.state == GHOSTTY_MOUSE_PRESS) {
-            return PointerPress{ position, row.button, args.Pointer() };
-        }
-        return PointerRelease{ position, row.button, args.Pointer() };
+    switch (point.Properties().PointerUpdateKind()) {
+    case PointerUpdateKind::LeftButtonPressed:    return press(GHOSTTY_MOUSE_LEFT);
+    case PointerUpdateKind::LeftButtonReleased:   return release(GHOSTTY_MOUSE_LEFT);
+    case PointerUpdateKind::RightButtonPressed:   return press(GHOSTTY_MOUSE_RIGHT);
+    case PointerUpdateKind::RightButtonReleased:  return release(GHOSTTY_MOUSE_RIGHT);
+    case PointerUpdateKind::MiddleButtonPressed:  return press(GHOSTTY_MOUSE_MIDDLE);
+    case PointerUpdateKind::MiddleButtonReleased: return release(GHOSTTY_MOUSE_MIDDLE);
+    default:                                      return PointerMove{ at };
     }
-    return PointerMove{ position };
 }
 
 }  // namespace winrt::GhosttyWin32::implementation::input
