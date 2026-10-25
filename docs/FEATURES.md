@@ -68,8 +68,8 @@ A key named here is one this host reads. The keys libghostty acts on by itself a
 | Feature | Notes |
 | --- | --- |
 | Keyboard | Scan code and text are forwarded separately, so keybinds hold across non-Latin layouts, dead keys and AltGr |
-| Mouse | Left, middle and right click, drag, and the wheel |
-| Selection | Drag to select, `Ctrl+C`, `Ctrl+V`, right-click to copy. The selection clears after a copy. The right-click behaviour is fixed here, not read from `right-click-action` |
+| Mouse | Left, middle and right click, drag, and the wheel. A button pressed while another is held reaches the terminal too. The middle button follows `middle-click-action`, but the default, `primary-paste`, does nothing here because this host has no selection clipboard; `clipboard-paste` pastes the clipboard |
+| Selection | Drag to select. Dragging above the pane keeps the selection growing and scrolls back through the scrollback. `Ctrl+C`, `Ctrl+V`, right-click to copy. The selection clears after a copy. The right-click behaviour is fixed here, not read from `right-click-action` |
 | Cursor shape | Follows the terminal: a text cursor over text, a hand over a link |
 | Links | Ctrl+click opens the URL in the default browser |
 | Hidden while typing | The pointer disappears while you type and comes back when you move it |
@@ -80,8 +80,8 @@ A key named here is one this host reads. The keys libghostty acts on by itself a
 | 機能 | 補足 |
 | --- | --- |
 | キーボード | スキャンコードと文字を別々に渡すので、ラテン以外の配列、デッドキー、AltGr でもキーバインドが崩れない |
-| マウス | 左・中・右クリック、ドラッグ、ホイール |
-| 選択 | ドラッグで選択、`Ctrl+C`、`Ctrl+V`、右クリックでコピー。コピー後に選択は解除される。右クリックの動作は固定で、`right-click-action` から読んではいない |
+| マウス | 左・中・右クリック、ドラッグ、ホイール。ボタンを押したまま別のボタンを押しても、両方が端末に届く。中ボタンは `middle-click-action` に従うが、既定の `primary-paste` は、この host に selection clipboard が無いので何もしない。`clipboard-paste` にするとクリップボードを貼り付ける |
+| 選択 | ドラッグで選択。ペインの上まで引っ張ると、スクロールバックを遡りながら選択が伸びる。`Ctrl+C`、`Ctrl+V`、右クリックでコピー。コピー後に選択は解除される。右クリックの動作は固定で、`right-click-action` から読んではいない |
 | カーソルの形 | 端末に従う。文字の上では文字カーソル、リンクの上では手 |
 | リンク | Ctrl+クリックで既定のブラウザが開く |
 | 打鍵中は隠れる | 文字を打つあいだポインタが消え、動かすと戻る |
