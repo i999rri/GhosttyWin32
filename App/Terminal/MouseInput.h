@@ -128,8 +128,8 @@ namespace winrt::GhosttyWin32::implementation
             // A release whose press never went out -- the right-click
             // that copied, a press that landed before the owner had a
             // surface -- is not reported.
-            if (m_ledger.Release(e.button)) {
-                m_terminal.reportButton(GHOSTTY_MOUSE_RELEASE, e.button);
+            if (m_ledger.Release(e.button.ToGhosttyEnum())) {
+                m_terminal.reportButton(GHOSTTY_MOUSE_RELEASE, e.button.ToGhosttyEnum());
             }
             if (!m_ledger.AnyOutstanding()) m_panel.ReleasePointerCapture(e.pointer);
         }
@@ -144,13 +144,13 @@ namespace winrt::GhosttyWin32::implementation
 
         PressVerdict Judge(input::PointerPress const& e) const
         {
-            if (m_ledger.IsOutstanding(e.button)) return PressVerdict::AlreadyDown;
+            if (m_ledger.IsOutstanding(e.button.ToGhosttyEnum())) return PressVerdict::AlreadyDown;
 
             // A right button pressed on its own, over a selection,
             // copies instead of reaching the terminal. Under a held
             // left one it reaches the terminal, because copying would
             // clear the selection the left one is drawing.
-            if (e.button == GHOSTTY_MOUSE_RIGHT && !m_ledger.AnyOutstanding()
+            if (e.button.IsRight() && !m_ledger.AnyOutstanding()
                 && m_terminal.hasSelection()) {
                 return PressVerdict::Copy;
             }
@@ -162,7 +162,7 @@ namespace winrt::GhosttyWin32::implementation
         void Relay(input::PointerPress const& e)
         {
             bool const firstButtonDown = !m_ledger.AnyOutstanding();
-            m_ledger.Press(e.button);
+            m_ledger.Press(e.button.ToGhosttyEnum());
 
             // Capture so the release still arrives when the pointer has
             // left the panel by then, which is also what lets a
@@ -172,7 +172,7 @@ namespace winrt::GhosttyWin32::implementation
             // refused capture costs the drag, not the click.
             if (firstButtonDown) m_panel.CapturePointer(e.pointer);
 
-            m_terminal.reportButton(GHOSTTY_MOUSE_PRESS, e.button);
+            m_terminal.reportButton(GHOSTTY_MOUSE_PRESS, e.button.ToGhosttyEnum());
         }
 
         // Before libghostty reads the next move as a drag of a button

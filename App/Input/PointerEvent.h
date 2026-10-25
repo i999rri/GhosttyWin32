@@ -6,9 +6,11 @@
 #include <winrt/Microsoft.UI.Xaml.Input.h>
 #include <winrt/Windows.Foundation.h>
 
-#include "ghostty.h"
+#include "Input/MouseButton.h"
 
 namespace winrt::GhosttyWin32::implementation::input {
+
+using core::input::MouseButton;
 
 // What one pointer event was, in libghostty's terms. XAML hands every
 // pointer event -- pressed, released, moved -- the same
@@ -28,13 +30,13 @@ struct PointerMove {
 
 struct PointerPress {
     winrt::Windows::Foundation::Point position;
-    ghostty_input_mouse_button_e button;
+    MouseButton button;
     winrt::Microsoft::UI::Xaml::Input::Pointer pointer;
 };
 
 struct PointerRelease {
     winrt::Windows::Foundation::Point position;
-    ghostty_input_mouse_button_e button;
+    MouseButton button;
     winrt::Microsoft::UI::Xaml::Input::Pointer pointer;
 };
 
@@ -52,8 +54,8 @@ using PointerEvent = std::variant<PointerMove, PointerPress, PointerRelease>;
 // and it is also what a touch contact or a pen tip reports if Windows
 // gives them no button; the documentation does not say, and neither
 // has been tried here. XBUTTON1 and XBUTTON2 have kinds of their own
-// and libghostty has GHOSTTY_MOUSE_FOUR upwards for them; they wait
-// for a mouse that has them.
+// MouseButton has no word for them yet; they wait for a mouse that
+// has them.
 inline PointerEvent fromPointerArgs(
     winrt::Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args,
     winrt::Microsoft::UI::Xaml::UIElement const& panel)
@@ -62,16 +64,16 @@ inline PointerEvent fromPointerArgs(
 
     auto point = args.GetCurrentPoint(panel);
     auto at = point.Position();
-    auto press   = [&](ghostty_input_mouse_button_e b) { return PointerPress{ at, b, args.Pointer() }; };
-    auto release = [&](ghostty_input_mouse_button_e b) { return PointerRelease{ at, b, args.Pointer() }; };
+    auto press   = [&](MouseButton b) { return PointerPress{ at, b, args.Pointer() }; };
+    auto release = [&](MouseButton b) { return PointerRelease{ at, b, args.Pointer() }; };
 
     switch (point.Properties().PointerUpdateKind()) {
-    case PointerUpdateKind::LeftButtonPressed:    return press(GHOSTTY_MOUSE_LEFT);
-    case PointerUpdateKind::LeftButtonReleased:   return release(GHOSTTY_MOUSE_LEFT);
-    case PointerUpdateKind::RightButtonPressed:   return press(GHOSTTY_MOUSE_RIGHT);
-    case PointerUpdateKind::RightButtonReleased:  return release(GHOSTTY_MOUSE_RIGHT);
-    case PointerUpdateKind::MiddleButtonPressed:  return press(GHOSTTY_MOUSE_MIDDLE);
-    case PointerUpdateKind::MiddleButtonReleased: return release(GHOSTTY_MOUSE_MIDDLE);
+    case PointerUpdateKind::LeftButtonPressed:    return press(MouseButton::Left());
+    case PointerUpdateKind::LeftButtonReleased:   return release(MouseButton::Left());
+    case PointerUpdateKind::RightButtonPressed:   return press(MouseButton::Right());
+    case PointerUpdateKind::RightButtonReleased:  return release(MouseButton::Right());
+    case PointerUpdateKind::MiddleButtonPressed:  return press(MouseButton::Middle());
+    case PointerUpdateKind::MiddleButtonReleased: return release(MouseButton::Middle());
     default:                                      return PointerMove{ at };
     }
 }
