@@ -16,10 +16,13 @@ using core::input::MouseButton;
 // pointer event -- pressed, released, moved -- the same
 // PointerRoutedEventArgs, and nothing in the args says which event it
 // came from; the one field that tells them apart is PointerUpdateKind,
-// which names the button that changed. So the event is read once,
-// here, into one of three shapes, and the handlers pass what they are
-// given straight through. Peer of TerminalKeyDown: the WinUI args are
-// taken apart here, and nothing past this point sees them.
+// which names the button that changed. That is also why a PointerMoved
+// can turn out to be a press: XAML ties one button to the pointer at a
+// time and routes every other click through PointerMoved
+// (UIElement.PointerPressed, Remarks). So the event is read once, here,
+// into one of three shapes, and the handlers pass what they are given
+// straight through. Peer of TerminalKeyDown: the WinUI args are taken
+// apart here, and nothing past this point sees them.
 //
 // Positions are relative to the panel, which is what libghostty
 // expects. The pointer is what the panel captures and releases.
@@ -42,20 +45,6 @@ struct PointerRelease {
 
 using PointerEvent = std::variant<PointerMove, PointerPress, PointerRelease>;
 
-// The IsLeftButtonPressed family reports every button still held, so
-// at a release it says nothing, and with two held it cannot say which
-// moved; PointerUpdateKind can. Only the first mouse button reaches
-// PointerPressed and PointerReleased -- XAML ties one button to the
-// pointer at a time and routes every other click through PointerMoved
-// (UIElement.PointerPressed, Remarks) -- which is why a move can turn
-// out to be a press or a release.
-//
-// A kind the switch does not name is a move. That is every plain move,
-// and it is also what a touch contact or a pen tip reports if Windows
-// gives them no button; the documentation does not say, and neither
-// has been tried here. XBUTTON1 and XBUTTON2 have kinds of their own
-// MouseButton has no word for them yet; they wait for a mouse that
-// has them.
 inline PointerEvent fromPointerArgs(
     winrt::Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args,
     winrt::Microsoft::UI::Xaml::UIElement const& panel)
@@ -74,7 +63,7 @@ inline PointerEvent fromPointerArgs(
     case PointerUpdateKind::RightButtonReleased:  return release(MouseButton::Right());
     case PointerUpdateKind::MiddleButtonPressed:  return press(MouseButton::Middle());
     case PointerUpdateKind::MiddleButtonReleased: return release(MouseButton::Middle());
-    default:                                      return PointerMove{ at };
+    default:                                      return PointerMove{ at };   // Other, and the X buttons until a mouse with them is tried
     }
 }
 
