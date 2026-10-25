@@ -106,11 +106,6 @@ namespace winrt::GhosttyWin32::implementation
             Apply(core::input::OnRelease(m_ledger, e.button), e.pointer);
         }
 
-        // Everything this class does to the world, in one place, and
-        // nothing decided here. Because the capture is dropped after
-        // this event rather than inside it, no handler runs inside
-        // another, and the order of these lines is not what keeps the
-        // ledger and libghostty agreeing.
         void Apply(Transition const& t, Microsoft::UI::Xaml::Input::Pointer const& pointer)
         {
             AdoptLedger(t.ledger);
