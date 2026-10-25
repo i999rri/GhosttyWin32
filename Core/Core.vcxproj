@@ -109,7 +109,7 @@
     <ClInclude Include="Input\KeyEventTranslator.h" />
     <ClInclude Include="Input\MouseButton.h" />
     <ClInclude Include="Input\MouseButtonLedger.h" />
-    <ClInclude Include="Input\PressAction.h" />
+    <ClInclude Include="Input\MouseTransition.h" />
     <ClInclude Include="Interop\Encoding.h" />
     <ClInclude Include="Win32\Clipboard.h" />
     <ClInclude Include="Panes\Branch.h" />

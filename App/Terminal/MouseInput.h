@@ -1,9 +1,10 @@
 #pragma once
 
 #include "Input/MouseButtonLedger.h"
+#include "Input/MouseTransition.h"
 #include "Input/PointerEvent.h"
-#include "Input/PressAction.h"
 #include "ghostty.h"
+#include <winrt/Microsoft.UI.Dispatching.h>
 #include <winrt/Microsoft.UI.Input.h>
 #include <winrt/Microsoft.UI.Xaml.Controls.h>
 #include <winrt/Microsoft.UI.Xaml.Input.h>
@@ -18,6 +19,11 @@ namespace winrt::GhosttyWin32::implementation
     // The capture is held for exactly as long as the ledger has a press
     // outstanding -- it is what brings a release outside the panel back
     // here -- so the two are kept in one class.
+    //
+    // Nothing is decided here. Each event is handed, with the ledger as
+    // it stands, to core::input::OnPress / OnRelease / OnCaptureLost /
+    // OnCanceled, which return a MouseTransition: the ledger as it will
+    // be, and what goes out. Apply then does exactly that.
     //
     // UI thread only, like every pointer event it is fed, so nothing
     // here needs a lock. The owner calls it only while a surface stands
@@ -53,19 +59,11 @@ namespace winrt::GhosttyWin32::implementation
             std::visit([this](auto const& e) { Handle(e); }, ev);
         }
 
-        // The capture is what was going to deliver the releases, so
-        // once it is gone they are not coming. The release path gets
-        // here too, by its own ReleasePointerCapture call, and finds
-        // the record already empty.
-        void CaptureLost() { TakeBackEveryPress(); }
+        void CaptureLost() { Apply(core::input::OnCaptureLost(m_ledger), nullptr); }
 
-        // A canceled pointer ends its press with no release at all.
-        // The capture goes after the record, so the CaptureLost it
-        // raises finds nothing left to take back.
         void Canceled(Microsoft::UI::Xaml::Input::Pointer const& pointer)
         {
-            TakeBackEveryPress();
-            m_panel.ReleasePointerCapture(pointer);
+            Apply(core::input::OnCanceled(m_ledger), pointer);
         }
 
         void Wheel(Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args)
@@ -86,78 +84,46 @@ namespace winrt::GhosttyWin32::implementation
         void Reset() noexcept { m_ledger = {}; }
 
     private:
+        using Transition = core::input::MouseTransition;
+
         void Handle(input::PointerMove const& e)
         {
             m_terminal.reportPosition(e.position.X, e.position.Y);
         }
 
-        // The position goes first so the press lands on the cell under
-        // the pointer.
+        // The position goes first so the change lands on the cell
+        // under the pointer.
         void Handle(input::PointerPress const& e)
         {
             m_terminal.reportPosition(e.position.X, e.position.Y);
-            ActionFor(e).Match(
-                [](core::input::PressAction::Ignore) {},
-                [&](core::input::PressAction::CopySelection) { m_terminal.copySelection(); },
-                [&](core::input::PressAction::RelayToTerminal) { Relay(e); });
+            Apply(core::input::OnPress(m_ledger, e.button, m_terminal.hasSelection()), e.pointer);
         }
 
         void Handle(input::PointerRelease const& e)
         {
             m_terminal.reportPosition(e.position.X, e.position.Y);
-            // A release whose press never went out -- the right-click
-            // that copied, a press that landed before the owner had a
-            // surface -- is not reported.
-            if (m_ledger.Release(e.button.ToGhosttyEnum())) {
-                m_terminal.reportButton(GHOSTTY_MOUSE_RELEASE, e.button.ToGhosttyEnum());
+            Apply(core::input::OnRelease(m_ledger, e.button), e.pointer);
+        }
+
+        // Everything this class does to the world, in one place, and
+        // nothing decided here. Dropping the capture is queued rather
+        // than done: ReleasePointerCapture raises PointerCaptureLost
+        // at once, on this thread, inside the call, which would run a
+        // handler inside this one. Queued, it arrives as an event of
+        // its own after this one is finished, so no handler ever
+        // nests, and the order of the lines below is not what keeps
+        // the ledger and libghostty agreeing.
+        void Apply(Transition const& t, Microsoft::UI::Xaml::Input::Pointer const& pointer)
+        {
+            m_ledger = t.ledger;
+            if (t.capture == Transition::Capture::Take) m_panel.CapturePointer(pointer);
+            for (auto const& r : t.reports) m_terminal.reportButton(r.state, r.button.ToGhosttyEnum());
+            if (t.capture == Transition::Capture::Drop) {
+                m_panel.DispatcherQueue().TryEnqueue([panel = m_panel, pointer]() {
+                    panel.ReleasePointerCapture(pointer);
+                });
             }
-            if (!m_ledger.AnyOutstanding()) m_panel.ReleasePointerCapture(e.pointer);
-        }
-
-        // What this host does with a press, decided from its own state
-        // alone: the ledger and whether the terminal has a selection.
-        core::input::PressAction ActionFor(input::PointerPress const& e) const
-        {
-            using core::input::PressAction;
-            if (m_ledger.IsOutstanding(e.button.ToGhosttyEnum())) return PressAction::Ignore{};
-
-            // A right button pressed on its own, over a selection,
-            // copies instead of reaching the terminal. Under a held
-            // left one it reaches the terminal, because copying would
-            // clear the selection the left one is drawing.
-            bool const pressedAlone = !m_ledger.AnyOutstanding();
-            bool const isCopyGesture =
-                e.button.IsRight() && pressedAlone && m_terminal.hasSelection();
-            if (isCopyGesture) return PressAction::CopySelection{};
-
-            return PressAction::RelayToTerminal{};
-        }
-
-        // Record the press, hold the capture if it is the first, tell
-        // libghostty. ActionFor has already said this is the thing to do.
-        void Relay(input::PointerPress const& e)
-        {
-            bool const firstButtonDown = !m_ledger.AnyOutstanding();
-            m_ledger.Press(e.button.ToGhosttyEnum());
-
-            // Capture so the release still arrives when the pointer has
-            // left the panel by then, which is also what lets a
-            // selection keep growing past the pane's edge: ghostty
-            // reads a negative position as a drag that should scroll
-            // (external/ghostty/src/Surface.zig:4555). Best effort -- a
-            // refused capture costs the drag, not the click.
-            if (firstButtonDown) m_panel.CapturePointer(e.pointer);
-
-            m_terminal.reportButton(GHOSTTY_MOUSE_PRESS, e.button.ToGhosttyEnum());
-        }
-
-        // Before libghostty reads the next move as a drag of a button
-        // nobody is holding.
-        void TakeBackEveryPress()
-        {
-            while (auto button = m_ledger.ReleaseAny()) {
-                m_terminal.reportButton(GHOSTTY_MOUSE_RELEASE, *button);
-            }
+            if (t.copySelection) m_terminal.copySelection();
         }
 
         Microsoft::UI::Xaml::Controls::SwapChainPanel m_panel{ nullptr };
