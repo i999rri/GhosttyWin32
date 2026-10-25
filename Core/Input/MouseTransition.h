@@ -3,6 +3,7 @@
 #include "Input/MouseButton.h"
 #include "Input/MouseButtonLedger.h"
 #include "ghostty.h"
+#include <utility>
 #include <vector>
 
 namespace core::input {
@@ -20,10 +21,28 @@ struct ButtonReport {
 // Built by the functions below from the ledger as it was, so the
 // deciding is pure and tested, and the owner only applies it.
 struct MouseTransition {
-    enum class Capture { Keep, Take, Drop };
+    // What happens to the pointer capture: nothing, taken on this
+    // event, or let go. Asked rather than compared, as MouseButton is.
+    class Capture {
+    public:
+        static constexpr Capture Keep() noexcept { return Capture{ Value::Keep }; }
+        static constexpr Capture Take() noexcept { return Capture{ Value::Take }; }
+        static constexpr Capture Drop() noexcept { return Capture{ Value::Drop }; }
+
+        constexpr bool IsKeep() const noexcept { return m_value == Value::Keep; }
+        constexpr bool IsTake() const noexcept { return m_value == Value::Take; }
+        constexpr bool IsDrop() const noexcept { return m_value == Value::Drop; }
+
+        constexpr bool operator==(Capture const&) const noexcept = default;
+
+    private:
+        enum class Value { Keep, Take, Drop };
+        explicit constexpr Capture(Value value) noexcept : m_value(value) {}
+        Value m_value;
+    };
 
     MouseButtonLedger ledger;
-    Capture capture = Capture::Keep;
+    Capture capture = Capture::Keep();
     std::vector<ButtonReport> reports;
     bool copySelection = false;
 };
@@ -48,7 +67,7 @@ inline MouseTransition OnPress(MouseButtonLedger ledger, MouseButton button, boo
     }
 
     t.ledger.Press(button.ToGhosttyEnum());
-    if (pressedAlone) t.capture = MouseTransition::Capture::Take;
+    if (pressedAlone) t.capture = MouseTransition::Capture::Take();
     t.reports.push_back({ button, GHOSTTY_MOUSE_PRESS });
     return t;
 }
@@ -62,7 +81,7 @@ inline MouseTransition OnRelease(MouseButtonLedger ledger, MouseButton button)
     if (t.ledger.Release(button.ToGhosttyEnum())) {
         t.reports.push_back({ button, GHOSTTY_MOUSE_RELEASE });
     }
-    if (!t.ledger.AnyOutstanding()) t.capture = MouseTransition::Capture::Drop;
+    if (!t.ledger.AnyOutstanding()) t.capture = MouseTransition::Capture::Drop();
     return t;
 }
 
@@ -85,7 +104,7 @@ inline MouseTransition OnCaptureLost(MouseButtonLedger ledger)
 inline MouseTransition OnCanceled(MouseButtonLedger ledger)
 {
     MouseTransition t = OnCaptureLost(std::move(ledger));
-    t.capture = MouseTransition::Capture::Drop;
+    t.capture = MouseTransition::Capture::Drop();
     return t;
 }
 

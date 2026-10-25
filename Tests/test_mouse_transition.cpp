@@ -5,7 +5,6 @@ using core::input::ButtonReport;
 using core::input::MouseButton;
 using core::input::MouseButtonLedger;
 using core::input::MouseTransition;
-using Capture = core::input::MouseTransition::Capture;
 
 namespace {
 
@@ -25,7 +24,7 @@ ButtonReport Release(MouseButton b) { return { b, GHOSTTY_MOUSE_RELEASE }; }
 TEST(MouseTransitionTest, FirstPressIsReportedAndTakesTheCapture) {
     auto t = core::input::OnPress(MouseButtonLedger{}, MouseButton::Left(), false);
     EXPECT_TRUE(t.ledger.IsOutstanding(GHOSTTY_MOUSE_LEFT));
-    EXPECT_EQ(t.capture, Capture::Take);
+    EXPECT_TRUE(t.capture.IsTake());
     EXPECT_EQ(t.reports, std::vector{ Press(MouseButton::Left()) });
     EXPECT_FALSE(t.copySelection);
 }
@@ -33,7 +32,7 @@ TEST(MouseTransitionTest, FirstPressIsReportedAndTakesTheCapture) {
 TEST(MouseTransitionTest, SecondButtonIsReportedButTheCaptureIsAlreadyHeld) {
     auto t = core::input::OnPress(Holding({ MouseButton::Left() }), MouseButton::Right(), false);
     EXPECT_TRUE(t.ledger.IsOutstanding(GHOSTTY_MOUSE_RIGHT));
-    EXPECT_EQ(t.capture, Capture::Keep);
+    EXPECT_TRUE(t.capture.IsKeep());
     EXPECT_EQ(t.reports, std::vector{ Press(MouseButton::Right()) });
 }
 
@@ -41,7 +40,7 @@ TEST(MouseTransitionTest, APressLibghosttyHasHeardChangesNothing) {
     auto before = Holding({ MouseButton::Left() });
     auto t = core::input::OnPress(before, MouseButton::Left(), false);
     EXPECT_TRUE(t.ledger.IsOutstanding(GHOSTTY_MOUSE_LEFT));
-    EXPECT_EQ(t.capture, Capture::Keep);
+    EXPECT_TRUE(t.capture.IsKeep());
     EXPECT_TRUE(t.reports.empty());
     EXPECT_FALSE(t.copySelection);
 }
@@ -51,14 +50,14 @@ TEST(MouseTransitionTest, RightClickOverASelectionCopiesAndReportsNothing) {
     EXPECT_TRUE(t.copySelection);
     EXPECT_TRUE(t.reports.empty());
     EXPECT_FALSE(t.ledger.AnyOutstanding());
-    EXPECT_EQ(t.capture, Capture::Keep);
+    EXPECT_TRUE(t.capture.IsKeep());
 }
 
 TEST(MouseTransitionTest, RightClickWithoutASelectionIsRelayed) {
     auto t = core::input::OnPress(MouseButtonLedger{}, MouseButton::Right(), false);
     EXPECT_FALSE(t.copySelection);
     EXPECT_EQ(t.reports, std::vector{ Press(MouseButton::Right()) });
-    EXPECT_EQ(t.capture, Capture::Take);
+    EXPECT_TRUE(t.capture.IsTake());
 }
 
 TEST(MouseTransitionTest, RightClickUnderAHeldLeftIsRelayedEvenOverASelection) {
@@ -74,14 +73,14 @@ TEST(MouseTransitionTest, ReleasingTheLastButtonReportsItAndDropsTheCapture) {
     auto t = core::input::OnRelease(Holding({ MouseButton::Left() }), MouseButton::Left());
     EXPECT_FALSE(t.ledger.AnyOutstanding());
     EXPECT_EQ(t.reports, std::vector{ Release(MouseButton::Left()) });
-    EXPECT_EQ(t.capture, Capture::Drop);
+    EXPECT_TRUE(t.capture.IsDrop());
 }
 
 TEST(MouseTransitionTest, ReleasingOneOfTwoKeepsTheCapture) {
     auto t = core::input::OnRelease(Holding({ MouseButton::Left(), MouseButton::Right() }), MouseButton::Left());
     EXPECT_TRUE(t.ledger.IsOutstanding(GHOSTTY_MOUSE_RIGHT));
     EXPECT_EQ(t.reports, std::vector{ Release(MouseButton::Left()) });
-    EXPECT_EQ(t.capture, Capture::Keep);
+    EXPECT_TRUE(t.capture.IsKeep());
 }
 
 TEST(MouseTransitionTest, AReleaseWithoutItsPressReportsNothing) {
@@ -90,7 +89,7 @@ TEST(MouseTransitionTest, AReleaseWithoutItsPressReportsNothing) {
     // the capture -- which was never taken -- is dropped all the same.
     auto t = core::input::OnRelease(MouseButtonLedger{}, MouseButton::Right());
     EXPECT_TRUE(t.reports.empty());
-    EXPECT_EQ(t.capture, Capture::Drop);
+    EXPECT_TRUE(t.capture.IsDrop());
 }
 
 // ----- capture lost / canceled -----
@@ -99,7 +98,7 @@ TEST(MouseTransitionTest, LosingTheCaptureTakesBackEveryOutstandingPress) {
     auto t = core::input::OnCaptureLost(Holding({ MouseButton::Left(), MouseButton::Middle() }));
     EXPECT_FALSE(t.ledger.AnyOutstanding());
     EXPECT_EQ(t.reports, (std::vector{ Release(MouseButton::Left()), Release(MouseButton::Middle()) }));
-    EXPECT_EQ(t.capture, Capture::Keep);
+    EXPECT_TRUE(t.capture.IsKeep());
 }
 
 TEST(MouseTransitionTest, LosingTheCaptureWithNothingOutstandingIsEmpty) {
@@ -107,11 +106,11 @@ TEST(MouseTransitionTest, LosingTheCaptureWithNothingOutstandingIsEmpty) {
     // and must find nothing to do.
     auto t = core::input::OnCaptureLost(MouseButtonLedger{});
     EXPECT_TRUE(t.reports.empty());
-    EXPECT_EQ(t.capture, Capture::Keep);
+    EXPECT_TRUE(t.capture.IsKeep());
 }
 
 TEST(MouseTransitionTest, ACanceledPointerAlsoDropsTheCapture) {
     auto t = core::input::OnCanceled(Holding({ MouseButton::Left() }));
     EXPECT_EQ(t.reports, std::vector{ Release(MouseButton::Left()) });
-    EXPECT_EQ(t.capture, Capture::Drop);
+    EXPECT_TRUE(t.capture.IsDrop());
 }

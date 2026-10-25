@@ -116,9 +116,9 @@ namespace winrt::GhosttyWin32::implementation
         void Apply(Transition const& t, Microsoft::UI::Xaml::Input::Pointer const& pointer)
         {
             m_ledger = t.ledger;
-            if (t.capture == Transition::Capture::Take) m_panel.CapturePointer(pointer);
+            if (t.capture.IsTake()) m_panel.CapturePointer(pointer);
             for (auto const& r : t.reports) m_terminal.reportButton(r.state, r.button.ToGhosttyEnum());
-            if (t.capture == Transition::Capture::Drop) {
+            if (t.capture.IsDrop()) {
                 m_panel.DispatcherQueue().TryEnqueue([panel = m_panel, pointer]() {
                     panel.ReleasePointerCapture(pointer);
                 });
