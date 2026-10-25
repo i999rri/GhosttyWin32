@@ -13,35 +13,15 @@
 
 namespace winrt::GhosttyWin32::implementation
 {
-    // One surface's side of the mouse: everything the pointer tells
-    // libghostty, and the pointer capture that keeps those reports
-    // whole.
-    //
-    // The two live together because they describe one fact. The record
-    // (core::input::MouseButtonLedger) says which buttons libghostty
-    // has been told are down, and the capture is held for exactly as
-    // long as that record is not empty -- it is what brings a release
-    // outside the panel back here. Kept apart, the rule linking them
-    // was split across two handlers that each held half of it.
-    //
-    // Everything this class says to the terminal, and the one thing it
-    // asks of it, goes through Terminal, which the owner (SurfaceHost)
-    // fills in when it builds the class. The decisions are here; the
-    // acts are named at that one call site, so reading it says what a
-    // relayed press does, what a move does and what the right-click
-    // does, without descending into the handlers. The owner is also
-    // where the live modifier state is read, and where the window and
-    // the clipboard are. This class holds no surface.
-    //
-    // Handling is in three parts. The event arrives already read into
-    // a move, a press or a release (input::PointerEvent). For a press,
-    // ActionFor reads the host's state and hands back a PressAction;
-    // the handler then does what the action says, and decides
-    // nothing itself.
+    // One surface's side of the mouse: what the pointer tells the
+    // terminal, and the pointer capture that keeps those reports whole.
+    // The capture is held for exactly as long as the ledger has a press
+    // outstanding -- it is what brings a release outside the panel back
+    // here -- so the two are kept in one class.
     //
     // UI thread only, like every pointer event it is fed, so nothing
-    // here needs a lock. The owner calls it only while it has a
-    // surface behind Terminal.
+    // here needs a lock. The owner calls it only while a surface stands
+    // behind Terminal.
     class MouseInput
     {
     public:
