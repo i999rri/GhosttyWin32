@@ -24,7 +24,7 @@ namespace winrt::GhosttyWin32::implementation
     // Nothing is decided here. Each event is handed, with the ledger as
     // it stands, to core::input::OnPress / OnRelease / OnCaptureLost /
     // OnCanceled, which return a MouseTransition: the ledger as it will
-    // be, and what goes out. Apply then does exactly that.
+    // be, and what goes out. CarryOut then does exactly that.
     //
     // UI thread only, like every pointer event it is fed, so nothing
     // here needs a lock. The owner calls it only while a surface stands
@@ -60,11 +60,11 @@ namespace winrt::GhosttyWin32::implementation
             std::visit([this](auto const& e) { Handle(e); }, ev);
         }
 
-        void CaptureLost() { Apply(core::input::OnCaptureLost(m_ledger), nullptr); }
+        void CaptureLost() { CarryOut(core::input::OnCaptureLost(m_ledger), nullptr); }
 
         void Canceled(Microsoft::UI::Xaml::Input::Pointer const& pointer)
         {
-            Apply(core::input::OnCanceled(m_ledger), pointer);
+            CarryOut(core::input::OnCanceled(m_ledger), pointer);
         }
 
         void Wheel(Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args)
@@ -97,20 +97,20 @@ namespace winrt::GhosttyWin32::implementation
         void Handle(input::PointerPress const& e)
         {
             m_terminal.reportPosition(e.position.X, e.position.Y);
-            Apply(core::input::OnPress(m_ledger, e.button, m_terminal.hasSelection()), e.pointer);
+            CarryOut(core::input::OnPress(m_ledger, e.button, m_terminal.hasSelection()), e.pointer);
         }
 
         void Handle(input::PointerRelease const& e)
         {
             m_terminal.reportPosition(e.position.X, e.position.Y);
-            Apply(core::input::OnRelease(m_ledger, e.button), e.pointer);
+            CarryOut(core::input::OnRelease(m_ledger, e.button), e.pointer);
         }
 
         // The deciding lives in core::input, where the tests can reach
         // it; this is the one place its decisions touch the world. So
         // every line here does what the transition says and asks
         // nothing of its own.
-        void Apply(Transition const& t, Microsoft::UI::Xaml::Input::Pointer const& pointer)
+        void CarryOut(Transition const& t, Microsoft::UI::Xaml::Input::Pointer const& pointer)
         {
             AdoptLedger(t.ledger);
             if (t.capture.IsTake()) m_panel.CapturePointer(pointer);
