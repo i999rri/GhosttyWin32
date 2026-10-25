@@ -90,7 +90,7 @@
     <ClInclude Include="Input\MouseButtonLedger.h">
       <Filter>Input</Filter>
     </ClInclude>
-    <ClInclude Include="Input\PressAction.h">
+    <ClInclude Include="Input\MouseTransition.h">
       <Filter>Input</Filter>
     </ClInclude>
     <ClInclude Include="Interop\Encoding.h">

@@ -176,7 +176,7 @@
     <ClCompile Include="test_key_event_translator.cpp" />
     <ClCompile Include="test_mouse_button.cpp" />
     <ClCompile Include="test_mouse_button_ledger.cpp" />
-    <ClCompile Include="test_press_action.cpp" />
+    <ClCompile Include="test_mouse_transition.cpp" />
     <ClCompile Include="test_window_decorations.cpp" />
     <ClCompile Include="test_background_opacity.cpp" />
     <ClCompile Include="test_tree.cpp" />
