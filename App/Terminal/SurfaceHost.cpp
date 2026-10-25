@@ -5,7 +5,6 @@
 #include "Input/KeyEventTranslator.h"
 #include "Input/TerminalKeyDown.h"
 #include "Input/TerminalKeyUp.h"
-#include "Input/TerminalPointerButton.h"
 #include "Display/PhysicalPixels.h"
 #include "Win32/Clipboard.h"
 #include "Win32/DebugTrace.h"
@@ -15,7 +14,6 @@
 namespace winrt::GhosttyWin32::implementation
 {
     namespace muxi = winrt::Microsoft::UI::Xaml::Input;
-    namespace muix = winrt::Microsoft::UI::Input;
 
     // ----- lifetime -----
 
@@ -122,6 +120,7 @@ namespace winrt::GhosttyWin32::implementation
         }
 
         m_ime.Reset();
+        m_mouse.Reset();
         m_editContext.Release();
 
         if (m_panel) {
@@ -267,20 +266,7 @@ namespace winrt::GhosttyWin32::implementation
     void SurfaceHost::OnPointerMoved(muxi::PointerRoutedEventArgs const& args)
     {
         if (!m_surface) return;
-        muix::PointerPoint point = args.GetCurrentPoint(m_panel);
-        auto pos = point.Position();
-        m_surface.MousePos(pos.X, pos.Y, host::currentMods());
-
-        // A button pressed or released while another is held arrives
-        // here, not at OnPointerPressed or OnPointerReleased. The
-        // position goes first so the change lands on the cell under
-        // the pointer.
-        input::TerminalPointerButton pointer(args);
-        if (auto pressed = pointer.buttonPressedDuringMove()) {
-            PressButton(*pressed, args);
-        } else if (auto released = pointer.buttonReleasedDuringMove()) {
-            ReleaseButton(*released, args);
-        }
+        m_mouse.Handle(input::fromPointerArgs(args, m_panel));
     }
 
     void SurfaceHost::OnPointerPressed(muxi::PointerRoutedEventArgs const& args)
@@ -294,107 +280,39 @@ namespace winrt::GhosttyWin32::implementation
         // LostFocus fires, and KeyDown stops being delivered until
         // focus is restored some other way.
         args.Handled(true);
-        auto button = input::TerminalPointerButton(args).pressedButton();
-        if (!button) return;
-
-        // Right-click copies a selection instead of reaching the
-        // terminal. libghostty hears no press, which is also what
-        // keeps it from hearing the release. Only for a right button
-        // pressed on its own, which is what reaches this event: under
-        // a held left one it arrives at OnPointerMoved, and copying
-        // there would clear the selection the left one is drawing.
-        if (*button == GHOSTTY_MOUSE_RIGHT && m_surface.HasSelection()) {
-            CopySelectionToClipboard();
-            return;
-        }
-        PressButton(*button, args);
+        m_mouse.Handle(input::fromPointerArgs(args, m_panel));
     }
 
     void SurfaceHost::OnPointerReleased(muxi::PointerRoutedEventArgs const& args)
     {
         if (!m_surface) return;
         args.Handled(true);
-        auto button = input::TerminalPointerButton(args).releasedButton();
-        if (!button) return;
-
-        ReleaseButton(*button, args);
+        m_mouse.Handle(input::fromPointerArgs(args, m_panel));
     }
 
     void SurfaceHost::OnPointerCaptureLost()
     {
-        // The capture is what was going to deliver the releases, so
-        // once it is gone they are not coming. The release path gets
-        // here too, by its own ReleasePointerCapture call, and finds
-        // the record already empty.
-        TakeBackEveryPress();
+        if (!m_surface) return;
+        m_mouse.CaptureLost();
     }
 
     void SurfaceHost::OnPointerCanceled(muxi::PointerRoutedEventArgs const& args)
     {
         if (!m_surface) return;
-
-        // A canceled pointer ends its press with no release at all.
-        // The capture goes after the record, so the CaptureLost it
-        // raises finds nothing left to take back.
-        TakeBackEveryPress();
-        m_panel.ReleasePointerCapture(args.Pointer());
-    }
-
-    void SurfaceHost::PressButton(ghostty_input_mouse_button_e button,
-                                  muxi::PointerRoutedEventArgs const& args)
-    {
-        bool const firstButtonDown = !m_pressedButtons.AnyDown();
-        if (!m_pressedButtons.Press(button)) return;
-
-        // Capture so the release still arrives when the pointer has
-        // left the panel by then, which is also what lets a selection
-        // keep growing past the pane's edge: ghostty reads a negative
-        // position as a drag that should scroll
-        // (external/ghostty/src/Surface.zig:4555). Best effort -- a
-        // refused capture costs the drag, not the click.
-        if (firstButtonDown) m_panel.CapturePointer(args.Pointer());
-
-        m_surface.MouseButton(GHOSTTY_MOUSE_PRESS, button, host::currentMods());
-    }
-
-    void SurfaceHost::ReleaseButton(ghostty_input_mouse_button_e button,
-                                    muxi::PointerRoutedEventArgs const& args)
-    {
-        // Nothing to decide here beyond taking back a press that went
-        // out: a button released without one -- the right-click that
-        // copied, a press that landed before this control had a
-        // surface -- is not reported.
-        bool const takenBack = m_pressedButtons.Release(button);
-        if (!m_pressedButtons.AnyDown()) m_panel.ReleasePointerCapture(args.Pointer());
-        if (!takenBack) return;
-
-        m_surface.MouseButton(GHOSTTY_MOUSE_RELEASE, button, host::currentMods());
-    }
-
-    void SurfaceHost::TakeBackEveryPress()
-    {
-        if (!m_surface) return;
-
-        // Before libghostty reads the next move as a drag of a button
-        // nobody is holding.
-        while (auto button = m_pressedButtons.ReleaseAny()) {
-            m_surface.MouseButton(GHOSTTY_MOUSE_RELEASE, *button, host::currentMods());
-        }
+        m_mouse.Canceled(args.Pointer());
     }
 
     void SurfaceHost::OnPointerWheelChanged(muxi::PointerRoutedEventArgs const& args)
     {
         if (!m_surface) return;
-        muix::PointerPoint point = args.GetCurrentPoint(m_panel);
-        ScrollByWheel(point.Properties().MouseWheelDelta());
+        m_mouse.Wheel(args);
         args.Handled(true);
     }
 
     void SurfaceHost::ScrollByWheel(int wheelDelta)
     {
         if (!m_surface) return;
-        ghostty_input_scroll_mods_t smods = {};
-        m_surface.MouseScroll(0, static_cast<double>(wheelDelta) / 120.0, smods);
+        m_mouse.ScrollBy(wheelDelta);
     }
 
     void SurfaceHost::OnKeyDown(muxi::KeyRoutedEventArgs const& args)

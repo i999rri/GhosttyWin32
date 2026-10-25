@@ -95,7 +95,7 @@
     <ClInclude Include="Input\TerminalKeyUp.h">
       <Filter>Input</Filter>
     </ClInclude>
-    <ClInclude Include="Input\TerminalPointerButton.h">
+    <ClInclude Include="Input\PointerEvent.h">
       <Filter>Input</Filter>
     </ClInclude>
     <ClInclude Include="Ghostty\MainWindowRuntime.h">
@@ -141,6 +141,9 @@
       <Filter>Terminal</Filter>
     </ClInclude>
     <ClInclude Include="Terminal\ImeSession.h">
+      <Filter>Terminal</Filter>
+    </ClInclude>
+    <ClInclude Include="Terminal\MouseInput.h">
       <Filter>Terminal</Filter>
     </ClInclude>
     <ClInclude Include="Terminal\SurfaceHost.h">
