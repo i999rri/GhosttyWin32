@@ -106,6 +106,10 @@ namespace winrt::GhosttyWin32::implementation
             Apply(core::input::OnRelease(m_ledger, e.button), e.pointer);
         }
 
+        // The deciding lives in core::input, where the tests can reach
+        // it; this is the one place its decisions touch the world. So
+        // every line here does what the transition says and asks
+        // nothing of its own.
         void Apply(Transition const& t, Microsoft::UI::Xaml::Input::Pointer const& pointer)
         {
             AdoptLedger(t.ledger);
