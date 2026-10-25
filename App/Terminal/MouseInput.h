@@ -2,6 +2,7 @@
 
 #include "Input/MouseButtonLedger.h"
 #include "Input/PointerEvent.h"
+#include "Input/PressAction.h"
 #include "ghostty.h"
 #include <winrt/Microsoft.UI.Input.h>
 #include <winrt/Microsoft.UI.Xaml.Controls.h>
@@ -33,10 +34,10 @@ namespace winrt::GhosttyWin32::implementation
     // the clipboard are. This class holds no surface.
     //
     // Handling is in three parts. The event arrives already read into
-    // a move, a press or a release (input::PointerEvent). A press is
-    // judged first -- Judge reads the host's state and names one of
-    // three outcomes -- and only then acted on, so the acting code
-    // decides nothing.
+    // a move, a press or a release (input::PointerEvent). For a press,
+    // ActionFor reads the host's state and hands back a PressAction;
+    // the handler then does what the action says, and decides
+    // nothing itself.
     //
     // UI thread only, like every pointer event it is fed, so nothing
     // here needs a lock. The owner calls it only while it has a
@@ -115,11 +116,10 @@ namespace winrt::GhosttyWin32::implementation
         void Handle(input::PointerPress const& e)
         {
             m_terminal.reportPosition(e.position.X, e.position.Y);
-            switch (Judge(e)) {
-            case PressVerdict::Copy:        m_terminal.copySelection(); break;
-            case PressVerdict::Relay:       Relay(e);                               break;
-            case PressVerdict::AlreadyDown:                                         break;
-            }
+            ActionFor(e).Match(
+                [](core::input::PressAction::Ignore) {},
+                [&](core::input::PressAction::CopySelection) { m_terminal.copySelection(); },
+                [&](core::input::PressAction::RelayToTerminal) { Relay(e); });
         }
 
         void Handle(input::PointerRelease const& e)
@@ -136,15 +136,10 @@ namespace winrt::GhosttyWin32::implementation
 
         // What this host does with a press, decided from its own state
         // alone: the ledger and whether the terminal has a selection.
-        enum class PressVerdict {
-            Copy,          // this terminal's copy gesture; libghostty hears nothing
-            Relay,         // record it, hold the capture, tell libghostty
-            AlreadyDown,   // a press libghostty has already heard
-        };
-
-        PressVerdict Judge(input::PointerPress const& e) const
+        core::input::PressAction ActionFor(input::PointerPress const& e) const
         {
-            if (m_ledger.IsOutstanding(e.button.ToGhosttyEnum())) return PressVerdict::AlreadyDown;
+            using core::input::PressAction;
+            if (m_ledger.IsOutstanding(e.button.ToGhosttyEnum())) return PressAction::Ignore{};
 
             // A right button pressed on its own, over a selection,
             // copies instead of reaching the terminal. Under a held
@@ -153,13 +148,13 @@ namespace winrt::GhosttyWin32::implementation
             bool const pressedAlone = !m_ledger.AnyOutstanding();
             bool const isCopyGesture =
                 e.button.IsRight() && pressedAlone && m_terminal.hasSelection();
-            if (isCopyGesture) return PressVerdict::Copy;
+            if (isCopyGesture) return PressAction::CopySelection{};
 
-            return PressVerdict::Relay;
+            return PressAction::RelayToTerminal{};
         }
 
         // Record the press, hold the capture if it is the first, tell
-        // libghostty. Judge has already said this is the thing to do.
+        // libghostty. ActionFor has already said this is the thing to do.
         void Relay(input::PointerPress const& e)
         {
             bool const firstButtonDown = !m_ledger.AnyOutstanding();
