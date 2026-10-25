@@ -1,8 +1,8 @@
 #include "Actions.h"
 #include "Tags/TriggerLabel.h"
 #include "Interop/Encoding.h"
+#include "Win32/ShellOpen.h"
 #include <windows.h>
-#include <shellapi.h>
 #include <cstdio>
 #include <string>
 #include <utility>
@@ -91,30 +91,39 @@ bool Actions::OnRender() {
 }
 
 // ===== shell-verb passthroughs =====
+//
+// Each of these hands a target to the shell's "open" verb, and none
+// of them does it here. An action callback arrives on whatever thread
+// libghostty is on, and open_url arrives under its renderer lock
+// (external/ghostty/src/Surface.zig:3921); ShellExecuteW blocks for
+// as long as the shell takes to find a handler and pumps messages
+// while it waits, which with that lock held on the UI thread is a
+// deadlock (#247). So the work hops to the UI thread first, out of
+// the callback, and OpenWithShell then puts the shell call on a
+// thread of its own.
 
 bool Actions::OnCheckForUpdates() {
     // No built-in updater on Windows; hand the user off to the
-    // GitHub releases page. ShellExecuteW dispatches via the
-    // default browser without the rundll32 child-process flash
-    // libghostty's std.process.Child fallback would otherwise
-    // produce.
-    ShellExecuteW(m_view.Hwnd(), L"open",
-                  L"https://github.com/i999rri/GhosttyWin32/releases",
-                  nullptr, nullptr, SW_SHOWNORMAL);
+    // GitHub releases page. The shell verb opens the default browser
+    // without the rundll32 child-process flash libghostty's
+    // std.process.Child fallback would otherwise produce.
+    DispatchToView([this]() {
+        core::win32::OpenWithShell(m_view.Hwnd(), L"https://github.com/i999rri/GhosttyWin32/releases");
+    });
     return true;
 }
 
 bool Actions::OnOpenUrl(ghostty_action_open_url_s ou) {
-    // Ctrl+click on a URL in the terminal. Hand off to the shell
-    // verb opener so the user's default browser / mail client /
-    // etc. handles it.
-    if (ou.url && ou.len > 0) {
-        std::wstring wurl = interop::Encoding::toUtf16(ou.url, static_cast<int>(ou.len));
-        if (!wurl.empty()) {
-            ShellExecuteW(m_view.Hwnd(), L"open", wurl.c_str(),
-                          nullptr, nullptr, SW_SHOWNORMAL);
-        }
-    }
+    // Ctrl+click on a URL in the terminal. The user's default
+    // browser, mail client, etc. handles it.
+    if (!ou.url || ou.len == 0) return true;
+
+    std::wstring wurl = interop::Encoding::toUtf16(ou.url, static_cast<int>(ou.len));
+    if (wurl.empty()) return true;
+
+    DispatchToView([this, wurl = std::move(wurl)]() mutable {
+        core::win32::OpenWithShell(m_view.Hwnd(), std::move(wurl));
+    });
     return true;
 }
 
@@ -233,8 +242,9 @@ bool Actions::OnOpenConfig() {
                                         static_cast<DWORD>(std::size(appdata)));
     if (len > 0 && len < std::size(appdata)) {
         std::wstring path = std::wstring(appdata) + L"\\ghostty\\config";
-        ShellExecuteW(nullptr, L"open", path.c_str(),
-                      nullptr, nullptr, SW_SHOWNORMAL);
+        DispatchToView([this, path = std::move(path)]() mutable {
+            core::win32::OpenWithShell(m_view.Hwnd(), std::move(path));
+        });
     }
     return true;
 }

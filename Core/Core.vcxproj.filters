@@ -138,6 +138,9 @@
     <ClInclude Include="Win32\DebugTrace.h">
       <Filter>Win32</Filter>
     </ClInclude>
+    <ClInclude Include="Win32\ShellOpen.h">
+      <Filter>Win32</Filter>
+    </ClInclude>
     <ClInclude Include="Win32\NativeWindow.h">
       <Filter>Win32</Filter>
     </ClInclude>
