@@ -7,6 +7,7 @@
 #include "Tabs/Panes/PaneIdAllocator.h"
 #include "Tabs/PressedTab.h"
 #include "Tabs/TabDrag.h"
+#include "Wsl/ShimServer.h"
 #include <winrt/Microsoft.Windows.AppLifecycle.h>
 #include <winrt/Microsoft.Windows.AppNotifications.h>
 #include <memory>
@@ -154,6 +155,18 @@ namespace winrt::GhosttyWin32::implementation
         BasicPressedTab<Microsoft::UI::Xaml::Controls::TabViewItem>&
         PressedTab() noexcept { return m_pressedTab; }
 
+        // In-place WSL (#217). The pipe the `wsl` shim talks to, or
+        // empty while the server is down; and the directory holding
+        // the shim, which ConPTY shells get first on their PATH while
+        // wsl-bridge is on.
+        std::wstring ShimPipeName() const noexcept;
+        std::wstring const& ShimDirectory() const noexcept { return m_shimDir; }
+        // Run the shim's pipe server exactly while the current config
+        // has wsl-bridge on. Called at launch and on every config
+        // replacement; idempotent. With the option off nothing listens,
+        // so the pipe is no attack surface for users who never opted in.
+        void SyncShimServer();
+
     private:
         // Shared tail of CreateNewWindow / CreateTearOutWindow:
         // strong-ref the window in m_topLevelWindows and subscribe
@@ -225,5 +238,11 @@ namespace winrt::GhosttyWin32::implementation
         winrt::event_token m_activatedToken{};
         BasicTabDrag<Microsoft::UI::Xaml::Controls::TabViewItem> m_tabDrag;
         BasicPressedTab<Microsoft::UI::Xaml::Controls::TabViewItem> m_pressedTab;
+
+        // See ShimDirectory(). Absolute: it travels through PATH.
+        std::wstring m_shimDir;
+        // Declared last so it stops (and joins its pipe thread) before
+        // the windows its requests are routed to go away.
+        std::unique_ptr<wsl::ShimServer> m_shimServer;
     };
 }

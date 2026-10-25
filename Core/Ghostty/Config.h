@@ -127,6 +127,15 @@ public:
         return v;
     }
 
+    // `wsl-bridge` (this port's option): tabs started as `wsl` run
+    // through the direct pty bridge instead of ConPTY. The in-place
+    // WSL shim (#217) is only put on PATH while this is on.
+    bool WslBridge() const noexcept {
+        bool v = false;
+        GetRaw("wsl-bridge", &v);
+        return v;
+    }
+
     // ----- notify-on-command-finish (v1.3.0+, default: never) -----
     // The whole feature is opt-in; every getter falls back to the
     // documented default when the key is unreadable.
@@ -156,6 +165,18 @@ public:
             return 5'000'000'000ull;  // documented default: 5s
         }
         return static_cast<uint64_t>(ms) * 1'000'000ull;
+    }
+
+    // How soon after starting a non-zero exit means the command never
+    // got going. ghostty keeps such a surface open instead of closing
+    // it, so the host reads the same setting to know which exits leave
+    // a pane behind (#237).
+    uint32_t AbnormalCommandExitRuntimeMs() const noexcept {
+        uint32_t ms = 0;
+        if (!GetRaw("abnormal-command-exit-runtime", &ms)) {
+            return 250;  // documented default
+        }
+        return ms;
     }
 
     // How to notify. The packed struct crosses the C API as its bit

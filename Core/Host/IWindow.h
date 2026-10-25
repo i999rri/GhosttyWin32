@@ -2,6 +2,7 @@
 
 #include "ghostty.h"
 #include "Host/ISurfaceView.h"
+#include "Wsl/SessionExit.h"
 #include <windows.h>
 #include <cstdint>
 #include <functional>
@@ -86,6 +87,12 @@ struct IWindow {
 
     // Reset every split ratio in the source surface's tab to 0.5.
     virtual void EqualizeSplitsForSurface(ghostty_surface_t surface) = 0;
+
+    // MOVE_TAB_TO_NEW_WINDOW: the tab holding `surface` leaves for a
+    // window of its own, as a tear-out does from the mouse. Routed
+    // because the dispatcher refuses what it has no case for, which
+    // left `move_tab_to_new_window` doing nothing at all.
+    virtual void MoveTabToNewWindow(ghostty_surface_t surface) = 0;
 
     // Expand the source leaf to fill its tab; a second call restores
     // the regular split layout.
@@ -266,6 +273,15 @@ struct IWindow {
     // taskbar surface is window-global, not per-pane, so no
     // surface argument is needed.
     virtual void ReportProgress(ghostty_action_progress_report_s pr) = 0;
+
+    // SHOW_CHILD_EXITED for a surface this window owns: the process
+    // in `surface` ended, as `ended`. Arrives on the UI thread outside
+    // the surface's own call stack, so the window may free the surface
+    // from here. An in-place WSL session (#217) ends on this:
+    // libghostty keeps a surface started with an explicit command open
+    // after its process exits, so no close would follow on its own.
+    virtual void ChildExited(ghostty_surface_t surface,
+                             core::wsl::SessionExit ended) = 0;
 };
 
 }  // namespace core::host

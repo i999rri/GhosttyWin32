@@ -1,8 +1,10 @@
 #pragma once
 
 #include "Ghostty/Surface.h"
+#include "Host/KeyModifiers.h"
 #include "Terminal/EditContext.h"
 #include "Terminal/ImeSession.h"
+#include "Terminal/MouseInput.h"
 #include "Interop/Encoding.h"
 #include "Win32/Clipboard.h"
 #include "ghostty.h"
@@ -96,7 +98,21 @@ namespace winrt::GhosttyWin32::implementation
         explicit SurfaceHost(Microsoft::UI::Xaml::Controls::SwapChainPanel panel)
             : m_panel(std::move(panel))
             , m_editContext(m_panel)
-            , m_ime(m_editContext) {}
+            , m_ime(m_editContext)
+            , m_mouse(m_panel, {
+                  .reportButton = [this](ghostty_input_mouse_state_e state,
+                                         ghostty_input_mouse_button_e button) {
+                      m_surface.MouseButton(state, button, host::currentMods());
+                  },
+                  .reportPosition = [this](double x, double y) {
+                      m_surface.MousePos(x, y, host::currentMods());
+                  },
+                  .scroll = [this](double lines) {
+                      m_surface.MouseScroll(0, lines, ghostty_input_scroll_mods_t{});
+                  },
+                  .copySelection = [this] { CopySelectionToClipboard(); },
+                  .hasSelection = [this] { return m_surface.HasSelection(); },
+              }) {}
         ~SurfaceHost() { Detach(); }
 
         SurfaceHost(SurfaceHost const&) = delete;
@@ -182,6 +198,8 @@ namespace winrt::GhosttyWin32::implementation
         void OnPointerMoved(Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args);
         void OnPointerPressed(Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args);
         void OnPointerReleased(Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args);
+        void OnPointerCaptureLost();
+        void OnPointerCanceled(Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args);
         void OnPointerWheelChanged(Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const& args);
         // Wheel from somewhere other than the panel (an overlay that
         // would otherwise consume it). Same scroll path, delta only.
@@ -251,6 +269,12 @@ namespace winrt::GhosttyWin32::implementation
         // constructed first and destroyed last.
         EditContext m_editContext;
         ImeSession m_ime;
+
+        // What the pointer tells libghostty, and the capture that
+        // keeps it whole. Declared after the panel, which it holds
+        // onto; it reaches the surface only through the Terminal
+        // callbacks above, which read m_surface when they run.
+        MouseInput m_mouse;
 
         std::function<void(ghostty_surface_t)> m_onFocused;
         std::function<bool()> m_terminalOwnsInput;

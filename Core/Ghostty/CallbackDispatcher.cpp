@@ -17,7 +17,9 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
         case GHOSTTY_ACTION_RING_BELL:
             return m_actions.OnRingBell();
         case GHOSTTY_ACTION_SHOW_CHILD_EXITED:
-            return m_actions.OnShowChildExited(action.action.child_exited);
+            return m_actions.OnShowChildExited(
+                target.tag == GHOSTTY_TARGET_SURFACE ? target.target.surface : nullptr,
+                action.action.child_exited);
         case GHOSTTY_ACTION_RENDERER_HEALTH:
             return m_actions.OnRendererHealth(action.action.renderer_health);
         case GHOSTTY_ACTION_RENDER:
@@ -200,6 +202,11 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
                 return m_actions.OnGotoSplit(target.target.surface,
                                              action.action.goto_split);
             return false;
+        case GHOSTTY_ACTION_MOVE_TAB_TO_NEW_WINDOW:
+            if (target.tag == GHOSTTY_TARGET_SURFACE)
+                return m_actions.OnMoveTabToNewWindow(target.target.surface);
+            return false;
+
         case GHOSTTY_ACTION_EQUALIZE_SPLITS:
             if (target.tag == GHOSTTY_TARGET_SURFACE)
                 return m_actions.OnEqualizeSplits(target.target.surface);
@@ -214,9 +221,7 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
         // here keeps libghostty's future "unhandled action" audit
         // quiet without inventing empty GhosttyActions methods.
         //
-        // Feature surfaces intentionally not on this port's plate
-        // (search bar, ImGui inspector, tab overview, quick
-        // terminal, command palette):
+        // Feature surfaces this port does not have yet (#152, #153):
         case GHOSTTY_ACTION_INSPECTOR:
         case GHOSTTY_ACTION_RENDER_INSPECTOR:
         // GTK-only, will never fire on Windows. Acked so it doesn't
@@ -227,6 +232,13 @@ bool CallbackDispatcher::DispatchAction(ghostty_target_s target, ghostty_action_
         // macOS-only quit countdown — Windows already quits on
         // last-HWND-gone via CLOSE_WINDOW:
         case GHOSTTY_ACTION_QUIT_TIMER:
+        // A title for the window itself, which this host does not
+        // have: its chrome shows the active tab's. Acked rather than
+        // refused, because libghostty reports a refused action as not
+        // performed, and a binding carrying upstream's `performable:`
+        // flag is then treated as absent and its key typed into the
+        // shell.
+        case GHOSTTY_ACTION_SET_WINDOW_TITLE:
             return true;
 
         // Scroll-position updates: feeds the pane's overlay

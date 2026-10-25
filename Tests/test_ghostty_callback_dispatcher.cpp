@@ -387,3 +387,104 @@ TEST(GhosttyCallbackDispatcherTest, UnknownTagReturnsFalse) {
 
     EXPECT_FALSE(DispatchTag(*d, static_cast<ghostty_action_tag_e>(9999)));
 }
+
+// ----- child exit -----
+
+TEST(GhosttyCallbackDispatcherTest, ShowChildExitedReachesTheViewWithItsSurface) {
+    // A surface-targeted SHOW_CHILD_EXITED hands the view the surface
+    // and the exit code, which is what ends an in-place WSL session
+    // (#217).
+    MockMainWindowView view;
+    auto d = CallbackDispatcher::Create(view);
+
+    auto surface = reinterpret_cast<ghostty_surface_t>(0x5150);
+    ghostty_target_s target{};
+    target.tag = GHOSTTY_TARGET_SURFACE;
+    target.target.surface = surface;
+    ghostty_action_s action{};
+    action.tag = GHOSTTY_ACTION_SHOW_CHILD_EXITED;
+    action.action.child_exited = { 130u, 2500u };
+
+    // Answered false so ghostty writes its own account of the failure
+    // into the terminal, which this app has no native window for.
+    EXPECT_FALSE(d->DispatchAction(target, action));
+    EXPECT_EQ(view.childExitedCalls, 1);
+    EXPECT_EQ(view.lastChildExitedSurface, surface);
+    EXPECT_EQ(view.lastChildExitCode, 130u);
+    // The runtime comes with it: the window needs both to tell a
+    // session that failed to start from one that was used (#237).
+    EXPECT_EQ(view.lastChildExitRuntimeMs, 2500u);
+}
+
+TEST(GhosttyCallbackDispatcherTest, ShowChildExitedSaysNothingAboutACleanExit) {
+    // A shell the user exited explains itself. Asking ghostty to write
+    // its line here would put it on every pane for the frame before it
+    // closes, which is what it looked like at first (#237).
+    MockMainWindowView view;
+    auto d = CallbackDispatcher::Create(view);
+
+    ghostty_target_s target{};
+    target.tag = GHOSTTY_TARGET_SURFACE;
+    target.target.surface = reinterpret_cast<ghostty_surface_t>(0x5150);
+    ghostty_action_s action{};
+    action.tag = GHOSTTY_ACTION_SHOW_CHILD_EXITED;
+    action.action.child_exited = { 0u, 90'000u };
+
+    EXPECT_TRUE(d->DispatchAction(target, action));
+    // Still the window's to act on: an in-place WSL session ends here
+    // whether or not anything was written.
+    EXPECT_EQ(view.childExitedCalls, 1);
+    EXPECT_EQ(view.lastChildExitCode, 0u);
+}
+
+TEST(GhosttyCallbackDispatcherTest, ShowChildExitedWithAppTargetReachesNoView) {
+    MockMainWindowView view;
+    auto d = CallbackDispatcher::Create(view);
+
+    // The zeroed payload is a clean exit, which needs no account, so
+    // this answers true for that reason rather than for the target.
+    EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_SHOW_CHILD_EXITED));
+    EXPECT_EQ(view.childExitedCalls, 0);
+}
+
+// ----- tab to a new window -----
+
+TEST(GhosttyCallbackDispatcherTest, MoveTabToNewWindowReachesTheViewWithItsSurface) {
+    // Routed rather than refused. The dispatcher refuses every tag it
+    // has no case for, so `move_tab_to_new_window` used to do nothing
+    // at all.
+    MockMainWindowView view;
+    auto d = CallbackDispatcher::Create(view);
+
+    auto surface = reinterpret_cast<ghostty_surface_t>(0x4242);
+    ghostty_target_s target{};
+    target.tag = GHOSTTY_TARGET_SURFACE;
+    target.target.surface = surface;
+    ghostty_action_s action{};
+    action.tag = GHOSTTY_ACTION_MOVE_TAB_TO_NEW_WINDOW;
+
+    EXPECT_TRUE(d->DispatchAction(target, action));
+    EXPECT_EQ(view.moveTabToNewWindowCalls, 1);
+    EXPECT_EQ(view.lastMovedTabSurface, surface);
+}
+
+TEST(GhosttyCallbackDispatcherTest, MoveTabToNewWindowRefusesAnAppTarget) {
+    // The dispatcher owns the shape of the target, as it does for every
+    // other tab and split action: a delivery that names no surface is
+    // refused here rather than handed on as a null one.
+    MockMainWindowView view;
+    auto d = CallbackDispatcher::Create(view);
+
+    EXPECT_FALSE(DispatchTag(*d, GHOSTTY_ACTION_MOVE_TAB_TO_NEW_WINDOW));
+    EXPECT_EQ(view.moveTabToNewWindowCalls, 0);
+}
+
+TEST(GhosttyCallbackDispatcherTest, SetWindowTitleIsAcknowledged) {
+    // This host has no title of its own for a window -- the chrome shows
+    // the active tab's -- so there is nothing to do. It is still
+    // acknowledged, for the same reason as above.
+    MockMainWindowView view;
+    auto d = CallbackDispatcher::Create(view);
+
+    EXPECT_TRUE(DispatchTag(*d, GHOSTTY_ACTION_SET_WINDOW_TITLE));
+}

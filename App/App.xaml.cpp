@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "App.xaml.h"
 #include "Windows/MainWindow.xaml.h"
+#include "Ghostty/Config.h"
 #include "Ghostty/MainWindowRuntime.h"
 #include "Ghostty/RuntimeConfigFactory.h"
 #include <algorithm>
@@ -25,6 +26,17 @@ namespace {
         DWORD len = GetTempPathW(MAX_PATH, buf);
         if (len == 0) return L"GhosttyWin32_running.flag";
         return std::filesystem::path(buf) / L"GhosttyWin32_running.flag";
+    }
+
+    // Where the shim is installed: beside the config, in a directory
+    // the person owns. It ends up first on a ConPTY shell's PATH, so
+    // what else goes in there shadows System32 for those panes.
+    std::filesystem::path userShimDirectory() {
+        wchar_t appdata[MAX_PATH];
+        DWORD len = GetEnvironmentVariableW(L"LOCALAPPDATA", appdata,
+                                            static_cast<DWORD>(std::size(appdata)));
+        if (len == 0 || len >= std::size(appdata)) return {};
+        return std::filesystem::path(appdata) / L"ghostty" / L"bin";
     }
 }
 
@@ -303,7 +315,66 @@ namespace winrt::GhosttyWin32::implementation
             return;
         }
 
+        // In-place WSL (#217): the shim a shell runs is one the person
+        // installed, since the copy under shim\ in the package cannot
+        // be started from there at all -- see docs/WSL.md. The host
+        // names the directory and looks no further: with nothing in it
+        // the shell finds System32's wsl.exe, which is the right
+        // answer, and a shim from another build says so over the pipe
+        // and gets told in the pane (ShimServer::Serve). The pipe
+        // server that answers it runs only while wsl-bridge is on; see
+        // SyncShimServer.
+        m_shimDir = userShimDirectory().wstring();
+        SyncShimServer();
+
         CreateNewWindow();
+    }
+
+    std::wstring App::ShimPipeName() const noexcept
+    {
+        return m_shimServer ? m_shimServer->PipeName() : std::wstring{};
+    }
+
+    void App::SyncShimServer()
+    {
+        // A shell needs somewhere to find the shim, and that is the one
+        // directory this host names. With no name for it -- no
+        // LOCALAPPDATA to build one from -- nothing can reach this
+        // server, so the feature is off whole rather than half: no
+        // directory on the PATH and no pipe listening for a caller that
+        // cannot exist.
+        const bool wanted = m_ghostty && !m_shimDir.empty()
+            && core::ghostty::Config(m_ghostty->ConfigHandle()).WslBridge();
+        if (wanted == static_cast<bool>(m_shimServer)) return;
+
+        if (!wanted) {
+            // Stopping only ends the accept loop. Sessions already open
+            // keep their own pipe handles and finish normally.
+            m_shimServer.reset();
+            return;
+        }
+
+        // Requests land on the UI thread and go to the window that owns
+        // the pane. The option is checked again there: a request can be
+        // queued just before a reload turns it off.
+        m_shimServer = std::make_unique<wsl::ShimServer>(
+            Microsoft::UI::Dispatching::DispatcherQueue::GetForCurrentThread(),
+            [](uint64_t paneId, std::wstring cwd, core::wsl::Invocation invocation,
+               std::shared_ptr<wsl::ShimReply> reply) {
+                auto* app = App::g_app;
+                const bool enabled = app && app->Ghostty()
+                    && core::ghostty::Config(app->Ghostty()->ConfigHandle()).WslBridge();
+                PaneId id{ paneId };
+                MainWindow* window = enabled ? app->Windows().FindForPaneId(id) : nullptr;
+                if (!window) {
+                    reply->Refuse();
+                    return;
+                }
+                window->OpenWslInPane(id, std::move(cwd), invocation, std::move(reply));
+            });
+        // A name another process already holds is never advertised:
+        // with no server, ShimPipeName is empty and shells get no shim.
+        if (!m_shimServer->Start()) m_shimServer.reset();
     }
 
     void App::CreateNewWindow()

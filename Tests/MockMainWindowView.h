@@ -64,6 +64,14 @@ struct MockMainWindowView : core::host::IWindow {
 
     int equalizeSplitsCalls = 0;
     ghostty_surface_t lastEqualizeSurface = nullptr;
+    int moveTabToNewWindowCalls = 0;
+    ghostty_surface_t lastMovedTabSurface = nullptr;
+
+    void MoveTabToNewWindow(ghostty_surface_t s) override {
+        ++moveTabToNewWindowCalls;
+        lastMovedTabSurface = s;
+    }
+
     void EqualizeSplitsForSurface(ghostty_surface_t s) override {
         ++equalizeSplitsCalls;
         lastEqualizeSurface = s;
@@ -370,5 +378,16 @@ struct MockMainWindowView : core::host::IWindow {
     void ReportProgress(ghostty_action_progress_report_s pr) override {
         ++reportProgressCalls;
         lastProgress = pr;
+    }
+
+    int childExitedCalls = 0;
+    ghostty_surface_t lastChildExitedSurface = nullptr;
+    uint64_t lastChildExitRuntimeMs = 0;
+    uint32_t lastChildExitCode = 0;
+    void ChildExited(ghostty_surface_t surface, core::wsl::SessionExit ended) override {
+        ++childExitedCalls;
+        lastChildExitedSurface = surface;
+        lastChildExitRuntimeMs = ended.LivedMs();
+        lastChildExitCode = ended.Code();
     }
 };

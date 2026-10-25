@@ -67,7 +67,10 @@ public:
 
     // ----- terminal events -----
     bool OnRingBell();
-    bool OnShowChildExited(ghostty_surface_message_childexited_s child);
+    // `surface` is the exited shell's surface, or null for an
+    // app-scoped report.
+    bool OnShowChildExited(ghostty_surface_t surface,
+                           ghostty_surface_message_childexited_s child);
     bool OnRendererHealth(ghostty_action_renderer_health_e health);
     bool OnRender();
 
@@ -193,6 +196,7 @@ public:
     bool OnGotoSplit(ghostty_surface_t surface,
                      ghostty_action_goto_split_e direction);
     bool OnEqualizeSplits(ghostty_surface_t surface);
+    bool OnMoveTabToNewWindow(ghostty_surface_t surface);
     bool OnToggleSplitZoom(ghostty_surface_t surface);
 
 private:
@@ -210,6 +214,12 @@ private:
     // Every UI-thread hop goes through here instead of calling
     // m_view.Dispatch directly: the wrapper adds the liveness gate
     // that keeps queued work from touching a destroyed view.
+    //
+    // A handler that hops has already answered libghostty by the time
+    // the work runs, so its `true` says the action was accepted, never
+    // that it happened. A binding marked `performable:` cannot tell
+    // the two apart, and will not fall through when the view turns out
+    // to have nothing to do.
     // mutable: several handlers pass mutable lambdas (they move
     // captured strings out when they run), and a const call operator
     // on this wrapper couldn't invoke them.

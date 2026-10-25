@@ -14,7 +14,6 @@
 namespace winrt::GhosttyWin32::implementation
 {
     namespace muxi = winrt::Microsoft::UI::Xaml::Input;
-    namespace muix = winrt::Microsoft::UI::Input;
 
     // ----- lifetime -----
 
@@ -121,6 +120,7 @@ namespace winrt::GhosttyWin32::implementation
         }
 
         m_ime.Reset();
+        m_mouse.Reset();
         m_editContext.Release();
 
         if (m_panel) {
@@ -266,9 +266,7 @@ namespace winrt::GhosttyWin32::implementation
     void SurfaceHost::OnPointerMoved(muxi::PointerRoutedEventArgs const& args)
     {
         if (!m_surface) return;
-        muix::PointerPoint point = args.GetCurrentPoint(m_panel);
-        auto pos = point.Position();
-        m_surface.MousePos(pos.X, pos.Y, host::currentMods());
+        m_mouse.Handle(input::fromPointerArgs(args, m_panel));
     }
 
     void SurfaceHost::OnPointerPressed(muxi::PointerRoutedEventArgs const& args)
@@ -282,45 +280,39 @@ namespace winrt::GhosttyWin32::implementation
         // LostFocus fires, and KeyDown stops being delivered until
         // focus is restored some other way.
         args.Handled(true);
-        muix::PointerPoint point = args.GetCurrentPoint(m_panel);
-        muix::PointerPointProperties props = point.Properties();
-        ghostty_input_mouse_button_e btn;
-        if (props.IsLeftButtonPressed()) {
-            btn = GHOSTTY_MOUSE_LEFT;
-        } else if (props.IsRightButtonPressed()) {
-            // Right-click: copy selection if there is one, otherwise
-            // treat as a normal right button press.
-            if (m_surface.HasSelection()) {
-                CopySelectionToClipboard();
-                return;
-            }
-            btn = GHOSTTY_MOUSE_RIGHT;
-        } else {
-            return;
-        }
-        m_surface.MouseButton(GHOSTTY_MOUSE_PRESS, btn, host::currentMods());
+        m_mouse.Handle(input::fromPointerArgs(args, m_panel));
     }
 
     void SurfaceHost::OnPointerReleased(muxi::PointerRoutedEventArgs const& args)
     {
         if (!m_surface) return;
-        m_surface.MouseButton(GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, host::currentMods());
         args.Handled(true);
+        m_mouse.Handle(input::fromPointerArgs(args, m_panel));
+    }
+
+    void SurfaceHost::OnPointerCaptureLost()
+    {
+        if (!m_surface) return;
+        m_mouse.CaptureLost();
+    }
+
+    void SurfaceHost::OnPointerCanceled(muxi::PointerRoutedEventArgs const& args)
+    {
+        if (!m_surface) return;
+        m_mouse.Canceled(args.Pointer());
     }
 
     void SurfaceHost::OnPointerWheelChanged(muxi::PointerRoutedEventArgs const& args)
     {
         if (!m_surface) return;
-        muix::PointerPoint point = args.GetCurrentPoint(m_panel);
-        ScrollByWheel(point.Properties().MouseWheelDelta());
+        m_mouse.Wheel(args);
         args.Handled(true);
     }
 
     void SurfaceHost::ScrollByWheel(int wheelDelta)
     {
         if (!m_surface) return;
-        ghostty_input_scroll_mods_t smods = {};
-        m_surface.MouseScroll(0, static_cast<double>(wheelDelta) / 120.0, smods);
+        m_mouse.ScrollBy(wheelDelta);
     }
 
     void SurfaceHost::OnKeyDown(muxi::KeyRoutedEventArgs const& args)
