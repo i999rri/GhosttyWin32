@@ -11,6 +11,7 @@
 #include <functional>
 #include <utility>
 #include <variant>
+#include <vector>
 
 namespace winrt::GhosttyWin32::implementation
 {
@@ -106,24 +107,39 @@ namespace winrt::GhosttyWin32::implementation
         }
 
         // Everything this class does to the world, in one place, and
-        // nothing decided here. Dropping the capture is queued rather
-        // than done: ReleasePointerCapture raises PointerCaptureLost
-        // at once, on this thread, inside the call, which would run a
-        // handler inside this one. Queued, it arrives as an event of
-        // its own after this one is finished, so no handler ever
-        // nests, and the order of the lines below is not what keeps
-        // the ledger and libghostty agreeing.
+        // nothing decided here. Because the capture is dropped after
+        // this event rather than inside it, no handler runs inside
+        // another, and the order of these lines is not what keeps the
+        // ledger and libghostty agreeing.
         void Apply(Transition const& t, Microsoft::UI::Xaml::Input::Pointer const& pointer)
         {
             m_ledger = t.ledger;
             if (t.capture.IsTake()) m_panel.CapturePointer(pointer);
-            for (auto const& r : t.reports) m_terminal.reportButton(r.state, r.button.ToGhosttyEnum());
-            if (t.capture.IsDrop()) {
-                m_panel.DispatcherQueue().TryEnqueue([panel = m_panel, pointer]() {
-                    panel.ReleasePointerCapture(pointer);
-                });
-            }
+            TellTerminal(t.reports);
+            if (t.capture.IsDrop()) DropCaptureAfterThisEvent(pointer);
             if (t.copySelection) m_terminal.copySelection();
+        }
+
+        // The presses and releases this transition owes libghostty,
+        // in order. One for a press or a release of our own; one per
+        // outstanding button when the capture is lost; none when the
+        // event changed nothing libghostty should know about.
+        void TellTerminal(std::vector<core::input::ButtonReport> const& reports)
+        {
+            for (auto const& r : reports) {
+                m_terminal.reportButton(r.state, r.button.ToGhosttyEnum());
+            }
+        }
+
+        // ReleasePointerCapture raises PointerCaptureLost at once, on
+        // this thread, inside the call, which would run a handler
+        // inside this one. Queued, it arrives as an event of its own
+        // after this one has finished, so no handler ever nests.
+        void DropCaptureAfterThisEvent(Microsoft::UI::Xaml::Input::Pointer const& pointer)
+        {
+            m_panel.DispatcherQueue().TryEnqueue([panel = m_panel, pointer]() {
+                panel.ReleasePointerCapture(pointer);
+            });
         }
 
         Microsoft::UI::Xaml::Controls::SwapChainPanel m_panel{ nullptr };
