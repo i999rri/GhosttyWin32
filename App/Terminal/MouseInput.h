@@ -150,10 +150,11 @@ namespace winrt::GhosttyWin32::implementation
             // copies instead of reaching the terminal. Under a held
             // left one it reaches the terminal, because copying would
             // clear the selection the left one is drawing.
-            if (e.button.IsRight() && !m_ledger.AnyOutstanding()
-                && m_terminal.hasSelection()) {
-                return PressVerdict::Copy;
-            }
+            bool const pressedAlone = !m_ledger.AnyOutstanding();
+            bool const isCopyGesture =
+                e.button.IsRight() && pressedAlone && m_terminal.hasSelection();
+            if (isCopyGesture) return PressVerdict::Copy;
+
             return PressVerdict::Relay;
         }
 
