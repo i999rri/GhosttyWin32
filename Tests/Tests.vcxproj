@@ -179,6 +179,7 @@
     <ClCompile Include="test_mouse_transition.cpp" />
     <ClCompile Include="test_window_decorations.cpp" />
     <ClCompile Include="test_background_opacity.cpp" />
+    <ClCompile Include="test_pane_command.cpp" />
     <ClCompile Include="test_tree.cpp" />
     <ClCompile Include="test_tab_drag.cpp" />
     <ClCompile Include="test_pressed_tab.cpp" />

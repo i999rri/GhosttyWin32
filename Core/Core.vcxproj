@@ -113,6 +113,7 @@
     <ClInclude Include="Interop\Encoding.h" />
     <ClInclude Include="Win32\Clipboard.h" />
     <ClInclude Include="Panes\Branch.h" />
+    <ClInclude Include="Panes\Command.h" />
     <ClInclude Include="Panes\Direction.h" />
     <ClInclude Include="Panes\Goto.h" />
     <ClInclude Include="Panes\Layout.h" />
