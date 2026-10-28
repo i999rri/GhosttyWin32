@@ -266,6 +266,10 @@ namespace winrt::GhosttyWin32::implementation
         // close gate has already asked the user (or determined the
         // surface doesn't need confirmation).
         void RemovePaneByIdApproved(PaneId id);
+        // A pane made with a command, outside an in-place WSL session,
+        // whose process ended: closed unless the exit keeps it (see
+        // SessionExit::KeepsPane).
+        void CloseCommandPaneAfterExit(PaneId id, core::wsl::SessionExit ended);
         // The shell parked for an in-place WSL session (#217) whose
         // surface is `surface`, in any tab of this window; null when
         // none. A parked pane is in no tree, but its surface is live:
