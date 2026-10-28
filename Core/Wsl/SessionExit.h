@@ -1,8 +1,9 @@
 #pragma once
 
-// How an in-place WSL session (#217) ended: the exit code and how long
-// the process lived, which arrive together and are only useful
-// together.
+// How the command in a pane ended: the exit code and how long the
+// process lived, which arrive together and are only useful together.
+// Carried for an in-place WSL session (#217) to its shim, and asked by
+// any pane made with a command what should follow.
 
 #include <cstdint>
 
@@ -41,6 +42,14 @@ public:
     // instead would cost correctness in every case it guessed wrong.
     bool FailedBeforeUse(uint32_t abnormalRuntimeMs) const noexcept {
         return m_code != 0 && m_livedMs <= abnormalRuntimeMs;
+    }
+
+    // Whether the pane stays up after this exit, for a key to close:
+    // ghostty kept it to say why the command never got going, or
+    // `wait-after-command` asks every pane to wait. Otherwise the pane
+    // closes, as one without a command does on its own.
+    bool KeepsPane(uint32_t abnormalRuntimeMs, bool waitAfterCommand) const noexcept {
+        return FailedBeforeUse(abnormalRuntimeMs) || waitAfterCommand;
     }
 
 private:

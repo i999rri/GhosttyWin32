@@ -277,9 +277,10 @@ struct IWindow {
     // SHOW_CHILD_EXITED for a surface this window owns: the process
     // in `surface` ended, as `ended`. Arrives on the UI thread outside
     // the surface's own call stack, so the window may free the surface
-    // from here. An in-place WSL session (#217) ends on this:
-    // libghostty keeps a surface started with an explicit command open
-    // after its process exits, so no close would follow on its own.
+    // from here. libghostty keeps a surface started with an explicit
+    // command open after its process exits, so no close would follow
+    // on its own: an in-place WSL session (#217) ends on this, and any
+    // other pane made with a command closes, or stays, from here.
     virtual void ChildExited(ghostty_surface_t surface,
                              core::wsl::SessionExit ended) = 0;
 };

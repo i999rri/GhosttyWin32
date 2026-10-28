@@ -42,6 +42,24 @@ TEST(WslSessionExitTest, NotFailedBeforeUseWhenTheSessionSucceeded) {
     EXPECT_FALSE(SessionExit(0, 60'000).FailedBeforeUse(kAbnormalMs));
 }
 
+TEST(WslSessionExitTest, KeepsThePaneGhosttyWroteTheFailureOn) {
+    EXPECT_TRUE(SessionExit(127, 20).KeepsPane(kAbnormalMs, false));
+    EXPECT_TRUE(SessionExit(127, 20).KeepsPane(kAbnormalMs, true));
+}
+
+TEST(WslSessionExitTest, KeepsThePaneWhenAskedToWait) {
+    EXPECT_TRUE(SessionExit(0, 9'000).KeepsPane(kAbnormalMs, true));
+    EXPECT_TRUE(SessionExit(3, 9'000).KeepsPane(kAbnormalMs, true));
+}
+
+TEST(WslSessionExitTest, ClosesThePaneAfterAnOrdinaryExit) {
+    // `exit` and `exit 3` alike: a session that was used ends, and the
+    // pane goes with it unless the config says to wait.
+    EXPECT_FALSE(SessionExit(0, 9'000).KeepsPane(kAbnormalMs, false));
+    EXPECT_FALSE(SessionExit(0, 20).KeepsPane(kAbnormalMs, false));
+    EXPECT_FALSE(SessionExit(3, 9'000).KeepsPane(kAbnormalMs, false));
+}
+
 TEST(WslSessionExitTest, FollowsTheConfiguredWindow) {
     // The threshold is a setting, so the same exit falls either side of
     // it depending on what the config says.

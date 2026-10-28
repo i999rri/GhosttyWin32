@@ -2684,14 +2684,20 @@ namespace winrt::GhosttyWin32::implementation
 
     void MainWindow::ChildExited(ghostty_surface_t surface, core::wsl::SessionExit ended)
     {
-        // Only an in-place WSL session (#217) acts on this: its WSL
-        // pane is one libghostty keeps open after the process ends,
-        // so this is where the session ends. Every other surface
+        // A surface made with a command is one libghostty keeps open
+        // after its process ends, whatever `wait-after-command` says
+        // (apprt/embedded.zig turns it on for such a surface), so what
+        // follows its exit is decided here. A surface made without one
         // closes itself through close_surface_cb.
         auto lookup = m_tabs.FindPaneBySurface(surface);
         if (!lookup.tab || !lookup.pane) return;
+        if (lookup.pane->command.IsDefault()) return;
+
         Tab::InPlaceSession* pending = lookup.tab->FindInPlaceByOverlay(lookup.pane->id);
-        if (!pending) return;
+        if (!pending) {
+            CloseCommandPaneAfterExit(lookup.pane->id, ended);
+            return;
+        }
 
         // Tick-stamped like UndoPark: the gap to the restored line
         // is the host-side cost of ending a session.
@@ -2736,6 +2742,15 @@ namespace winrt::GhosttyWin32::implementation
         // back; the WSL pane goes the way of a plain pane whose
         // process ended.
         RemovePaneByIdApproved(lookup.pane->id);
+    }
+
+    void MainWindow::CloseCommandPaneAfterExit(PaneId id, core::wsl::SessionExit ended)
+    {
+        // Read fresh so a reload is in effect, as ChildExited does.
+        core::ghostty::Config cfg{ m_ghosttyApp->ConfigHandle() };
+        if (ended.KeepsPane(cfg.AbnormalCommandExitRuntimeMs(), cfg.WaitAfterCommand())) return;
+
+        RemovePaneByIdApproved(id);
     }
 
     void MainWindow::MoveTabToNewWindow(ghostty_surface_t surface)

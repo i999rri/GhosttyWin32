@@ -167,6 +167,17 @@ public:
         return static_cast<uint64_t>(ms) * 1'000'000ull;
     }
 
+    // `wait-after-command`: whether a pane stays after its process ends
+    // until a key closes it. Read by the host because libghostty turns
+    // it on by itself for every surface made with a command
+    // (apprt/embedded.zig, for scripting), and the surfaces this host
+    // makes with one are shells, which get the setting as written.
+    bool WaitAfterCommand() const noexcept {
+        bool v = false;
+        GetRaw("wait-after-command", &v);
+        return v;
+    }
+
     // How soon after starting a non-zero exit means the command never
     // got going. ghostty keeps such a surface open instead of closing
     // it, so the host reads the same setting to know which exits leave
