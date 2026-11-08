@@ -28,7 +28,6 @@
 #include <winrt/Microsoft.Windows.AppNotifications.Builder.h>
 #include <winrt/Windows.Graphics.h>
 #include <algorithm>
-#include <cctype>
 #include <chrono>
 #include <cwctype>
 #include <filesystem>
@@ -43,16 +42,6 @@ namespace {
 // the host side rather than finished by WSL (#217). Nonzero so the
 // shell does not take a session it never completed for a success.
 constexpr uint32_t kCutSessionExitCode = 1;
-
-// Whether a tab command starts WSL itself (`wsl`, `wsl.exe`, any
-// case), in which case the in-place shim has no work there (#217).
-bool IsWslCommand(std::string const& command) {
-    auto end = command.find_first_of(" \t");
-    std::string first = command.substr(0, end);
-    std::transform(first.begin(), first.end(), first.begin(),
-                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return first == "wsl" || first == "wsl.exe";
-}
 
 // The host process's PATH, the base a shell's PATH is built from.
 std::wstring HostPath() {
@@ -1138,11 +1127,11 @@ namespace winrt::GhosttyWin32::implementation
             // find this pane. Only while wsl-bridge is on, and never for
             // a pane that is WSL itself. Raw `this` capture: the factory
             // is a member and dies with this window.
-            auto surfaceEnvironment = [this](PaneId id, std::string const& command) {
+            auto surfaceEnvironment = [this](PaneId id, Command const& command) {
                 std::vector<TabFactory::EnvVar> env;
                 if (!App::g_app || !m_ghosttyApp) return env;
                 if (!ghostty::Config(m_ghosttyApp->ConfigHandle()).WslBridge()) return env;
-                if (IsWslCommand(command)) return env;
+                if (command.StartsWsl()) return env;
                 std::wstring pipe = App::g_app->ShimPipeName();
                 std::wstring const& shimDir = App::g_app->ShimDirectory();
                 if (pipe.empty() || shimDir.empty()) return env;
@@ -1171,10 +1160,12 @@ namespace winrt::GhosttyWin32::implementation
 
     void MainWindow::CreateTab()
     {
-        // Another tab of the active tab's kind: a WSL tab begets a WSL
-        // tab. With no tab yet (startup) this is the configured default.
+        // Another tab of the active pane's kind: a WSL pane begets a WSL
+        // tab, whether it was opened as one or became one in place. With
+        // no tab yet (startup) this is the configured default.
         auto* active = ActiveTab();
-        CreateTabWithCommand(active ? active->Command() : std::string{});
+        Pane* pane = active ? active->ActivePane() : nullptr;
+        CreateTabWithCommand(pane ? pane->command : Command::Default());
     }
 
     void MainWindow::AlignNewTabMenuButtonTo(muxc::Button const& addButton)
@@ -1206,7 +1197,7 @@ namespace winrt::GhosttyWin32::implementation
             [align]() { align(); });
     }
 
-    void MainWindow::CreateTabAfterFlyout(std::string command)
+    void MainWindow::CreateTabAfterFlyout(Command command)
     {
         // Creating a tab is synchronous UI-thread work (XAML control,
         // libghostty surface, thread spawns). Run it after the flyout
@@ -1223,16 +1214,16 @@ namespace winrt::GhosttyWin32::implementation
     void MainWindow::OnNewTabMenuDefaultClick(winrt::Windows::Foundation::IInspectable const&,
                                               winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
-        CreateTabAfterFlyout({});
+        CreateTabAfterFlyout(Command::Default());
     }
 
     void MainWindow::OnNewTabMenuWslClick(winrt::Windows::Foundation::IInspectable const&,
                                           winrt::Microsoft::UI::Xaml::RoutedEventArgs const&)
     {
-        CreateTabAfterFlyout("wsl");
+        CreateTabAfterFlyout(Command::Of("wsl"));
     }
 
-    void MainWindow::CreateTabWithCommand(std::string command)
+    void MainWindow::CreateTabWithCommand(Command command)
     {
         if (!m_hwnd) return;
 
@@ -1369,7 +1360,7 @@ namespace winrt::GhosttyWin32::implementation
             std::function<void()> onActivated;
             uint32_t initialWidth;
             uint32_t initialHeight;
-            std::string command;
+            Command command;
             std::unique_ptr<Tab> result;
         };
         CreateCtx ctx{ &item, m_tabFactory.get(), std::move(onActivated), initial.width, initial.height, std::move(command), nullptr };
@@ -2470,16 +2461,20 @@ namespace winrt::GhosttyWin32::implementation
         // closed for the new pane while leaving the rest of the
         // window intact (or, if the heap is clearly corrupt, exit
         // cleanly via the same cleanup path).
+        //
+        // The new pane starts the way the one it splits from did, so a
+        // WSL pane begets a WSL pane (#220).
         struct SplitCtx {
             TabFactory* factory;
             uint32_t initialWidth;
             uint32_t initialHeight;
+            Command const* command;
             std::unique_ptr<Branch> result;
         };
-        SplitCtx ctx{ m_tabFactory.get(), hint.width, hint.height, nullptr };
+        SplitCtx ctx{ m_tabFactory.get(), hint.width, hint.height, &sourcePane->command, nullptr };
         int ok = RunSEHGuarded([](void* arg) noexcept {
             auto* c = static_cast<SplitCtx*>(arg);
-            c->result = c->factory->MakePane(c->initialWidth, c->initialHeight);
+            c->result = c->factory->MakePane(c->initialWidth, c->initialHeight, {}, *c->command);
         }, &ctx);
         if (!ok) {
             // Driver-side hardware exception. Process state is
@@ -2551,7 +2546,7 @@ namespace winrt::GhosttyWin32::implementation
         }
         // Written from the table that read it, so an option this host
         // understands reaches wsl.exe the way wsl.exe reads it.
-        const std::string command = invocation.ToCommandLine();
+        const Command command = Command::Of(invocation.ToCommandLine());
 
         // Where the pane starts, when the command line does not say. A
         // Linux `--cd` is on that line already and outranks this, as it
@@ -2582,7 +2577,7 @@ namespace winrt::GhosttyWin32::implementation
             TabFactory* factory;
             uint32_t initialWidth;
             uint32_t initialHeight;
-            std::string const* command;
+            Command const* command;
             std::string const* workingDirectory;
             std::unique_ptr<Branch> result;
         };

@@ -3,6 +3,7 @@
 #include "Ghostty/App.h"
 #include "Ghostty/Config.h"
 #include "Tabs/Panes/Branch.h"
+#include "Tabs/Panes/Command.h"
 #include "Tabs/Panes/PaneId.h"
 #include "Tabs/Panes/PaneIdAllocator.h"
 #include "Tabs/SplitPanel.h"
@@ -60,7 +61,7 @@ public:
     // uses it to tell a ConPTY shell where the in-place WSL shim can
     // reach its pane (#217); the factory only passes it on.
     using SurfaceEnvironment =
-        std::function<std::vector<EnvVar>(PaneId id, std::string const& command)>;
+        std::function<std::vector<EnvVar>(PaneId id, Command const& command)>;
 
     TabFactory(ghostty::App const& app, HWND hwnd,
                PaneIdAllocator& idAllocator,
@@ -108,11 +109,9 @@ public:
         std::function<void()> onActivated = {},
         uint32_t initialWidth = 0,
         uint32_t initialHeight = 0,
-        std::string command = {})
+        Command command = {})
     {
-        // The pane gets its own copy; the Tab remembers the command so
-        // tabs opened from it can inherit the kind.
-        auto branch = MakePane(initialWidth, initialHeight, std::move(onActivated), command);
+        auto branch = MakePane(initialWidth, initialHeight, std::move(onActivated), std::move(command));
         if (!branch) return nullptr;
 
         // Wrap the pane in a SplitPanel. With one pane the panel
@@ -137,7 +136,7 @@ public:
         splitPanelImpl->SetRoot(std::move(branch));
 
         try {
-            return std::make_unique<Tab>(std::move(splitPanel), std::move(item), std::move(command));
+            return std::make_unique<Tab>(std::move(splitPanel), std::move(item));
         } catch (winrt::hresult_error const&) {
             // Tab construction validation failed. Detach synchronously
             // so the surface/handle don't leak. The splitPanel / tree
@@ -163,7 +162,7 @@ public:
         uint32_t initialWidth,
         uint32_t initialHeight,
         std::function<void()> onActivated = {},
-        std::string command = {},
+        Command command = {},
         std::string workingDirectory = {})
     {
         constexpr DWORD COMPOSITIONSURFACE_ALL_ACCESS = 0x0003L;
@@ -226,11 +225,11 @@ public:
         cfg.platform.windows.swap_chain_changed_cb = &SurfaceHost::OnSwapChainChanged;
         cfg.platform.windows.swap_chain_changed_userdata = swapChainChanged.get();
         cfg.userdata = paneId.ToUserdata();
-        // A per-surface command overrides config.command for this tab
+        // A per-surface command overrides config.command for this pane
         // only; libghostty copies it during ghostty_surface_new, so the
-        // local string just needs to outlive that call. Empty means
-        // inherit the configured default (leave the field null).
-        if (!command.empty()) cfg.command = command.c_str();
+        // local string just needs to outlive that call. The default
+        // leaves the field null, and the config in charge.
+        if (!command.IsDefault()) cfg.command = command.Text().c_str();
         if (!workingDirectory.empty()) cfg.working_directory = workingDirectory.c_str();
         // Same lifetime rule as the command: libghostty copies the
         // variables during ghostty_surface_new, so the vectors only
@@ -326,7 +325,7 @@ public:
         // toggle.
         if (m_onLeafCreated) m_onLeafCreated(*controlImpl);
 
-        return MakePaneBranch(Pane{ control, controlImpl, paneId });
+        return MakePaneBranch(Pane{ control, controlImpl, paneId, std::move(command) });
     }
 
 private:

@@ -8,6 +8,7 @@
 #include "Interop/Encoding.h"
 #include "Win32/Clipboard.h"
 #include "Win32/NativeWindow.h"
+#include "Tabs/Panes/Command.h"
 #include "Tabs/Panes/PaneId.h"
 #include "Tabs/ParkedTabs.h"
 #include "Tabs/Tab.h"
@@ -114,13 +115,12 @@ namespace winrt::GhosttyWin32::implementation
         // tree / TabView live on this class so the body stays here;
         // dispatcher reaches them through the interface.
         void CreateTab() override;
-        // New tab whose shell is `command` (empty = configured default).
-        // CreateTab derives the command from the active tab; the
-        // new-tab menu passes an explicit one.
-        void CreateTabWithCommand(std::string command);
+        // New tab whose shell is `command`. CreateTab takes it from the
+        // active pane; the new-tab menu passes an explicit one.
+        void CreateTabWithCommand(Command command);
         // CreateTabWithCommand, run after the invoking flyout has
         // dismissed rather than inside its click.
-        void CreateTabAfterFlyout(std::string command);
+        void CreateTabAfterFlyout(Command command);
         // Pin the new-tab menu button's top edge to the "+"'s so the
         // pair lines up; called once TabView's template has realised
         // its AddButton.

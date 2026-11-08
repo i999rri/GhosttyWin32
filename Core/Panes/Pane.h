@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Host/IPaneView.h>
+#include <Panes/Command.h>
 #include <Panes/PaneId.h>
 #include <winrt/Windows.Foundation.h>
 
@@ -27,6 +28,9 @@ struct Pane {
     winrt::Windows::Foundation::IInspectable handle{ nullptr };
     host::IPaneView* view{ nullptr };
     PaneId id{};
+    // What this pane's shell was started with. A pane made from this
+    // one starts the same way (#220).
+    Command command{};
 };
 
 }  // namespace core::panes

@@ -251,7 +251,7 @@ libghostty は action という形で host に仕事を頼む。定義されて�
 | Dropping files into a pane | Dragging a file onto the terminal does nothing |
 | Window geometry and title-bar appearance | `window-position-x`/`-y`, `maximize`, `fullscreen` at startup, `window-theme`, `window-titlebar-background`/`-foreground`, `window-title-font-family`, `window-subtitle`, `window-show-tab-bar`, `window-new-tab-position`, `focus-follows-mouse`, `scrollbar`, `progress-style` and `title` are not read |
 | Inheriting from the pane you came from | `tab-inherit-working-directory`, `split-inherit-working-directory` and `window-inherit-font-size` have no effect: the host never says which kind of surface it is making, so all three fall back to the window case |
-| Split or new tab from an in-place WSL pane | Opens the default shell rather than WSL ([#220](https://github.com/i999rri/GhosttyWin32/issues/220)) |
+| Split or new tab from an in-place WSL pane | Opens WSL in the same distribution, but not in the directory the pane was in: inside WSL that is a Linux path, which the host cannot yet hand to a new session ([#220](https://github.com/i999rri/GhosttyWin32/issues/220)) |
 
 <details>
 <summary>日本語</summary>
@@ -269,6 +269,6 @@ libghostty は action という形で host に仕事を頼む。定義されて�
 | ペインへのファイルのドロップ | 端末にファイルをドラッグしても何も起きない |
 | ウインドウの位置とタイトルバーの見た目 | `window-position-x`/`-y`、起動時の `maximize` と `fullscreen`、`window-theme`、`window-titlebar-background`/`-foreground`、`window-title-font-family`、`window-subtitle`、`window-show-tab-bar`、`window-new-tab-position`、`focus-follows-mouse`、`scrollbar`、`progress-style`、`title` を読んでいない |
 | 元のペインから受け継ぐもの | `tab-inherit-working-directory`、`split-inherit-working-directory`、`window-inherit-font-size` が効かない。host がどの種類の surface を作るのかを伝えていないので、3 つとも window の場合に落ちる |
-| in-place の WSL ペインからの split と新規タブ | WSL ではなく既定のシェルで開く ([#220](https://github.com/i999rri/GhosttyWin32/issues/220)) |
+| in-place の WSL ペインからの split と新規タブ | 同じ distribution の WSL で開くが、元のペインのディレクトリにはならない。WSL の中ではそれが Linux のパスで、host はまだ新しいセッションに渡せない ([#220](https://github.com/i999rri/GhosttyWin32/issues/220)) |
 
 </details>

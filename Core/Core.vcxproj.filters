@@ -105,6 +105,9 @@
     <ClInclude Include="Panes\Branch.h">
       <Filter>Panes</Filter>
     </ClInclude>
+    <ClInclude Include="Panes\Command.h">
+      <Filter>Panes</Filter>
+    </ClInclude>
     <ClInclude Include="Panes\Direction.h">
       <Filter>Panes</Filter>
     </ClInclude>
